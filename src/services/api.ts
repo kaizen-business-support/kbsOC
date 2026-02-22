@@ -61,6 +61,14 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Redirect to login without causing a reload loop when already on the login page
+const redirectToLogin = () => {
+  const onLoginPage = window.location.pathname === '/login' || window.location.pathname === '/';
+  if (!onLoginPage) {
+    window.location.href = '/login';
+  }
+};
+
 // Response interceptor for error handling
 api.interceptors.response.use(
   (response) => response,
@@ -86,13 +94,12 @@ api.interceptors.response.use(
           // Refresh failed, clear tokens and redirect to login
           console.error('Token refresh failed:', refreshError);
           tokenManager.clearTokens();
-          window.location.href = '/login';
+          redirectToLogin();
         }
       } else {
-        // No refresh token, clear all tokens and redirect
-        console.log('No refresh token available, redirecting to login');
+        // No refresh token — user is not authenticated
         tokenManager.clearTokens();
-        window.location.href = '/login';
+        redirectToLogin();
       }
     }
     return Promise.reject(error);

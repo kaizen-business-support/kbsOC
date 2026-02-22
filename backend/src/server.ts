@@ -64,28 +64,31 @@ const corsOptions: cors.CorsOptions = {
 };
 app.use(cors(corsOptions));
 
-// ─── Rate limiting — applied in all environments ──────────────────────────────
+// ─── Rate limiting ────────────────────────────────────────────────────────────
 const isProd = process.env.NODE_ENV === 'production';
 
-// Global limiter
-const globalLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW || '15') * 60 * 1000,
-  max: isProd
-    ? parseInt(process.env.RATE_LIMIT_MAX || '100')
-    : 500,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    error: 'Trop de requêtes depuis cette adresse IP, veuillez réessayer plus tard.',
-    statusCode: 429,
-  },
-});
-app.use(globalLimiter);
+// Global limiter — only in production (dev has too many double-renders with React StrictMode)
+if (isProd) {
+  const globalLimiter = rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW || '15') * 60 * 1000,
+    max: parseInt(process.env.RATE_LIMIT_MAX || '100'),
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      error: 'Trop de requêtes depuis cette adresse IP, veuillez réessayer plus tard.',
+      statusCode: 429,
+    },
+  });
+  app.use(globalLimiter);
+  console.log('🛡️  Global rate limiting enabled (production)');
+} else {
+  console.log('⚠️  Global rate limiting disabled in development');
+}
 
-// Stricter limiter on auth endpoints
+// Auth-specific limiter — always active but generous in dev
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isProd ? 10 : 100,
+  max: isProd ? 10 : 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -94,7 +97,7 @@ const authLimiter = rateLimit({
   },
 });
 
-console.log(`🛡️  Rate limiting active (${isProd ? 'production' : 'development'} thresholds)`);
+console.log(`🔒  Auth rate limiting: ${isProd ? '10' : '200'} req/15min`);
 
 // ─── Body parsing — conservative limits ──────────────────────────────────────
 app.use(express.json({ limit: '1mb' }));

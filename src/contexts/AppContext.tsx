@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useReducer, ReactNode, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AnalysisData, PageType } from '../types';
-import { ApiService } from '../services/api';
+import { ApiService, tokenManager } from '../services/api';
 import { setFixedStepDurations, setApprovalLimits } from '../utils/workflowConfig';
 
 // State interface
@@ -432,6 +432,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
   // Load workflow configuration from database (fixed steps + approval limits)
   const loadWorkflowConfiguration = async () => {
+    // Skip if not authenticated — avoids 401 noise on the login page
+    if (!tokenManager.getAccessToken()) return;
     try {
       // Load fixed workflow step durations
       const stepsResponse = await ApiService.getWorkflowStepDurations();

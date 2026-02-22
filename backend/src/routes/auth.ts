@@ -52,9 +52,8 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-      include: { role: false }  // we only need user fields
-    } as any);
+      where: { email: email.toLowerCase() }
+    });
 
     if (!user) {
       return res.status(401).json({ success: false, error: 'Identifiants invalides' });
