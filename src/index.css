@@ -1,0 +1,85 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden; /* Prevent double scrollbars */
+}
+
+body {
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f5f6fa;
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Banking specific styles */
+.financial-table {
+  font-variant-numeric: tabular-nums;
+}
+
+.financial-number {
+  font-family: 'Roboto Mono', monospace;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.currency {
+  font-weight: 500;
+}
+
+.positive-trend {
+  color: #2e7d32;
+}
+
+.negative-trend {
+  color: #d32f2f;
+}
+
+.neutral-trend {
+  color: #757575;
+}
+
+/* Print styles */
+@media print {
+  body {
+    background-color: white !important;
+  }
+  
+  .no-print {
+    display: none !important;
+  }
+  
+  .financial-table {
+    break-inside: avoid;
+  }
+}

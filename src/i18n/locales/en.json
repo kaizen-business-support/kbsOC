@@ -1,0 +1,402 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "view": "View",
+    "add": "Add",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "import": "Import",
+    "close": "Close",
+    "confirm": "Confirm",
+    "success": "Success",
+    "error": "Error",
+    "warning": "Warning",
+    "info": "Information",
+    "yes": "Yes",
+    "no": "No",
+    "required": "Required"
+  },
+  
+  "navigation": {
+    "home": "Home",
+    "clients": "Clients",
+    "dataInput": "Data Input",
+    "analysis": "Analysis",
+    "reports": "Reports",
+    "settings": "Settings",
+    "documentation": "Documentation",
+    "creditApplication": "New Application",
+    "creditApplicationDesc": "Create a new credit application",
+    "creditScoring": "Credit Analysis",
+    "creditScoringDesc": "Credit scoring and analysis",
+    "workflow": "Workflow",
+    "workflowDesc": "Approval process",
+    "analytics": "Dashboard",
+    "analyticsDesc": "Performance and statistics",
+    "financialAnalysis": "Financial Analysis",
+    "creditProcess": "Credit Process",
+    "outOfProcessAnalysis": "Out-of-Process Analysis",
+    "userManagement": "User Management",
+    "userManagementDesc": "User account administration"
+  },
+
+  "dashboard": {
+    "title": "Analytics Dashboard",
+    "filters": "Filters",
+    "timeframe": {
+      "label": "Period",
+      "placeholder": "Select a time period",
+      "1month": "Last month",
+      "3months": "Last 3 months",
+      "6months": "Last 6 months",
+      "1year": "Last year",
+      "custom": "Custom range",
+      "startDate": "Start Date",
+      "endDate": "End Date",
+      "applyRange": "Apply Range"
+    },
+    "noTimeframeSelected": {
+      "title": "Time period selection required",
+      "description": "Please select a time period to display dashboard data."
+    }
+  },
+
+  "header": {
+    "title": "OptimusCredit v2.0",
+    "subtitle": "Credit Process Management System",
+    "reset": "Reset",
+    "language": "Language"
+  },
+
+  "home": {
+    "title": "OptimusCredit v2.0",
+    "subtitle": "Credit Process Management System",
+    "description": "Complete banking platform for corporate credit analysis with configurable workflow, dual scoring, and SYSCOHADA compliance. Optimized for banking institutions in Senegal and West Africa.",
+    "features": {
+      "title": "Advanced Features",
+      "clientManagement": {
+        "title": "Client Management",
+        "description": "Complete corporate client management with banking integration and shareholder traceability"
+      },
+      "syscohadaCompliance": {
+        "title": "SYSCOHADA Compliance",
+        "description": "Complete financial statement processing according to OHADA accounting standards"
+      },
+      "dualScoring": {
+        "title": "Dual Scoring",
+        "description": "Scoring system combining automated financial analysis and analyst assessment"
+      },
+      "benchmarking": {
+        "title": "Industry Benchmarking",
+        "description": "Comparison with industry standards and relative performance analysis"
+      },
+      "workflow": {
+        "title": "Configurable Workflow",
+        "description": "Flexible approval process with configurable thresholds and automatic routing"
+      },
+      "bilingual": {
+        "title": "Bilingual Interface",
+        "description": "Complete French/English support with banking context localization"
+      },
+      "documentManagement": {
+        "title": "Document Management",
+        "description": "Advanced OCR, versioning and document categorization with audit trail"
+      },
+      "realTimeTracking": {
+        "title": "Real-time Tracking",
+        "description": "Process monitoring with workflow visualization and automatic notifications"
+      }
+    },
+    "userRoles": {
+      "title": "Multi-Role System",
+      "accountManager": "Account Manager",
+      "accountManagerDesc": "Client creation, financial data entry, qualitative assessments",
+      "creditAnalyst": "Credit Analyst",
+      "creditAnalystDesc": "Technical review, analytical scoring, industry comparison",
+      "branchManager": "Branch Manager",
+      "branchManagerDesc": "Approval up to 5M XOF, team supervision, escalation",
+      "creditCommittee": "Credit Committee",
+      "creditCommitteeDesc": "Final decisions for amounts >5M XOF, resolution recording"
+    },
+    "workflow": {
+      "title": "Integrated Credit Process",
+      "subtitle": "Configurable workflow with automated approvals based on defined thresholds",
+      "steps": {
+        "step1": "Client creation and shareholder management with RCCM/TIN validation",
+        "step2": "Complete SYSCOHADA financial statements entry over 5 years",
+        "step3": "Automatic analysis with ratio calculation and financial score",
+        "step4": "Analyst qualitative assessment with appreciation score",
+        "step5": "Automatic routing according to configurable approval thresholds",
+        "step6": "Complete report generation with recommendations"
+      },
+      "freeService": "Free service maintained for simple analysis"
+    },
+    "actions": {
+      "accessSystem": "Access System",
+      "startCreditFile": "Start Credit File",
+      "simpleAnalysis": "Simple Analysis (Free)"
+    },
+    "footer": {
+      "compliance": "SYSCOHADA compliant • Optimized for Senegalese banks • Technical support available",
+      "version": "Version 2.0 - Credit Process Management System"
+    },
+    "tags": {
+      "syscohada": "SYSCOHADA",
+      "bilingual": "Bilingual FR/EN",
+      "multiRole": "Multi-role Workflow",
+      "dualScoring": "Dual Scoring"
+    }
+  },
+
+  "clients": {
+    "title": "Corporate Client Management",
+    "subtitle": "Complete client management with SYSCOHADA compliance and banking integration",
+    "stats": {
+      "activeClients": "Active Clients",
+      "syscohadaCompliance": "SYSCOHADA Compliance",
+      "trackedShareholders": "Tracked Shareholders",
+      "activeCases": "Active Cases"
+    },
+    "tabs": {
+      "clientList": "Client List",
+      "newClient": "New Client",
+      "importExport": "Import/Export",
+      "shareholders": "Shareholders"
+    },
+    "table": {
+      "client": "Client",
+      "rccm": "RCCM",
+      "ninea": "NINEA",
+      "sector": "Sector",
+      "branch": "Branch",
+      "relationshipManager": "Relationship Manager",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "form": {
+      "newClientTitle": "Create New Corporate Client",
+      "companyName": "Company Name",
+      "companyNamePlaceholder": "Ex: TECH SOLUTIONS LLC",
+      "rccm": "RCCM",
+      "rccmPlaceholder": "Ex: SN-DKR-2020-B-1234",
+      "rccmHelper": "Trade and Personal Property Credit Register",
+      "ninea": "NINEA",
+      "nineaPlaceholder": "Ex: 0123456789",
+      "nineaHelper": "National Identification Number for Companies and Associations",
+      "legalForm": "Legal Form (COFI)",
+      "sector": "Business Sector",
+      "branch": "Branch Affiliation",
+      "address": "Complete Address",
+      "addressPlaceholder": "Company headquarters address",
+      "phone": "Phone",
+      "phonePlaceholder": "Ex: +221 33 123 45 67",
+      "email": "Email",
+      "emailPlaceholder": "contact@company.sn",
+      "createClient": "Create Client"
+    },
+    "legalForms": {
+      "SARL": "LLC - Limited Liability Company",
+      "SA": "SA - Public Limited Company",
+      "GIE": "GIE - Economic Interest Group",
+      "SNC": "GPC - General Partnership Company",
+      "EI": "SI - Sole Proprietorship"
+    },
+    "branches": {
+      "dakarCentre": "Dakar Centre",
+      "dakarPlateau": "Dakar Plateau",
+      "thies": "Thiès",
+      "kaolack": "Kaolack",
+      "saintLouis": "Saint-Louis",
+      "ziguinchor": "Ziguinchor"
+    },
+    "sectors": {
+      "agriculture": "Agriculture and Agribusiness",
+      "manufacturing": "Manufacturing and Industry",
+      "trade": "Trade and Distribution",
+      "services": "Services and Professional",
+      "technology": "Technology and Innovation",
+      "tourism": "Tourism and Hospitality",
+      "transport": "Transport and Logistics"
+    },
+    "importExport": {
+      "title": "Client Data Import/Export",
+      "coreBanking": {
+        "title": "Import from Core Banking",
+        "description": "Synchronization with central banking system",
+        "action": "Synchronize"
+      },
+      "excel": {
+        "title": "Import from Excel",
+        "description": "SYSCOHADA standardized format",
+        "action": "Choose File"
+      }
+    },
+    "shareholders": {
+      "title": "Shareholder Management",
+      "description": "Complete ownership structure traceability and related party detection",
+      "moduleTitle": "Shareholder Module",
+      "moduleDescription": "Feature available after client creation",
+      "manageAction": "Manage Shareholders"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "pending": "Pending"
+    },
+    "search": {
+      "placeholder": "Search by name or RCCM..."
+    },
+    "dialog": {
+      "clientDetails": "Client Details",
+      "companyName": "Company Name",
+      "legalForm": "Legal Form"
+    }
+  },
+
+  "analysis": {
+    "title": "Credit Analysis",
+    "dualScoring": {
+      "title": "Dual Scoring System",
+      "financialScore": "Financial Score",
+      "analystScore": "Analyst Score",
+      "overallScore": "Overall Score",
+      "riskCategory": "Risk Category"
+    },
+    "benchmarking": {
+      "title": "Industry Comparative Analysis",
+      "industryStandards": "Industry Standards",
+      "peerComparison": "Peer Comparison"
+    }
+  },
+
+  "settings": {
+    "title": "Settings & Configuration",
+    "systemInfo": {
+      "title": "System Information",
+      "version": "Version",
+      "lastUpdate": "Last Update",
+      "lastUpdateDate": "August 03, 2025",
+      "licenseType": "License Type",
+      "status": "Status",
+      "professional": "Professional",
+      "active": "Active"
+    },
+    "features": {
+      "title": "Available Features",
+      "optimizedPerformance": "Optimized Performance",
+      "optimizedPerformanceDesc": "Fast and accurate financial data analysis",
+      "advancedSecurity": "Advanced Security",
+      "advancedSecurityDesc": "Data protection and banking compliance",
+      "multiYearAnalysis": "Multi-Year Analysis",
+      "multiYearAnalysisDesc": "Comparison and trends over multiple years",
+      "professionalExport": "Professional Export",
+      "professionalExportDesc": "Banking-quality PDF and Excel reports"
+    },
+    "configuration": {
+      "title": "Configuration Options",
+      "language": {
+        "title": "Language",
+        "description": "Interface language",
+        "french": "Français",
+        "english": "English"
+      },
+      "theme": {
+        "title": "Theme",
+        "description": "Display mode",
+        "light": "Light",
+        "dark": "Dark"
+      }
+    },
+    "about": {
+      "title": "OptimusCredit",
+      "description": "Professional financial analysis platform for the banking and financial sector.",
+      "version": "Version 2.0.0",
+      "developedBy": "Developed by",
+      "company": "Kaizen Business Support"
+    },
+    "support": {
+      "title": "Support & Assistance",
+      "description": "Need help? Check our resources or contact our team.",
+      "contactSupport": "Contact Support",
+      "userGuide": "User Guide",
+      "copyright": "© 2025 Kaizen Business Support",
+      "allRightsReserved": "All rights reserved"
+    },
+    "currency": {
+      "title": "Currency",
+      "description": "Amount display format",
+      "xof": "XOF (FCFA)"
+    },
+    "workflow": {
+      "title": "Workflow Configuration",
+      "approvalThresholds": "Approval Thresholds",
+      "branchManagerLimit": "Branch Manager Limit",
+      "creditCommitteeRequired": "Credit Committee Required"
+    }
+  },
+
+  "login": {
+    "title": "Login",
+    "subtitle": "Access your professional workspace",
+    "email": "Email Address",
+    "password": "Password",
+    "connect": "Sign In",
+    "connecting": "Connecting...",
+    "microsoftLogin": "Sign in with Microsoft 365",
+    "or": "or",
+    "demonstration": "Demonstration",
+    "showDemoAccounts": "Show Demo Accounts",
+    "hideDemoAccounts": "Hide Demo Accounts",
+    "demoAccountsTitle": "Available test accounts:",
+    "demoPassword": "Password for all accounts:",
+    "tooManyAttempts": "Too many failed attempts. Contact your administrator.",
+    "platformTitle": "OptimusCredit",
+    "platformSubtitle": "Professional Credit Analysis Platform",
+    "platformDescription": "Complete solution for credit risk assessment with SYSCOHADA compliance, dual scoring, and configurable workflows for financial institutions.",
+    "features": {
+      "syscohadaCompliance": "SYSCOHADA Compliance",
+      "multiRole": "Multi-Role",
+      "dualScore": "Dual Score"
+    },
+    "roles": {
+      "accountManager": "Account Manager",
+      "creditAnalyst": "Credit Analyst",
+      "branchManager": "Branch Manager", 
+      "creditCommittee": "Credit Committee"
+    }
+  },
+
+  "userManagement": {
+    "title": "User Management",
+    "users": "Users",
+    "departments": "Departments",
+    "roles": "Roles",
+    "branches": "Branches",
+    "permissions": "Permissions",
+    "addUser": "Add User",
+    "editUser": "Edit User",
+    "addDepartment": "Add Department",
+    "addRole": "Add Role",
+    "addBranch": "Add Branch"
+  },
+
+  "permissions": {
+    "user_management": "User Management",
+    "view_all": "View All",
+    "analytics": "Analytics",
+    "reports": "Reports",
+    "view_branch": "View Branch",
+    "approve_credit": "Approve Credit",
+    "view_own": "View Own",
+    "create_application": "Create Application",
+    "analyze_credit": "Analyze Credit",
+    "view_applications": "View Applications",
+    "application_review": "Review Applications",
+    "committee_vote": "Committee Vote"
+  }
+}

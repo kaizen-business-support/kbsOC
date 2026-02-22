@@ -1,0 +1,14 @@
+RewriteEngine On
+RewriteBase /optimus/
+
+# Allow direct access to static files (PDF, images, CSS, JS, Excel)
+RewriteRule \.(pdf|png|jpg|jpeg|gif|ico|css|js|map|txt|json|xml|svg|woff|woff2|ttf|eot|xlsx|xls)$ - [L]
+
+# Allow direct access to docs folder
+RewriteRule ^docs/ - [L]
+
+# React Router - redirect all other requests to index.html
+RewriteRule ^index\.html$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /optimus/index.html [L]

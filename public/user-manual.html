@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OptimusCredit v2.0 - Manuel Utilisateur</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1f4e79 0%, #2c5aa0 100%);
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .toc {
+            background: white;
+            padding: 30px;
+            margin: 30px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .toc h2 {
+            color: #1f4e79;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        .toc ul {
+            list-style: none;
+        }
+
+        .toc li {
+            padding: 8px 0;
+        }
+
+        .toc a {
+            color: #2c5aa0;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+
+        .toc a:hover {
+            color: #1f4e79;
+            padding-left: 10px;
+        }
+
+        .section {
+            background: white;
+            padding: 30px;
+            margin: 30px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .section h2 {
+            color: #1f4e79;
+            font-size: 2em;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #2c5aa0;
+        }
+
+        .section h3 {
+            color: #2c5aa0;
+            font-size: 1.5em;
+            margin: 25px 0 15px 0;
+        }
+
+        .section h4 {
+            color: #555;
+            font-size: 1.2em;
+            margin: 20px 0 10px 0;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .feature-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #2c5aa0;
+        }
+
+        .feature-card h4 {
+            color: #1f4e79;
+            margin-bottom: 10px;
+        }
+
+        .workflow-box {
+            background: #e3f2fd;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border: 2px solid #2c5aa0;
+        }
+
+        .workflow-box pre {
+            background: white;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 14px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        table th {
+            background: #1f4e79;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+
+        table td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+
+        .check {
+            color: #27ae60;
+            font-weight: bold;
+        }
+
+        .cross {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        .info-box {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .success-box {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        ol, ul {
+            margin-left: 25px;
+            margin-top: 10px;
+        }
+
+        li {
+            margin: 8px 0;
+        }
+
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+
+        footer {
+            background: #1f4e79;
+            color: white;
+            text-align: center;
+            padding: 30px;
+            margin-top: 50px;
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+            .section, .toc {
+                box-shadow: none;
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>📊 OptimusCredit v2.0</h1>
+        <p>Manuel Utilisateur - Plateforme d'Analyse Financière et de Gestion de Crédit</p>
+    </header>
+
+    <div class="container">
+        <!-- Table of Contents -->
+        <div class="toc">
+            <h2>📑 Table des Matières</h2>
+            <ul>
+                <li><a href="#vue-ensemble">1. Vue d'ensemble</a></li>
+                <li><a href="#demarrage">2. Démarrage Rapide</a></li>
+                <li><a href="#fonctionnalites">3. Fonctionnalités Principales</a></li>
+                <li><a href="#guide">4. Guide d'Utilisation</a></li>
+                <li><a href="#roles">5. Gestion des Rôles et Permissions</a></li>
+                <li><a href="#faq">6. FAQ</a></li>
+            </ul>
+        </div>
+
+        <!-- Section 1: Vue d'ensemble -->
+        <div id="vue-ensemble" class="section">
+            <h2>1. Vue d'ensemble</h2>
+            <p>OptimusCredit v2.0 est une plateforme complète d'analyse financière et de gestion de crédit conçue spécifiquement pour les institutions bancaires ouest-africaines. Elle prend en charge les normes comptables SYSCOHADA et la devise XOF.</p>
+
+            <h3>Caractéristiques Clés</h3>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h4>✅ Demande de Crédit</h4>
+                    <p>Processus complet avec workflow automatisé multi-niveaux</p>
+                </div>
+                <div class="feature-card">
+                    <h4>✅ Gestion des Clients</h4>
+                    <p>Base de données avec historique et suivi complet</p>
+                </div>
+                <div class="feature-card">
+                    <h4>✅ Analyse Financière</h4>
+                    <p>Scoring automatique et calcul de ratios</p>
+                </div>
+                <div class="feature-card">
+                    <h4>✅ Workflow d'Approbation</h4>
+                    <p>Circuit configurable selon montants</p>
+                </div>
+                <div class="feature-card">
+                    <h4>✅ Gestion Utilisateurs</h4>
+                    <p>Contrôle d'accès basé sur les rôles</p>
+                </div>
+                <div class="feature-card">
+                    <h4>✅ Analytics Dashboard</h4>
+                    <p>KPIs et visualisations en temps réel</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 2: Démarrage Rapide -->
+        <div id="demarrage" class="section">
+            <h2>2. Démarrage Rapide</h2>
+
+            <h3>Accès à la Plateforme</h3>
+            <ol>
+                <li>Connectez-vous avec vos identifiants</li>
+                <li>Le tableau de bord principal s'affiche avec les statistiques clés</li>
+                <li>Utilisez le menu latéral pour naviguer entre les modules</li>
+            </ol>
+
+            <h3>Rôles Disponibles</h3>
+            <ul>
+                <li><strong>Administrateur</strong> : Accès complet à toutes les fonctionnalités</li>
+                <li><strong>Directeur Général</strong> : Vue d'ensemble et décisions finales</li>
+                <li><strong>Comité de Crédit</strong> : Évaluation des demandes importantes</li>
+                <li><strong>Directeur d'Agence</strong> : Gestion de l'agence et approbations moyennes</li>
+                <li><strong>Analyste Crédit</strong> : Analyse des demandes de crédit</li>
+                <li><strong>Chargé d'Affaires</strong> : Création et suivi des demandes</li>
+            </ul>
+        </div>
+
+        <!-- Section 3: Fonctionnalités Principales -->
+        <div id="fonctionnalites" class="section">
+            <h2>3. Fonctionnalités Principales</h2>
+
+            <h3>1. Gestion des Clients</h3>
+            <h4>Créer un Nouveau Client</h4>
+            <ol>
+                <li>Accédez à <strong>Gestion des Clients</strong> dans le menu</li>
+                <li>Cliquez sur <strong>"Nouveau Client"</strong></li>
+                <li>Remplissez les informations :
+                    <ul>
+                        <li><strong>Informations Générales</strong> : Nom, type (Entreprise/Particulier), secteur</li>
+                        <li><strong>Coordonnées</strong> : Adresse, téléphone, email</li>
+                        <li><strong>Informations Financières</strong> : Chiffre d'affaires, situation bancaire</li>
+                        <li><strong>Documents</strong> : NINEA, RCCM, Statuts</li>
+                    </ul>
+                </li>
+                <li>Validez pour créer le client</li>
+            </ol>
+
+            <h3>2. Demande de Crédit</h3>
+            <h4>Étapes de Création</h4>
+            <div class="info-box">
+                <strong>Étape 1 : Informations de Base</strong>
+                <ul>
+                    <li>Montant demandé (XOF)</li>
+                    <li>Type de crédit (Court/Moyen/Long terme)</li>
+                    <li>Durée en mois</li>
+                    <li>Taux d'intérêt</li>
+                    <li>Objet du financement</li>
+                </ul>
+            </div>
+
+            <div class="info-box">
+                <strong>Étape 2 : Garanties</strong>
+                <ul>
+                    <li>Type de garantie (Hypothèque, Nantissement, Caution)</li>
+                    <li>Valeur estimée</li>
+                    <li>Description détaillée</li>
+                    <li>Documents justificatifs</li>
+                </ul>
+            </div>
+
+            <div class="info-box">
+                <strong>Étape 3 : Documents</strong>
+                <ul>
+                    <li>États financiers (3 derniers exercices)</li>
+                    <li>Business plan</li>
+                    <li>Justificatifs de garanties</li>
+                    <li>Autres documents</li>
+                </ul>
+            </div>
+
+            <div class="info-box">
+                <strong>Étape 4 : Analyse Financière</strong>
+                <ul>
+                    <li>Bilan (Actif/Passif)</li>
+                    <li>Compte de résultat</li>
+                    <li>Flux de trésorerie</li>
+                    <li>Calcul automatique des ratios</li>
+                    <li>Génération du score de crédit</li>
+                </ul>
+            </div>
+
+            <h3>3. Workflow d'Approbation</h3>
+            <div class="workflow-box">
+                <h4>Circuit d'Approbation selon Montant</h4>
+                <pre>
+<strong>Montants < 5M XOF :</strong>
+   Demande créée
+        ↓
+   Analyste Crédit → Analyse et recommandation
+        ↓
+   Directeur d'Agence → Décision finale
+        ↓
+   APPROUVÉ / REFUSÉ
+
+<strong>Montants ≥ 5M XOF :</strong>
+   Demande créée
+        ↓
+   Analyste Crédit → Analyse détaillée
+        ↓
+   Directeur d'Agence → Pré-approbation
+        ↓
+   Comité de Crédit → Évaluation collégiale
+        ↓
+   Direction Générale → Décision finale
+        ↓
+   APPROUVÉ / REFUSÉ
+                </pre>
+            </div>
+
+            <h3>4. Simulation de Crédit</h3>
+            <ol>
+                <li>Accédez à <strong>Simulation de Crédit</strong></li>
+                <li>Saisissez les paramètres :
+                    <ul>
+                        <li>Montant du crédit</li>
+                        <li>Durée (mois)</li>
+                        <li>Taux d'intérêt annuel</li>
+                        <li>Taux d'assurance</li>
+                        <li>TAF</li>
+                    </ul>
+                </li>
+                <li>Choisissez le type d'amortissement (Constant/Dégressif)</li>
+                <li>Consultez le tableau d'amortissement détaillé</li>
+            </ol>
+
+            <h3>5. Analytics Dashboard</h3>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h4>KPIs Principaux</h4>
+                    <ul>
+                        <li>Volume total des demandes</li>
+                        <li>Taux d'approbation</li>
+                        <li>Montant moyen</li>
+                        <li>Délai moyen de traitement</li>
+                    </ul>
+                </div>
+                <div class="feature-card">
+                    <h4>Graphiques</h4>
+                    <ul>
+                        <li>Évolution mensuelle</li>
+                        <li>Répartition par secteur</li>
+                        <li>Distribution par montant</li>
+                        <li>Performance par agence</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 4: Guide d'Utilisation -->
+        <div id="guide" class="section">
+            <h2>4. Guide d'Utilisation</h2>
+
+            <h3>Gestion des Utilisateurs</h3>
+            <ol>
+                <li>Accédez à <strong>Gestion des Utilisateurs</strong> (Admin uniquement)</li>
+                <li>Cliquez sur <strong>"Nouvel Utilisateur"</strong></li>
+                <li>Remplissez les informations :
+                    <ul>
+                        <li>Informations personnelles</li>
+                        <li>Email (login)</li>
+                        <li>Rôle</li>
+                        <li>Département</li>
+                        <li>Agence</li>
+                        <li>Statut (Actif/Inactif)</li>
+                    </ul>
+                </li>
+                <li>L'utilisateur recevra ses identifiants par email</li>
+            </ol>
+
+            <h3>Configuration Système</h3>
+
+            <h4>Départements</h4>
+            <ul>
+                <li>Créez et gérez les départements</li>
+                <li>Assignez des responsables</li>
+                <li>Configurez les statuts</li>
+            </ul>
+
+            <h4>Agences</h4>
+            <ul>
+                <li>Ajoutez de nouvelles agences</li>
+                <li>Définissez les coordonnées</li>
+                <li>Assignez des directeurs</li>
+            </ul>
+
+            <h4>Limites d'Approbation</h4>
+            <ul>
+                <li>Configurez par rôle :
+                    <ul>
+                        <li>Montant minimum/maximum</li>
+                        <li>Validation par comité</li>
+                        <li>Nombre minimum de membres</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Section 5: Rôles et Permissions -->
+        <div id="roles" class="section">
+            <h2>5. Gestion des Rôles et Permissions</h2>
+
+            <h3>Matrice de Permissions</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fonctionnalité</th>
+                        <th>Admin</th>
+                        <th>Dir. Général</th>
+                        <th>Comité</th>
+                        <th>Dir. Agence</th>
+                        <th>Analyste</th>
+                        <th>Chargé Aff.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Créer demande</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                    </tr>
+                    <tr>
+                        <td>Analyser</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                        <td class="cross">❌</td>
+                    </tr>
+                    <tr>
+                        <td>Approuver < 5M</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                        <td class="cross">❌</td>
+                        <td class="cross">❌</td>
+                    </tr>
+                    <tr>
+                        <td>Approuver ≥ 5M</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                        <td>Pré-appr.</td>
+                        <td class="cross">❌</td>
+                        <td class="cross">❌</td>
+                    </tr>
+                    <tr>
+                        <td>Gérer utilisateurs</td>
+                        <td class="check">✅</td>
+                        <td class="cross">❌</td>
+                        <td class="cross">❌</td>
+                        <td class="cross">❌</td>
+                        <td class="cross">❌</td>
+                        <td class="cross">❌</td>
+                    </tr>
+                    <tr>
+                        <td>Config. système</td>
+                        <td class="check">✅</td>
+                        <td class="cross">❌</td>
+                        <td class="cross">❌</td>
+                        <td class="cross">❌</td>
+                        <td class="cross">❌</td>
+                        <td class="cross">❌</td>
+                    </tr>
+                    <tr>
+                        <td>Analytics global</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                        <td class="check">✅</td>
+                        <td>Agence</td>
+                        <td class="cross">❌</td>
+                        <td class="cross">❌</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Section 6: FAQ -->
+        <div id="faq" class="section">
+            <h2>6. FAQ</h2>
+
+            <h3>Questions Générales</h3>
+
+            <div class="success-box">
+                <strong>Q: Comment réinitialiser mon mot de passe ?</strong><br>
+                R: Contactez votre administrateur système ou utilisez la fonction "Mot de passe oublié" sur la page de connexion.
+            </div>
+
+            <div class="success-box">
+                <strong>Q: Puis-je modifier une demande après soumission ?</strong><br>
+                R: Non, une fois soumise, la demande entre dans le workflow. Contactez un administrateur pour toute modification.
+            </div>
+
+            <div class="success-box">
+                <strong>Q: Comment obtenir l'historique d'un client ?</strong><br>
+                R: Dans Gestion des Clients, cliquez sur le client puis l'onglet "Historique".
+            </div>
+
+            <h3>Workflow</h3>
+
+            <div class="success-box">
+                <strong>Q: Que se passe-t-il si une demande est refusée ?</strong><br>
+                R: La demande est clôturée. Le client peut soumettre une nouvelle demande avec des ajustements.
+            </div>
+
+            <div class="success-box">
+                <strong>Q: Combien de temps prend le processus d'approbation ?</strong><br>
+                R: Cela dépend du montant :<br>
+                - &lt; 5M XOF : 2-3 jours ouvrables<br>
+                - ≥ 5M XOF : 5-7 jours ouvrables
+            </div>
+
+            <h3>Technique</h3>
+
+            <div class="success-box">
+                <strong>Q: Quels formats de documents sont acceptés ?</strong><br>
+                R: PDF, JPG, PNG, Excel (.xlsx), Word (.docx) - Taille max : 10MB
+            </div>
+
+            <div class="success-box">
+                <strong>Q: La plateforme est-elle accessible sur mobile ?</strong><br>
+                R: Oui, l'interface est responsive et s'adapte aux tablettes et smartphones.
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <h3>📞 Support</h3>
+        <p>Pour toute assistance technique :</p>
+        <p>📧 Email : contact@kaizen-corporation.com</p>
+        <p>🌐 Site web : www.kaizen-corporation.com</p>
+        <br>
+        <p>© 2025 Kaizen Business Support - Tous droits réservés</p>
+    </footer>
+</body>
+</html>

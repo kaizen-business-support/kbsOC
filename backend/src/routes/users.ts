@@ -1,0 +1,298 @@
+import express, { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
+import { AppError, asyncHandler } from '../middleware/errorHandler';
+import { generateRandomPassword, hashPassword } from '../utils/password';
+import { prisma } from '../server';
+
+const router = express.Router();
+
+// Permission check using JWT verification + live DB lookup
+const checkUserManagementPermission = async (req: Request, res: Response, next: express.NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required', code: 'AUTH_REQUIRED' });
+  }
+
+  const token = authHeader.substring(7);
+
+  try {
+    const jwtSecret = process.env.JWT_SECRET || 'dev-secret';
+    const payload = jwt.verify(token, jwtSecret) as any;
+
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { id: true, email: true, role: true, permissions: true }
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
+    }
+
+    const permissions = user.permissions as string[];
+    if (user.role === 'ADMIN' || permissions.includes('user_management') || permissions.includes('*')) {
+      req.user = { id: user.id, email: user.email, role: user.role, permissions };
+      next();
+    } else {
+      return res.status(403).json({ error: 'Insufficient permissions', code: 'INSUFFICIENT_PERMISSIONS' });
+    }
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid token', code: 'INVALID_TOKEN' });
+  }
+};
+
+// Get credit analysts (accessible by account managers)
+router.get('/credit-analysts',
+  asyncHandler(async (req: Request, res: Response) => {
+    const analysts = await prisma.user.findMany({
+      where: { role: 'CREDIT_ANALYST', isActive: true },
+      select: { id: true, email: true, name: true, role: true, department: true, jobTitle: true }
+    });
+
+    res.json({
+      success: true,
+      analysts,
+      data: analysts
+    });
+  })
+);
+
+// Get all users (admin only)
+router.get('/',
+  checkUserManagementPermission,
+  asyncHandler(async (req: Request, res: Response) => {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        department: true,
+        jobTitle: true,
+        isActive: true,
+        lastLogin: true,
+        createdAt: true,
+        permissions: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    res.json({
+      success: true,
+      users: users.map(user => ({
+        ...user,
+        lastLogin: user.lastLogin?.toISOString(),
+        createdAt: user.createdAt.toISOString()
+      }))
+    });
+  })
+);
+
+// Get user by ID
+router.get('/:id',
+  checkUserManagementPermission,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        department: true,
+        jobTitle: true,
+        isActive: true,
+        lastLogin: true,
+        createdAt: true,
+        permissions: true
+      }
+    });
+
+    if (!user) {
+      throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+    }
+
+    res.json({
+      success: true,
+      user: {
+        ...user,
+        lastLogin: user.lastLogin?.toISOString(),
+        createdAt: user.createdAt.toISOString()
+      }
+    });
+  })
+);
+
+// Create new user (admin only)
+router.post('/',
+  checkUserManagementPermission,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { name, email, role, department, jobTitle, isActive = true } = req.body;
+
+    // Validate required fields
+    if (!name || !email || !role) {
+      throw new AppError('Name, email, and role are required', 400, 'MISSING_REQUIRED_FIELDS');
+    }
+
+    // Check if email already exists in database
+    const existingUser = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() }
+    });
+
+    if (existingUser) {
+      throw new AppError('User with this email already exists', 409, 'EMAIL_EXISTS');
+    }
+
+    // Generate random temporary password
+    const temporaryPassword = generateRandomPassword(12);
+
+    // Hash the password
+    const passwordHash = await hashPassword(temporaryPassword);
+
+    // Get permissions from RolePermission table
+    const rolePermission = await prisma.rolePermission.findUnique({
+      where: { role: role as any }
+    });
+
+    if (!rolePermission) {
+      throw new AppError(`Role permissions not configured for ${role}`, 400, 'ROLE_NOT_CONFIGURED');
+    }
+
+    const permissions = rolePermission.permissions as string[];
+
+    // Create user in database
+    const newUser = await prisma.user.create({
+      data: {
+        email: email.toLowerCase(),
+        passwordHash,
+        name,
+        role,
+        department: department || null,
+        jobTitle: jobTitle || null,
+        permissions,
+        isActive
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully. Please provide the temporary password to the user.',
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        name: newUser.name,
+        role: newUser.role,
+        department: newUser.department,
+        jobTitle: newUser.jobTitle,
+        isActive: newUser.isActive,
+        createdAt: newUser.createdAt.toISOString()
+      },
+      temporaryPassword // Return the password so admin can give it to the user
+    });
+  })
+);
+
+// Update user (admin only)
+router.put('/:id',
+  checkUserManagementPermission,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { name, role, department, jobTitle, isActive } = req.body;
+
+    // Check if user exists
+    const existingUser = await prisma.user.findUnique({
+      where: { id }
+    });
+
+    if (!existingUser) {
+      throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+    }
+
+    // Build update data
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (role !== undefined) updateData.role = role;
+    if (department !== undefined) updateData.department = department;
+    if (jobTitle !== undefined) updateData.jobTitle = jobTitle;
+    if (isActive !== undefined) updateData.isActive = isActive;
+
+    // Update permissions if role changed - fetch from RolePermission table
+    if (role !== undefined && role !== existingUser.role) {
+      const rolePermission = await prisma.rolePermission.findUnique({
+        where: { role: role as any }
+      });
+
+      if (!rolePermission) {
+        throw new AppError(`Role permissions not configured for ${role}`, 400, 'ROLE_NOT_CONFIGURED');
+      }
+
+      updateData.permissions = rolePermission.permissions as string[];
+    }
+
+    // Update user in database
+    const user = await prisma.user.update({
+      where: { id },
+      data: updateData
+    });
+
+    res.json({
+      success: true,
+      message: 'User updated successfully',
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        department: user.department,
+        jobTitle: user.jobTitle,
+        isActive: user.isActive,
+        updatedAt: user.updatedAt.toISOString()
+      }
+    });
+  })
+);
+
+// Reset user password (admin only)
+router.post('/:id/reset-password',
+  checkUserManagementPermission,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    // Check if user exists
+    const user = await prisma.user.findUnique({
+      where: { id }
+    });
+
+    if (!user) {
+      throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+    }
+
+    // Generate new temporary password
+    const temporaryPassword = generateRandomPassword(12);
+
+    // Hash the password
+    const passwordHash = await hashPassword(temporaryPassword);
+
+    // Update user password
+    await prisma.user.update({
+      where: { id },
+      data: { passwordHash }
+    });
+
+    res.json({
+      success: true,
+      message: `Password reset successfully for ${user.name}. Please provide the temporary password to the user.`,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name
+      },
+      temporaryPassword // Return the password so admin can give it to the user
+    });
+  })
+);
+
+export default router;

@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guide Utilisateur - OptimusCredit Analyse Financière</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            background: linear-gradient(135deg, #1f4e79 0%, #2c5aa0 100%);
+            color: white;
+            padding: 30px;
+            margin: -40px -40px 40px -40px;
+            border-radius: 8px 8px 0 0;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 600;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        h2 {
+            color: #1f4e79;
+            border-bottom: 3px solid #2c5aa0;
+            padding-bottom: 10px;
+            margin-top: 40px;
+        }
+        h3 {
+            color: #2c5aa0;
+            margin-top: 30px;
+        }
+        .feature-box {
+            background: #f8f9fa;
+            border-left: 4px solid #2c5aa0;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .step-box {
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 6px;
+        }
+        .warning-box {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 6px;
+        }
+        .formula-box {
+            background: #f1f8e9;
+            border: 1px solid #8bc34a;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 6px;
+            font-family: monospace;
+            text-align: center;
+            font-size: 1.1em;
+            font-weight: bold;
+        }
+        ul, ol {
+            padding-left: 30px;
+        }
+        li {
+            margin-bottom: 8px;
+        }
+        .table-of-contents {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 30px;
+        }
+        .table-of-contents h3 {
+            margin-top: 0;
+            color: #1f4e79;
+        }
+        .table-of-contents ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        .table-of-contents li {
+            margin-bottom: 5px;
+        }
+        .table-of-contents a {
+            text-decoration: none;
+            color: #2c5aa0;
+        }
+        .table-of-contents a:hover {
+            text-decoration: underline;
+        }
+        .version-info {
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        .page-break {
+            page-break-before: always;
+        }
+        
+        /* Print-specific styles for A4 optimization */
+        @media print {
+            @page {
+                margin: 20mm 15mm 15mm 15mm;
+                @top-center {
+                    content: "Guide d'utilisateur OptimusCredit - Système d'analyse financière avancée";
+                    font-size: 10pt;
+                    font-weight: bold;
+                    color: #1f4e79;
+                    border-bottom: 1pt solid #2c5aa0;
+                    padding-bottom: 2mm;
+                    margin-bottom: 5mm;
+                }
+                @bottom-center {
+                    content: "Page " counter(page) " sur " counter(pages);
+                    font-size: 9pt;
+                    color: #666;
+                }
+            }
+            
+            body {
+                margin: 0;
+                padding: 0;
+                font-size: 11pt;
+                line-height: 1.4;
+                color: black;
+                background: white;
+                counter-reset: page;
+            }
+            
+            .container {
+                max-width: none;
+                margin: 0;
+                padding: 5mm 0;
+                box-shadow: none;
+                border-radius: 0;
+            }
+            
+            .header {
+                margin: -5mm 0 15mm 0;
+                padding: 10mm 15mm;
+                background: #1f4e79 !important;
+                color: white !important;
+                border-radius: 0;
+                page-break-after: avoid;
+            }
+            
+            .header h1 {
+                font-size: 22pt;
+                margin-bottom: 5mm;
+            }
+            
+            .header p {
+                font-size: 14pt;
+                margin: 0;
+            }
+            
+            .table-of-contents {
+                page-break-after: always;
+                margin-bottom: 0;
+            }
+            
+            h2 {
+                page-break-before: always;
+                margin-top: 0;
+                padding-top: 10mm;
+                font-size: 16pt;
+                border-bottom: 2pt solid #2c5aa0;
+            }
+            
+            h2:first-of-type {
+                page-break-before: avoid;
+            }
+            
+            h3 {
+                page-break-after: avoid;
+                margin-top: 8mm;
+                margin-bottom: 4mm;
+                font-size: 13pt;
+            }
+            
+            h4 {
+                page-break-after: avoid;
+                margin-top: 6mm;
+                margin-bottom: 3mm;
+                font-size: 12pt;
+            }
+            
+            .feature-box, .step-box, .warning-box {
+                page-break-inside: avoid;
+                margin: 4mm 0;
+                padding: 4mm;
+                border: 1pt solid #ccc;
+            }
+            
+            .formula-box {
+                page-break-inside: avoid;
+                margin: 3mm 0;
+                padding: 4mm;
+                border: 1pt solid #8bc34a;
+                text-align: center;
+                font-weight: bold;
+                font-size: 12pt;
+            }
+            
+            ul, ol {
+                page-break-inside: avoid;
+                margin: 2mm 0;
+                padding-left: 6mm;
+            }
+            
+            li {
+                margin-bottom: 1mm;
+                page-break-inside: avoid;
+            }
+            
+            p {
+                margin: 2mm 0;
+                orphans: 3;
+                widows: 3;
+            }
+            
+            .version-info {
+                page-break-before: always;
+                text-align: center;
+                margin-top: 20mm;
+                padding-top: 10mm;
+                border-top: 1pt solid #ccc;
+                font-size: 10pt;
+            }
+            
+            /* Avoid breaks after headings */
+            h1, h2, h3, h4, h5, h6 {
+                page-break-after: avoid;
+                orphans: 3;
+                widows: 3;
+            }
+            
+            /* Keep related content together */
+            .step-box ol, .feature-box ul {
+                page-break-inside: avoid;
+            }
+            
+            /* Hide scripts and non-essential elements */
+            script {
+                display: none;
+            }
+        }
+        
+        /* Screen-specific adjustments for better preview */
+        @media screen {
+            .container {
+                max-width: 210mm;
+                min-height: 297mm;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Guide Utilisateur OptimusCredit</h1>
+            <p>Système d'Analyse Financière Avancée</p>
+        </div>
+
+        <div class="table-of-contents">
+            <h3>📋 Table des Matières</h3>
+            <ul>
+                <li><a href="#introduction">1. Introduction</a></li>
+                <li><a href="#saisie-donnees">2. Saisie des Données</a></li>
+                <li><a href="#analyse-detaillee">3. Analyse Financière Détaillée</a></li>
+                <li><a href="#conformite-bceao">4. Conformité BCEAO</a></li>
+                <li><a href="#generation-rapports">5. Génération de Rapports</a></li>
+                <li><a href="#formules-ratios">6. Formules des Ratios Financiers</a></li>
+                <li><a href="#troubleshooting">7. Résolution de Problèmes</a></li>
+            </ul>
+        </div>
+
+        <section id="introduction">
+            <h2>🎯 1. Introduction</h2>
+            <p><strong>Optimus</strong> est un système d'analyse financière avancée conçu spécifiquement pour les analystes financiers travaillant dans l'environnement réglementaire de la BCEAO (Banque Centrale des États de l'Afrique de l'Ouest).</p>
+            
+            <div class="feature-box">
+                <h4>✨ Fonctionnalités Principales</h4>
+                <ul>
+                    <li><strong>Analyse Multi-Années</strong> : Analyse comparative sur plusieurs exercices</li>
+                    <li><strong>Conformité BCEAO</strong> : Vérification automatique des normes réglementaires</li>
+                    <li><strong>Recommandations Sectorielles</strong> : Conseils adaptés au secteur d'activité</li>
+                    <li><strong>Génération de Rapports PDF</strong> : Documents professionnels automatisés</li>
+                    <li><strong>Tableau de Bord Interactif</strong> : Visualisations graphiques avancées</li>
+                </ul>
+            </div>
+        </section>
+
+        <div class="page-break"></div>
+
+        <section id="saisie-donnees">
+            <h2>📊 2. Saisie des Données Financières</h2>
+            
+            <h3>2.1 Configuration Initiale</h3>
+            <div class="step-box">
+                <p>Avant de commencer l'analyse, vous devez configurer les informations de base :</p>
+                <ol>
+                    <li>Accédez à l'URL : <code>http://localhost:3001/optimus</code></li>
+                    <li>Dans la section "Saisie des Données", renseignez :
+                        <ul>
+                            <li><strong>Nom de l'entreprise</strong></li>
+                            <li><strong>Secteur d'activité</strong> (Industrie, Commerce, Services, Agriculture)</li>
+                            <li><strong>Année de référence</strong></li>
+                            <li><strong>Période d'analyse</strong> (nombre d'années)</li>
+                        </ul>
+                    </li>
+                </ol>
+                <p><em>Le secteur choisi influence les normes BCEAO et les recommandations générées.</em></p>
+            </div>
+            
+            <h3>2.2 Import par Fichier Excel</h3>
+            <div class="step-box">
+                <ol>
+                    <li>Préparez vos fichiers Excel avec les états financiers</li>
+                    <li>Accédez à <strong>"Saisie des Données"</strong></li>
+                    <li>Cliquez sur <strong>"Importer Excel"</strong></li>
+                    <li>Sélectionnez vos fichiers (un par année)</li>
+                    <li>Vérifiez la correspondance des colonnes</li>
+                    <li>Validez l'import</li>
+                </ol>
+            </div>
+
+            <h3>2.3 Structure des Données Requises</h3>
+            <div class="feature-box">
+                <h4>📈 Bilan</h4>
+                <ul>
+                    <li>Total Actif</li>
+                    <li>Actif Immobilisé</li>
+                    <li>Actif Circulant</li>
+                    <li>Trésorerie Actif</li>
+                    <li>Capitaux Propres</li>
+                    <li>Dettes Financières</li>
+                    <li>Passif Circulant</li>
+                </ul>
+
+                <h4>💰 Compte de Résultat</h4>
+                <ul>
+                    <li>Chiffre d'Affaires</li>
+                    <li>Produits d'Exploitation</li>
+                    <li>Charges d'Exploitation</li>
+                    <li>Résultat d'Exploitation</li>
+                    <li>Résultat Financier</li>
+                    <li>Résultat Net</li>
+                </ul>
+
+                <h4>💧 Tableau de Flux de Trésorerie</h4>
+                <ul>
+                    <li>Flux Opérationnels</li>
+                    <li>Flux d'Investissement</li>
+                    <li>Flux de Financement</li>
+                    <li>Variation de Trésorerie</li>
+                </ul>
+            </div>
+
+            <div class="warning-box">
+                <strong>⚠️ Points d'Attention</strong><br>
+                • Vérifiez la cohérence des montants<br>
+                • Respectez les formats numériques<br>
+                • Assurez-vous de la complétude des données
+            </div>
+        </section>
+
+        <div class="page-break"></div>
+
+        <section id="analyse-detaillee">
+            <h2>🔍 3. Analyse Financière Détaillée</h2>
+            
+            <p>L'analyse détaillée se compose de 5 onglets principaux :</p>
+
+            <h3>3.1 États Financiers</h3>
+            <div class="feature-box">
+                <p>Affiche les données financières avec :</p>
+                <ul>
+                    <li><strong>Données multi-années</strong> : Comparaison année par année</li>
+                    <li><strong>Variation annuelle</strong> : Pourcentage d'évolution sous chaque valeur</li>
+                    <li><strong>Tendance</strong> : Direction générale (Amélioration/Dégradation/Stable)</li>
+                    <li><strong>Croissance moyenne</strong> : Progression moyenne sur la période</li>
+                </ul>
+            </div>
+
+            <h3>3.2 Ratios Détaillés</h3>
+            <div class="feature-box">
+                <p>Calculs automatiques des ratios financiers :</p>
+                <ul>
+                    <li><strong>ROE</strong> : Rentabilité des capitaux propres</li>
+                    <li><strong>ROA</strong> : Rentabilité de l'actif</li>
+                    <li><strong>Ratio de Liquidité</strong> : Capacité de paiement à court terme</li>
+                    <li><strong>Ratio d'Endettement</strong> : Niveau d'endettement</li>
+                </ul>
+                <p><em>Chaque ratio inclut sa formule de calcul et son interprétation.</em></p>
+            </div>
+
+            <h3>3.3 Évolution & Tendances</h3>
+            <div class="feature-box">
+                <p>Analyse approfondie des variations :</p>
+                <ul>
+                    <li><strong>Graphiques d'évolution</strong> : Visualisation des tendances</li>
+                    <li><strong>Analyse des écarts</strong> : Identification des variations significatives</li>
+                    <li><strong>Points forts et faibles</strong> : Synthèse automatique</li>
+                </ul>
+            </div>
+
+            <h3>3.4 Conformité BCEAO</h3>
+            <div class="feature-box">
+                <p>Vérification réglementaire complète :</p>
+                <ul>
+                    <li><strong>Normes sectorielles</strong> : Adaptation aux spécificités du secteur</li>
+                    <li><strong>Historique de conformité</strong> : Évolution sur plusieurs années</li>
+                    <li><strong>Recommandations personnalisées</strong> : Actions concrètes par ratio</li>
+                    <li><strong>Formules des ratios</strong> : Calculs détaillés et explications</li>
+                </ul>
+            </div>
+
+            <h3>3.5 Recommandations</h3>
+            <div class="feature-box">
+                <p>Plan d'action stratégique :</p>
+                <ul>
+                    <li><strong>Points forts</strong> : Leviers de performance identifiés</li>
+                    <li><strong>Axes d'amélioration</strong> : Domaines nécessitant une attention</li>
+                    <li><strong>Actions court terme</strong> : Mesures immédiates (3-6 mois)</li>
+                    <li><strong>Actions moyen terme</strong> : Stratégie à long terme (6-12 mois)</li>
+                </ul>
+            </div>
+        </section>
+
+        <div class="page-break"></div>
+
+        <section id="conformite-bceao">
+            <h2>🏛️ 4. Module Conformité BCEAO</h2>
+            
+            <h3>4.1 Utilisation du Module</h3>
+            <div class="step-box">
+                <ol>
+                    <li>Accédez à l'onglet <strong>"Conformité BCEAO"</strong></li>
+                    <li>Consultez le score global de conformité</li>
+                    <li>Explorez les catégories : Liquidité, Solvabilité, Rentabilité</li>
+                    <li>Cliquez sur l'icône <strong>"Action"</strong> pour voir les détails d'un ratio</li>
+                    <li>Consultez la formule et les recommandations spécifiques</li>
+                </ol>
+            </div>
+
+            <h3>4.2 Interprétation des Statuts</h3>
+            <div class="feature-box">
+                <ul>
+                    <li><strong>🟢 Excellent/Bon</strong> : Conforme aux normes, situation saine</li>
+                    <li><strong>🟡 Acceptable</strong> : Légèrement sous les normes, surveillance nécessaire</li>
+                    <li><strong>🟠 Insuffisant</strong> : Sous les normes, actions correctives requises</li>
+                    <li><strong>🔴 Critique</strong> : Très sous les normes, intervention urgente</li>
+                </ul>
+            </div>
+
+            <h3>4.3 Tendances Multi-Années</h3>
+            <div class="feature-box">
+                <p>Le module affiche l'évolution de chaque ratio sur toute la période d'analyse :</p>
+                <ul>
+                    <li><strong>🔼 Amélioration</strong> : Ratio en progression</li>
+                    <li><strong>🔽 Dégradation</strong> : Ratio en déclin</li>
+                    <li><strong>➡️ Stable</strong> : Ratio constant</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="generation-rapports">
+            <h2>📄 5. Génération de Rapports</h2>
+            
+            <h3>5.1 Types de Rapports Disponibles</h3>
+            <div class="step-box">
+                <ol>
+                    <li>Accédez à <strong>"Génération de Rapports"</strong></li>
+                    <li>Choisissez le type de rapport :
+                        <ul>
+                            <li><strong>Rapport Complet</strong> : Analyse exhaustive</li>
+                            <li><strong>Rapport Exécutif</strong> : Synthèse managériale</li>
+                            <li><strong>Rapport Conformité</strong> : Focus réglementaire BCEAO</li>
+                        </ul>
+                    </li>
+                    <li>Configurez les options :
+                        <ul>
+                            <li>Inclure les graphiques</li>
+                            <li>Inclure les recommandations</li>
+                            <li>Format de sortie (PDF)</li>
+                        </ul>
+                    </li>
+                    <li>Cliquez sur <strong>"Générer le Rapport"</strong></li>
+                    <li>Téléchargez le fichier PDF généré</li>
+                </ol>
+            </div>
+
+            <h3>5.2 Contenu des Rapports</h3>
+            <div class="feature-box">
+                <h4>📊 Rapport Complet</h4>
+                <ul>
+                    <li>Synthèse exécutive</li>
+                    <li>États financiers détaillés</li>
+                    <li>Analyse des ratios</li>
+                    <li>Conformité BCEAO</li>
+                    <li>Recommandations stratégiques</li>
+                    <li>Graphiques et visualisations</li>
+                </ul>
+
+                <h4>🎯 Rapport Exécutif</h4>
+                <ul>
+                    <li>Indicateurs clés de performance</li>
+                    <li>Points saillants de l'analyse</li>
+                    <li>Recommandations prioritaires</li>
+                    <li>Tableaux de bord visuels</li>
+                </ul>
+            </div>
+
+            <div class="warning-box">
+                <strong>💡 Conseils pour une Génération Optimale</strong><br>
+                • Vérifiez la complétude des données avant génération<br>
+                • Attendez la fin du processus de génération<br>
+                • Les rapports incluent automatiquement la date de génération
+            </div>
+        </section>
+
+        <div class="page-break"></div>
+
+        <section id="formules-ratios">
+            <h2>🧮 6. Formules des Ratios Financiers</h2>
+            
+            <h3>6.1 Ratios de Liquidité</h3>
+            
+            <h4>Ratio de Liquidité Générale</h4>
+            <div class="formula-box">
+                Actif Circulant / Passif Circulant
+            </div>
+            <p><em>Mesure la capacité de l'entreprise à honorer ses dettes à court terme avec ses actifs liquides. Norme BCEAO : ≥ 1,2</em></p>
+
+            <h4>Ratio de Liquidité Réduite</h4>
+            <div class="formula-box">
+                (Actif Circulant - Stocks) / Passif Circulant
+            </div>
+            <p><em>Évalue la liquidité en excluant les stocks, moins facilement convertibles. Norme BCEAO : ≥ 1,0</em></p>
+
+            <h4>Ratio de Liquidité Immédiate</h4>
+            <div class="formula-box">
+                Disponibilités / Passif Circulant
+            </div>
+            <p><em>Mesure la capacité de paiement immédiat avec les liquidités disponibles. Norme BCEAO : ≥ 0,3</em></p>
+
+            <h3>6.2 Ratios de Solvabilité</h3>
+            
+            <h4>Ratio d'Autonomie Financière</h4>
+            <div class="formula-box">
+                (Capitaux Propres / Total Bilan) × 100
+            </div>
+            <p><em>Indique le degré d'indépendance financière vis-à-vis des créanciers. Norme BCEAO : ≥ 20%</em></p>
+
+            <h4>Ratio d'Endettement</h4>
+            <div class="formula-box">
+                (Total Dettes / Total Bilan) × 100
+            </div>
+            <p><em>Mesure le niveau d'endettement global par rapport aux actifs. Norme BCEAO : ≤ 70%</em></p>
+
+            <h3>6.3 Ratios de Rentabilité</h3>
+            
+            <h4>Rentabilité des Capitaux Propres (ROE)</h4>
+            <div class="formula-box">
+                (Résultat Net / Capitaux Propres) × 100
+            </div>
+            <p><em>Mesure la rentabilité des capitaux investis par les actionnaires. Norme BCEAO : ≥ 10%</em></p>
+
+            <h4>Rentabilité de l'Actif (ROA)</h4>
+            <div class="formula-box">
+                (Résultat Net / Total Actif) × 100
+            </div>
+            <p><em>Indique l'efficacité dans l'utilisation des actifs pour générer des profits. Norme BCEAO : ≥ 5%</em></p>
+
+        <div class="page-break"></div>
+
+            <h3>6.4 Ratios d'Activité</h3>
+            
+            <h4>Rotation de l'Actif</h4>
+            <div class="formula-box">
+                Chiffre d'Affaires / Total Actif
+            </div>
+            <p><em>Indique l'efficacité d'utilisation des actifs pour générer du CA. Norme BCEAO : ≥ 0,8</em></p>
+        </section>
+
+        <section id="troubleshooting">
+            <h2>🔧 7. Résolution de Problèmes</h2>
+            
+            <h3>7.1 Problèmes Courants</h3>
+            
+            <div class="warning-box">
+                <h4>❌ Erreur d'Import Excel</h4>
+                <p><strong>Symptôme</strong> : "Format de fichier non reconnu"</p>
+                <p><strong>Solution</strong> :</p>
+                <ul>
+                    <li>Vérifiez que le fichier est au format .xlsx ou .xls</li>
+                    <li>Assurez-vous que les colonnes ont des en-têtes</li>
+                    <li>Vérifiez qu'il n'y a pas de cellules fusionnées</li>
+                </ul>
+            </div>
+
+            <div class="warning-box">
+                <h4>❌ Données Manquantes</h4>
+                <p><strong>Symptôme</strong> : "Données incomplètes pour l'analyse"</p>
+                <p><strong>Solution</strong> :</p>
+                <ul>
+                    <li>Vérifiez que tous les champs obligatoires sont renseignés</li>
+                    <li>Contrôlez la cohérence des montants (Actif = Passif)</li>
+                    <li>Assurez-vous que les valeurs sont numériques</li>
+                </ul>
+            </div>
+
+            <div class="warning-box">
+                <h4>❌ Rapport PDF Vide</h4>
+                <p><strong>Symptôme</strong> : Le PDF généré est vide ou incomplet</p>
+                <p><strong>Solution</strong> :</p>
+                <ul>
+                    <li>Attendez la fin complète de la génération</li>
+                    <li>Vérifiez que l'analyse a été effectuée avant génération</li>
+                    <li>Rechargez la page et recommencez</li>
+                </ul>
+            </div>
+
+            <h3>7.2 Support Technique</h3>
+            <div class="feature-box">
+                <p><strong>En cas de problème persistant :</strong></p>
+                <ul>
+                    <li>Consultez les logs du navigateur (F12)</li>
+                    <li>Vérifiez votre connexion internet</li>
+                    <li>Essayez un autre navigateur</li>
+                    <li>Contactez l'administrateur système</li>
+                </ul>
+            </div>
+
+            <h3>7.3 Bonnes Pratiques</h3>
+            <div class="feature-box">
+                <ul>
+                    <li><strong>Sauvegarde</strong> : Exportez régulièrement vos analyses</li>
+                    <li><strong>Validation</strong> : Vérifiez la cohérence des données saisies</li>
+                    <li><strong>Documentation</strong> : Conservez les sources de vos données</li>
+                    <li><strong>Mise à jour</strong> : Utilisez toujours la dernière version</li>
+                </ul>
+            </div>
+        </section>
+
+        <div class="version-info">
+            <p><strong>Guide Utilisateur OptimusCredit - Version 1.0</strong></p>
+            <p>Dernière mise à jour : Août 2025</p>
+            <p>© 2025 OptimusCredit - Outil d'analyse financière</p>
+        </div>
+    </div>
+
+    <script>
+        // Print functionality for PDF generation
+        window.addEventListener('load', function() {
+            // Add print button for easy access
+            const printButton = document.createElement('button');
+            printButton.textContent = '🖨️ Imprimer / Générer PDF';
+            printButton.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                z-index: 1000;
+                padding: 10px 20px;
+                background: #2c5aa0;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 14px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            `;
+            printButton.addEventListener('click', function() {
+                window.print();
+            });
+            
+            // Hide print button in print mode
+            const printStyle = document.createElement('style');
+            printStyle.textContent = '@media print { button { display: none !important; } }';
+            document.head.appendChild(printStyle);
+            
+            // Only show print button on screen
+            if (window.matchMedia) {
+                const mediaQuery = window.matchMedia('print');
+                if (!mediaQuery.matches) {
+                    document.body.appendChild(printButton);
+                }
+            } else {
+                document.body.appendChild(printButton);
+            }
+        });
+        
+        // Optimize for print when printing
+        window.addEventListener('beforeprint', function() {
+            document.title = 'Guide_Utilisateur_OptimusCredit_2025';
+        });
+    </script>
+</body>
+</html>
