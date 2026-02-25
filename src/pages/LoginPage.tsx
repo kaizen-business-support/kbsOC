@@ -257,13 +257,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       sx={{
         background: 'linear-gradient(135deg, #1f4e79 0%, #2c5aa0 100%)',
         minHeight: '100vh',
-        p: 3,
-        py: 4,
+        overflowY: 'auto',
+        p: { xs: 2, sm: 3 },
+        py: { xs: 2, sm: 4 },
       }}
     >
-      <Grid container maxWidth="lg" spacing={4} alignItems="center">
-        {/* Left Side - Branding */}
-        <Grid item xs={12} md={6}>
+      <Grid container spacing={4} alignItems="center" sx={{ maxWidth: 1200, mx: 'auto' }}>
+        {/* Mini header mobile uniquement */}
+        <Grid item xs={12} sx={{ display: { xs: 'block', md: 'none' }, textAlign: 'center', color: 'white', pb: 0 }}>
+          <Avatar sx={{ width: 60, height: 60, bgcolor: 'rgba(255,255,255,0.15)', mx: 'auto', mb: 1 }}>
+            <img src={optimusIcon} alt="OptimusCredit" style={{ width: 40, height: 40 }} />
+          </Avatar>
+          <Typography variant="h6" fontWeight={700} gutterBottom>OptimusCredit</Typography>
+          <Typography variant="body2" sx={{ opacity: 0.85, mb: 1 }}>{t('login.platformSubtitle')}</Typography>
+        </Grid>
+
+        {/* Left Side - Branding (desktop uniquement) */}
+        <Grid item xs={12} md={6} sx={{ display: { xs: 'none', md: 'block' } }}>
           <Box sx={{ textAlign: 'center', color: 'white' }}>
             <Avatar
               sx={{
@@ -303,8 +313,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
         {/* Right Side - Login Form */}
         <Grid item xs={12} md={6}>
-          <Card sx={{ maxWidth: 500, mx: 'auto', boxShadow: 6, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-            <CardContent sx={{ p: 4, overflow: 'auto', flex: 1 }}>
+          <Card sx={{ maxWidth: 500, mx: 'auto', boxShadow: 6 }}>
+            <CardContent sx={{ p: { xs: 2.5, sm: 4 } }}>
               <Box sx={{ textAlign: 'center', mb: 4 }}>
                 <Avatar sx={{ mx: 'auto', mb: 2, bgcolor: 'primary.main', width: 56, height: 56 }}>
                   <LoginIcon sx={{ fontSize: 32 }} />
@@ -338,6 +348,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     disabled={state.isLoading}
+                    autoComplete="email"
+                    inputProps={{ style: { fontSize: 16 } }}
                     InputProps={{
                       startAdornment: <EmailIcon sx={{ mr: 1, color: 'action.active' }} />
                     }}
@@ -353,6 +365,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     disabled={state.isLoading}
+                    autoComplete="current-password"
+                    inputProps={{ style: { fontSize: 16 } }}
                     InputProps={{
                       startAdornment: <LockIcon sx={{ mr: 1, color: 'action.active' }} />
                     }}
