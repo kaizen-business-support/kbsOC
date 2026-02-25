@@ -112,9 +112,30 @@ Modèle*.xlsx
 
 # Claude Code settings
 .claude/
+
 # Backend specific
 backend/node_modules/
 backend/dist/
 backend/.env
 backend/uploads/
 backend/backups/
+
+# Production environment files (never commit secrets)
+.env.prod
+.env.prod.*
+backend/.env.prod
+backend/.env.prod.*
+
+# TLS / PKI
+*.key
+*.pem
+*.crt
+*.cert
+*.p12
+*.pfx
+
+# Deployment state (machine-specific)
+deploy/.deploy-config
+
+# Docker secrets
+secrets/

@@ -32,7 +32,7 @@ import { authenticate } from './middleware/auth';
 dotenv.config();
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const PORT = parseInt(process.env.PORT || '5007', 10);
 
 // Initialize Prisma Client
 export const prisma = new PrismaClient();
@@ -43,25 +43,31 @@ app.use(helmet());
 // ─── CORS — never use wildcard '*' ───────────────────────────────────────────
 const rawAllowedOrigins = process.env.ALLOWED_ORIGINS || 'http://localhost:3006';
 
-// Reject wildcard '*' — force explicit list
+// Reject wildcard '*' — exit early in production, warn in dev
+if (rawAllowedOrigins === '*' && process.env.NODE_ENV === 'production') {
+  console.error('FATAL: ALLOWED_ORIGINS must not be "*" in production. Set an explicit list.');
+  process.exit(1);
+}
+
 const allowedOrigins: string[] = rawAllowedOrigins === '*'
-  ? ['http://localhost:3006', 'http://0.0.0.0:3006']
+  ? ['http://localhost:3006']
   : rawAllowedOrigins.split(',').map(o => o.trim()).filter(Boolean);
 
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (native apps, Postman in dev)
+    // Allow requests with no origin (native apps, curl in dev)
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error(`CORS: origin '${origin}' not allowed`));
+      callback(new Error(`CORS: origin not allowed`));
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
 };
+
 app.use(cors(corsOptions));
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────

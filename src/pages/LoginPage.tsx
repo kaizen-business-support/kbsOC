@@ -32,7 +32,7 @@ import optimusIcon from '../assets/Optimus_icon.png';
 import { TwoFactorSetup } from '../components/TwoFactorSetup';
 import { tokenManager } from '../services/api';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5006/api';
+const API_BASE = process.env.REACT_APP_API_URL || `${window.location.protocol}//${window.location.hostname}:${process.env.REACT_APP_API_PORT || '5007'}/api`;
 
 interface LoginPageProps {
   onLogin: () => void;

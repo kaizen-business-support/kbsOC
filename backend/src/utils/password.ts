@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import { randomInt, randomBytes } from 'crypto';
 
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || '12', 10);
 
@@ -15,20 +16,25 @@ export function generateRandomPassword(length: number = 12): string {
 
   const allChars = uppercase + lowercase + numbers + special;
 
-  // Ensure at least one character from each category
-  let password = '';
-  password += uppercase[Math.floor(Math.random() * uppercase.length)];
-  password += lowercase[Math.floor(Math.random() * lowercase.length)];
-  password += numbers[Math.floor(Math.random() * numbers.length)];
-  password += special[Math.floor(Math.random() * special.length)];
+  // Au moins un caractère de chaque catégorie (crypto-sûr)
+  const chars: string[] = [
+    uppercase[randomInt(uppercase.length)],
+    lowercase[randomInt(lowercase.length)],
+    numbers[randomInt(numbers.length)],
+    special[randomInt(special.length)],
+  ];
 
-  // Fill the rest randomly
-  for (let i = password.length; i < length; i++) {
-    password += allChars[Math.floor(Math.random() * allChars.length)];
+  for (let i = chars.length; i < length; i++) {
+    chars.push(allChars[randomInt(allChars.length)]);
   }
 
-  // Shuffle the password
-  return password.split('').sort(() => Math.random() - 0.5).join('');
+  // Mélange Fisher-Yates crypto-sûr
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+
+  return chars.join('');
 }
 
 /**

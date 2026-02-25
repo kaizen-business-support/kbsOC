@@ -29,18 +29,6 @@ export interface JwtPayload {
 // Authentication middleware
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Skip authentication for testing if flag is set
-    if (process.env.DISABLE_AUTH_FOR_TESTING === 'true' && process.env.NODE_ENV === 'development') {
-      // Use a default test user
-      req.user = {
-        id: 'test-user-id',
-        email: 'test@example.com',
-        role: 'ACCOUNT_MANAGER',
-        permissions: ['create_client', 'create_application', 'view_applications']
-      };
-      return next();
-    }
-
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -166,10 +154,8 @@ export const authorize = (requiredPermissions: string[] = [], requiredRoles: str
     // Check roles if specified
     if (requiredRoles.length > 0 && !requiredRoles.includes(req.user.role)) {
       return res.status(403).json({
-        error: 'Insufficient role permissions',
-        code: 'INSUFFICIENT_ROLE',
-        required: requiredRoles,
-        current: req.user.role
+        error: 'Insufficient permissions',
+        code: 'INSUFFICIENT_PERMISSIONS'
       });
     }
 
@@ -182,9 +168,7 @@ export const authorize = (requiredPermissions: string[] = [], requiredRoles: str
       if (!hasPermission) {
         return res.status(403).json({
           error: 'Insufficient permissions',
-          code: 'INSUFFICIENT_PERMISSIONS',
-          required: requiredPermissions,
-          current: req.user.permissions
+          code: 'INSUFFICIENT_PERMISSIONS'
         });
       }
     }

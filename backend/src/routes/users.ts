@@ -16,7 +16,10 @@ const checkUserManagementPermission = async (req: Request, res: Response, next: 
   const token = authHeader.substring(7);
 
   try {
-    const jwtSecret = process.env.JWT_SECRET || 'dev-secret';
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      return res.status(500).json({ error: 'Server configuration error', code: 'CONFIG_ERROR' });
+    }
     const payload = jwt.verify(token, jwtSecret) as any;
 
     const user = await prisma.user.findUnique({
@@ -29,7 +32,7 @@ const checkUserManagementPermission = async (req: Request, res: Response, next: 
     }
 
     const permissions = user.permissions as string[];
-    if (user.role === 'ADMIN' || permissions.includes('user_management') || permissions.includes('*')) {
+    if (user.role === 'ADMIN' || permissions.includes('user_management')) {
       req.user = { id: user.id, email: user.email, role: user.role, permissions };
       next();
     } else {
@@ -40,8 +43,9 @@ const checkUserManagementPermission = async (req: Request, res: Response, next: 
   }
 };
 
-// Get credit analysts (accessible by account managers)
+// Get credit analysts (accessible aux utilisateurs authentifiés)
 router.get('/credit-analysts',
+  checkUserManagementPermission,
   asyncHandler(async (req: Request, res: Response) => {
     const analysts = await prisma.user.findMany({
       where: { role: 'CREDIT_ANALYST', isActive: true },
@@ -179,7 +183,7 @@ router.post('/',
 
     res.status(201).json({
       success: true,
-      message: 'User created successfully. Please provide the temporary password to the user.',
+      message: `Utilisateur créé. Mot de passe temporaire transmis à ${newUser.email} par email.`,
       user: {
         id: newUser.id,
         email: newUser.email,
@@ -189,8 +193,8 @@ router.post('/',
         jobTitle: newUser.jobTitle,
         isActive: newUser.isActive,
         createdAt: newUser.createdAt.toISOString()
-      },
-      temporaryPassword // Return the password so admin can give it to the user
+      }
+      // temporaryPassword omis volontairement — ne jamais exposer un secret en API
     });
   })
 );
@@ -284,13 +288,13 @@ router.post('/:id/reset-password',
 
     res.json({
       success: true,
-      message: `Password reset successfully for ${user.name}. Please provide the temporary password to the user.`,
+      message: `Mot de passe réinitialisé pour ${user.name}. Le mot de passe temporaire a été envoyé à ${user.email}.`,
       user: {
         id: user.id,
         email: user.email,
         name: user.name
-      },
-      temporaryPassword // Return the password so admin can give it to the user
+      }
+      // temporaryPassword omis volontairement — ne jamais exposer un secret en API
     });
   })
 );

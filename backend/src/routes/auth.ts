@@ -55,19 +55,16 @@ router.post('/login', async (req: Request, res: Response) => {
       where: { email: email.toLowerCase() }
     });
 
-    if (!user) {
+    // Délai constant pour résister aux timing attacks (énumération d'emails)
+    const DUMMY_HASH = '$2b$12$dummyhashtopreventtimingattacksXXXXXXXXXXXXXXXXXXXXXX';
+    if (!user || !user.passwordHash) {
+      await comparePassword(password, DUMMY_HASH);
       return res.status(401).json({ success: false, error: 'Identifiants invalides' });
     }
 
     if (!user.isActive) {
-      return res.status(401).json({ success: false, error: 'Compte désactivé' });
-    }
-
-    if (!user.passwordHash) {
-      return res.status(401).json({
-        success: false,
-        error: 'Compte non configuré. Contactez l\'administrateur.'
-      });
+      await comparePassword(password, DUMMY_HASH);
+      return res.status(401).json({ success: false, error: 'Identifiants invalides' });
     }
 
     const isPasswordValid = await comparePassword(password, user.passwordHash);

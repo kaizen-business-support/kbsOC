@@ -28,6 +28,26 @@ const DB_NAME = process.env.DB_NAME || 'optimus_credit';
 const DB_USER = process.env.DB_USER || 'optimus';
 const DB_PASSWORD = process.env.DB_PASSWORD || '';
 
+/**
+ * Spawns pg_dump or psql either directly (when installed) or via `docker exec`
+ * when DOCKER_PG_CONTAINER is set.
+ * Env vars are read lazily (at call time) so dotenv.config() has already run.
+ */
+function spawnPg(pgCmd: string, pgArgs: string[]): ReturnType<typeof spawn> {
+  const container = process.env.DOCKER_PG_CONTAINER || '';
+  if (container) {
+    const password = process.env.CONTAINER_PG_PASSWORD || '';
+    return spawn('docker', [
+      'exec', '-i',
+      '-e', `PGPASSWORD=${password}`,
+      container,
+      pgCmd,
+      ...pgArgs,
+    ]);
+  }
+  return spawn(pgCmd, pgArgs, { env: { ...process.env, PGPASSWORD: DB_PASSWORD } });
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function ensureBackupDir(): void {
@@ -79,12 +99,13 @@ export async function createBackup(
 
   logger.info(`Starting ${type} backup → ${filename}`);
 
-  const env = { ...process.env, PGPASSWORD: DB_PASSWORD };
+  const pgUser = process.env.DOCKER_PG_CONTAINER ? (process.env.CONTAINER_PG_USER || 'postgres') : DB_USER;
+  const pgPort = process.env.DOCKER_PG_CONTAINER ? '5432' : DB_PORT;
 
   const pgDumpArgs = [
     '-h', DB_HOST,
-    '-p', DB_PORT,
-    '-U', DB_USER,
+    '-p', pgPort,
+    '-U', pgUser,
     '-d', DB_NAME,
     '--no-password',
     '--format=plain',
@@ -96,7 +117,7 @@ export async function createBackup(
   }
 
   return new Promise((resolve, reject) => {
-    const pg = spawn('pg_dump', pgDumpArgs, { env });
+    const pg = spawnPg('pg_dump', pgDumpArgs);
     const out = fs.createWriteStream(filePath);
     const gzip = createGzip();
 
@@ -186,16 +207,17 @@ export async function restoreBackup(filename: string): Promise<void> {
 
   logger.warn(`Starting database restore from: ${filename}`);
 
-  const env = { ...process.env, PGPASSWORD: DB_PASSWORD };
+  const pgUser = process.env.DOCKER_PG_CONTAINER ? (process.env.CONTAINER_PG_USER || 'postgres') : DB_USER;
+  const pgPort = process.env.DOCKER_PG_CONTAINER ? '5432' : DB_PORT;
 
   return new Promise((resolve, reject) => {
-    const psql = spawn('psql', [
+    const psql = spawnPg('psql', [
       '-h', DB_HOST,
-      '-p', DB_PORT,
-      '-U', DB_USER,
+      '-p', pgPort,
+      '-U', pgUser,
       '-d', DB_NAME,
       '--no-password',
-    ], { env });
+    ]);
 
     const input = fs.createReadStream(filePath);
     const gunzip = require('zlib').createGunzip();

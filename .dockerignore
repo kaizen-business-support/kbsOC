@@ -1,0 +1,12 @@
+node_modules
+build
+.env
+.env.*
+!.env.prod.example
+*.log
+.git
+.gitignore
+README.md
+DEPLOYMENT.md
+backend/
+nginx/

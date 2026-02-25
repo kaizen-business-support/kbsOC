@@ -36,7 +36,8 @@ const requireAdmin = (req: Request, res: Response, next: Function) => {
   next();
 };
 
-const FILENAME_REGEX = /^[a-zA-Z0-9_\-.]+\.sql\.gz$/;
+// Pas de point dans le nom (évite les chemins relatifs type ../)
+const FILENAME_REGEX = /^[a-zA-Z0-9_-]+\.sql\.gz$/;
 
 // ─── GET /api/backup/list ──────────────────────────────────────────────────────
 
