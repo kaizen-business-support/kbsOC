@@ -163,20 +163,18 @@ const AppContent: React.FC = () => {
           pt: { xs: 7, sm: 8 },
           pl: { xs: 0, md: sidebarOpen ? '240px' : 0 },
           transition: 'padding-left 0.3s ease',
-          height: '100vh',
-          overflow: 'auto',
+          minHeight: '100vh',
           display: 'flex',
           flexDirection: 'column',
         }}
       >
-        <Container 
-          maxWidth="xl" 
-          sx={{ 
-            py: 3, 
+        <Container
+          maxWidth="xl"
+          sx={{
+            py: 3,
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
-            overflow: 'visible',
           }}
         >
           <ErrorBoundary>
