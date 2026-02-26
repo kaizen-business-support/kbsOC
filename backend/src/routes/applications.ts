@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
+import { triggerNotification } from '../services/notificationService';
 
 const router = Router();
 
@@ -250,6 +251,9 @@ router.post('/', async (req: Request, res: Response) => {
         }
       });
     }
+
+    // Trigger notification (non-blocking)
+    triggerNotification('APPLICATION_SUBMITTED', application.id);
 
     res.status(201).json({
       success: true,

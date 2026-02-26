@@ -34,6 +34,7 @@ import {
   Business as BusinessIcon,
   Backup as BackupIcon,
   Campaign as CampaignIcon,
+  NotificationsActive as NotificationsActiveIcon,
   ExpandLess,
   ExpandMore,
 } from '@mui/icons-material';
@@ -159,6 +160,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Notes d\'information',
       icon: CampaignIcon,
       description: 'Publier des annonces pour tous les utilisateurs'
+    },
+    {
+      id: 'notifications-config' as PageType,
+      label: 'Notifications',
+      icon: NotificationsActiveIcon,
+      description: 'Email, SMS et modèles de notifications'
     },
   ] : [];
 
@@ -593,6 +600,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         onClose={onClose}
         ModalProps={{
           keepMounted: true, // Better open performance on mobile.
+          disableScrollLock: true,
         }}
         sx={{
           display: { xs: 'block', md: 'none' },

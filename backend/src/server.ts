@@ -22,6 +22,10 @@ import roleRoutes from './routes/roles';
 import twoFactorRoutes from './routes/twoFactor';
 import backupRoutes from './routes/backup';
 import announcementRoutes from './routes/announcements';
+import notificationChannelRoutes from './routes/notification-channels';
+import notificationTemplateRoutes from './routes/notification-templates';
+import notificationRuleRoutes from './routes/notification-rules';
+import notificationRoutes from './routes/notifications';
 import { startScheduler } from './services/schedulerService';
 
 // Import middleware
@@ -146,6 +150,10 @@ app.use('/api/roles', authenticate, roleRoutes);
 app.use('/api/auth/2fa', authenticate, twoFactorRoutes);
 app.use('/api/backup', authenticate, backupRoutes);
 app.use('/api/announcements', authenticate, announcementRoutes);
+app.use('/api/notification-channels', authenticate, notificationChannelRoutes);
+app.use('/api/notification-templates', authenticate, notificationTemplateRoutes);
+app.use('/api/notification-rules', authenticate, notificationRuleRoutes);
+app.use('/api/notifications', authenticate, notificationRoutes);
 
 // ─── Root endpoint ────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {

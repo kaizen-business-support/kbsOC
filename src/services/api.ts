@@ -1057,6 +1057,167 @@ export class ApiService {
       };
     }
   }
+
+  // ─── Notification Channels ────────────────────────────────────────────────────
+
+  static async seedDefaultNotifications(): Promise<ApiResponse<{ created: number; skipped: number }>> {
+    try {
+      const response = await api.post('/notification-channels/seed-defaults');
+      return { success: true, data: response.data.data, message: response.data.message };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur lors du chargement des défauts' };
+    }
+  }
+
+  static async getNotificationChannels(): Promise<ApiResponse<any[]>> {
+    try {
+      const response = await api.get('/notification-channels');
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async updateNotificationChannel(type: string, data: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.put(`/notification-channels/${type}`, data);
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async testNotificationChannel(type: string, testAddress?: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.post(`/notification-channels/test/${type}`, { testAddress });
+      return { success: true, message: response.data.message };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur lors du test' };
+    }
+  }
+
+  // ─── Notification Templates ───────────────────────────────────────────────────
+
+  static async getNotificationTemplates(): Promise<ApiResponse<any[]>> {
+    try {
+      const response = await api.get('/notification-templates');
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async previewNotificationTemplate(event: string, body: string, subject: string): Promise<ApiResponse<{ html: string; subject: string }>> {
+    try {
+      const response = await api.post('/notification-templates/preview', { event, body, subject });
+      return { success: true, data: response.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur lors de la prévisualisation' };
+    }
+  }
+
+  static async createNotificationTemplate(data: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.post('/notification-templates', data);
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async updateNotificationTemplate(id: string, data: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.put(`/notification-templates/${id}`, data);
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async deleteNotificationTemplate(id: string): Promise<ApiResponse<any>> {
+    try {
+      await api.delete(`/notification-templates/${id}`);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  // ─── Notification Rules ───────────────────────────────────────────────────────
+
+  static async getNotificationRules(): Promise<ApiResponse<any[]>> {
+    try {
+      const response = await api.get('/notification-rules');
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async createNotificationRule(data: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.post('/notification-rules', data);
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async updateNotificationRule(id: string, data: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.put(`/notification-rules/${id}`, data);
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async deleteNotificationRule(id: string): Promise<ApiResponse<any>> {
+    try {
+      await api.delete(`/notification-rules/${id}`);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  // ─── In-app Notifications ─────────────────────────────────────────────────────
+
+  static async getMyNotifications(): Promise<ApiResponse<any[]>> {
+    try {
+      const response = await api.get('/notifications');
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async getUnreadNotifCount(): Promise<ApiResponse<number>> {
+    try {
+      const response = await api.get('/notifications/count');
+      return { success: true, data: response.data.count };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async markNotifRead(id: string): Promise<ApiResponse<any>> {
+    try {
+      await api.put(`/notifications/${id}/read`);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async markAllNotifsRead(): Promise<ApiResponse<any>> {
+    try {
+      await api.put('/notifications/read-all');
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
 }
 
 // Utility function to handle API errors

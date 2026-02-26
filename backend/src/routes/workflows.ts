@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
+import { triggerNotification } from '../services/notificationService';
 
 const router = Router();
 
@@ -321,6 +322,9 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
         data: { status: 'REJECTED' }
       });
 
+      triggerNotification('STEP_REJECTED', applicationId);
+      triggerNotification('APPLICATION_REJECTED', applicationId);
+
       return res.json({
         success: true,
         message: 'Application rejected',
@@ -382,6 +386,8 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
         }
       });
 
+      triggerNotification('STEP_ASSIGNED', applicationId, { nextRole: nextApprovalRole });
+
       return res.json({
         success: true,
         message: `Approved. Forwarded to ${nextApprovalRole} for review`,
@@ -395,6 +401,8 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       where: { id: applicationId },
       data: { status: 'APPROVED' }
     });
+
+    triggerNotification('APPLICATION_APPROVED', applicationId);
 
     // Create final_decision step
     await prisma.workflowStep.create({

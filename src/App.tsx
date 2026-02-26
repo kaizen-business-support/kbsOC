@@ -32,6 +32,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { LoginPage } from './pages/LoginPage';
 import { BackupPage } from './pages/BackupPage';
 import AnnouncementsAdminPage from './pages/AnnouncementsAdminPage';
+import NotificationsConfigPage from './pages/NotificationsConfigPage';
 import { AnnouncementModal, useAnnouncements } from './components/AnnouncementModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -164,22 +165,20 @@ const AppContent: React.FC = () => {
         component="main"
         sx={{
           flexGrow: 1,
+          alignSelf: 'flex-start',
+          minWidth: 0,
           bgcolor: 'background.default',
           pt: { xs: 7, sm: 8 },
           pl: { xs: 0, md: sidebarOpen ? '240px' : 0 },
           transition: 'padding-left 0.3s ease',
           minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
+          width: '100%',
         }}
       >
         <Container
           maxWidth="xl"
           sx={{
             py: 3,
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
           }}
         >
           <ErrorBoundary>
@@ -283,6 +282,10 @@ const AppContent: React.FC = () => {
               <Route
                 path="/announcements"
                 element={<AnnouncementsAdminPage />}
+              />
+              <Route
+                path="/notifications-config"
+                element={<NotificationsConfigPage />}
               />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

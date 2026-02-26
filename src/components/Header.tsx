@@ -30,6 +30,7 @@ import { useTranslation } from 'react-i18next';
 import { PageType } from '../types';
 import logoImage from '../assets/OC_logo.png';
 import { useUser } from '../contexts/UserContext';
+import { NotificationBell } from './NotificationBell';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -67,6 +68,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
     profile: 'Mon Profil',
     backup: 'Sauvegarde & Restauration',
     announcements: 'Notes d\'information',
+    'notifications-config': 'Configuration Notifications',
   };
 
   const handleUserMenuClick = (event: React.MouseEvent<HTMLElement>) => {
@@ -179,9 +181,10 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
               },
             }}
           />
-          
-          
-          
+          {userState.isAuthenticated && (
+            <NotificationBell onPageChange={onPageChange} />
+          )}
+
           {onReset && (
             <Tooltip title="Réinitialiser la session et recommencer">
               <Button
