@@ -21,6 +21,7 @@ import creditTypeRoutes from './routes/creditTypes';
 import roleRoutes from './routes/roles';
 import twoFactorRoutes from './routes/twoFactor';
 import backupRoutes from './routes/backup';
+import announcementRoutes from './routes/announcements';
 import { startScheduler } from './services/schedulerService';
 
 // Import middleware
@@ -144,6 +145,7 @@ app.use('/api/credit-types', authenticate, creditTypeRoutes);
 app.use('/api/roles', authenticate, roleRoutes);
 app.use('/api/auth/2fa', authenticate, twoFactorRoutes);
 app.use('/api/backup', authenticate, backupRoutes);
+app.use('/api/announcements', authenticate, announcementRoutes);
 
 // ─── Root endpoint ────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {

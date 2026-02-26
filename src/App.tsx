@@ -31,6 +31,8 @@ import { CreditTypesPage } from './pages/CreditTypesPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { LoginPage } from './pages/LoginPage';
 import { BackupPage } from './pages/BackupPage';
+import AnnouncementsAdminPage from './pages/AnnouncementsAdminPage';
+import { AnnouncementModal, useAnnouncements } from './components/AnnouncementModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Main App component with context
@@ -49,6 +51,9 @@ const AppContent: React.FC = () => {
     text: string;
     severity: 'success' | 'error' | 'info';
   } | null>(null);
+
+  const { announcements, modalOpen, handleClose: handleAnnouncementClose } =
+    useAnnouncements(userState.currentUser?.id);
 
   // Show login page if not authenticated
   if (!userState.isAuthenticated) {
@@ -275,6 +280,10 @@ const AppContent: React.FC = () => {
                 path="/backup"
                 element={<BackupPage />}
               />
+              <Route
+                path="/announcements"
+                element={<AnnouncementsAdminPage />}
+              />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </ErrorBoundary>
@@ -282,6 +291,13 @@ const AppContent: React.FC = () => {
       </Box>
 
       {/* Reset Confirmation Dialog */}
+      {/* Announcement Modal */}
+      <AnnouncementModal
+        open={modalOpen}
+        onClose={handleAnnouncementClose}
+        announcements={announcements}
+      />
+
       <Dialog open={showResetDialog} onClose={handleResetCancel}>
         <DialogTitle>Réinitialiser la session</DialogTitle>
         <DialogContent>

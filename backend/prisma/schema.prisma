@@ -32,8 +32,24 @@ model User {
   createdApplications CreditApplication[] @relation("UserCreatedApplications")
   uploadedDocuments   Document[]          @relation("UserUploadedDocuments")
   assignedSteps       WorkflowStep[]      @relation("UserAssignedSteps")
+  announcements       Announcement[]      @relation("UserCreatedAnnouncements")
 
   @@map("users")
+}
+
+model Announcement {
+  id          String              @id @default(cuid())
+  title       String
+  message     String
+  priority    AnnouncementPriority @default(INFO)
+  isActive    Boolean             @default(true) @map("is_active")
+  expiresAt   DateTime            @map("expires_at")
+  createdBy   String              @map("created_by")
+  creator     User                @relation("UserCreatedAnnouncements", fields: [createdBy], references: [id])
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  @@map("announcements")
 }
 
 model Client {
@@ -337,6 +353,14 @@ enum StepStatus {
   COMPLETED @map("completed")
 
   @@map("step_status")
+}
+
+enum AnnouncementPriority {
+  INFO    @map("info")
+  WARNING @map("warning")
+  URGENT  @map("urgent")
+
+  @@map("announcement_priority")
 }
 
 enum StepType {

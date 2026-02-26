@@ -66,6 +66,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
     'credit-types': 'Types de Crédit',
     profile: 'Mon Profil',
     backup: 'Sauvegarde & Restauration',
+    announcements: 'Notes d\'information',
   };
 
   const handleUserMenuClick = (event: React.MouseEvent<HTMLElement>) => {

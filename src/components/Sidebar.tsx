@@ -33,6 +33,7 @@ import {
   Calculate as CalculateIcon,
   Business as BusinessIcon,
   Backup as BackupIcon,
+  Campaign as CampaignIcon,
   ExpandLess,
   ExpandMore,
 } from '@mui/icons-material';
@@ -152,6 +153,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Sauvegarde & Restauration',
       icon: BackupIcon,
       description: 'Gestion des sauvegardes de la base de données'
+    },
+    {
+      id: 'announcements' as PageType,
+      label: 'Notes d\'information',
+      icon: CampaignIcon,
+      description: 'Publier des annonces pour tous les utilisateurs'
     },
   ] : [];
 

@@ -685,6 +685,53 @@ export class ApiService {
     }
   }
 
+  // ─── Announcements ───────────────────────────────────────────────────────────
+
+  static async getActiveAnnouncements(): Promise<ApiResponse<any[]>> {
+    try {
+      const response = await api.get('/announcements');
+      return { success: true, data: response.data.data || [] };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur', data: [] };
+    }
+  }
+
+  static async getAllAnnouncements(): Promise<ApiResponse<any[]>> {
+    try {
+      const response = await api.get('/announcements/all');
+      return { success: true, data: response.data.data || [] };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur', data: [] };
+    }
+  }
+
+  static async createAnnouncement(data: { title: string; message: string; priority: string; expiresAt: string }): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.post('/announcements', data);
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur lors de la création' };
+    }
+  }
+
+  static async updateAnnouncement(id: string, data: Partial<{ title: string; message: string; priority: string; expiresAt: string; isActive: boolean }>): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.put(`/announcements/${id}`, data);
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur lors de la mise à jour' };
+    }
+  }
+
+  static async deleteAnnouncement(id: string): Promise<ApiResponse<void>> {
+    try {
+      await api.delete(`/announcements/${id}`);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur lors de la suppression' };
+    }
+  }
+
   static async updateUserProfile(profileData: { phone: string }): Promise<ApiResponse<any>> {
     try {
       const response = await api.put('/auth/profile', profileData);
