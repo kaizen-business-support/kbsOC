@@ -254,6 +254,216 @@ export function buildEventEmail(
 </html>`;
 }
 
+// ─── Auth email templates ─────────────────────────────────────────────────────
+
+function authEmailWrapper(badge: string, badgeBg: string, accentColor: string, bodyHtml: string): string {
+  const year = new Date().getFullYear();
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>OptimusCredit</title>
+</head>
+<body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" cellspacing="0" cellpadding="0"
+               style="max-width:600px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;
+                      box-shadow:0 4px 32px rgba(0,0,0,0.10);">
+          <!-- HEADER -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#1565C0 0%,#0D47A1 100%);padding:28px 40px 26px;">
+              <table width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td>
+                    <div style="font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;line-height:1;">OptimusCredit</div>
+                    <div style="font-size:11px;color:rgba(255,255,255,0.60);margin-top:5px;text-transform:uppercase;letter-spacing:1.4px;">Plateforme de Gestion de Crédit</div>
+                  </td>
+                  <td align="right" style="vertical-align:middle;">
+                    <span style="display:inline-block;background:${badgeBg};color:#ffffff;font-size:10px;font-weight:700;padding:6px 16px;border-radius:20px;letter-spacing:0.8px;text-transform:uppercase;border:1px solid rgba(255,255,255,0.25);">${badge}</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- ACCENT BAR -->
+          <tr><td height="4" style="background:${accentColor};font-size:0;line-height:0;">&nbsp;</td></tr>
+          <!-- BODY -->
+          <tr><td style="padding:40px 40px 32px;">${bodyHtml}</td></tr>
+          <!-- DIVIDER -->
+          <tr><td height="1" style="background:#e2e8f0;font-size:0;line-height:0;">&nbsp;</td></tr>
+          <!-- FOOTER -->
+          <tr>
+            <td style="background:#f8fafc;padding:22px 40px;">
+              <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center;line-height:1.7;">
+                Ce message a été généré automatiquement par <strong style="color:#64748b;">OptimusCredit</strong>.<br>Merci de ne pas répondre directement à cet email.
+              </p>
+              <p style="margin:10px 0 0;font-size:11px;color:#cbd5e1;text-align:center;">© ${year} OptimusCredit · Tous droits réservés</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+/** Email de bienvenue envoyé à la création d'un utilisateur */
+export function buildWelcomeEmail(vars: {
+  name: string;
+  email: string;
+  temporaryPassword: string;
+  loginUrl: string;
+  expiresIn: string;
+}): string {
+  const body = `
+    <h1 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#1e293b;">Bienvenue sur OptimusCredit !</h1>
+    <p style="margin:0 0 28px;font-size:15px;color:#64748b;line-height:1.6;">
+      Votre compte a été créé. Vous trouverez ci-dessous vos accès temporaires.
+    </p>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+           style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:24px;">
+      <tr>
+        <td style="padding:14px 24px;border-bottom:1px solid #e2e8f0;">
+          <table width="100%" cellspacing="0" cellpadding="0"><tr>
+            <td style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;">Adresse email</td>
+            <td align="right" style="font-size:14px;font-weight:600;color:#1e293b;">${vars.email}</td>
+          </tr></table>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:14px 24px;">
+          <table width="100%" cellspacing="0" cellpadding="0"><tr>
+            <td style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;">Mot de passe temporaire</td>
+            <td align="right" style="font-size:18px;font-weight:800;color:#1565C0;font-family:'Courier New',monospace;letter-spacing:1px;">${vars.temporaryPassword}</td>
+          </tr></table>
+        </td>
+      </tr>
+    </table>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+           style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin-bottom:28px;">
+      <tr>
+        <td style="padding:14px 20px;">
+          <p style="margin:0;font-size:13px;font-weight:600;color:#dc2626;">
+            ⚠️ Ce mot de passe expire dans ${vars.expiresIn}. Connectez-vous rapidement.
+          </p>
+          <p style="margin:6px 0 0;font-size:12px;color:#ef4444;">
+            Il vous sera demandé de choisir un nouveau mot de passe dès votre première connexion.
+          </p>
+        </td>
+      </tr>
+    </table>
+    <table role="presentation" cellspacing="0" cellpadding="0">
+      <tr>
+        <td style="border-radius:8px;background:#1565C0;">
+          <a href="${vars.loginUrl}" style="display:inline-block;padding:15px 36px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:0.3px;border-radius:8px;">
+            Accéder à la plateforme &nbsp;→
+          </a>
+        </td>
+      </tr>
+    </table>`;
+  return authEmailWrapper('Bienvenue', 'rgba(255,255,255,0.22)', '#1565C0', body);
+}
+
+/** Email envoyé quand l'admin réinitialise le mot de passe d'un utilisateur */
+export function buildAdminResetEmail(vars: {
+  name: string;
+  email: string;
+  temporaryPassword: string;
+  loginUrl: string;
+  expiresIn: string;
+}): string {
+  const body = `
+    <h1 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#1e293b;">Réinitialisation de mot de passe</h1>
+    <p style="margin:0 0 28px;font-size:15px;color:#64748b;line-height:1.6;">
+      Bonjour <strong>${vars.name}</strong>, un administrateur a réinitialisé votre mot de passe. Voici vos nouveaux accès temporaires.
+    </p>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+           style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:24px;">
+      <tr>
+        <td style="padding:14px 24px;border-bottom:1px solid #e2e8f0;">
+          <table width="100%" cellspacing="0" cellpadding="0"><tr>
+            <td style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;">Adresse email</td>
+            <td align="right" style="font-size:14px;font-weight:600;color:#1e293b;">${vars.email}</td>
+          </tr></table>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:14px 24px;">
+          <table width="100%" cellspacing="0" cellpadding="0"><tr>
+            <td style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.8px;">Nouveau mot de passe temporaire</td>
+            <td align="right" style="font-size:18px;font-weight:800;color:#d97706;font-family:'Courier New',monospace;letter-spacing:1px;">${vars.temporaryPassword}</td>
+          </tr></table>
+        </td>
+      </tr>
+    </table>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+           style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin-bottom:28px;">
+      <tr>
+        <td style="padding:14px 20px;">
+          <p style="margin:0;font-size:13px;font-weight:600;color:#dc2626;">
+            ⚠️ Ce mot de passe expire dans ${vars.expiresIn}. Connectez-vous rapidement.
+          </p>
+          <p style="margin:6px 0 0;font-size:12px;color:#ef4444;">
+            Il vous sera demandé de choisir un nouveau mot de passe dès votre connexion.
+          </p>
+        </td>
+      </tr>
+    </table>
+    <table role="presentation" cellspacing="0" cellpadding="0">
+      <tr>
+        <td style="border-radius:8px;background:#d97706;">
+          <a href="${vars.loginUrl}" style="display:inline-block;padding:15px 36px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:0.3px;border-radius:8px;">
+            Se connecter &nbsp;→
+          </a>
+        </td>
+      </tr>
+    </table>`;
+  return authEmailWrapper('Réinitialisation', '#b45309', '#d97706', body);
+}
+
+/** Email envoyé lors d'une demande "mot de passe oublié" */
+export function buildPasswordResetEmail(vars: {
+  name: string;
+  resetUrl: string;
+  expiresIn: string;
+}): string {
+  const body = `
+    <h1 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#1e293b;">Réinitialisation de votre mot de passe</h1>
+    <p style="margin:0 0 28px;font-size:15px;color:#64748b;line-height:1.6;">
+      Bonjour <strong>${vars.name}</strong>,<br><br>
+      Nous avons reçu une demande de réinitialisation du mot de passe pour votre compte OptimusCredit.
+      Cliquez sur le bouton ci-dessous pour définir un nouveau mot de passe.
+    </p>
+    <table role="presentation" cellspacing="0" cellpadding="0" style="margin-bottom:28px;">
+      <tr>
+        <td style="border-radius:8px;background:#1565C0;">
+          <a href="${vars.resetUrl}" style="display:inline-block;padding:15px 36px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:0.3px;border-radius:8px;">
+            Réinitialiser mon mot de passe &nbsp;→
+          </a>
+        </td>
+      </tr>
+    </table>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+           style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px;">
+      <tr>
+        <td style="padding:14px 20px;">
+          <p style="margin:0;font-size:12px;color:#64748b;">
+            ⏱️ Ce lien expire dans <strong>${vars.expiresIn}</strong>.
+          </p>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.7;">
+      Si vous n'avez pas demandé cette réinitialisation, ignorez simplement cet email.
+      Votre mot de passe restera inchangé.
+    </p>`;
+  return authEmailWrapper('Réinitialisation', 'rgba(255,255,255,0.22)', '#1565C0', body);
+}
+
 /** Sample variables for template preview */
 export const PREVIEW_SAMPLE_VARS = {
   clientName: 'ACME Sénégal SARL',

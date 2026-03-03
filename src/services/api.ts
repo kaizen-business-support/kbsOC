@@ -1,18 +1,11 @@
 import axios, { AxiosResponse } from 'axios';
 import { AnalysisData, FileUploadResult, ApiResponse } from '../types';
 
-// API Configuration - Dynamic URL based on current host
+// API Configuration - Always dynamic: uses the same host as the browser
 const getApiBaseUrl = (): string => {
-  // If explicit env var is set, use it
-  if (process.env.REACT_APP_API_URL) {
-    return process.env.REACT_APP_API_URL;
-  }
-
-  // Otherwise, use same host as frontend with backend port
-  const protocol = window.location.protocol; // http: or https:
-  const hostname = window.location.hostname; // VM IP or localhost or domain
-  const apiPort = process.env.REACT_APP_API_PORT || '5006';
-
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  const apiPort = process.env.REACT_APP_API_PORT || '5007';
   return `${protocol}//${hostname}:${apiPort}/api`;
 };
 
@@ -1219,6 +1212,40 @@ export class ApiService {
     }
   }
 }
+
+// ─── Auth: password lifecycle & 2FA admin ─────────────────────────────────────
+
+export const authPasswordApi = {
+  async forgotPassword(email: string): Promise<{ success: boolean; message: string }> {
+    const res = await api.post('/auth/forgot-password', { email });
+    return res.data;
+  },
+
+  async resetPassword(token: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    const res = await api.post('/auth/reset-password', { token, newPassword });
+    return res.data;
+  },
+
+  async changePasswordForced(
+    tempToken: string,
+    newPassword: string
+  ): Promise<{ success: boolean; accessToken: string; refreshToken: string; user: any }> {
+    const res = await api.post('/auth/change-password-forced', { newPassword }, {
+      headers: { Authorization: `Bearer ${tempToken}` }
+    });
+    return res.data;
+  },
+
+  async setUser2FARequired(userId: string, required: boolean): Promise<{ success: boolean }> {
+    const res = await api.put(`/auth/2fa/users/${userId}/2fa-required`, { required });
+    return res.data;
+  },
+
+  async setRole2FARequired(role: string, required: boolean): Promise<{ success: boolean }> {
+    const res = await api.put(`/auth/2fa/roles/${role}/2fa-required`, { required });
+    return res.data;
+  },
+};
 
 // Utility function to handle API errors
 export const handleApiError = (error: any): string => {

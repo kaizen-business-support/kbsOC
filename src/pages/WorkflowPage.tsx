@@ -52,11 +52,21 @@ export type ApplicationStatus =
   | 'draft'
   | 'submitted'
   | 'under_review'
-  | 'branch_manager_review'
-  | 'credit_committee_review'
   | 'approved'
-  | 'denied'
-  | 'on_hold';
+  | 'rejected'
+  | 'disbursed';
+
+// Mapping des étapes workflow → libellés affichés
+const STEP_DISPLAY: Record<string, { label: string; color: 'default' | 'primary' | 'info' | 'warning' | 'success' | 'error' }> = {
+  application_created:     { label: 'Création',             color: 'default'  },
+  credit_analysis:         { label: 'Analyse Crédit',       color: 'info'     },
+  branch_manager_review:   { label: "Dir. d'Agence",        color: 'warning'  },
+  credit_committee_review: { label: 'Comité de Crédit',     color: 'warning'  },
+  management_review:       { label: 'Direction Générale',   color: 'warning'  },
+  final_decision:          { label: 'Décision Finale',      color: 'info'     },
+  contract_preparation:    { label: 'Préparation Contrat',  color: 'info'     },
+  disbursement:            { label: 'Déblocage',            color: 'success'  },
+};
 
 export interface CreditApplication {
   id: string;
@@ -188,27 +198,23 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
   const getStatusColor = (status: ApplicationStatus): 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' => {
     switch (status) {
       case 'approved': return 'success';
-      case 'denied': return 'error';
+      case 'rejected': return 'error';
+      case 'disbursed': return 'success';
       case 'under_review': return 'info';
-      case 'branch_manager_review': return 'warning';
-      case 'credit_committee_review': return 'warning';
       case 'submitted': return 'primary';
       case 'draft': return 'default';
-      case 'on_hold': return 'secondary';
       default: return 'default';
     }
   };
 
   const getStatusLabel = (status: ApplicationStatus): string => {
     switch (status) {
-      case 'draft': return 'Brouillon';
-      case 'submitted': return 'Soumise';
+      case 'draft':        return 'Brouillon';
+      case 'submitted':    return 'Soumise';
       case 'under_review': return 'En analyse';
-      case 'branch_manager_review': return 'Directeur d\'agence';
-      case 'credit_committee_review': return 'Comité de crédit';
-      case 'approved': return 'Approuvée';
-      case 'denied': return 'Refusée';
-      case 'on_hold': return 'En attente';
+      case 'approved':     return 'Approuvée';
+      case 'rejected':     return 'Refusée';
+      case 'disbursed':    return 'Débloquée';
       default: return status;
     }
   };
@@ -242,17 +248,15 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
 
   // Get human-readable workflow status
   const getWorkflowStatusDisplay = (workflow: WorkflowTimestamps): { label: string; color: 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' } => {
-    if (workflow.finalDecision === 'approved') {
-      return { label: 'Approuvé', color: 'success' };
-    }
-    if (workflow.finalDecision === 'rejected') {
-      return { label: 'Refusé', color: 'error' };
-    }
+    if (workflow.finalDecision === 'approved') return { label: 'Approuvé',  color: 'success' };
+    if (workflow.finalDecision === 'rejected') return { label: 'Refusé',    color: 'error'   };
 
     const currentStep = getCurrentStep(workflow);
     if (currentStep) {
-      const stepName = FIXED_WORKFLOW_STEPS[currentStep.stepId]?.stepName || currentStep.stepName;
-      return { label: stepName, color: 'info' };
+      const display = STEP_DISPLAY[currentStep.stepId]
+        || STEP_DISPLAY[currentStep.stepName]
+        || { label: FIXED_WORKFLOW_STEPS[currentStep.stepId]?.stepName || currentStep.stepName, color: 'info' as const };
+      return display;
     }
 
     return { label: 'En cours', color: 'default' };
@@ -279,7 +283,7 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
 
   const paginatedApplications = filteredApplications.slice(
     page * rowsPerPage,
-    page + 1 * rowsPerPage
+    (page + 1) * rowsPerPage
   );
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -486,10 +490,11 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
                   label="Statut"
                 >
                   <MenuItem value="all">Tous</MenuItem>
-                  <MenuItem value="pending">En attente</MenuItem>
-                  <MenuItem value="approved">Approuvé</MenuItem>
-                  <MenuItem value="rejected">Refusé</MenuItem>
-                  <MenuItem value="submitted">Soumis</MenuItem>
+                  <MenuItem value="submitted">Soumise</MenuItem>
+                  <MenuItem value="under_review">En analyse</MenuItem>
+                  <MenuItem value="approved">Approuvée</MenuItem>
+                  <MenuItem value="rejected">Refusée</MenuItem>
+                  <MenuItem value="disbursed">Débloquée</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -536,17 +541,15 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
           </Grid>
         </Box>
 
-        <TableContainer component={Paper}>
+        <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none' }}>
           <Table>
             <TableHead>
-              <TableRow>
-                <TableCell>Numéro</TableCell>
-                <TableCell>Client</TableCell>
-                <TableCell>Montant</TableCell>
-                <TableCell>Statut / Étape</TableCell>
-                <TableCell>Progrès</TableCell>
-                <TableCell>Chargé d'affaires</TableCell>
-                <TableCell>Actions</TableCell>
+              <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                {['Numéro', 'Client', 'Montant', 'Statut / Étape', 'Progrès', "Chargé d'affaires", 'Actions'].map((col) => (
+                  <TableCell key={col} sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', borderBottom: '1px solid #e8ecf0', py: 1.5 }}>
+                    {col}
+                  </TableCell>
+                ))}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -556,20 +559,28 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
                 const workflowStatus = workflow ? getWorkflowStatusDisplay(workflow) : { label: 'En attente', color: 'default' as const };
 
                 return (
-                  <TableRow key={application.id}>
-                    <TableCell>{workflow?.applicationNumber || application.applicationNumber || application.id}</TableCell>
-                    <TableCell>{application.clientName}</TableCell>
-                    <TableCell>
+                  <TableRow
+                    key={application.id}
+                    sx={{
+                      borderBottom: '1px solid #f1f5f9',
+                      '&:last-child': { borderBottom: 'none' },
+                      '&:hover': { bgcolor: 'rgba(31,78,121,0.03)', cursor: 'pointer' },
+                    }}
+                  >
+                    <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{workflow?.applicationNumber || application.applicationNumber || application.id}</TableCell>
+                    <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{application.clientName}</TableCell>
+                    <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>
                       {new Intl.NumberFormat('fr-FR', {
                         style: 'currency',
                         currency: application.currency
                       }).format(application.amount)}
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ py: 1.5 }}>
                       <Chip
                         label={workflowStatus.label}
                         color={workflowStatus.color}
                         size="small"
+                        variant="outlined"
                       />
                     </TableCell>
                     <TableCell>
@@ -584,7 +595,7 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
                         </Typography>
                       </Box>
                     </TableCell>
-                    <TableCell>{application.accountManager}</TableCell>
+                    <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{application.accountManager}</TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 1 }}>
                         <Button
@@ -656,53 +667,58 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
 
       <TabPanel value={activeTab} index={2}>
         {/* Complete History Tab */}
-        <TableContainer component={Paper}>
+        <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none' }}>
           <Table>
             <TableHead>
-              <TableRow>
-                <TableCell>Numéro</TableCell>
-                <TableCell>Client</TableCell>
-                <TableCell>Montant</TableCell>
-                <TableCell>Statut final</TableCell>
-                <TableCell>Durée totale</TableCell>
-                <TableCell>Date création</TableCell>
-                <TableCell>Date finalisation</TableCell>
-                <TableCell>Actions</TableCell>
+              <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                {['Numéro', 'Client', 'Montant', 'Statut final', 'Durée totale', 'Date création', 'Date finalisation', 'Actions'].map((col) => (
+                  <TableCell key={col} sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', borderBottom: '1px solid #e8ecf0', py: 1.5 }}>
+                    {col}
+                  </TableCell>
+                ))}
               </TableRow>
             </TableHead>
             <TableBody>
               {workflows.map((workflow) => (
-                <TableRow key={workflow.applicationId}>
-                  <TableCell>{workflow.applicationNumber}</TableCell>
-                  <TableCell>{workflow.clientName}</TableCell>
-                  <TableCell>
+                <TableRow
+                  key={workflow.applicationId}
+                  sx={{
+                    borderBottom: '1px solid #f1f5f9',
+                    '&:last-child': { borderBottom: 'none' },
+                    '&:hover': { bgcolor: 'rgba(31,78,121,0.03)', cursor: 'pointer' },
+                  }}
+                >
+                  <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{workflow.applicationNumber}</TableCell>
+                  <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{workflow.clientName}</TableCell>
+                  <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>
                     {new Intl.NumberFormat('fr-FR', {
                       style: 'currency',
                       currency: workflow.currency
                     }).format(workflow.requestedAmount)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ py: 1.5 }}>
                     <Chip
-                      label={workflow.finalDecision === 'approved' ? 'Approuvé' : 
-                            workflow.finalDecision === 'rejected' ? 'Refusé' : 
+                      label={workflow.finalDecision === 'approved' ? 'Approuvé' :
+                            workflow.finalDecision === 'rejected' ? 'Refusé' :
                             'En cours'}
-                      color={workflow.finalDecision === 'approved' ? 'success' : 
-                            workflow.finalDecision === 'rejected' ? 'error' : 
+                      color={workflow.finalDecision === 'approved' ? 'success' :
+                            workflow.finalDecision === 'rejected' ? 'error' :
                             'default'}
                       size="small"
+                      variant="outlined"
                     />
                   </TableCell>
-                  <TableCell>
-                    {workflow.totalDuration ? 
-                      `${Math.ceil(workflow.totalDuration / (1000 * 60 * 60 * 24))} jours` : 
+                  <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>
+                    {workflow.totalDuration ?
+                      `${Math.ceil(workflow.totalDuration / (1000 * 60 * 60 * 24))} jours` :
                       'En cours'}
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>
                     {new Date(workflow.totalStartedAt).toLocaleDateString('fr-FR')}
                   </TableCell>
-                  <TableCell>
-                    {workflow.totalCompletedAt ? 
-                      new Date(workflow.totalCompletedAt).toLocaleDateString('fr-FR') : 
+                  <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>
+                    {workflow.totalCompletedAt ?
+                      new Date(workflow.totalCompletedAt).toLocaleDateString('fr-FR') :
                       'En cours'}
                   </TableCell>
                   <TableCell>

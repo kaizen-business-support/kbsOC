@@ -26,7 +26,14 @@ router.get('/', async (_req: Request, res: Response) => {
     const channels = await prisma.notificationChannel.findMany({
       orderBy: { type: 'asc' },
     });
-    res.json({ success: true, data: channels });
+    const sanitized = channels.map(ch => {
+      if (ch.type === 'EMAIL' && ch.config && typeof ch.config === 'object') {
+        const { pass, ...rest } = ch.config as any;
+        return { ...ch, config: { ...rest, pass: pass ? '••••••••' : '' } };
+      }
+      return ch;
+    });
+    res.json({ success: true, data: sanitized });
   } catch (error) {
     console.error('Get channels error:', error);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
@@ -43,18 +50,25 @@ router.put('/:type', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Type invalide' });
     }
 
+    const configData = { ...(config || {}) };
+    if (type.toUpperCase() === 'EMAIL' && configData.pass === '••••••••') {
+      const existing = await prisma.notificationChannel.findFirst({ where: { type: type.toUpperCase() as any } });
+      const oldConfig = existing?.config as any;
+      configData.pass = oldConfig?.pass || '';
+    }
+
     const channel = await prisma.notificationChannel.upsert({
       where: { type: type.toUpperCase() as any },
       create: {
         type: type.toUpperCase() as any,
         name: name || type,
         isActive: isActive ?? false,
-        config: config || {},
+        config: configData,
       },
       update: {
         name: name || type,
         isActive: isActive ?? false,
-        config: config || {},
+        config: configData,
       },
     });
 

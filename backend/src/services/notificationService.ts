@@ -30,7 +30,7 @@ function isHtmlTemplate(body: string): boolean {
 
 // ─── Email ─────────────────────────────────────────────────────────────────────
 
-async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+export async function sendEmail(to: string, subject: string, html: string): Promise<void> {
   const channel = await prisma.notificationChannel.findUnique({ where: { type: 'EMAIL' } });
   if (!channel || !channel.isActive) return;
 

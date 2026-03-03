@@ -3,6 +3,8 @@ import jwt from 'jsonwebtoken';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
 import { generateRandomPassword, hashPassword } from '../utils/password';
 import { prisma } from '../server';
+import { sendEmail } from '../services/notificationService';
+import { buildWelcomeEmail, buildAdminResetEmail } from '../utils/emailTemplates';
 
 const router = express.Router();
 
@@ -75,7 +77,9 @@ router.get('/',
         isActive: true,
         lastLogin: true,
         createdAt: true,
-        permissions: true
+        permissions: true,
+        twoFactorEnabled: true,
+        twoFactorRequired: true
       },
       orderBy: {
         createdAt: 'desc'
@@ -177,9 +181,23 @@ router.post('/',
         department: department || null,
         jobTitle: jobTitle || null,
         permissions,
-        isActive
-      }
+        isActive,
+        mustChangePassword: true,
+        passwordExpiresAt: new Date(Date.now() + 30 * 60 * 1000)
+      } as any
     });
+
+    // Send welcome email with temporary credentials (non-blocking)
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3006';
+    const welcomeHtml = buildWelcomeEmail({
+      name: newUser.name,
+      email: newUser.email,
+      temporaryPassword,
+      loginUrl: frontendUrl,
+      expiresIn: '30 minutes'
+    });
+    sendEmail(newUser.email, 'Bienvenue sur OptimusCredit — Vos accès', welcomeHtml)
+      .catch(err => console.error('Welcome email failed:', err));
 
     res.status(201).json({
       success: true,
@@ -280,11 +298,27 @@ router.post('/:id/reset-password',
     // Hash the password
     const passwordHash = await hashPassword(temporaryPassword);
 
-    // Update user password
+    // Update user password + force change on next login
     await prisma.user.update({
       where: { id },
-      data: { passwordHash }
+      data: {
+        passwordHash,
+        mustChangePassword: true,
+        passwordExpiresAt: new Date(Date.now() + 30 * 60 * 1000)
+      } as any
     });
+
+    // Send admin reset email with temporary credentials (non-blocking)
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3006';
+    const resetHtml = buildAdminResetEmail({
+      name: user.name,
+      email: user.email,
+      temporaryPassword,
+      loginUrl: frontendUrl,
+      expiresIn: '30 minutes'
+    });
+    sendEmail(user.email, 'Réinitialisation de votre mot de passe — OptimusCredit', resetHtml)
+      .catch(err => console.error('Admin reset email failed:', err));
 
     res.json({
       success: true,

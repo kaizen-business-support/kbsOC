@@ -141,4 +141,35 @@ router.get('/logs', requireAdmin, asyncHandler(async (_req: Request, res: Respon
   return res.json({ success: true, logs });
 }));
 
+// ─── Notify-emails CRUD ────────────────────────────────────────────────────────
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// GET /api/backup/notify-emails
+router.get('/notify-emails', requireAdmin, asyncHandler(async (_req: Request, res: Response) => {
+  const emails = await (prisma as any).backupNotifyEmail.findMany({
+    orderBy: { createdAt: 'asc' }
+  });
+  return res.json({ success: true, emails });
+}));
+
+// POST /api/backup/notify-emails
+router.post('/notify-emails', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  const { email, name } = req.body;
+  if (!email || !EMAIL_REGEX.test(email)) {
+    throw new AppError('Adresse email invalide', 400, 'INVALID_EMAIL');
+  }
+  const record = await (prisma as any).backupNotifyEmail.create({
+    data: { email: email.toLowerCase().trim(), name: name || null }
+  });
+  return res.status(201).json({ success: true, email: record });
+}));
+
+// DELETE /api/backup/notify-emails/:id
+router.delete('/notify-emails/:id', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  await (prisma as any).backupNotifyEmail.delete({ where: { id } });
+  return res.json({ success: true, message: 'Destinataire supprimé' });
+}));
+
 export default router;

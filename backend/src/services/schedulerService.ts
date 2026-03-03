@@ -1,15 +1,17 @@
 /**
- * schedulerService.ts — Cron-based backup scheduler.
+ * schedulerService.ts — Cron-based scheduler.
  *
  * Schedule:
  *  - Partial backup every 6 hours
  *  - Full backup daily at 02:00
  *  - Cleanup of backups older than 30 days every Sunday at 03:00
+ *  - Cleanup of audit logs older than 60 days daily at 04:00
  */
 
 import cron from 'node-cron';
 import { createBackup, deleteOldBackups } from './backupService';
 import { logger } from '../utils/logger';
+import { prisma } from '../server';
 
 export function startScheduler(): void {
   // Partial backup every 6 hours: 0 */6 * * *
@@ -42,5 +44,20 @@ export function startScheduler(): void {
     logger.info(`Cleanup done: ${deleted} old backup(s) removed`);
   });
 
-  logger.info('Backup scheduler started');
+  // Cleanup audit logs older than AUDIT_RETENTION_DAYS (default 60) daily at 04:00
+  cron.schedule('0 4 * * *', async () => {
+    const retentionDays = parseInt(process.env.AUDIT_RETENTION_DAYS || '60', 10);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - retentionDays);
+    try {
+      const result = await prisma.auditLog.deleteMany({
+        where: { createdAt: { lt: cutoff } },
+      });
+      logger.info(`Audit log cleanup: ${result.count} entries older than ${retentionDays} days removed`);
+    } catch (err) {
+      logger.error('Audit log cleanup FAILED:', err);
+    }
+  });
+
+  logger.info('Scheduler started (backup + audit log cleanup)');
 }

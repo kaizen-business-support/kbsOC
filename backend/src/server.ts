@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import os from 'os';
 import { PrismaClient } from '@prisma/client';
 
 // Import routes
@@ -26,12 +27,14 @@ import notificationChannelRoutes from './routes/notification-channels';
 import notificationTemplateRoutes from './routes/notification-templates';
 import notificationRuleRoutes from './routes/notification-rules';
 import notificationRoutes from './routes/notifications';
+import auditLogRoutes from './routes/audit-logs';
 import { startScheduler } from './services/schedulerService';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './middleware/logger';
 import { authenticate } from './middleware/auth';
+import { auditLogger } from './middleware/auditLogger';
 
 // Load environment variables
 dotenv.config();
@@ -45,7 +48,24 @@ export const prisma = new PrismaClient();
 // ─── Security headers ─────────────────────────────────────────────────────────
 app.use(helmet());
 
-// ─── CORS — never use wildcard '*' ───────────────────────────────────────────
+// ─── CORS — auto-detect local IPs + explicit list ────────────────────────────
+const FRONTEND_PORT = process.env.FRONTEND_PORT || '3006';
+
+// Detect all local network IPs of this machine at startup
+const getLocalNetworkOrigins = (): string[] => {
+  const origins: string[] = [];
+  const interfaces = os.networkInterfaces();
+  for (const iface of Object.values(interfaces)) {
+    if (!iface) continue;
+    for (const addr of iface) {
+      if (addr.family === 'IPv4' && !addr.internal) {
+        origins.push(`http://${addr.address}:${FRONTEND_PORT}`);
+      }
+    }
+  }
+  return origins;
+};
+
 const rawAllowedOrigins = process.env.ALLOWED_ORIGINS || 'http://localhost:3006';
 
 // Reject wildcard '*' — exit early in production, warn in dev
@@ -54,9 +74,16 @@ if (rawAllowedOrigins === '*' && process.env.NODE_ENV === 'production') {
   process.exit(1);
 }
 
-const allowedOrigins: string[] = rawAllowedOrigins === '*'
+const staticOrigins: string[] = rawAllowedOrigins === '*'
   ? ['http://localhost:3006']
   : rawAllowedOrigins.split(',').map(o => o.trim()).filter(Boolean);
+
+const dynamicOrigins = getLocalNetworkOrigins();
+
+// Merge static + auto-detected, remove duplicates
+const allowedOrigins: string[] = [...new Set([...staticOrigins, ...dynamicOrigins])];
+
+console.log('🌐 CORS allowed origins:', allowedOrigins);
 
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
@@ -128,6 +155,13 @@ app.use((_req, res, next) => {
 // ─── Logging middleware ───────────────────────────────────────────────────────
 app.use(logger);
 
+// ─── Audit logger — global, non-blocking ─────────────────────────────────────
+// Placed before routes so res.on('finish') is registered on every request.
+// By the time the 'finish' event fires, authenticate() has already set req.user.
+// The middleware self-guards: it does nothing if req.user is absent or if the
+// HTTP method is not mutating (GET / HEAD / OPTIONS).
+app.use(auditLogger);
+
 // ─── Public routes ────────────────────────────────────────────────────────────
 // Auth routes have their own rate limiter on login/refresh
 app.use('/api/auth/login', authLimiter);
@@ -154,6 +188,7 @@ app.use('/api/notification-channels', authenticate, notificationChannelRoutes);
 app.use('/api/notification-templates', authenticate, notificationTemplateRoutes);
 app.use('/api/notification-rules', authenticate, notificationRuleRoutes);
 app.use('/api/notifications', authenticate, notificationRoutes);
+app.use('/api/audit-logs',   authenticate, auditLogRoutes);
 
 // ─── Root endpoint ────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {

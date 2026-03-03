@@ -132,35 +132,37 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
         </IconButton>
 
         <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1 }}>
-          <img 
+          <img
             src={logoImage}
-            alt="Optimus Credit" 
-            style={{ 
-              height: '40px',
-              marginRight: '12px'
+            alt="Optimus Credit"
+            style={{
+              height: '32px',
+              marginRight: '8px',
+              flexShrink: 0,
             }}
             onError={(e) => {
-              // Fallback if logo doesn't load
               e.currentTarget.style.display = 'none';
             }}
           />
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-            <Typography 
-              variant="h6" 
-              noWrap 
-              component="div" 
-              sx={{ 
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', overflow: 'hidden' }}>
+            <Typography
+              variant="h6"
+              noWrap
+              component="div"
+              sx={{
                 fontWeight: 600,
                 letterSpacing: '0.5px',
+                fontSize: { xs: '0.95rem', sm: '1.1rem' },
               }}
             >
               OptimusCredit
             </Typography>
-            <Typography 
-              variant="caption" 
-              sx={{ 
+            <Typography
+              variant="caption"
+              sx={{
                 color: 'rgba(255,255,255,0.8)',
                 lineHeight: 1,
+                display: { xs: 'none', sm: 'block' },
               }}
             >
               {t('header.subtitle')}
@@ -168,16 +170,21 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
           </Box>
         </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 1, md: 2 } }}>
           <Chip
             label={pageTitle[currentPage]}
             color="secondary"
             variant="outlined"
             sx={{
+              display: { xs: 'none', sm: 'flex' },
               color: 'white',
               borderColor: 'rgba(255,255,255,0.3)',
+              maxWidth: { sm: 120, md: 200 },
               '& .MuiChip-label': {
                 fontWeight: 500,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
               },
             }}
           />

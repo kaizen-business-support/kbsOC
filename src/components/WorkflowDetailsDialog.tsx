@@ -258,11 +258,42 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
     return isNaN(numValue) ? 0 : numValue;
   };
 
+  // Shared balance totals computation (used by Grandes Masses, Bilan Détaillé and ratios)
+  const computeBalanceTotals = (yearData: any) => {
+    const actifImmobilise = getNumericValue(yearData, 'actif_immobilise') ||
+      (getNumericValue(yearData, 'immobilisations_incorporelles') +
+       getNumericValue(yearData, 'immobilisations_corporelles') +
+       getNumericValue(yearData, 'immobilisations_financieres'));
+    const actifCirculant = getNumericValue(yearData, 'actif_circulant') ||
+      (getNumericValue(yearData, 'stocks') +
+       getNumericValue(yearData, 'creances_clients') +
+       getNumericValue(yearData, 'autres_creances'));
+    const tresorerieActif = getNumericValue(yearData, 'tresorerie');
+    const totalActif = actifImmobilise + actifCirculant + tresorerieActif;
+
+    const capitauxPropres = getNumericValue(yearData, 'capitaux_propres') ||
+      (getNumericValue(yearData, 'capital_social') +
+       getNumericValue(yearData, 'reserves') +
+       getNumericValue(yearData, 'resultat_exercice'));
+    const dettesFinancieres = getNumericValue(yearData, 'dettes_financieres') ||
+      (getNumericValue(yearData, 'emprunts_bancaires_lt') +
+       getNumericValue(yearData, 'autres_dettes_financieres'));
+    const passifCirculant = getNumericValue(yearData, 'passif_circulant') ||
+      (getNumericValue(yearData, 'dettes_fournisseurs') +
+       getNumericValue(yearData, 'dettes_fiscales_sociales') +
+       getNumericValue(yearData, 'autres_dettes_courantes'));
+    const tresoreriePassif = getNumericValue(yearData, 'tresorerie_passif') ||
+      getNumericValue(yearData, 'emprunts_bancaires_ct');
+    const totalPassif = capitauxPropres + dettesFinancieres + passifCirculant + tresoreriePassif;
+
+    return { totalActif, totalPassif };
+  };
+
   // Calculate key ratios
   const calculateRatios = (yearData: any) => {
     if (!yearData) return null;
 
-    const totalActif = getNumericValue(yearData, 'total_actif') || getNumericValue(yearData, 'actif_total');
+    const totalActif = computeBalanceTotals(yearData).totalActif;
     const actifCirculant = getNumericValue(yearData, 'actif_circulant') || getNumericValue(yearData, 'total_actif_circulant');
     const capitauxPropres = getNumericValue(yearData, 'capitaux_propres') || getNumericValue(yearData, 'fonds_propres');
     const passifCirculant = getNumericValue(yearData, 'passif_circulant') ||
@@ -695,17 +726,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                                       <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>TOTAL ACTIF</Typography>
                                     </TableCell>
                                     {allYearsData.map(({ year, data: yearData }) => {
-                                      // Calculate total from grandes masses
-                                      const actifImmobilise = getNumericValue(yearData, 'actif_immobilise') ||
-                                        (getNumericValue(yearData, 'immobilisations_incorporelles') +
-                                         getNumericValue(yearData, 'immobilisations_corporelles') +
-                                         getNumericValue(yearData, 'immobilisations_financieres'));
-                                      const actifCirculantHAO = getNumericValue(yearData, 'stocks') +
-                                        getNumericValue(yearData, 'creances_clients') +
-                                        getNumericValue(yearData, 'autres_creances');
-                                      const tresorerie = getNumericValue(yearData, 'tresorerie');
-                                      const totalActif = actifImmobilise + actifCirculantHAO + tresorerie;
-
+                                      const totalActif = getNumericValue(yearData, 'total_actif') || computeBalanceTotals(yearData).totalActif;
                                       return (
                                         <TableCell key={year} align="right">
                                           <Typography variant="body2" sx={{ color: 'white', fontWeight: 700 }}>
@@ -785,20 +806,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                                       <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>TOTAL PASSIF</Typography>
                                     </TableCell>
                                     {allYearsData.map(({ year, data: yearData }) => {
-                                      // Calculate total from grandes masses
-                                      const capitauxPropres = getNumericValue(yearData, 'capitaux_propres') ||
-                                        (getNumericValue(yearData, 'capital_social') +
-                                         getNumericValue(yearData, 'reserves') +
-                                         getNumericValue(yearData, 'resultat_exercice'));
-                                      const dettesFinancieres = getNumericValue(yearData, 'dettes_financieres') ||
-                                        (getNumericValue(yearData, 'emprunts_bancaires_lt') +
-                                         getNumericValue(yearData, 'autres_dettes_financieres'));
-                                      const passifCirculantHAO = getNumericValue(yearData, 'dettes_fournisseurs') +
-                                        getNumericValue(yearData, 'dettes_fiscales_sociales') +
-                                        getNumericValue(yearData, 'autres_dettes_courantes');
-                                      const tresoreriePassif = getNumericValue(yearData, 'emprunts_bancaires_ct');
-                                      const totalPassif = capitauxPropres + dettesFinancieres + passifCirculantHAO + tresoreriePassif;
-
+                                      const totalPassif = getNumericValue(yearData, 'total_passif') || computeBalanceTotals(yearData).totalPassif;
                                       return (
                                         <TableCell key={year} align="right">
                                           <Typography variant="body2" sx={{ color: 'white', fontWeight: 700 }}>
@@ -958,7 +966,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                             <TableCell><strong>TOTAL ACTIF</strong></TableCell>
                             {allYearsData.map(({ year, data: yearData }) => (
                               <TableCell key={year} align="right" sx={{ fontWeight: 700, fontSize: '1rem' }}>
-                                {formatCurrency(getNumericValue(yearData, 'total_actif'))}
+                                {formatCurrency(getNumericValue(yearData, 'total_actif') || computeBalanceTotals(yearData).totalActif)}
                               </TableCell>
                             ))}
                           </TableRow>
@@ -1111,12 +1119,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                             <TableCell><strong>TOTAL PASSIF</strong></TableCell>
                             {allYearsData.map(({ year, data: yearData }) => (
                               <TableCell key={year} align="right" sx={{ fontWeight: 700, fontSize: '1rem' }}>
-                                {formatCurrency(
-                                  getNumericValue(yearData, 'total_passif') ||
-                                  (getNumericValue(yearData, 'capitaux_propres') +
-                                   getNumericValue(yearData, 'dettes_financieres') +
-                                   getNumericValue(yearData, 'passif_circulant'))
-                                )}
+                                {formatCurrency(getNumericValue(yearData, 'total_passif') || computeBalanceTotals(yearData).totalPassif)}
                               </TableCell>
                             ))}
                           </TableRow>

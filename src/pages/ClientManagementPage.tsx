@@ -155,89 +155,6 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
         </Typography>
       </Box>
 
-      {/* Quick Stats */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
-                  <BusinessIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                    {clients.length}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Clients Actifs
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Avatar sx={{ bgcolor: 'success.main', mr: 2 }}>
-                  <BankIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                    87%
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Conformité SYSCOHADA
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Avatar sx={{ bgcolor: 'warning.main', mr: 2 }}>
-                  <PersonIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                    156
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Actionnaires Tracés
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Avatar sx={{ bgcolor: 'info.main', mr: 2 }}>
-                  <UploadIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                    23
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Dossiers en Cours
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
       {/* Main Content */}
       <Card>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
@@ -273,54 +190,51 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
               </Box>
 
               {/* Client Table */}
-              <TableContainer component={Paper} variant="outlined">
+              <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none' }}>
                 <Table>
                   <TableHead>
-                    <TableRow>
-                      <TableCell>Client</TableCell>
-                      <TableCell>RCCM</TableCell>
-                      <TableCell>NINEA</TableCell>
-                      <TableCell>Secteur</TableCell>
-                      <TableCell>Agence</TableCell>
-                      <TableCell>Chargé d'Affaires</TableCell>
-                      <TableCell>Statut</TableCell>
-                      <TableCell align="center">Actions</TableCell>
+                    <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                      {['Client', 'RCCM', 'NINEA', 'Secteur', 'Agence', "Chargé d'Affaires", 'Statut', 'Actions'].map((col) => (
+                        <TableCell key={col} align={col === 'Actions' ? 'center' : 'left'} sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', borderBottom: '1px solid #e8ecf0', py: 1.5 }}>
+                          {col}
+                        </TableCell>
+                      ))}
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {filteredClients.map((client) => (
-                      <TableRow key={client.id} hover>
-                        <TableCell>
+                      <TableRow
+                        key={client.id}
+                        sx={{
+                          borderBottom: '1px solid #f1f5f9',
+                          '&:last-child': { borderBottom: 'none' },
+                          '&:hover': { bgcolor: 'rgba(31,78,121,0.03)', cursor: 'pointer' },
+                        }}
+                      >
+                        <TableCell sx={{ py: 1.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <Avatar sx={{ bgcolor: 'primary.main', mr: 2, width: 32, height: 32 }}>
+                            <Avatar sx={{ bgcolor: 'primary.main', mr: 2, width: 30, height: 30 }}>
                               <BusinessIcon fontSize="small" />
                             </Avatar>
-                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            <Typography sx={{ fontSize: '13.5px', fontWeight: 500, color: '#374151' }}>
                               {client.name}
                             </Typography>
                           </Box>
                         </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                            {client.rccm}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                            {client.ninea}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>{client.industry}</TableCell>
-                        <TableCell>{client.branch}</TableCell>
-                        <TableCell>{client.relationshipManager}</TableCell>
-                        <TableCell>
+                        <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151', fontFamily: 'monospace' }}>{client.rccm}</TableCell>
+                        <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151', fontFamily: 'monospace' }}>{client.ninea}</TableCell>
+                        <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{client.industry}</TableCell>
+                        <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{client.branch}</TableCell>
+                        <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{client.relationshipManager}</TableCell>
+                        <TableCell sx={{ py: 1.5 }}>
                           <Chip
                             label={client.status}
                             color={getStatusColor(client.status) as any}
                             size="small"
+                            variant="outlined"
                           />
                         </TableCell>
-                        <TableCell align="center">
+                        <TableCell align="center" sx={{ py: 1.5 }}>
                           <IconButton
                             size="small"
                             onClick={() => handleClientClick(client)}

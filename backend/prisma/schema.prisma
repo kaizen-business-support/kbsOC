@@ -25,6 +25,11 @@ model User {
   twoFactorSecret     String?             @map("two_factor_secret")
   backupCodes         String[]            @default([]) @map("backup_codes")
   twoFactorRequired   Boolean             @default(false) @map("two_factor_required") // admin can force per-user
+  // Password lifecycle fields
+  mustChangePassword  Boolean             @default(false) @map("must_change_password")
+  passwordExpiresAt   DateTime?           @map("password_expires_at")
+  passwordResetToken  String?             @map("password_reset_token")
+  passwordResetExpires DateTime?          @map("password_reset_expires")
   createdAt           DateTime            @default(now()) @map("created_at")
   updatedAt           DateTime            @updatedAt @map("updated_at")
   auditLogs           AuditLog[]
@@ -369,6 +374,16 @@ enum StepType {
   APPROVAL @map("approval")  // Dynamic approval steps based on amount thresholds
 
   @@map("step_type")
+}
+
+model BackupNotifyEmail {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("backup_notify_emails")
 }
 
 // ─── Notification Models ───────────────────────────────────────────────────────

@@ -1,450 +1,400 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Typography,
   Grid,
-  Card,
-  CardContent,
   Button,
-  Avatar,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  Divider,
   Chip,
-  Paper,
+  Tooltip,
 } from '@mui/material';
+import { keyframes } from '@emotion/react';
 import { useTranslation } from 'react-i18next';
 import {
-  CloudUpload as UploadIcon,
   Analytics as AnalysisIcon,
-  Assessment as ReportsIcon,
-  TrendingUp as TrendingUpIcon,
-  Speed as SpeedIcon,
-  Security as SecurityIcon,
-  Devices as MobileIcon,
-  CheckCircle as CheckIcon,
-  People as ClientIcon,
-  AccountBalance as BankingIcon,
-  Gavel as WorkflowIcon,
-  Language as BilingualIcon,
-  CompareArrows as BenchmarkIcon,
-  BarChart as ScoringIcon,
-  Assignment as DocumentIcon,
-  Schedule as ProcessIcon,
+  GroupsOutlined,
+  AccountTreeOutlined,
+  InsightsOutlined,
+  RequestQuoteOutlined,
+  NoteAddOutlined,
+  EditNoteOutlined,
+  QueryStatsOutlined,
+  SummarizeOutlined,
+  ManageAccountsOutlined,
+  CreditCardOutlined,
+  GavelOutlined,
+  EventNoteOutlined,
+  BackupOutlined,
+  CampaignOutlined,
+  NotificationsNone,
+  HelpOutlineOutlined,
+  TuneOutlined,
+  DashboardOutlined,
 } from '@mui/icons-material';
 import { PageType } from '../types';
+import { useUser } from '../contexts/UserContext';
 import optimusIcon from '../assets/Optimus_icon.png';
+
+// ─── Keyframes ─────────────────────────────────────────────────────────────────
+
+const fadeInUp = keyframes`
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
+
+const fadeInScale = keyframes`
+  from { opacity: 0; transform: scale(0.90); }
+  to   { opacity: 1; transform: scale(1); }
+`;
+
+const floatY = keyframes`
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-10px); }
+`;
+
+const pulseDot = keyframes`
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.55); }
+  50%       { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
+`;
+
+const anim = (
+  name: ReturnType<typeof keyframes>,
+  dur = '0.55s',
+  delay = '0s'
+) => `${name} ${dur} cubic-bezier(0.22,1,0.36,1) ${delay} both`;
+
+// ─── Tokens ───────────────────────────────────────────────────────────────────
+
+const NAVY  = '#0d2137';
+const BLUE  = '#1f4e79';
+const BLUE2 = '#2e6da4';
+const WHITE = '#ffffff';
+
+// ─── Module definitions ───────────────────────────────────────────────────────
+
+interface ModuleDef {
+  id: PageType;
+  label: string;
+  icon: React.ElementType;
+  color: string;        // icon background
+  iconColor: string;    // icon color
+  requiresRole?: string[];
+  requiresData?: boolean;
+}
+
+interface ModuleGroup {
+  label: string;
+  modules: ModuleDef[];
+}
+
+const MODULE_GROUPS: ModuleGroup[] = [
+  {
+    label: 'Processus Crédit',
+    modules: [
+      { id: 'clients',            label: 'Clients',          icon: GroupsOutlined,      color: '#eff6ff', iconColor: '#2563eb' },
+      { id: 'credit-application', label: 'Nouvelle Demande', icon: NoteAddOutlined,     color: '#eef2ff', iconColor: '#4f46e5', requiresRole: ['account_manager', 'admin'] },
+      { id: 'workflow',           label: 'Workflow',         icon: AccountTreeOutlined, color: '#f5f3ff', iconColor: '#7c3aed' },
+      { id: 'analytics',         label: 'Analytiques',      icon: InsightsOutlined,    color: '#ecfeff', iconColor: '#0891b2', requiresRole: ['management', 'admin', 'branch_manager', 'credit_committee'] },
+    ],
+  },
+  {
+    label: 'Analyse Hors-Processus',
+    modules: [
+      { id: 'data-input', label: 'Saisie de Données', icon: EditNoteOutlined,   color: '#f0fdf4', iconColor: '#16a34a' },
+      { id: 'analysis',   label: 'Analyse',           icon: QueryStatsOutlined, color: '#fefce8', iconColor: '#ca8a04', requiresData: true },
+      { id: 'reports',    label: 'Rapports',          icon: SummarizeOutlined,  color: '#fff7ed', iconColor: '#ea580c', requiresData: true },
+    ],
+  },
+  {
+    label: 'Outils',
+    modules: [
+      { id: 'credit-simulation', label: 'Simulateur de Crédit', icon: RequestQuoteOutlined, color: '#f0fdf4', iconColor: '#059669' },
+    ],
+  },
+  {
+    label: 'Configuration',
+    modules: [
+      { id: 'user-management',    label: 'Utilisateurs',         icon: ManageAccountsOutlined, color: '#fff1f2', iconColor: '#e11d48', requiresRole: ['admin', 'management'] },
+      { id: 'credit-types',       label: 'Types de Crédit',      icon: CreditCardOutlined,     color: '#fdf4ff', iconColor: '#9333ea', requiresRole: ['admin', 'management'] },
+      { id: 'approval-limits',    label: "Limites d'Approbation", icon: GavelOutlined,          color: '#fefce8', iconColor: '#b45309', requiresRole: ['admin', 'management'] },
+      { id: 'bank-holidays-admin', label: 'Jours Fériés',        icon: EventNoteOutlined,      color: '#f0f9ff', iconColor: '#0284c7', requiresRole: ['admin', 'management'] },
+      { id: 'backup',             label: 'Sauvegarde',           icon: BackupOutlined,         color: '#f8fafc', iconColor: '#475569', requiresRole: ['admin'] },
+      { id: 'announcements',      label: "Notes d'information",  icon: CampaignOutlined,       color: '#fff0f6', iconColor: '#db2777', requiresRole: ['admin', 'management'] },
+      { id: 'notifications-config', label: 'Notifications',     icon: NotificationsNone,      color: '#fff7ed', iconColor: '#f97316', requiresRole: ['admin', 'management'] },
+    ],
+  },
+  {
+    label: 'Support',
+    modules: [
+      { id: 'documentation', label: 'Documentation', icon: HelpOutlineOutlined, color: '#f8fafc', iconColor: '#64748b' },
+      { id: 'settings',      label: 'Paramètres',    icon: TuneOutlined,        color: '#f8fafc', iconColor: '#64748b' },
+    ],
+  },
+];
+
+// ─── Module tile ──────────────────────────────────────────────────────────────
+
+interface TileProps {
+  mod: ModuleDef;
+  onNavigate: (page: PageType) => void;
+  disabled?: boolean;
+  animDelay?: string;
+}
+
+const ModuleTile: React.FC<TileProps> = ({ mod, onNavigate, disabled, animDelay = '0s' }) => {
+  const [hovered, setHovered] = useState(false);
+  const Icon = mod.icon;
+
+  return (
+    <Tooltip
+      title={disabled ? 'Chargez des données pour accéder à cette section' : ''}
+      placement="top"
+      disableHoverListener={!disabled}
+    >
+      <Box
+        onClick={() => !disabled && onNavigate(mod.id)}
+        onMouseEnter={() => !disabled && setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 1.25,
+          p: 2,
+          borderRadius: '16px',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          bgcolor: WHITE,
+          border: '1px solid',
+          borderColor: hovered ? `${mod.iconColor}40` : '#e8ecf0',
+          boxShadow: hovered
+            ? `0 8px 32px ${mod.iconColor}18`
+            : '0 1px 3px rgba(0,0,0,0.05)',
+          transform: hovered ? 'translateY(-4px) scale(1.02)' : 'none',
+          opacity: disabled ? 0.45 : 1,
+          transition: 'all 0.22s cubic-bezier(0.22,1,0.36,1)',
+          animation: anim(fadeInScale, '0.4s', animDelay),
+          minHeight: 110,
+          userSelect: 'none',
+        }}
+      >
+        {/* Icon circle */}
+        <Box
+          sx={{
+            width: 52,
+            height: 52,
+            borderRadius: '14px',
+            bgcolor: hovered ? mod.iconColor : mod.color,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'background 0.22s ease',
+            flexShrink: 0,
+          }}
+        >
+          <Icon
+            sx={{
+              fontSize: 26,
+              color: hovered ? WHITE : mod.iconColor,
+              transition: 'color 0.22s ease',
+            }}
+          />
+        </Box>
+
+        {/* Label */}
+        <Typography
+          sx={{
+            fontSize: '12.5px',
+            fontWeight: 600,
+            color: hovered ? mod.iconColor : '#374151',
+            textAlign: 'center',
+            lineHeight: 1.3,
+            transition: 'color 0.22s ease',
+          }}
+        >
+          {mod.label}
+        </Typography>
+      </Box>
+    </Tooltip>
+  );
+};
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 interface HomePageProps {
   onNavigate: (page: PageType) => void;
 }
 
-const creditFeatures = [
-  {
-    icon: ClientIcon,
-    title: 'Gestion des Clients',
-    description: 'Gestion complète des clients corporatifs avec intégration bancaire et traçabilité des actionnaires',
-  },
-  {
-    icon: BankingIcon,
-    title: 'Conformité SYSCOHADA',
-    description: 'Traitement complet des états financiers selon les normes comptables OHADA',
-  },
-  {
-    icon: ScoringIcon,
-    title: 'Score Dual',
-    description: 'Système de notation combinant analyse financière automatisée et appréciation des analystes',
-  },
-  {
-    icon: BenchmarkIcon,
-    title: 'Benchmarking Sectoriel',
-    description: 'Comparaison avec les standards de l\'industrie et analyses de performance relative',
-  },
-  {
-    icon: WorkflowIcon,
-    title: 'Workflow Configurable',
-    description: 'Processus d\'approbation flexible avec seuils configurables et routage automatique',
-  },
-  {
-    icon: BilingualIcon,
-    title: 'Interface Bilingue',
-    description: 'Support complet Français/Anglais avec localisation adaptée au contexte bancaire',
-  },
-  {
-    icon: DocumentIcon,
-    title: 'Gestion Documentaire',
-    description: 'OCR avancé, versioning et catégorisation des documents avec audit trail',
-  },
-  {
-    icon: ProcessIcon,
-    title: 'Suivi en Temps Réel',
-    description: 'Monitoring des processus avec visualisation des workflows et notifications automatiques',
-  },
-];
-
-const userRoles = [
-  {
-    role: 'Chargé d\'Affaires',
-    description: 'Création de clients, saisie des données financières, évaluations qualitatives',
-    color: 'primary',
-  },
-  {
-    role: 'Analyste Crédit',
-    description: 'Révision technique, notation analytique, comparaison sectorielle',
-    color: 'secondary',
-  },
-  {
-    role: 'Directeur d\'Agence',
-    description: 'Approbation jusqu\'à 5M XOF, supervision des équipes, escalade',
-    color: 'success',
-  },
-  {
-    role: 'Comité de Crédit',
-    description: 'Décisions finales pour montants >5M XOF, enregistrement des résolutions',
-    color: 'warning',
-  },
-];
-
-const workflowSteps = [
-  'Création du client et gestion des actionnaires avec validation RCCM/TIN',
-  'Saisie des états financiers SYSCOHADA complets sur 5 années',
-  'Analyse automatique avec calcul des ratios et score financier',
-  'Évaluation qualitative de l\'analyste avec score d\'appréciation',
-  'Routage automatique selon les seuils d\'approbation configurables',
-  'Génération de rapports complets avec recommandations',
-];
-
 export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
   const { t } = useTranslation();
+  const { state: userState, getRoleLabel, isRole } = useUser();
+  const currentUser = userState.currentUser;
+
+  const canViewAnalytics      = isRole('management') || isRole('admin') || isRole('branch_manager') || isRole('credit_committee');
+  const canCreateApplications = isRole('account_manager') || isRole('admin');
+  const canViewConfiguration  = isRole('admin') || isRole('management');
+
+  const isModuleVisible = (mod: ModuleDef): boolean => {
+    if (mod.requiresRole) {
+      const userRole = currentUser?.role || '';
+      if (!mod.requiresRole.includes(userRole)) return false;
+    }
+    return true;
+  };
+
+  const isModuleDisabled = (mod: ModuleDef): boolean => {
+    return !!mod.requiresData;
+  };
+
+  // Filter visible groups and modules
+  const visibleGroups = MODULE_GROUPS
+    .map(group => ({
+      ...group,
+      modules: group.modules.filter(isModuleVisible),
+    }))
+    .filter(group => group.modules.length > 0);
+
+  // Count total for stagger
+  let tileIndex = 0;
 
   return (
-    <Box>
-      {/* Hero Section */}
-      <Box
-        sx={{
-          background: 'linear-gradient(135deg, #D6DEE8 0%, #C4CDD9 100%)',
-          color: '#1f4e79',
-          py: 10,
-          px: 4,
-          borderRadius: 3,
-          mb: 6,
-          textAlign: 'center',
-        }}
-      >
-        <Avatar
-          sx={{
-            width: 100,
-            height: 100,
-            bgcolor: 'transparent',
-            mx: 'auto',
-            mb: 4,
-          }}
-        >
-          <img 
-            src={optimusIcon}
-            alt="OptimusCredit Logo" 
-            style={{ 
-              width: '70px',
-              height: '70px'
-            }}
-          />
-        </Avatar>
-        
-        <Typography variant="h2" component="h1" gutterBottom sx={{ fontWeight: 700 }}>
-          {t('home.title')}
-        </Typography>
-        
-        <Typography variant="h4" component="h2" sx={{ mb: 4, opacity: 0.9 }}>
-          {t('home.subtitle')}
-        </Typography>
-        
-        <Typography variant="h6" sx={{ mb: 4, maxWidth: 900, mx: 'auto', opacity: 0.8 }}>
-          {t('home.description')}
-        </Typography>
+    <Box sx={{ bgcolor: '#f0f4f8', minHeight: '100%' }}>
 
-        <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap', mb: 4 }}>
-          <Chip
-            label={t('home.tags.syscohada')}
-            sx={{ bgcolor: 'rgba(31,78,121,0.1)', color: '#1f4e79', fontWeight: 600, borderColor: '#1f4e79', border: '1px solid' }}
-          />
-          <Chip
-            label={t('home.tags.bilingual')}
-            sx={{ bgcolor: 'rgba(31,78,121,0.1)', color: '#1f4e79', fontWeight: 600, borderColor: '#1f4e79', border: '1px solid' }}
-          />
-          <Chip
-            label={t('home.tags.multiRole')}
-            sx={{ bgcolor: 'rgba(31,78,121,0.1)', color: '#1f4e79', fontWeight: 600, borderColor: '#1f4e79', border: '1px solid' }}
-          />
-          <Chip
-            label={t('home.tags.dualScoring')}
-            sx={{ bgcolor: 'rgba(31,78,121,0.1)', color: '#1f4e79', fontWeight: 600, borderColor: '#1f4e79', border: '1px solid' }}
-          />
-        </Box>
+      {/* ══════════════════════════════════════════════════════════════
+          HERO
+      ══════════════════════════════════════════════════════════════ */}
+      <Box sx={{
+        background: `linear-gradient(135deg, ${NAVY} 0%, ${BLUE} 55%, ${BLUE2} 100%)`,
+        position: 'relative',
+        overflow: 'hidden',
+        px: { xs: 3, md: 6 },
+        pt: { xs: 4, md: 5 },
+        pb: { xs: 5, md: 6 },
+      }}>
+        {/* Blobs */}
+        <Box sx={{ position: 'absolute', top: -80, right: -80, width: 280, height: 280, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', pointerEvents: 'none' }} />
+        <Box sx={{ position: 'absolute', bottom: -60, left: -60, width: 220, height: 220, borderRadius: '50%', background: 'rgba(255,255,255,0.03)', pointerEvents: 'none' }} />
 
-        <Box sx={{ display: 'flex', gap: 3, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <Button
-            variant="contained"
-            size="large"
-            onClick={() => onNavigate('clients')}
-            sx={{
-              bgcolor: '#1f4e79',
-              color: 'white',
-              px: 4,
-              py: 2,
-              fontSize: '1.1rem',
-              fontWeight: 700,
-              '&:hover': {
-                bgcolor: '#1a3d5f',
-              },
-            }}
-            startIcon={<ClientIcon />}
-          >
-            Processus Crédit
-          </Button>
-          <Button
-            variant="outlined"
-            size="large"
-            onClick={() => onNavigate('data-input')}
-            sx={{
-              borderColor: '#1f4e79',
-              color: '#1f4e79',
-              px: 4,
-              py: 2,
-              fontSize: '1.1rem',
-              fontWeight: 700,
-              '&:hover': {
-                borderColor: '#1f4e79',
-                bgcolor: 'rgba(31,78,121,0.1)',
-              },
-            }}
-            startIcon={<AnalysisIcon />}
-          >
-            Analyse Simple
-          </Button>
-        </Box>
+        <Grid container spacing={3} alignItems="center">
+          {/* Left */}
+          <Grid item xs={12} md={8}>
+            {/* Greeting */}
+            {currentUser && (
+              <Box sx={{
+                display: 'inline-flex', alignItems: 'center', gap: 1,
+                background: 'rgba(255,255,255,0.12)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                borderRadius: '40px', px: 2, py: 0.6, mb: 2.5,
+                animation: anim(fadeInUp, '0.5s', '0s'),
+              }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#22c55e', animation: `${pulseDot} 2s ease infinite` }} />
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}>
+                  Bonjour, <strong>{currentUser.name}</strong>
+                </Typography>
+                <Box sx={{ bgcolor: 'rgba(255,255,255,0.18)', borderRadius: '20px', px: 1.5, py: 0.2 }}>
+                  <Typography variant="caption" sx={{ color: WHITE, fontWeight: 600 }}>
+                    {getRoleLabel(currentUser.role)}
+                  </Typography>
+                </Box>
+              </Box>
+            )}
+
+            <Typography variant="h3" fontWeight={800} sx={{
+              color: WHITE, lineHeight: 1.12, mb: 1.5,
+              fontSize: { xs: '1.8rem', md: '2.4rem' },
+              animation: anim(fadeInUp, '0.55s', '0.08s'),
+            }}>
+              Tableau de bord
+              <Box component="span" sx={{
+                display: 'block', fontSize: { xs: '1.1rem', md: '1.3rem' },
+                fontWeight: 500, mt: 0.5,
+                background: 'linear-gradient(90deg, #93c5fd, #c4b5fd)',
+                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+              }}>
+                {t('home.subtitle')}
+              </Box>
+            </Typography>
+
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', animation: anim(fadeInUp, '0.5s', '0.16s') }}>
+              {['SYSCOHADA', 'Bilingue', 'Multi-rôles', 'Score Dual'].map(tag => (
+                <Chip key={tag} label={tag} size="small" sx={{
+                  background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)',
+                  color: 'rgba(255,255,255,0.9)', fontWeight: 600, fontSize: '0.72rem',
+                }} />
+              ))}
+            </Box>
+          </Grid>
+
+          {/* Right: floating logo (desktop only) */}
+          <Grid item md={4} sx={{ display: { xs: 'none', md: 'flex' }, justifyContent: 'center' }}>
+            <Box sx={{
+              width: 130, height: 130, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.09)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              animation: `${floatY} 4s ease-in-out infinite, ${fadeInScale} 0.6s 0.2s both`,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.22)',
+            }}>
+              <img src={optimusIcon} alt="OptimusCredit" style={{ width: 78, height: 78 }} />
+            </Box>
+          </Grid>
+        </Grid>
       </Box>
 
-      {/* User Roles Section */}
-      <Typography variant="h4" component="h2" gutterBottom sx={{ mb: 4, fontWeight: 600, textAlign: 'center' }}>
-        {t('home.userRoles.title')}
-      </Typography>
+      {/* ══════════════════════════════════════════════════════════════
+          MODULE LAUNCHER — damier par groupe
+      ══════════════════════════════════════════════════════════════ */}
+      <Box sx={{ px: { xs: 2, md: 4 }, py: 4, maxWidth: 1400, mx: 'auto' }}>
+        {visibleGroups.map((group, gi) => {
+          const groupStart = tileIndex;
+          tileIndex += group.modules.length;
+          return (
+            <Box key={group.label} sx={{ mb: 4 }}>
+              {/* Group header */}
+              <Box sx={{
+                display: 'flex', alignItems: 'center', gap: 2, mb: 2,
+                animation: anim(fadeInUp, '0.45s', `${gi * 0.06}s`),
+              }}>
+                <Typography sx={{
+                  fontSize: '11px', fontWeight: 700, textTransform: 'uppercase',
+                  letterSpacing: '1.2px', color: '#94a3b8',
+                }}>
+                  {group.label}
+                </Typography>
+                <Box sx={{ flex: 1, height: '1px', bgcolor: '#e8ecf0' }} />
+              </Box>
 
-      <Grid container spacing={3} sx={{ mb: 6 }}>
-        <Grid item xs={12} md={6} lg={3}>
-          <Card
-            sx={{
-              height: '100%',
-              cursor: 'pointer',
-              transition: 'all 0.3s ease',
-              border: '2px solid transparent',
-              background: 'linear-gradient(135deg, #D6DEE8 0%, #C4CDD9 100%)',
-              '&:hover': {
-                transform: 'translateY(-4px)',
-                borderColor: 'primary.main',
-                boxShadow: 3,
-              },
-            }}
-            onClick={() => onNavigate('data-input')}
-          >
-            <CardContent sx={{ textAlign: 'center', py: 4 }}>
-              <Chip
-                label={t('home.userRoles.accountManager')}
-                color="primary"
-                sx={{ mb: 2, fontWeight: 600, fontSize: '0.9rem' }}
-              />
-              <Typography variant="body1" sx={{ px: 2, color: '#1f4e79' }}>
-                {t('home.userRoles.accountManagerDesc')}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} md={6} lg={3}>
-          <Card
-            sx={{
-              height: '100%',
-              cursor: 'pointer',
-              transition: 'all 0.3s ease',
-              border: '2px solid transparent',
-              background: 'linear-gradient(135deg, #D6DEE8 0%, #C4CDD9 100%)',
-              '&:hover': {
-                transform: 'translateY(-4px)',
-                borderColor: 'primary.main',
-                boxShadow: 3,
-              },
-            }}
-            onClick={() => onNavigate('data-input')}
-          >
-            <CardContent sx={{ textAlign: 'center', py: 4 }}>
-              <Chip
-                label={t('home.userRoles.creditAnalyst')}
-                color="secondary"
-                sx={{ mb: 2, fontWeight: 600, fontSize: '0.9rem' }}
-              />
-              <Typography variant="body1" sx={{ px: 2, color: '#1f4e79' }}>
-                {t('home.userRoles.creditAnalystDesc')}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+              {/* Tile grid */}
+              <Grid container spacing={1.5}>
+                {group.modules.map((mod, mi) => {
+                  const idx = groupStart + mi;
+                  return (
+                    <Grid item xs={6} sm={4} md={3} lg={2} key={mod.id}>
+                      <ModuleTile
+                        mod={mod}
+                        onNavigate={onNavigate}
+                        disabled={isModuleDisabled(mod)}
+                        animDelay={`${idx * 0.04}s`}
+                      />
+                    </Grid>
+                  );
+                })}
+              </Grid>
+            </Box>
+          );
+        })}
 
-        <Grid item xs={12} md={6} lg={3}>
-          <Card
-            sx={{
-              height: '100%',
-              cursor: 'pointer',
-              transition: 'all 0.3s ease',
-              border: '2px solid transparent',
-              background: 'linear-gradient(135deg, #D6DEE8 0%, #C4CDD9 100%)',
-              '&:hover': {
-                transform: 'translateY(-4px)',
-                borderColor: 'primary.main',
-                boxShadow: 3,
-              },
-            }}
-            onClick={() => onNavigate('data-input')}
-          >
-            <CardContent sx={{ textAlign: 'center', py: 4 }}>
-              <Chip
-                label={t('home.userRoles.branchManager')}
-                color="success"
-                sx={{ mb: 2, fontWeight: 600, fontSize: '0.9rem' }}
-              />
-              <Typography variant="body1" sx={{ px: 2, color: '#1f4e79' }}>
-                {t('home.userRoles.branchManagerDesc')}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={6} lg={3}>
-          <Card
-            sx={{
-              height: '100%',
-              cursor: 'pointer',
-              transition: 'all 0.3s ease',
-              border: '2px solid transparent',
-              background: 'linear-gradient(135deg, #D6DEE8 0%, #C4CDD9 100%)',
-              '&:hover': {
-                transform: 'translateY(-4px)',
-                borderColor: 'primary.main',
-                boxShadow: 3,
-              },
-            }}
-            onClick={() => onNavigate('data-input')}
-          >
-            <CardContent sx={{ textAlign: 'center', py: 4 }}>
-              <Chip
-                label={t('home.userRoles.creditCommittee')}
-                color="warning"
-                sx={{ mb: 2, fontWeight: 600, fontSize: '0.9rem' }}
-              />
-              <Typography variant="body1" sx={{ px: 2, color: '#1f4e79' }}>
-                {t('home.userRoles.creditCommitteeDesc')}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Features Section */}
-      <Typography variant="h4" component="h2" gutterBottom sx={{ mb: 4, fontWeight: 600, textAlign: 'center' }}>
-        {t('home.features.title')}
-      </Typography>
-
-      <Grid container spacing={4} sx={{ mb: 6 }}>
-        {creditFeatures.map((feature, index) => (
-          <Grid item xs={12} sm={6} md={4} lg={3} key={index}>
-            <Paper
-              elevation={2}
-              sx={{
-                p: 3,
-                textAlign: 'center',
-                height: '100%',
-                transition: 'all 0.3s ease',
-                background: 'linear-gradient(135deg, #D6DEE8 0%, #C4CDD9 100%)',
-                '&:hover': {
-                  elevation: 4,
-                  transform: 'translateY(-2px)',
-                },
-              }}
-            >
-              <Avatar
-                sx={{
-                  width: 64,
-                  height: 64,
-                  bgcolor: '#1f4e79',
-                  mx: 'auto',
-                  mb: 2,
-                }}
-              >
-                <feature.icon sx={{ fontSize: 32 }} />
-              </Avatar>
-              <Typography variant="h6" component="h3" gutterBottom fontWeight={600} sx={{ color: '#1f4e79' }}>
-                {feature.title}
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#1f4e79', opacity: 0.8 }}>
-                {feature.description}
-              </Typography>
-            </Paper>
-          </Grid>
-        ))}
-      </Grid>
-
-      {/* Credit Process Workflow Section */}
-      <Card sx={{ p: 4, background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)' }}>
-        <Typography variant="h4" component="h2" gutterBottom sx={{ mb: 4, fontWeight: 600, textAlign: 'center' }}>
-          Processus de Crédit Intégré
-        </Typography>
-
-        <Typography variant="h6" sx={{ mb: 4, textAlign: 'center', color: 'text.secondary' }}>
-          Workflow configurable avec approbations automatisées selon les seuils définis
-        </Typography>
-
-        <List>
-          {workflowSteps.map((step, index) => (
-            <React.Fragment key={index}>
-              <ListItem sx={{ py: 3 }}>
-                <ListItemIcon>
-                  <Avatar
-                    sx={{
-                      width: 40,
-                      height: 40,
-                      bgcolor: 'primary.main',
-                      fontSize: '1rem',
-                      fontWeight: 700,
-                    }}
-                  >
-                    {index + 1}
-                  </Avatar>
-                </ListItemIcon>
-                <ListItemText
-                  primary={step}
-                  primaryTypographyProps={{
-                    variant: 'body1',
-                    sx: { fontWeight: 500, fontSize: '1.1rem' },
-                  }}
-                />
-                <ProcessIcon sx={{ color: 'primary.main', ml: 2 }} />
-              </ListItem>
-              {index < workflowSteps.length - 1 && <Divider component="li" />}
-            </React.Fragment>
-          ))}
-        </List>
-      </Card>
-
-      {/* Footer Information */}
-      <Box sx={{ mt: 6, pt: 4, borderTop: '1px solid', borderColor: 'divider', textAlign: 'center' }}>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Conforme aux normes SYSCOHADA • Optimisé pour les banques sénégalaises • 
-          Support technique disponible
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          Version 2.0 - Système de Gestion de Processus Crédit
-        </Typography>
+        {/* Footer */}
+        <Box sx={{ textAlign: 'center', py: 3, borderTop: '1px solid #e2e8f0', mt: 2 }}>
+          <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block' }}>
+            Conforme aux normes SYSCOHADA · Optimisé pour les banques sénégalaises
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#cbd5e1', display: 'block', mt: 0.5 }}>
+            Version 2.0 — OptimusCredit
+          </Typography>
+        </Box>
       </Box>
     </Box>
   );
 };
+
+export default HomePage;

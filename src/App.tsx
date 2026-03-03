@@ -8,7 +8,7 @@ import { ApiService } from './services/api';
 import { ThemeWrapper } from './components/ThemeWrapper';
 import { MsalWrapper } from './components/MsalWrapper';
 import { Header } from './components/Header';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar, FULL_WIDTH, MINI_WIDTH } from './components/Sidebar';
 import { HomePage } from './pages/HomePage';
 import { UploadPage } from './pages/UploadPage';
 import { AnalysisPage } from './pages/AnalysisPage';
@@ -30,6 +30,7 @@ import { CreditSimulationPage } from './pages/CreditSimulationPage';
 import { CreditTypesPage } from './pages/CreditTypesPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { LoginPage } from './pages/LoginPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import { BackupPage } from './pages/BackupPage';
 import AnnouncementsAdminPage from './pages/AnnouncementsAdminPage';
 import NotificationsConfigPage from './pages/NotificationsConfigPage';
@@ -56,8 +57,11 @@ const AppContent: React.FC = () => {
   const { announcements, modalOpen, handleClose: handleAnnouncementClose } =
     useAnnouncements(userState.currentUser?.id);
 
-  // Show login page if not authenticated
+  // Show login page if not authenticated (allow /reset-password without auth)
   if (!userState.isAuthenticated) {
+    if (window.location.pathname === '/reset-password') {
+      return <ResetPasswordPage />;
+    }
     return <LoginPage onLogin={() => {}} />;
   }
 
@@ -169,16 +173,18 @@ const AppContent: React.FC = () => {
           minWidth: 0,
           bgcolor: 'background.default',
           pt: { xs: 7, sm: 8 },
-          pl: { xs: 0, md: sidebarOpen ? '240px' : 0 },
-          transition: 'padding-left 0.3s ease',
+          pl: { xs: 0, md: sidebarOpen ? `${FULL_WIDTH}px` : `${MINI_WIDTH}px` },
+          transition: 'padding-left 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
           minHeight: '100vh',
           width: '100%',
+          overflowX: 'hidden',
         }}
       >
         <Container
           maxWidth="xl"
           sx={{
-            py: 3,
+            py: { xs: 2, md: 3 },
+            px: { xs: 1.5, sm: 2, md: 3 },
           }}
         >
           <ErrorBoundary>

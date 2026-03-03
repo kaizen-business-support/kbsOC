@@ -117,6 +117,97 @@ interface UserManagementPageProps {
   onNavigate: (page: any) => void;
 }
 
+const PERMISSION_GROUPS = [
+  {
+    category: 'Administration système',
+    permissions: [
+      { key: 'user_management', label: 'Gestion des utilisateurs' },
+      { key: 'role_assignment', label: 'Attribution des rôles' },
+      { key: 'system_administration', label: 'Administration système' },
+      { key: 'system_configuration', label: 'Configuration système' },
+      { key: 'audit_logs', label: 'Journaux d\'audit' },
+      { key: 'data_export', label: 'Export des données' },
+    ],
+  },
+  {
+    category: 'Notifications & Annonces',
+    permissions: [
+      { key: 'manage_notifications', label: 'Gérer les notifications' },
+      { key: 'manage_announcements', label: 'Gérer les annonces' },
+    ],
+  },
+  {
+    category: 'Sauvegarde & Sécurité',
+    permissions: [
+      { key: 'manage_backup', label: 'Gérer les sauvegardes' },
+      { key: 'manage_2fa_config', label: 'Configurer la 2FA' },
+    ],
+  },
+  {
+    category: 'Visibilité des données',
+    permissions: [
+      { key: 'view_all', label: 'Voir toutes les données' },
+      { key: 'view_branch', label: 'Voir les données d\'agence' },
+      { key: 'view_own', label: 'Voir ses propres données' },
+      { key: 'view_applications', label: 'Voir les demandes' },
+      { key: 'view_portfolio', label: 'Voir le portefeuille' },
+    ],
+  },
+  {
+    category: 'Analytiques & Rapports',
+    permissions: [
+      { key: 'analytics', label: 'Accès aux analytiques' },
+      { key: 'reports', label: 'Rapports' },
+      { key: 'portfolio_analytics', label: 'Analytiques du portefeuille' },
+      { key: 'risk_reporting', label: 'Rapports de risque' },
+      { key: 'policy_configuration', label: 'Configuration des politiques' },
+    ],
+  },
+  {
+    category: 'Clients & Dossiers',
+    permissions: [
+      { key: 'create_client', label: 'Créer des clients' },
+      { key: 'edit_client_data', label: 'Modifier les données clients' },
+      { key: 'manage_clients', label: 'Gérer les clients' },
+    ],
+  },
+  {
+    category: 'Demandes de crédit',
+    permissions: [
+      { key: 'create_application', label: 'Créer des demandes' },
+      { key: 'review_applications', label: 'Examiner les demandes' },
+      { key: 'application_review', label: 'Revue des demandes' },
+      { key: 'analyze_credit', label: 'Analyser le crédit' },
+      { key: 'financial_analysis', label: 'Analyse financière' },
+      { key: 'score_applications', label: 'Scorer les demandes' },
+      { key: 'benchmark_analysis', label: 'Analyse benchmark' },
+      { key: 'edit_analysis', label: 'Modifier l\'analyse' },
+    ],
+  },
+  {
+    category: 'Approbations',
+    permissions: [
+      { key: 'approve_credit', label: 'Approuver les crédits' },
+      { key: 'approve_applications', label: 'Approuver les demandes' },
+      { key: 'committee_review', label: 'Revue comité' },
+      { key: 'committee_vote', label: 'Vote en comité' },
+      { key: 'final_approval', label: 'Approbation finale' },
+      { key: 'risk_override', label: 'Dérogation risque' },
+      { key: 'policy_exceptions', label: 'Exceptions de politique' },
+    ],
+  },
+  {
+    category: 'Gestion d\'agence & équipe',
+    permissions: [
+      { key: 'manage_branch', label: 'Gérer l\'agence' },
+      { key: 'manage_team', label: 'Gérer l\'équipe' },
+      { key: 'workflow_override', label: 'Dérogation workflow' },
+    ],
+  },
+];
+
+const allPermissions = PERMISSION_GROUPS.flatMap(g => g.permissions.map(p => p.key));
+
 export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNavigate }) => {
   const { hasPermission, isRole } = useUser();
   const { t } = useTranslation();
@@ -1851,86 +1942,53 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
               <Typography variant="subtitle1" sx={{ mb: 2 }}>
                 Permissions
               </Typography>
-              <FormGroup>
-                {[
-                  'user_management',
-                  'view_all',
-                  'analytics', 
-                  'reports',
-                  'view_branch',
-                  'approve_credit',
-                  'view_own',
-                  'create_application',
-                  'analyze_credit',
-                  'view_applications',
-                  'application_review',
-                  'committee_vote'
-                ].map((permission) => (
-                  <FormControlLabel
-                    key={permission}
-                    control={
-                      <Checkbox
-                        checked={roleForm.permissions.includes(permission) || roleForm.permissions.includes('*')}
-                        disabled={!canEditUserManagement}
-                        onChange={(e) => {
-                          const allPermissions = [
-                            'user_management',
-                            'view_all',
-                            'analytics', 
-                            'reports',
-                            'view_branch',
-                            'approve_credit',
-                            'view_own',
-                            'create_application',
-                            'analyze_credit',
-                            'view_applications',
-                            'application_review',
-                            'committee_vote'
-                          ];
-                          
-                          if (e.target.checked) {
-                            setRoleForm(prev => {
-                              // If user has wildcard, convert to explicit permissions and add new one
-                              if (prev.permissions.includes('*')) {
-                                return {
-                                  ...prev,
-                                  permissions: allPermissions
-                                };
+              {PERMISSION_GROUPS.map((group) => (
+                <Box key={group.category} sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" color="primary" sx={{ mt: 1, mb: 0.5, fontWeight: 600 }}>
+                    {group.category}
+                  </Typography>
+                  <FormGroup row>
+                    {group.permissions.map(({ key: permission, label }) => (
+                      <FormControlLabel
+                        key={permission}
+                        sx={{ width: '50%', minWidth: 220 }}
+                        control={
+                          <Checkbox
+                            checked={roleForm.permissions.includes(permission) || roleForm.permissions.includes('*')}
+                            disabled={!canEditUserManagement}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setRoleForm(prev => {
+                                  if (prev.permissions.includes('*')) {
+                                    return { ...prev, permissions: allPermissions };
+                                  }
+                                  if (!prev.permissions.includes(permission)) {
+                                    const newPermissions = [...prev.permissions, permission];
+                                    if (newPermissions.length === allPermissions.length) {
+                                      return { ...prev, permissions: ['*'] };
+                                    }
+                                    return { ...prev, permissions: newPermissions };
+                                  }
+                                  return prev;
+                                });
+                              } else {
+                                setRoleForm(prev => {
+                                  if (prev.permissions.includes('*')) {
+                                    return { ...prev, permissions: allPermissions.filter(p => p !== permission) };
+                                  }
+                                  return { ...prev, permissions: prev.permissions.filter(p => p !== permission) };
+                                });
                               }
-                              // Add permission if not already present
-                              if (!prev.permissions.includes(permission)) {
-                                const newPermissions = [...prev.permissions, permission];
-                                // If all permissions are selected, use wildcard
-                                if (newPermissions.length === allPermissions.length) {
-                                  return { ...prev, permissions: ['*'] };
-                                }
-                                return { ...prev, permissions: newPermissions };
-                              }
-                              return prev;
-                            });
-                          } else {
-                            setRoleForm(prev => {
-                              // If user has wildcard, convert to explicit permissions minus this one
-                              if (prev.permissions.includes('*')) {
-                                return {
-                                  ...prev,
-                                  permissions: allPermissions.filter(p => p !== permission)
-                                };
-                              }
-                              // Remove permission
-                              return {
-                                ...prev,
-                                permissions: prev.permissions.filter(p => p !== permission)
-                              };
-                            });
-                          }
-                        }}
+                            }}
+                          />
+                        }
+                        label={label}
                       />
-                    }
-                    label={t(`permissions.${permission}`)}
-                  />
-                ))}
-              </FormGroup>
+                    ))}
+                  </FormGroup>
+                  <Divider sx={{ mt: 1 }} />
+                </Box>
+              ))}
             </Grid>
 
             <Grid item xs={12}>

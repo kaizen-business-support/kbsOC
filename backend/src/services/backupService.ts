@@ -9,10 +9,9 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { createGzip } from 'zlib';
-import { pipeline } from 'stream/promises';
 import { prisma } from '../server';
 import { logger } from '../utils/logger';
-import nodemailer from 'nodemailer';
+import { sendEmail } from './notificationService';
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -63,24 +62,30 @@ function buildFilename(type: 'full' | 'partial'): string {
   return `backup_${date}_${type}.sql.gz`;
 }
 
-function sendNotificationEmail(subject: string, body: string): void {
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER) return;
+async function sendNotificationEmail(subject: string, body: string): Promise<void> {
+  // Fetch active recipients from DB
+  let recipients: Array<{ email: string; name?: string | null }> = [];
+  try {
+    recipients = await (prisma as any).backupNotifyEmail.findMany({ where: { isActive: true } });
+  } catch {
+    // table may not exist yet — ignore
+  }
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
+  // Fallback to env vars if no DB recipients
+  if (recipients.length === 0) {
+    const fallback = process.env.BACKUP_NOTIFY_EMAIL || process.env.SMTP_USER;
+    if (!fallback) return;
+    recipients = [{ email: fallback }];
+  }
 
-  transporter.sendMail({
-    from: process.env.SMTP_USER,
-    to: process.env.BACKUP_NOTIFY_EMAIL || process.env.SMTP_USER,
-    subject,
-    text: body,
-  }).catch((err: Error) => logger.warn('Backup email notification failed:', err.message));
+  // Send to all active recipients in parallel
+  await Promise.all(
+    recipients.map(r =>
+      sendEmail(r.email, subject, `<pre style="font-family:monospace">${body}</pre>`).catch((err: Error) =>
+        logger.warn(`Backup notification to ${r.email} failed: ${err.message}`)
+      )
+    )
+  );
 }
 
 // ─── Core functions ───────────────────────────────────────────────────────────
@@ -144,7 +149,7 @@ export async function createBackup(
         sendNotificationEmail(
           `[OptimusCredit] Backup FAILED — ${filename}`,
           `Backup failed at ${new Date().toISOString()}\n\n${errMsg}`
-        );
+        ).catch(() => {});
         reject(new Error(errMsg));
         return;
       }
@@ -158,7 +163,7 @@ export async function createBackup(
       sendNotificationEmail(
         `[OptimusCredit] Backup OK — ${filename}`,
         `Backup completed at ${new Date().toISOString()}\nFile: ${filePath}\nSize: ${(size / 1024 / 1024).toFixed(2)} MB`
-      );
+      ).catch(() => {});
 
       logger.info(`Backup completed: ${filename} (${(size / 1024).toFixed(0)} KB)`);
       resolve(filename);
@@ -236,7 +241,7 @@ export async function restoreBackup(filename: string): Promise<void> {
         sendNotificationEmail(
           `[OptimusCredit] Database RESTORED — ${filename}`,
           `Restore completed at ${new Date().toISOString()}\nSource: ${filename}`
-        );
+        ).catch(() => {});
         resolve();
       }
     });
