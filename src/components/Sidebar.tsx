@@ -55,16 +55,23 @@ interface SidebarProps {
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
 
+// Brand palette (mirrors theme.ts brand tokens)
+const brand = {
+  deep:     '#3A56A8',
+  sky:      '#28A8E2',
+  gradient: 'linear-gradient(135deg, #3A56A8 0%, #2878C8 52%, #28A8E2 100%)',
+};
+
 const SB = {
-  bg:           '#ffffff',
-  border:       '#e8ecf0',
-  shadow:       '2px 0 8px rgba(0,0,0,0.06)',
-  sectionLabel: '#9ca3af',
-  itemText:     '#374151',
-  itemHover:    'rgba(0,0,0,0.04)',
-  activeText:   '#1f4e79',
-  activeBg:     'rgba(31,78,121,0.09)',
-  activeBorder: '#1f4e79',
+  bg:           'rgba(255,255,255,0.84)',
+  border:       'rgba(255,255,255,0.55)',
+  shadow:       '1px 0 24px rgba(26,36,64,0.07)',
+  sectionLabel: '#8A99B8',
+  itemText:     '#3A4D72',
+  itemHover:    'rgba(58,86,168,0.05)',
+  activeText:   brand.deep,
+  activeBg:     'linear-gradient(90deg, rgba(58,86,168,0.10) 0%, rgba(40,168,226,0.05) 100%)',
+  activeBorder: brand.deep,
 };
 
 // ─── Component ──────────────────────────────────────────────────────────────────
@@ -117,30 +124,41 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // ── Shared item styles ──────────────────────────────────────────────────────
 
   const activeItemSx = {
-    borderRadius: '6px',
-    mx: 1,
-    py: 0.75,
-    color: SB.activeText,
-    bgcolor: SB.activeBg,
-    borderLeft: `3px solid ${SB.activeBorder}`,
-    pl: '13px',
-    '& .MuiListItemIcon-root': { color: SB.activeText },
-    '& .MuiListItemText-primary': { fontWeight: 600, color: SB.activeText },
-    '&:hover': { bgcolor: SB.activeBg },
+    borderRadius: '7px',
+    mx:          1,
+    py:          0.7,
+    color:       SB.activeText,
+    background:  SB.activeBg,
+    borderLeft:  `2px solid ${SB.activeBorder}`,
+    pl:          '14px',
+    boxShadow:   'inset 0 1px 0 rgba(255,255,255,0.70)',
+    transition:  'all 0.15s cubic-bezier(0.22,1,0.36,1)',
+    '& .MuiListItemIcon-root': {
+      background:          brand.gradient,
+      WebkitBackgroundClip:'text',
+      WebkitTextFillColor: 'transparent',
+      backgroundClip:      'text',
+    },
+    '& .MuiListItemText-primary': { fontWeight: 600, color: SB.activeText, fontFamily: '"Inter", sans-serif' },
+    '&:hover':  { background: SB.activeBg },
+    '&:active': { transform: 'scale(0.98)', transition: 'transform 0.08s ease' },
   };
 
   const inactiveItemSx = {
-    borderRadius: '6px',
-    mx: 1,
-    py: 0.75,
-    borderLeft: '3px solid transparent',
-    pl: '13px',
-    color: SB.itemText,
-    '& .MuiListItemIcon-root': { color: '#6b7280' },
+    borderRadius: '7px',
+    mx:          1,
+    py:          0.7,
+    borderLeft:  '2px solid transparent',
+    pl:          '14px',
+    color:       SB.itemText,
+    transition:  'all 0.15s cubic-bezier(0.22,1,0.36,1)',
+    '& .MuiListItemIcon-root': { color: '#8A99B8', transition: 'color 0.15s ease' },
+    '& .MuiListItemText-primary': { fontFamily: '"Inter", sans-serif' },
     '&:hover': {
       bgcolor: SB.itemHover,
-      '& .MuiListItemIcon-root': { color: SB.activeText },
+      '& .MuiListItemIcon-root': { color: brand.deep },
     },
+    '&:active': { transform: 'scale(0.98)', transition: 'transform 0.08s ease' },
   };
 
   // ── NavItem ─────────────────────────────────────────────────────────────────
@@ -207,7 +225,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </ListItemIcon>
           <ListItemText
             primary={label}
-            primaryTypographyProps={{ fontSize: '13.5px', noWrap: true }}
+            primaryTypographyProps={{ fontSize: '13px', noWrap: true, fontFamily: '"Inter", sans-serif' }}
           />
         </ListItemButton>
       </ListItem>
@@ -229,29 +247,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <ListItemButton
         onClick={onToggle}
         disableRipple
-        sx={{ py: 0.5, px: 2, mt: 1.5, mb: 0.25, '&:hover': { bgcolor: 'transparent' } }}
+        sx={{ py: 0.4, px: 2, mt: 1.75, mb: 0.25, '&:hover': { bgcolor: 'transparent' } }}
       >
         <Typography sx={{
-          textTransform: 'uppercase', letterSpacing: '0.8px',
-          color: SB.sectionLabel, fontSize: '10px', fontWeight: 700, flex: 1, userSelect: 'none',
+          textTransform: 'uppercase', letterSpacing: '0.7px',
+          color: SB.sectionLabel, fontSize: '10.5px', fontWeight: 600, flex: 1,
+          userSelect: 'none', fontFamily: '"Inter", sans-serif',
         }}>
           {label}
         </Typography>
         {expanded
-          ? <ExpandLess sx={{ fontSize: 14, color: SB.sectionLabel }} />
-          : <ExpandMore sx={{ fontSize: 14, color: SB.sectionLabel }} />
+          ? <ExpandLess sx={{ fontSize: 13, color: SB.sectionLabel }} />
+          : <ExpandMore sx={{ fontSize: 13, color: SB.sectionLabel }} />
         }
       </ListItemButton>
     );
   };
 
   const StaticLabel: React.FC<{ label: string }> = ({ label }) => {
-    if (!open) return <Divider sx={{ my: 0.75, mx: 1.5, borderColor: '#f1f5f9' }} />;
+    if (!open) return <Divider sx={{ my: 0.75, mx: 1.5, borderColor: '#E8EBED' }} />;
     return (
-      <Box sx={{ px: 2, mt: 1.5, mb: 0.25 }}>
+      <Box sx={{ px: 2, mt: 1.75, mb: 0.25 }}>
         <Typography sx={{
-          textTransform: 'uppercase', letterSpacing: '0.8px',
-          color: SB.sectionLabel, fontSize: '10px', fontWeight: 700, userSelect: 'none',
+          textTransform: 'uppercase', letterSpacing: '0.7px',
+          color: SB.sectionLabel, fontSize: '10.5px', fontWeight: 600,
+          userSelect: 'none', fontFamily: '"Inter", sans-serif',
         }}>
           {label}
         </Typography>
@@ -262,7 +282,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // ── Drawer content ──────────────────────────────────────────────────────────
 
   const drawer = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', bgcolor: SB.bg }}>
+    <Box sx={{
+      height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      bgcolor: SB.bg,
+      backdropFilter: 'blur(20px) saturate(180%)',
+      WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+    }}>
       <Toolbar />
 
       {/* Logo */}
@@ -279,10 +304,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <img src={optimusIcon} alt="Logo" style={{ width: 32, height: 32, flexShrink: 0 }} />
         {open && (
           <Box sx={{ overflow: 'hidden' }}>
-            <Typography sx={{ fontSize: '14px', fontWeight: 700, color: '#1f4e79', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+            <Typography sx={{
+              fontSize: '14px', fontWeight: 700, lineHeight: 1.2, whiteSpace: 'nowrap', fontFamily: '"Inter", sans-serif',
+              // brand gradient text for the app name
+              background:          brand.gradient,
+              WebkitBackgroundClip:'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip:      'text',
+            }}>
               OptimusCredit
             </Typography>
-            <Typography sx={{ fontSize: '10px', color: SB.sectionLabel, lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+            <Typography sx={{ fontSize: '10.5px', color: SB.sectionLabel, lineHeight: 1.2, whiteSpace: 'nowrap', fontFamily: '"Inter", sans-serif' }}>
               Gestion de Crédit
             </Typography>
           </Box>
@@ -376,8 +408,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }}>
         <img src={kaizenLogo} alt="Kaizen" style={{ height: 18, opacity: 0.65, flexShrink: 0 }} />
         {open && (
-          <Typography sx={{ fontSize: '10px', color: SB.sectionLabel, whiteSpace: 'nowrap' }}>
-            v2.0.0 · © 2025 Kaizen
+          <Typography sx={{ fontSize: '10.5px', color: SB.sectionLabel, whiteSpace: 'nowrap', fontFamily: '"Inter", sans-serif' }}>
+            v3.0.0 · © 2025 Kaizen
           </Typography>
         )}
       </Box>
@@ -395,10 +427,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         sx={{
           display: { xs: 'block', md: 'none' },
           '& .MuiDrawer-paper': {
-            width: FULL_WIDTH,
-            boxSizing: 'border-box',
-            border: 'none',
-            boxShadow: SB.shadow,
+            width:      FULL_WIDTH,
+            boxSizing:  'border-box',
+            border:     'none',
+            boxShadow:  SB.shadow,
+            background: 'transparent',
           },
         }}
       >
@@ -413,12 +446,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           flexShrink: 0,
           whiteSpace: 'nowrap',
           '& .MuiDrawer-paper': {
-            width: open ? FULL_WIDTH : MINI_WIDTH,
-            overflowX: 'hidden',
-            boxSizing: 'border-box',
+            width:       open ? FULL_WIDTH : MINI_WIDTH,
+            overflowX:   'hidden',
+            boxSizing:   'border-box',
             borderRight: `1px solid ${SB.border}`,
-            boxShadow: SB.shadow,
-            transition: 'width 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
+            boxShadow:   SB.shadow,
+            background:  'transparent',
+            transition:  'width 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
           },
         }}
       >

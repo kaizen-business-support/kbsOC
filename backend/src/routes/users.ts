@@ -5,6 +5,7 @@ import { generateRandomPassword, hashPassword } from '../utils/password';
 import { prisma } from '../server';
 import { sendEmail } from '../services/notificationService';
 import { buildWelcomeEmail, buildAdminResetEmail } from '../utils/emailTemplates';
+import { getAppUrl } from '../utils/getAppUrl';
 
 const router = express.Router();
 
@@ -188,7 +189,7 @@ router.post('/',
     });
 
     // Send welcome email with temporary credentials (non-blocking)
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3006';
+    const frontendUrl = getAppUrl();
     const welcomeHtml = buildWelcomeEmail({
       name: newUser.name,
       email: newUser.email,
@@ -309,7 +310,7 @@ router.post('/:id/reset-password',
     });
 
     // Send admin reset email with temporary credentials (non-blocking)
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3006';
+    const frontendUrl = getAppUrl();
     const resetHtml = buildAdminResetEmail({
       name: user.name,
       email: user.email,

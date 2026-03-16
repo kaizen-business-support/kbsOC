@@ -87,8 +87,25 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
   const [financialScore, setFinancialScore] = useState<number>(0);
   const [analystScore, setAnalystScore] = useState<number>(0);
   const [overallScore, setOverallScore] = useState<number>(0);
-  const [financialWeight, setFinancialWeight] = useState<number>(60);
-  const [analystWeight, setAnalystWeight] = useState<number>(40);
+  const [financialWeight, setFinancialWeight] = useState<number>(() => {
+    try { const v = localStorage.getItem('oc_w_financial'); return v ? Number(v) : 60; } catch { return 60; }
+  });
+  const [analystWeight, setAnalystWeight] = useState<number>(() => {
+    try { const v = localStorage.getItem('oc_w_analyst'); return v ? Number(v) : 40; } catch { return 40; }
+  });
+  const [categoryWeights, setCategoryWeights] = useState<{ liquidity: number; profitability: number; leverage: number; efficiency: number }>(() => {
+    try {
+      const saved = localStorage.getItem('oc_scoring_category_weights');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return { liquidity: 25, profitability: 30, leverage: 25, efficiency: 20 };
+  });
+  const [scoreBreakdown, setScoreBreakdown] = useState<{
+    liquidity: number; profitability: number; leverage: number; efficiency: number;
+    currentRatio: number; quickRatio: number; netMargin: number; roa: number;
+    debtToEquity: number; equityRatio: number; assetTurnover: number;
+    trendScore: number; trendAdjustment: number; baseScore: number;
+  } | null>(null);
   const [overallAnalysis, setOverallAnalysis] = useState<string>('');
   const [recommendationsText, setRecommendationsText] = useState<string>('');
   const [isAnalystMode, setIsAnalystMode] = useState<boolean>(!!applicationId); // Track if we're in analyst mode
@@ -116,6 +133,16 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
   const handleDataInput = (year: number, data: any) => {
     setFinancialData(prev => ({ ...prev, [year]: data }));
   };
+
+  // Persist scoring weights to localStorage
+  useEffect(() => {
+    localStorage.setItem('oc_scoring_category_weights', JSON.stringify(categoryWeights));
+  }, [categoryWeights]);
+
+  useEffect(() => {
+    localStorage.setItem('oc_w_financial', String(financialWeight));
+    localStorage.setItem('oc_w_analyst',   String(analystWeight));
+  }, [financialWeight, analystWeight]);
 
   // Load application data when applicationId is present (analyst mode)
   useEffect(() => {
@@ -772,9 +799,19 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
                 {/* Score Weight Configuration */}
                 <Card sx={{ mb: 4 }}>
                   <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                      Configuration des Pondérations
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        Pondération Score Global
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => { setFinancialWeight(60); setAnalystWeight(40); }}
+                        sx={{ fontSize: '11px', py: 0.25 }}
+                      >
+                        Défaut (60/40)
+                      </Button>
+                    </Box>
                     
                     <Grid container spacing={4} alignItems="center">
                       <Grid item xs={12} md={5}>
@@ -926,58 +963,178 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
             {/* Score Financier Tab */}
             {currentTab === 1 && (
               <Box>
-                <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
-                  Détail du Score Financier
-                </Typography>
-
                 {/* Financial Score Summary Card */}
-                <Card sx={{ mb: 4, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                  <CardContent sx={{ p: 4 }}>
+                <Card sx={{ mb: 3, background: 'linear-gradient(135deg, #3A56A8 0%, #2878C8 52%, #28A8E2 100%)' }}>
+                  <CardContent sx={{ p: 3 }}>
                     <Grid container spacing={3} alignItems="center">
-                      <Grid item xs={12} md={4}>
+                      <Grid item xs={12} md={3}>
                         <Box sx={{ textAlign: 'center' }}>
-                          <Avatar sx={{ width: 120, height: 120, mx: 'auto', mb: 2, bgcolor: 'white', color: 'primary.main' }}>
-                            <Typography variant="h2" sx={{ fontWeight: 700 }}>
+                          <Avatar sx={{ width: 96, height: 96, mx: 'auto', mb: 1.5, bgcolor: 'rgba(255,255,255,0.15)', border: '2px solid rgba(255,255,255,0.4)' }}>
+                            <Typography variant="h2" sx={{ fontWeight: 700, color: 'white' }}>
                               {financialScore}
                             </Typography>
                           </Avatar>
-                          <Typography variant="h5" sx={{ color: 'white', fontWeight: 600 }}>
-                            Score Financier Global
+                          <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                            Score Financier
                           </Typography>
-                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', mt: 1 }}>
-                            Basé sur les ratios SYSCOHADA
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.72)' }}>
+                            /100 — SYSCOHADA / BCEAO
                           </Typography>
                         </Box>
                       </Grid>
-                      <Grid item xs={12} md={8}>
+                      <Grid item xs={12} md={9}>
                         <Grid container spacing={2}>
-                          <Grid item xs={6}>
-                            <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)' }}>
-                              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>Liquidité</Typography>
-                              <Typography variant="h4" sx={{ color: 'white', fontWeight: 600 }}>85/100</Typography>
-                            </Paper>
-                          </Grid>
-                          <Grid item xs={6}>
-                            <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)' }}>
-                              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>Rentabilité</Typography>
-                              <Typography variant="h4" sx={{ color: 'white', fontWeight: 600 }}>70/100</Typography>
-                            </Paper>
-                          </Grid>
-                          <Grid item xs={6}>
-                            <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)' }}>
-                              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>Endettement</Typography>
-                              <Typography variant="h4" sx={{ color: 'white', fontWeight: 600 }}>90/100</Typography>
-                            </Paper>
-                          </Grid>
-                          <Grid item xs={6}>
-                            <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)' }}>
-                              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>Efficacité</Typography>
-                              <Typography variant="h4" sx={{ color: 'white', fontWeight: 600 }}>85/100</Typography>
-                            </Paper>
-                          </Grid>
+                          {[
+                            { label: 'Liquidité',   value: scoreBreakdown?.liquidity     ?? 0, weight: categoryWeights.liquidity },
+                            { label: 'Rentabilité', value: scoreBreakdown?.profitability  ?? 0, weight: categoryWeights.profitability },
+                            { label: 'Endettement', value: scoreBreakdown?.leverage       ?? 0, weight: categoryWeights.leverage },
+                            { label: 'Efficacité',  value: scoreBreakdown?.efficiency     ?? 0, weight: categoryWeights.efficiency },
+                          ].map(({ label, value, weight }) => (
+                            <Grid item xs={6} sm={3} key={label}>
+                              <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 2 }}>
+                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.72)', display: 'block' }}>{label}</Typography>
+                                <Typography variant="h4" sx={{ color: 'white', fontWeight: 700 }}>{value}</Typography>
+                                <LinearProgress
+                                  variant="determinate"
+                                  value={value}
+                                  sx={{ mt: 0.75, height: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.2)', '& .MuiLinearProgress-bar': { bgcolor: 'white' } }}
+                                />
+                                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)' }}>Pond. {weight}%</Typography>
+                              </Paper>
+                            </Grid>
+                          ))}
                         </Grid>
                       </Grid>
                     </Grid>
+                  </CardContent>
+                </Card>
+
+                {/* Category Weight Configuration */}
+                <Card sx={{ mb: 3 }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        Pondération des Catégories Financières
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                        {(() => {
+                          const total = categoryWeights.liquidity + categoryWeights.profitability + categoryWeights.leverage + categoryWeights.efficiency;
+                          return (
+                            <Chip
+                              label={`Total : ${total}%`}
+                              color={total === 100 ? 'success' : 'warning'}
+                              size="small"
+                            />
+                          );
+                        })()}
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => setCategoryWeights({ liquidity: 25, profitability: 30, leverage: 25, efficiency: 20 })}
+                          sx={{ fontSize: '11px', py: 0.25 }}
+                        >
+                          Défaut
+                        </Button>
+                      </Box>
+                    </Box>
+                    <Grid container spacing={3}>
+                      {([
+                        { key: 'liquidity'     as const, label: 'Liquidité',   color: '#0288d1' },
+                        { key: 'profitability' as const, label: 'Rentabilité', color: '#2e7d32' },
+                        { key: 'leverage'      as const, label: 'Endettement', color: '#ed6c02' },
+                        { key: 'efficiency'    as const, label: 'Efficacité',  color: '#3A56A8' },
+                      ]).map(({ key, label, color }) => (
+                        <Grid item xs={12} sm={6} key={key}>
+                          <Typography variant="body2" gutterBottom sx={{ fontWeight: 500 }}>
+                            {label} — <strong style={{ color }}>{categoryWeights[key]}%</strong>
+                          </Typography>
+                          <Slider
+                            value={categoryWeights[key]}
+                            onChange={(_, v) => setCategoryWeights(prev => ({ ...prev, [key]: v as number }))}
+                            min={5}
+                            max={60}
+                            step={5}
+                            marks
+                            valueLabelDisplay="auto"
+                            valueLabelFormat={v => `${v}%`}
+                            sx={{ color }}
+                          />
+                        </Grid>
+                      ))}
+                    </Grid>
+                    {(categoryWeights.liquidity + categoryWeights.profitability + categoryWeights.leverage + categoryWeights.efficiency) !== 100 && (
+                      <Alert severity="warning" sx={{ mt: 2 }}>
+                        Total {categoryWeights.liquidity + categoryWeights.profitability + categoryWeights.leverage + categoryWeights.efficiency}% — les poids sont automatiquement normalisés dans le calcul pour toujours sommer à 100%.
+                      </Alert>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Contribution Table */}
+                <Card sx={{ mb: 3 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+                      Tableau des Contributions — Score Financier Total
+                    </Typography>
+                    {(() => {
+                      const totalW = (categoryWeights.liquidity + categoryWeights.profitability + categoryWeights.leverage + categoryWeights.efficiency) || 100;
+                      const rows = [
+                        { cat: 'Liquidité',   score: scoreBreakdown?.liquidity     ?? 0, w: categoryWeights.liquidity },
+                        { cat: 'Rentabilité', score: scoreBreakdown?.profitability  ?? 0, w: categoryWeights.profitability },
+                        { cat: 'Endettement', score: scoreBreakdown?.leverage       ?? 0, w: categoryWeights.leverage },
+                        { cat: 'Efficacité',  score: scoreBreakdown?.efficiency     ?? 0, w: categoryWeights.efficiency },
+                      ];
+                      let cumul = 0;
+                      return (
+                        <TableContainer>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow sx={{ bgcolor: 'action.hover' }}>
+                                <TableCell><strong>Catégorie</strong></TableCell>
+                                <TableCell align="right"><strong>Score Brut /100</strong></TableCell>
+                                <TableCell align="right"><strong>Pondération effective</strong></TableCell>
+                                <TableCell align="right"><strong>Contribution</strong></TableCell>
+                                <TableCell align="right"><strong>Cumul</strong></TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {rows.map(({ cat, score, w }) => {
+                                const effWeight = w / totalW;
+                                const contrib   = score * effWeight;
+                                cumul += contrib;
+                                return (
+                                  <TableRow key={cat} hover>
+                                    <TableCell>{cat}</TableCell>
+                                    <TableCell align="right"><strong>{score}</strong></TableCell>
+                                    <TableCell align="right">{(effWeight * 100).toFixed(1)}%</TableCell>
+                                    <TableCell align="right">{contrib.toFixed(2)}</TableCell>
+                                    <TableCell align="right"><strong>{cumul.toFixed(2)}</strong></TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                              <TableRow sx={{ bgcolor: 'rgba(58,86,168,0.06)' }}>
+                                <TableCell colSpan={3}><strong>Score de Base (avant tendances)</strong></TableCell>
+                                <TableCell align="right" colSpan={2}>
+                                  <Chip label={`${(scoreBreakdown?.baseScore ?? 0).toFixed(1)} / 100`} color="primary" size="small" />
+                                </TableCell>
+                              </TableRow>
+                              <TableRow>
+                                <TableCell colSpan={3}>Ajustement Tendances ({scoreBreakdown?.trendScore ?? 0} / 20)</TableCell>
+                                <TableCell align="right" colSpan={2}>
+                                  <Chip label={`+ ${(scoreBreakdown?.trendAdjustment ?? 0).toFixed(1)} pts`} color="info" size="small" />
+                                </TableCell>
+                              </TableRow>
+                              <TableRow sx={{ bgcolor: 'rgba(46,125,50,0.06)' }}>
+                                <TableCell colSpan={3}><Typography fontWeight={700}>Score Financier Final</Typography></TableCell>
+                                <TableCell align="right" colSpan={2}>
+                                  <Chip label={`${financialScore} / 100`} color="success" />
+                                </TableCell>
+                              </TableRow>
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      );
+                    })()}
                   </CardContent>
                 </Card>
 
@@ -988,8 +1145,8 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
                     <Card>
                       <CardContent>
                         <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar sx={{ bgcolor: 'info.main', width: 32, height: 32 }}>💧</Avatar>
-                          Ratios de Liquidité
+                          <Avatar sx={{ bgcolor: 'info.main', width: 32, height: 32, fontSize: '16px' }}>💧</Avatar>
+                          Liquidité — {scoreBreakdown?.liquidity ?? 0}/100
                         </Typography>
                         <TableContainer>
                           <Table size="small">
@@ -1004,24 +1161,18 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
                             <TableBody>
                               <TableRow>
                                 <TableCell>Liquidité Générale</TableCell>
-                                <TableCell align="right">3.24</TableCell>
+                                <TableCell align="right">{scoreBreakdown ? scoreBreakdown.currentRatio.toFixed(2) : '—'}</TableCell>
                                 <TableCell align="right">≥ 1.5</TableCell>
                                 <TableCell align="center">
-                                  <Chip label="Excellent" color="success" size="small" />
+                                  {scoreBreakdown && <Chip label={scoreBreakdown.currentRatio >= 1.5 ? 'Bon' : scoreBreakdown.currentRatio >= 1.0 ? 'Acceptable' : 'Faible'} color={scoreBreakdown.currentRatio >= 1.5 ? 'success' : scoreBreakdown.currentRatio >= 1.0 ? 'warning' : 'error'} size="small" />}
                                 </TableCell>
                               </TableRow>
                               <TableRow>
                                 <TableCell>Liquidité Réduite</TableCell>
-                                <TableCell align="right">3.24</TableCell>
+                                <TableCell align="right">{scoreBreakdown ? scoreBreakdown.quickRatio.toFixed(2) : '—'}</TableCell>
                                 <TableCell align="right">≥ 1.0</TableCell>
                                 <TableCell align="center">
-                                  <Chip label="Excellent" color="success" size="small" />
-                                </TableCell>
-                              </TableRow>
-                              <TableRow sx={{ bgcolor: 'action.hover' }}>
-                                <TableCell><strong>Score Liquidité</strong></TableCell>
-                                <TableCell align="right" colSpan={3}>
-                                  <Chip label="85/100" color="success" />
+                                  {scoreBreakdown && <Chip label={scoreBreakdown.quickRatio >= 1.0 ? 'Bon' : scoreBreakdown.quickRatio >= 0.7 ? 'Acceptable' : 'Faible'} color={scoreBreakdown.quickRatio >= 1.0 ? 'success' : scoreBreakdown.quickRatio >= 0.7 ? 'warning' : 'error'} size="small" />}
                                 </TableCell>
                               </TableRow>
                             </TableBody>
@@ -1036,8 +1187,8 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
                     <Card>
                       <CardContent>
                         <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar sx={{ bgcolor: 'success.main', width: 32, height: 32 }}>📈</Avatar>
-                          Ratios de Rentabilité
+                          <Avatar sx={{ bgcolor: 'success.main', width: 32, height: 32, fontSize: '16px' }}>📈</Avatar>
+                          Rentabilité — {scoreBreakdown?.profitability ?? 0}/100
                         </Typography>
                         <TableContainer>
                           <Table size="small">
@@ -1052,24 +1203,18 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
                             <TableBody>
                               <TableRow>
                                 <TableCell>Marge Nette</TableCell>
-                                <TableCell align="right">6.81%</TableCell>
+                                <TableCell align="right">{scoreBreakdown ? `${scoreBreakdown.netMargin.toFixed(2)}%` : '—'}</TableCell>
                                 <TableCell align="right">≥ 5%</TableCell>
                                 <TableCell align="center">
-                                  <Chip label="Bon" color="success" size="small" />
+                                  {scoreBreakdown && <Chip label={scoreBreakdown.netMargin >= 10 ? 'Excellent' : scoreBreakdown.netMargin >= 5 ? 'Bon' : scoreBreakdown.netMargin >= 2 ? 'Acceptable' : 'Faible'} color={scoreBreakdown.netMargin >= 5 ? 'success' : scoreBreakdown.netMargin >= 2 ? 'warning' : 'error'} size="small" />}
                                 </TableCell>
                               </TableRow>
                               <TableRow>
                                 <TableCell>ROA</TableCell>
-                                <TableCell align="right">10.62%</TableCell>
+                                <TableCell align="right">{scoreBreakdown ? `${scoreBreakdown.roa.toFixed(2)}%` : '—'}</TableCell>
                                 <TableCell align="right">≥ 8%</TableCell>
                                 <TableCell align="center">
-                                  <Chip label="Bon" color="success" size="small" />
-                                </TableCell>
-                              </TableRow>
-                              <TableRow sx={{ bgcolor: 'action.hover' }}>
-                                <TableCell><strong>Score Rentabilité</strong></TableCell>
-                                <TableCell align="right" colSpan={3}>
-                                  <Chip label="70/100" color="success" />
+                                  {scoreBreakdown && <Chip label={scoreBreakdown.roa >= 8 ? 'Bon' : scoreBreakdown.roa >= 5 ? 'Acceptable' : 'Faible'} color={scoreBreakdown.roa >= 8 ? 'success' : scoreBreakdown.roa >= 5 ? 'warning' : 'error'} size="small" />}
                                 </TableCell>
                               </TableRow>
                             </TableBody>
@@ -1084,8 +1229,8 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
                     <Card>
                       <CardContent>
                         <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar sx={{ bgcolor: 'warning.main', width: 32, height: 32 }}>⚖️</Avatar>
-                          Ratios d'Endettement
+                          <Avatar sx={{ bgcolor: 'warning.main', width: 32, height: 32, fontSize: '16px' }}>⚖️</Avatar>
+                          Endettement — {scoreBreakdown?.leverage ?? 0}/100
                         </Typography>
                         <TableContainer>
                           <Table size="small">
@@ -1099,25 +1244,19 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
                             </TableHead>
                             <TableBody>
                               <TableRow>
-                                <TableCell>Dette / Capitaux Propres</TableCell>
-                                <TableCell align="right">0.60</TableCell>
+                                <TableCell>Dette / Cap. Propres</TableCell>
+                                <TableCell align="right">{scoreBreakdown ? scoreBreakdown.debtToEquity.toFixed(2) : '—'}</TableCell>
                                 <TableCell align="right">≤ 1.0</TableCell>
                                 <TableCell align="center">
-                                  <Chip label="Excellent" color="success" size="small" />
+                                  {scoreBreakdown && <Chip label={scoreBreakdown.debtToEquity <= 0.5 ? 'Excellent' : scoreBreakdown.debtToEquity <= 1.0 ? 'Bon' : scoreBreakdown.debtToEquity <= 2.0 ? 'Acceptable' : 'Élevé'} color={scoreBreakdown.debtToEquity <= 1.0 ? 'success' : scoreBreakdown.debtToEquity <= 2.0 ? 'warning' : 'error'} size="small" />}
                                 </TableCell>
                               </TableRow>
                               <TableRow>
                                 <TableCell>Autonomie Financière</TableCell>
-                                <TableCell align="right">52.24%</TableCell>
+                                <TableCell align="right">{scoreBreakdown ? `${scoreBreakdown.equityRatio.toFixed(1)}%` : '—'}</TableCell>
                                 <TableCell align="right">≥ 30%</TableCell>
                                 <TableCell align="center">
-                                  <Chip label="Excellent" color="success" size="small" />
-                                </TableCell>
-                              </TableRow>
-                              <TableRow sx={{ bgcolor: 'action.hover' }}>
-                                <TableCell><strong>Score Endettement</strong></TableCell>
-                                <TableCell align="right" colSpan={3}>
-                                  <Chip label="90/100" color="success" />
+                                  {scoreBreakdown && <Chip label={scoreBreakdown.equityRatio >= 40 ? 'Excellent' : scoreBreakdown.equityRatio >= 30 ? 'Bon' : scoreBreakdown.equityRatio >= 20 ? 'Acceptable' : 'Faible'} color={scoreBreakdown.equityRatio >= 30 ? 'success' : scoreBreakdown.equityRatio >= 20 ? 'warning' : 'error'} size="small" />}
                                 </TableCell>
                               </TableRow>
                             </TableBody>
@@ -1132,8 +1271,8 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
                     <Card>
                       <CardContent>
                         <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar sx={{ bgcolor: 'primary.main', width: 32, height: 32 }}>⚡</Avatar>
-                          Ratios d'Efficacité
+                          <Avatar sx={{ bgcolor: 'primary.main', width: 32, height: 32, fontSize: '16px' }}>⚡</Avatar>
+                          Efficacité — {scoreBreakdown?.efficiency ?? 0}/100
                         </Typography>
                         <TableContainer>
                           <Table size="small">
@@ -1148,22 +1287,10 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
                             <TableBody>
                               <TableRow>
                                 <TableCell>Rotation des Actifs</TableCell>
-                                <TableCell align="right">1.56</TableCell>
+                                <TableCell align="right">{scoreBreakdown ? scoreBreakdown.assetTurnover.toFixed(2) : '—'}</TableCell>
                                 <TableCell align="right">≥ 1.0</TableCell>
                                 <TableCell align="center">
-                                  <Chip label="Bon" color="success" size="small" />
-                                </TableCell>
-                              </TableRow>
-                              <TableRow>
-                                <TableCell>-</TableCell>
-                                <TableCell align="right">-</TableCell>
-                                <TableCell align="right">-</TableCell>
-                                <TableCell align="center">-</TableCell>
-                              </TableRow>
-                              <TableRow sx={{ bgcolor: 'action.hover' }}>
-                                <TableCell><strong>Score Efficacité</strong></TableCell>
-                                <TableCell align="right" colSpan={3}>
-                                  <Chip label="85/100" color="success" />
+                                  {scoreBreakdown && <Chip label={scoreBreakdown.assetTurnover >= 1.5 ? 'Excellent' : scoreBreakdown.assetTurnover >= 1.0 ? 'Bon' : scoreBreakdown.assetTurnover >= 0.5 ? 'Acceptable' : 'Faible'} color={scoreBreakdown.assetTurnover >= 1.0 ? 'success' : scoreBreakdown.assetTurnover >= 0.5 ? 'warning' : 'error'} size="small" />}
                                 </TableCell>
                               </TableRow>
                             </TableBody>
@@ -1174,38 +1301,38 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
                   </Grid>
                 </Grid>
 
-                {/* Trend Analysis Section */}
+                {/* Trend Analysis */}
                 <Card sx={{ mt: 3 }}>
                   <CardContent>
                     <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                      Analyse des Tendances (Multi-années)
+                      Ajustement Tendances Multi-Années
                     </Typography>
                     <Alert severity="info" sx={{ mb: 2 }}>
-                      Le score financier inclut un ajustement basé sur les tendances observées sur 3 ans.
+                      Le score de tendance ajoute jusqu'à +25 pts selon l'évolution pluriannuelle des indicateurs clés.
                     </Alert>
                     <Grid container spacing={2}>
-                      <Grid item xs={12} sm={6} md={3}>
+                      <Grid item xs={6} sm={3}>
                         <Paper sx={{ p: 2, textAlign: 'center', border: '1px solid', borderColor: 'divider' }}>
-                          <Typography variant="body2" color="text.secondary">Croissance CA</Typography>
-                          <Typography variant="h5" color="success.main" sx={{ fontWeight: 600 }}>+2.8%</Typography>
+                          <Typography variant="body2" color="text.secondary">Score Tendance</Typography>
+                          <Typography variant="h5" color="info.main" sx={{ fontWeight: 600 }}>{scoreBreakdown?.trendScore ?? 0}/20</Typography>
                         </Paper>
                       </Grid>
-                      <Grid item xs={12} sm={6} md={3}>
+                      <Grid item xs={6} sm={3}>
                         <Paper sx={{ p: 2, textAlign: 'center', border: '1px solid', borderColor: 'divider' }}>
-                          <Typography variant="body2" color="text.secondary">Évolution Résultat</Typography>
-                          <Typography variant="h5" color="warning.main" sx={{ fontWeight: 600 }}>-7.5%</Typography>
+                          <Typography variant="body2" color="text.secondary">Bonus Appliqué</Typography>
+                          <Typography variant="h5" color="success.main" sx={{ fontWeight: 600 }}>+{(scoreBreakdown?.trendAdjustment ?? 0).toFixed(1)}</Typography>
                         </Paper>
                       </Grid>
-                      <Grid item xs={12} sm={6} md={3}>
+                      <Grid item xs={6} sm={3}>
                         <Paper sx={{ p: 2, textAlign: 'center', border: '1px solid', borderColor: 'divider' }}>
-                          <Typography variant="body2" color="text.secondary">Croissance Actifs</Typography>
-                          <Typography variant="h5" color="success.main" sx={{ fontWeight: 600 }}>+3.7%</Typography>
+                          <Typography variant="body2" color="text.secondary">Score de Base</Typography>
+                          <Typography variant="h5" color="primary.main" sx={{ fontWeight: 600 }}>{(scoreBreakdown?.baseScore ?? 0).toFixed(1)}</Typography>
                         </Paper>
                       </Grid>
-                      <Grid item xs={12} sm={6} md={3}>
+                      <Grid item xs={6} sm={3}>
                         <Paper sx={{ p: 2, textAlign: 'center', border: '1px solid', borderColor: 'divider' }}>
-                          <Typography variant="body2" color="text.secondary">Ajustement Tendances</Typography>
-                          <Typography variant="h5" color="info.main" sx={{ fontWeight: 600 }}>+8 pts</Typography>
+                          <Typography variant="body2" color="text.secondary">Score Final</Typography>
+                          <Typography variant="h5" color="success.main" sx={{ fontWeight: 600 }}>{financialScore}/100</Typography>
                         </Paper>
                       </Grid>
                     </Grid>
@@ -1455,8 +1582,16 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
     console.log('📊 Financial Data:', financialData);
     console.log('📊 Financial Data keys:', Object.keys(financialData));
 
+    const zeroBreakdown = {
+      liquidity: 0, profitability: 0, leverage: 0, efficiency: 0,
+      currentRatio: 0, quickRatio: 0, netMargin: 0, roa: 0,
+      debtToEquity: 0, equityRatio: 0, assetTurnover: 0,
+      trendScore: 0, trendAdjustment: 0, baseScore: 0,
+    };
+
     if (!financialData || Object.keys(financialData).length === 0) {
       console.log('❌ No financial data available');
+      setScoreBreakdown(zeroBreakdown);
       return 0;
     }
 
@@ -1465,22 +1600,18 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
     const latestYear = years[0];
     const yearData = financialData[latestYear];
 
-    console.log('📅 Years available:', years);
-    console.log('📅 Latest year:', latestYear);
-    console.log('📋 Latest year data:', yearData);
-
     if (!yearData) {
       console.log('❌ No data for latest year');
+      setScoreBreakdown(zeroBreakdown);
       return 0;
     }
 
     // Extract the actual financial data from the nested structure
     const data = yearData.multiyear_data?.N?.data;
 
-    console.log('💰 Extracted financial data:', data);
-
     if (!data) {
       console.log('❌ No financial data found in multiyear_data.N.data');
+      setScoreBreakdown(zeroBreakdown);
       return 0;
     }
 
@@ -1619,45 +1750,55 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
       categoryCount++;
     }
 
-    // Use realistic West African market-adjusted base scores (Option A - Corrected)
-    // These are more appropriate for UEMOA region companies
-    const realisticLiquidityScore = 85;      // Excellent current/quick ratios (3.24)
-    const realisticProfitabilityScore = 70;  // Good margins for the region (6.81% net margin)
-    const realisticLeverageScore = 90;       // Very good equity position (52% equity ratio, 0.60 D/E)
-    const realisticEfficiencyScore = 85;     // Good asset turnover (1.56)
+    // Normalize computed scores to 0-100 scale
+    // liquidityScore max = 25, profitabilityScore max = 30, leverageScore max = 25, efficiencyScore max = 20
+    const normLiquidity     = Math.min(liquidityScore * 4, 100);
+    const normProfitability = Math.min(profitabilityScore * (10 / 3), 100);
+    const normLeverage      = Math.min(leverageScore * 4, 100);
+    const normEfficiency    = Math.min(efficiencyScore * 5, 100);
 
-    const weights = {
-      liquidity: 0.25,
-      profitability: 0.30,
-      leverage: 0.25,
-      efficiency: 0.20
-    };
+    // Apply dynamic category weights (normalize to always sum to 100%)
+    const totalCatWeight = (categoryWeights.liquidity + categoryWeights.profitability +
+                            categoryWeights.leverage + categoryWeights.efficiency) || 100;
+    const wL   = categoryWeights.liquidity    / totalCatWeight;
+    const wP   = categoryWeights.profitability / totalCatWeight;
+    const wLev = categoryWeights.leverage     / totalCatWeight;
+    const wE   = categoryWeights.efficiency   / totalCatWeight;
 
-    const weightedScore =
-      (realisticLiquidityScore * weights.liquidity) +
-      (realisticProfitabilityScore * weights.profitability) +
-      (realisticLeverageScore * weights.leverage) +
-      (realisticEfficiencyScore * weights.efficiency);
+    const weightedScore = normLiquidity * wL + normProfitability * wP + normLeverage * wLev + normEfficiency * wE;
 
-    console.log('📈 Base Score Breakdown (West African Market Adjusted):');
-    console.log('  Liquidity Score:', realisticLiquidityScore, '→ Weighted:', (realisticLiquidityScore * weights.liquidity).toFixed(2));
-    console.log('  Profitability Score:', realisticProfitabilityScore, '→ Weighted:', (realisticProfitabilityScore * weights.profitability).toFixed(2));
-    console.log('  Leverage Score:', realisticLeverageScore, '→ Weighted:', (realisticLeverageScore * weights.leverage).toFixed(2));
-    console.log('  Efficiency Score:', realisticEfficiencyScore, '→ Weighted:', (realisticEfficiencyScore * weights.efficiency).toFixed(2));
-    console.log('  BASE SCORE:', weightedScore.toFixed(2));
+    // Calculate trend adjustment (0-20 trend score → 0-25 bonus points)
+    const trendScoreVal   = calculateTrendScore(allYearsData);
+    const trendAdjustment = (trendScoreVal / 20) * 25;
+    const finalScore      = weightedScore + trendAdjustment;
 
-    // Calculate trend adjustment
-    const trendScore = calculateTrendScore(allYearsData);
+    // Compute ratio values for UI display
+    const displayCurrentRatio  = actifCirculant > 0 && dettesCourtTerme > 0 ? actifCirculant / dettesCourtTerme : 0;
+    const displayQuickRatio    = actifCirculant > 0 && dettesCourtTerme > 0 ? (actifCirculant - stocks) / dettesCourtTerme : 0;
+    const displayNetMargin     = chiffreAffaires > 0 ? (resultatNet / chiffreAffaires) * 100 : 0;
+    const displayRoa           = totalActif > 0 ? (resultatNet / totalActif) * 100 : 0;
+    const displayDebtToEquity  = capitauxPropres > 0 ? (dettesLongTerme + dettesCourtTerme) / capitauxPropres : 0;
+    const displayEquityRatio   = totalActif > 0 ? (capitauxPropres / totalActif) * 100 : 0;
+    const displayAssetTurnover = totalActif > 0 ? chiffreAffaires / totalActif : 0;
 
-    // Apply trend adjustment: Base score (75% weight) + Trend bonus (25% weight, scaled)
-    // Trend score is 0-20, we scale it to have similar impact as base score
-    const trendAdjustment = (trendScore / 20) * 25; // Convert 0-20 to 0-25 scale
-    const finalScore = weightedScore + trendAdjustment;
+    setScoreBreakdown({
+      liquidity:     Math.round(normLiquidity),
+      profitability: Math.round(normProfitability),
+      leverage:      Math.round(normLeverage),
+      efficiency:    Math.round(normEfficiency),
+      currentRatio:  displayCurrentRatio,
+      quickRatio:    displayQuickRatio,
+      netMargin:     displayNetMargin,
+      roa:           displayRoa,
+      debtToEquity:  displayDebtToEquity,
+      equityRatio:   displayEquityRatio,
+      assetTurnover: displayAssetTurnover,
+      trendScore:    trendScoreVal,
+      trendAdjustment,
+      baseScore:     weightedScore,
+    });
 
-    console.log('✨ TREND ADJUSTMENT:', '+' + trendAdjustment.toFixed(2), 'points');
-    console.log('🎯 FINAL SCORE WITH TRENDS:', finalScore.toFixed(2), '→ Rounded:', Math.min(Math.round(finalScore), 100));
-
-    // Return score capped at 100
+    console.log('📈 Score Breakdown:', { normLiquidity, normProfitability, normLeverage, normEfficiency, weightedScore, trendAdjustment, finalScore });
     return Math.min(Math.round(finalScore), 100);
   };
 
@@ -1688,7 +1829,7 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
 
     setFinancialScore(finScore);
     setOverallScore(calculateOverallScore(finScore, anlScore));
-  }, [financialWeight, analystWeight, analystScore, financialData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [financialWeight, analystWeight, analystScore, financialData, categoryWeights]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Box>

@@ -40,6 +40,9 @@ import {
   LockOpen as LockOpenIcon,
   NotificationsNone as NotificationsIcon,
   Add as AddIcon,
+  Edit as EditIcon,
+  Check as CheckIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import { tokenManager } from '../services/api';
@@ -101,9 +104,9 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onNavigate }) => {
 
   // Notify emails
   const [notifyEmails, setNotifyEmails] = useState<NotifyEmail[]>([]);
-  const [newEmail, setNewEmail] = useState('');
-  const [newEmailName, setNewEmailName] = useState('');
-  const [addingEmail, setAddingEmail] = useState(false);
+  const [emailEditingId, setEmailEditingId] = useState<string | null>(null);
+  const [emailEditData, setEmailEditData] = useState({ email: '', name: '' });
+  const [emailSaving, setEmailSaving] = useState(false);
 
   const authHeader = () => ({
     headers: { Authorization: `Bearer ${tokenManager.getAccessToken()}` }
@@ -229,19 +232,37 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onNavigate }) => {
       });
   };
 
-  const handleAddEmail = async () => {
-    if (!newEmail) return;
-    setAddingEmail(true);
+  const startEditEmail = (r: NotifyEmail) => {
+    setEmailEditingId(r.id);
+    setEmailEditData({ email: r.email, name: r.name || '' });
+  };
+
+  const cancelEditEmail = () => {
+    setEmailEditingId(null);
+    setEmailEditData({ email: '', name: '' });
+  };
+
+  const saveEditEmail = async () => {
+    if (!emailEditData.email) return;
+    setEmailSaving(true);
     try {
-      await axios.post(`${API_BASE}/backup/notify-emails`, { email: newEmail, name: newEmailName || undefined }, authHeader());
-      setNewEmail('');
-      setNewEmailName('');
-      fetchNotifyEmails();
+      if (emailEditingId === '__new__') {
+        await axios.post(`${API_BASE}/backup/notify-emails`, { email: emailEditData.email, name: emailEditData.name || undefined }, authHeader());
+      } else {
+        await axios.put(`${API_BASE}/backup/notify-emails/${emailEditingId}`, emailEditData, authHeader());
+      }
+      await fetchNotifyEmails();
+      cancelEditEmail();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur lors de l\'ajout');
+      setError(err.response?.data?.error || 'Erreur lors de l\'enregistrement');
     } finally {
-      setAddingEmail(false);
+      setEmailSaving(false);
     }
+  };
+
+  const startAddEmailRow = () => {
+    setEmailEditingId('__new__');
+    setEmailEditData({ email: '', name: '' });
   };
 
   const handleDeleteEmail = async (id: string) => {
@@ -474,50 +495,23 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onNavigate }) => {
       {/* Notifications Tab */}
       {activeTab === 'notifications' && (
         <Paper sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none', p: 3 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Ces adresses recevront un email lors de chaque sauvegarde complète et en cas d'échec.
+            Double-cliquez sur une ligne pour la modifier.
           </Typography>
 
-          {/* Add form */}
-          <Box sx={{ display: 'flex', gap: 1.5, mb: 3, flexWrap: 'wrap' }}>
-            <TextField
-              label="Adresse email"
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              size="small"
-              sx={{ flex: '1 1 200px' }}
-              type="email"
-            />
-            <TextField
-              label="Nom (optionnel)"
-              value={newEmailName}
-              onChange={(e) => setNewEmailName(e.target.value)}
-              size="small"
-              sx={{ flex: '1 1 160px' }}
-            />
-            <Button
-              variant="contained"
-              startIcon={addingEmail ? <CircularProgress size={16} /> : <AddIcon />}
-              disabled={!newEmail || addingEmail}
-              onClick={handleAddEmail}
-            >
-              Ajouter
-            </Button>
-          </Box>
-
-          {/* Recipients table */}
-          <TableContainer>
+          <TableContainer sx={{ border: '1px solid #e8ecf0', borderRadius: '8px' }}>
             <Table size="small">
               <TableHead>
-                <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                  <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', py: 1.5 }}>Email</TableCell>
-                  <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', py: 1.5 }}>Nom</TableCell>
-                  <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', py: 1.5 }}>Statut</TableCell>
-                  <TableCell align="right" sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', py: 1.5 }}>Action</TableCell>
+                <TableRow>
+                  <TableCell>Email</TableCell>
+                  <TableCell>Nom</TableCell>
+                  <TableCell>Statut</TableCell>
+                  <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {notifyEmails.length === 0 ? (
+                {notifyEmails.length === 0 && emailEditingId !== '__new__' && (
                   <TableRow>
                     <TableCell colSpan={4} align="center">
                       <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
@@ -525,25 +519,122 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onNavigate }) => {
                       </Typography>
                     </TableCell>
                   </TableRow>
-                ) : notifyEmails.map((r) => (
-                  <TableRow key={r.id} sx={{ borderBottom: '1px solid #f1f5f9', '&:last-child': { borderBottom: 'none' } }}>
-                    <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{r.email}</TableCell>
-                    <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{r.name || '—'}</TableCell>
-                    <TableCell sx={{ py: 1.5 }}>
-                      <Chip label="Actif" color="success" size="small" variant="outlined" />
+                )}
+                {notifyEmails.map((r) =>
+                  emailEditingId === r.id ? (
+                    /* ── Edit row ── */
+                    <TableRow key={r.id} sx={{ bgcolor: 'rgba(31,78,121,0.04)' }}>
+                      <TableCell>
+                        <TextField
+                          autoFocus size="small" variant="outlined"
+                          placeholder="email@exemple.com" type="email"
+                          value={emailEditData.email}
+                          onChange={e => setEmailEditData(p => ({ ...p, email: e.target.value }))}
+                          onKeyDown={e => e.key === 'Enter' && saveEditEmail()}
+                          sx={{ width: 220 }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          size="small" variant="outlined"
+                          placeholder="Nom (optionnel)"
+                          value={emailEditData.name}
+                          onChange={e => setEmailEditData(p => ({ ...p, name: e.target.value }))}
+                          onKeyDown={e => e.key === 'Enter' && saveEditEmail()}
+                          sx={{ width: 160 }}
+                        />
+                      </TableCell>
+                      <TableCell><Chip label="Actif" color="success" size="small" variant="outlined" /></TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="Enregistrer">
+                          <span>
+                            <IconButton size="small" color="success" onClick={saveEditEmail}
+                              disabled={!emailEditData.email || emailSaving}>
+                              {emailSaving ? <CircularProgress size={14} /> : <CheckIcon fontSize="small" />}
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                        <Tooltip title="Annuler">
+                          <IconButton size="small" onClick={cancelEditEmail}><CloseIcon fontSize="small" /></IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    /* ── View row ── */
+                    <TableRow key={r.id} hover onDoubleClick={() => startEditEmail(r)}>
+                      <TableCell sx={{ fontWeight: 500 }}>{r.email}</TableCell>
+                      <TableCell sx={{ color: 'text.secondary' }}>{r.name || '—'}</TableCell>
+                      <TableCell><Chip label="Actif" color="success" size="small" variant="outlined" /></TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="Modifier">
+                          <IconButton size="small" onClick={() => startEditEmail(r)}
+                            disabled={emailEditingId !== null}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Supprimer">
+                          <IconButton size="small" color="error" onClick={() => handleDeleteEmail(r.id)}
+                            disabled={emailEditingId !== null}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  )
+                )}
+
+                {/* New row being added inline */}
+                {emailEditingId === '__new__' && (
+                  <TableRow sx={{ bgcolor: 'rgba(31,78,121,0.04)' }}>
+                    <TableCell>
+                      <TextField
+                        autoFocus size="small" variant="outlined"
+                        placeholder="email@exemple.com" type="email"
+                        value={emailEditData.email}
+                        onChange={e => setEmailEditData(p => ({ ...p, email: e.target.value }))}
+                        onKeyDown={e => e.key === 'Enter' && saveEditEmail()}
+                        sx={{ width: 220 }}
+                      />
                     </TableCell>
-                    <TableCell align="right" sx={{ py: 1.5 }}>
-                      <Tooltip title="Supprimer">
-                        <IconButton size="small" color="error" onClick={() => handleDeleteEmail(r.id)}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
+                    <TableCell>
+                      <TextField
+                        size="small" variant="outlined"
+                        placeholder="Nom (optionnel)"
+                        value={emailEditData.name}
+                        onChange={e => setEmailEditData(p => ({ ...p, name: e.target.value }))}
+                        onKeyDown={e => e.key === 'Enter' && saveEditEmail()}
+                        sx={{ width: 160 }}
+                      />
+                    </TableCell>
+                    <TableCell><Chip label="Nouveau" color="info" size="small" variant="outlined" /></TableCell>
+                    <TableCell align="right">
+                      <Tooltip title="Enregistrer">
+                        <span>
+                          <IconButton size="small" color="success" onClick={saveEditEmail}
+                            disabled={!emailEditData.email || emailSaving}>
+                            {emailSaving ? <CircularProgress size={14} /> : <CheckIcon fontSize="small" />}
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                      <Tooltip title="Annuler">
+                        <IconButton size="small" onClick={cancelEditEmail}><CloseIcon fontSize="small" /></IconButton>
                       </Tooltip>
                     </TableCell>
                   </TableRow>
-                ))}
+                )}
               </TableBody>
             </Table>
           </TableContainer>
+
+          <Button
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={startAddEmailRow}
+            disabled={emailEditingId !== null}
+            sx={{ mt: 1.5, color: 'primary.main', textTransform: 'none', fontWeight: 500 }}
+          >
+            Ajouter une adresse
+          </Button>
         </Paper>
       )}
 

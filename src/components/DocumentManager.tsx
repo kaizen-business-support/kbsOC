@@ -58,6 +58,7 @@ interface DocumentManagerProps {
   applicationId?: string;
   initialDocuments?: any[];
   onDocumentProcessed?: (document: DocumentFile) => void;
+  onDocumentsChange?: (documents: DocumentFile[]) => void;
 }
 
 const documentCategories = {
@@ -97,9 +98,19 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({
   clientId,
   applicationId,
   initialDocuments = [],
-  onDocumentProcessed
+  onDocumentProcessed,
+  onDocumentsChange
 }) => {
   const [documents, setDocuments] = useState<DocumentFile[]>(initialDocuments);
+
+  // Notify parent whenever the document list changes
+  const updateDocuments = (updater: (prev: DocumentFile[]) => DocumentFile[]) => {
+    setDocuments(prev => {
+      const next = updater(prev);
+      onDocumentsChange?.(next);
+      return next;
+    });
+  };
   const [selectedCategory, setSelectedCategory] = useState<keyof typeof documentCategories>('financial');
   const [previewDialog, setPreviewDialog] = useState<{ open: boolean; document?: DocumentFile }>({ open: false });
   const [ocrProgress, setOcrProgress] = useState<{ [key: string]: number }>({});
@@ -148,7 +159,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({
       const ocrText = result.data.text;
       const extractedData = extractFinancialData(ocrText);
 
-      setDocuments(prev => prev.map(doc => 
+      updateDocuments(prev =>prev.map(doc => 
         doc.id === documentId 
           ? { 
               ...doc, 
@@ -178,7 +189,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({
       }
     } catch (error) {
       console.error('OCR Error:', error);
-      setDocuments(prev => prev.map(doc => 
+      updateDocuments(prev =>prev.map(doc => 
         doc.id === documentId 
           ? { ...doc, status: 'error' as const }
           : doc
@@ -206,7 +217,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({
         previewUrl: previewUrl
       };
 
-      setDocuments(prev => [...prev, newDocument]);
+      updateDocuments(prev =>[...prev, newDocument]);
 
       // Only perform OCR on financial document images
       if (selectedCategory === 'financial' && file.type.startsWith('image/')) {
@@ -214,7 +225,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({
       } else {
         // Mark as verified immediately for non-financial docs or non-image files
         setTimeout(() => {
-          setDocuments(prev => prev.map(doc =>
+          updateDocuments(prev =>prev.map(doc =>
             doc.id === newDocument.id
               ? { ...doc, status: 'verified' as const }
               : doc
@@ -274,7 +285,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({
   };
 
   const handleDelete = (documentId: string) => {
-    setDocuments(prev => prev.filter(doc => doc.id !== documentId));
+    updateDocuments(prev =>prev.filter(doc => doc.id !== documentId));
   };
 
   const filteredDocuments = documents.filter(doc => doc.category === selectedCategory);

@@ -112,21 +112,22 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
       .join('');
   };
   return (
-    <AppBar 
-      position="fixed" 
-      sx={{ 
-        zIndex: (theme) => theme.zIndex.drawer + 1,
-        bgcolor: 'primary.main',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-      }}
+    <AppBar
+      position="fixed"
+      sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}
     >
       <Toolbar>
         <IconButton
-          color="inherit"
+          color="primary"
           aria-label="open drawer"
           onClick={onMenuClick}
           edge="start"
-          sx={{ mr: 2 }}
+          sx={{
+            mr: 2,
+            transition: 'transform 0.18s cubic-bezier(0.34,1.56,0.64,1)',
+            '&:hover':  { transform: 'scale(1.08)' },
+            '&:active': { transform: 'scale(0.90)' },
+          }}
         >
           <MenuIcon />
         </IconButton>
@@ -135,59 +136,47 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
           <img
             src={logoImage}
             alt="Optimus Credit"
-            style={{
-              height: '32px',
-              marginRight: '8px',
-              flexShrink: 0,
-            }}
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-            }}
+            style={{ height: '28px', marginRight: '8px', flexShrink: 0 }}
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
           />
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', overflow: 'hidden' }}>
-            <Typography
-              variant="h6"
-              noWrap
-              component="div"
-              sx={{
-                fontWeight: 600,
-                letterSpacing: '0.5px',
-                fontSize: { xs: '0.95rem', sm: '1.1rem' },
-              }}
-            >
-              OptimusCredit
-            </Typography>
-            <Typography
-              variant="caption"
-              sx={{
-                color: 'rgba(255,255,255,0.8)',
-                lineHeight: 1,
-                display: { xs: 'none', sm: 'block' },
-              }}
-            >
-              {t('header.subtitle')}
-            </Typography>
-          </Box>
+          <Typography
+            noWrap
+            component="div"
+            sx={{
+              fontWeight:    700,
+              fontSize:      '15px',
+              fontFamily:    '"Inter", sans-serif',
+              letterSpacing: '-0.2px',
+              display:       { xs: 'none', sm: 'block' },
+              // brand gradient text
+              background:          'linear-gradient(135deg, #3A56A8 0%, #2878C8 52%, #28A8E2 100%)',
+              WebkitBackgroundClip:'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip:      'text',
+            }}
+          >
+            OptimusCredit
+          </Typography>
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 1, md: 2 } }}>
-          <Chip
-            label={pageTitle[currentPage]}
-            color="secondary"
-            variant="outlined"
-            sx={{
-              display: { xs: 'none', sm: 'flex' },
-              color: 'white',
-              borderColor: 'rgba(255,255,255,0.3)',
-              maxWidth: { sm: 120, md: 200 },
-              '& .MuiChip-label': {
-                fontWeight: 500,
-                overflow: 'hidden',
+          {/* Séparateur + titre de page */}
+          <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 1.25 }}>
+            <Box sx={{ width: '1px', height: '16px', background: 'rgba(58,86,168,0.20)', borderRadius: '1px' }} />
+            <Typography
+              noWrap
+              sx={{
+                color:        '#6B7A99',
+                fontSize:     '13px',
+                fontFamily:   '"Inter", sans-serif',
+                maxWidth:     { sm: 140, md: 220 },
+                overflow:     'hidden',
                 textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              },
-            }}
-          />
+              }}
+            >
+              {pageTitle[currentPage]}
+            </Typography>
+          </Box>
           {userState.isAuthenticated && (
             <NotificationBell onPageChange={onPageChange} />
           )}
@@ -200,12 +189,12 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
                 onClick={onReset}
                 startIcon={<ResetIcon />}
                 sx={{
-                  color: 'white',
-                  borderColor: 'rgba(255,255,255,0.3)',
+                  color: 'primary.main',
+                  borderColor: 'rgba(31,78,121,0.30)',
                   ml: 2,
                   '&:hover': {
-                    borderColor: 'rgba(255,255,255,0.5)',
-                    bgcolor: 'rgba(255,255,255,0.1)',
+                    borderColor: 'primary.main',
+                    bgcolor: 'rgba(31,78,121,0.05)',
                   },
                   display: { xs: 'none', md: 'flex' },
                 }}
@@ -219,44 +208,32 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
           {userState.isAuthenticated && userState.currentUser && (
             <Box sx={{ display: 'flex', alignItems: 'center', ml: 2 }}>
               {/* User Info - Hidden on mobile */}
-              <Box 
-                sx={{ 
-                  display: { xs: 'none', md: 'flex' }, 
+              <Box
+                sx={{
+                  display: { xs: 'none', md: 'flex' },
                   flexDirection: 'column',
                   alignItems: 'flex-end',
-                  mr: 2
+                  mr: 1.5,
                 }}
               >
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    color: 'white',
-                    fontWeight: 600,
-                    lineHeight: 1.2
-                  }}
-                >
+                <Typography sx={{ color: '#1F272E', fontWeight: 600, fontSize: '13px', lineHeight: 1.2, fontFamily: '"Inter", sans-serif' }}>
                   {userState.currentUser.name}
                 </Typography>
-                <Typography 
-                  variant="caption" 
-                  sx={{ 
-                    color: 'rgba(255,255,255,0.7)',
-                    lineHeight: 1.2
-                  }}
-                >
+                <Typography sx={{ color: '#8D99A6', fontSize: '11.5px', lineHeight: 1.2, fontFamily: '"Inter", sans-serif' }}>
                   {getRoleLabel(userState.currentUser.role)}
                 </Typography>
               </Box>
 
               {/* User Avatar with Menu */}
-              <Tooltip title="Profil utilisateur">
+              <Tooltip title="Mon compte" enterDelay={400}>
                 <IconButton
                   onClick={handleUserMenuClick}
-                  sx={{ 
-                    color: 'white',
-                    '&:hover': {
-                      bgcolor: 'rgba(255,255,255,0.1)',
-                    }
+                  sx={{
+                    p:          0.5,
+                    borderRadius:'10px',
+                    transition: 'transform 0.18s cubic-bezier(0.34,1.56,0.64,1)',
+                    '&:hover':  { transform: 'scale(1.06)', bgcolor: 'rgba(58,86,168,0.06)' },
+                    '&:active': { transform: 'scale(0.94)' },
                   }}
                 >
                   <Badge
@@ -274,13 +251,15 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
                       />
                     }
                   >
-                    <Avatar 
-                      sx={{ 
-                        bgcolor: 'secondary.main',
-                        width: 40,
-                        height: 40,
-                        fontSize: '0.9rem',
-                        fontWeight: 600
+                    <Avatar
+                      sx={{
+                        background:  'linear-gradient(135deg, #3A56A8 0%, #2878C8 52%, #28A8E2 100%)',
+                        width:       34,
+                        height:      34,
+                        fontSize:    '12px',
+                        fontWeight:  600,
+                        fontFamily:  '"Inter", sans-serif',
+                        boxShadow:   '0 2px 8px rgba(40,120,200,0.30)',
                       }}
                     >
                       {getUserInitials(userState.currentUser.name)}
@@ -294,56 +273,43 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
                 anchorEl={userMenuAnchor}
                 open={Boolean(userMenuAnchor)}
                 onClose={handleUserMenuClose}
+                TransitionProps={{ timeout: { enter: 180, exit: 120 } }}
                 PaperProps={{
                   sx: {
-                    minWidth: 280,
-                    mt: 1.5,
-                    '& .MuiMenuItem-root': {
-                      px: 2,
-                      py: 1.5,
-                    },
+                    minWidth: 272,
+                    mt:       1,
+                    '& .MuiMenuItem-root': { px: 1.5, py: 1 },
                   },
                 }}
                 transformOrigin={{ horizontal: 'right', vertical: 'top' }}
                 anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
               >
                 {/* User Info Header */}
-                <Box sx={{ px: 2, py: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <Avatar 
-                      sx={{ 
-                        bgcolor: 'primary.main',
-                        width: 48,
-                        height: 48,
-                        mr: 2
-                      }}
-                    >
+                <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid #E8EBED' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Avatar sx={{ background: 'linear-gradient(135deg, #3A56A8 0%, #28A8E2 100%)', width: 40, height: 40, fontSize: '13px', fontWeight: 600, fontFamily: '"Inter", sans-serif', boxShadow: '0 2px 8px rgba(40,120,200,0.30)' }}>
                       {getUserInitials(userState.currentUser.name)}
                     </Avatar>
                     <Box>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      <Typography sx={{ fontWeight: 600, fontSize: '14px', color: '#1F272E', fontFamily: '"Inter", sans-serif', lineHeight: 1.3 }}>
                         {userState.currentUser.name}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography sx={{ fontSize: '12px', color: '#8D99A6', fontFamily: '"Inter", sans-serif', lineHeight: 1.3 }}>
                         {userState.currentUser.email}
                       </Typography>
+                      <Box sx={{ mt: 0.75, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                        <Chip
+                          icon={<WorkIcon style={{ fontSize: 11 }} />}
+                          label={getRoleLabel(userState.currentUser.role)}
+                          size="small"
+                          color="primary"
+                        />
+                        {userState.currentUser.department && (
+                          <Chip label={userState.currentUser.department} size="small" variant="outlined" />
+                        )}
+                      </Box>
                     </Box>
                   </Box>
-                  <Chip
-                    icon={<WorkIcon />}
-                    label={getRoleLabel(userState.currentUser.role)}
-                    size="small"
-                    color="primary"
-                    variant="outlined"
-                  />
-                  {userState.currentUser.department && (
-                    <Chip
-                      label={userState.currentUser.department}
-                      size="small"
-                      sx={{ ml: 1 }}
-                      variant="outlined"
-                    />
-                  )}
                 </Box>
 
                 {/* Menu Items */}

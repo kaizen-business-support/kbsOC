@@ -172,4 +172,25 @@ router.delete('/notify-emails/:id', requireAdmin, asyncHandler(async (req: Reque
   return res.json({ success: true, message: 'Destinataire supprimé' });
 }));
 
+// PUT /api/backup/notify-emails/:id
+router.put('/notify-emails/:id', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { email, name, isActive } = req.body;
+
+  if (email && !EMAIL_REGEX.test(email)) {
+    throw new AppError('Format email invalide', 400, 'INVALID_EMAIL');
+  }
+
+  const updated = await (prisma as any).backupNotifyEmail.update({
+    where: { id },
+    data: {
+      ...(email !== undefined && { email }),
+      ...(name !== undefined && { name }),
+      ...(isActive !== undefined && { isActive }),
+    },
+  });
+
+  return res.json({ success: true, record: updated });
+}));
+
 export default router;

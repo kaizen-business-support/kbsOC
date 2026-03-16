@@ -8,6 +8,7 @@ import { blacklistToken, isTokenBlacklisted } from '../services/redis';
 import { authenticate } from '../middleware/auth';
 import { sendEmail } from '../services/notificationService';
 import { buildPasswordResetEmail } from '../utils/emailTemplates';
+import { getAppUrl } from '../utils/getAppUrl';
 
 const router = Router();
 
@@ -422,7 +423,7 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
       } as any
     });
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3006';
+    const frontendUrl = getAppUrl();
     const resetUrl = `${frontendUrl}/reset-password?token=${plainToken}`;
     const html = buildPasswordResetEmail({ name: user.name, resetUrl, expiresIn: '1 heure' });
     sendEmail(user.email, 'Réinitialisation de votre mot de passe - OptimusCredit', html)

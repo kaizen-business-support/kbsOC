@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -25,7 +25,9 @@ import {
   LinearProgress,
   Alert,
   TextField,
-  CircularProgress
+  CircularProgress,
+  IconButton,
+  Tooltip
 } from '@mui/material';
 import {
   TrendingUp as TrendingUpIcon,
@@ -33,7 +35,11 @@ import {
   BarChart as BarChartIcon,
   Star as StarIcon,
   CheckCircle as ApproveIcon,
-  Cancel as RejectIcon
+  Cancel as RejectIcon,
+  FolderOpen as FolderIcon,
+  Visibility as VisibilityIcon,
+  Close as CloseIcon,
+  InsertDriveFile as FileIcon
 } from '@mui/icons-material';
 import { WorkflowTimestamps } from '../types';
 import { WorkflowTimeline } from './WorkflowTimeline';
@@ -80,6 +86,73 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const { state: userState } = useUser();
+
+  // Documents tab state
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<any | null>(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const getApiBase = () => {
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    const apiPort = process.env.REACT_APP_API_PORT || '5007';
+    return `${protocol}//${hostname}:${apiPort}/api`;
+  };
+
+  const fetchDocuments = useCallback(async (applicationId: string) => {
+    setDocsLoading(true);
+    try {
+      const token = localStorage.getItem('optimus_access_token');
+      const resp = await fetch(`${getApiBase()}/documents/${applicationId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setDocuments(data.documents || []);
+      } else {
+        console.error('[Documents] fetch failed:', resp.status, await resp.text().catch(() => ''));
+      }
+    } catch (err) {
+      console.error('[Documents] fetch error:', err);
+    } finally {
+      setDocsLoading(false);
+    }
+  }, []);
+
+  const openPreview = useCallback(async (doc: any) => {
+    setPreviewDoc(doc);
+    setPreviewBlobUrl(null);
+    setPreviewLoading(true);
+    try {
+      const token = localStorage.getItem('optimus_access_token');
+      const resp = await fetch(`${getApiBase()}/documents/preview/${doc.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        setPreviewBlobUrl(url);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, []);
+
+  const closePreview = useCallback(() => {
+    if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
+    setPreviewDoc(null);
+    setPreviewBlobUrl(null);
+  }, [previewBlobUrl]);
+
+  useEffect(() => {
+    if (activeTab === 5 && workflow?.applicationId) {
+      fetchDocuments(workflow.applicationId);
+    }
+  }, [activeTab, workflow?.applicationId, fetchDocuments]);
 
   if (!workflow) return null;
 
@@ -330,18 +403,24 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
         sx: { minHeight: '80vh' }
       }}
     >
-      <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-          <Typography variant="h6">
-            Détails du Workflow - {workflow.clientName}
-          </Typography>
-          <Chip
-            label={statusDisplay.label}
-            color={statusDisplay.color}
-            size="small"
-          />
+      <DialogTitle sx={{ pb: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Typography variant="h6" sx={{ fontSize: '14px', fontWeight: 600, color: '#1f4e79' }}>
+              {workflow.clientName}
+            </Typography>
+            <Chip
+              label={statusDisplay.label}
+              color={statusDisplay.color}
+              size="small"
+            />
+          </Box>
+          <IconButton size="small" onClick={onClose}
+            sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'rgba(0,0,0,0.06)' } }}>
+            <CloseIcon sx={{ fontSize: 15 }} />
+          </IconButton>
         </Box>
-        <Typography variant="subtitle2" color="text.secondary">
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
           {workflow.applicationNumber}
         </Typography>
       </DialogTitle>
@@ -353,6 +432,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
           <Tab label="Données Financières" icon={<TrendingUpIcon />} iconPosition="start" />
           <Tab label="Ratios" icon={<BarChartIcon />} iconPosition="start" />
           <Tab label="Scoring" icon={<StarIcon />} iconPosition="start" />
+          <Tab label="Documents" icon={<FolderIcon />} iconPosition="start" />
         </Tabs>
       </Box>
 
@@ -2018,7 +2098,124 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
             )}
           </Grid>
         </TabPanel>
+
+        {/* Tab 5: Documents */}
+        <TabPanel value={activeTab} index={5}>
+          <Typography variant="h6" gutterBottom>
+            Documents justificatifs
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Cliquez sur l'icône œil pour prévisualiser un document (lecture seule — le téléchargement est désactivé).
+          </Typography>
+
+          {docsLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : documents.length === 0 ? (
+            <Alert severity="info">Aucun document justificatif n'a été joint à cette demande.</Alert>
+          ) : (
+            <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none' }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                    <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Nom du fichier</TableCell>
+                    <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Catégorie</TableCell>
+                    <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Taille</TableCell>
+                    <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Ajouté par</TableCell>
+                    <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Date</TableCell>
+                    <TableCell align="center" sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Aperçu</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {documents.map((doc) => {
+                    const ext = doc.filename?.split('.').pop()?.toLowerCase() || '';
+                    const canPreview = ['pdf', 'png', 'jpg', 'jpeg'].includes(ext);
+                    const sizeKb = doc.fileSize ? (doc.fileSize / 1024).toFixed(0) : '?';
+                    return (
+                      <TableRow key={doc.id} sx={{ '&:hover': { bgcolor: 'rgba(31,78,121,0.03)' }, borderBottom: '1px solid #f1f5f9' }}>
+                        <TableCell sx={{ py: 1.5 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <FileIcon sx={{ fontSize: 16, color: '#9ca3af' }} />
+                            <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '13px' }}>{doc.filename}</Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell sx={{ py: 1.5 }}>
+                          <Chip label={doc.category || 'OTHER'} size="small" variant="outlined" sx={{ fontSize: '11px' }} />
+                        </TableCell>
+                        <TableCell sx={{ py: 1.5, color: '#6b7280', fontSize: '13px' }}>{sizeKb} Ko</TableCell>
+                        <TableCell sx={{ py: 1.5, fontSize: '13px' }}>{doc.uploader?.name || '—'}</TableCell>
+                        <TableCell sx={{ py: 1.5, color: '#6b7280', fontSize: '13px' }}>
+                          {new Date(doc.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        </TableCell>
+                        <TableCell align="center" sx={{ py: 1.5 }}>
+                          {canPreview ? (
+                            <Tooltip title="Prévisualiser">
+                              <IconButton size="small" color="primary" onClick={() => openPreview(doc)}>
+                                <VisibilityIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          ) : (
+                            <Tooltip title="Aperçu non disponible pour ce type de fichier">
+                              <span>
+                                <IconButton size="small" disabled>
+                                  <VisibilityIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </TabPanel>
       </DialogContent>
+
+      {/* Document Preview Modal */}
+      <Dialog
+        open={Boolean(previewDoc)}
+        onClose={closePreview}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { height: '90vh' } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <FileIcon color="primary" />
+            <Typography variant="subtitle1" fontWeight={600}>{previewDoc?.filename}</Typography>
+          </Box>
+          <IconButton size="small" onClick={closePreview}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {previewLoading && <CircularProgress />}
+          {!previewLoading && previewBlobUrl && (() => {
+            const ext = previewDoc?.filename?.split('.').pop()?.toLowerCase() || '';
+            if (['png', 'jpg', 'jpeg'].includes(ext)) {
+              return (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', bgcolor: '#111', p: 2 }}>
+                  <img src={previewBlobUrl} alt={previewDoc?.filename} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                </Box>
+              );
+            }
+            return (
+              <iframe
+                src={previewBlobUrl}
+                title={previewDoc?.filename}
+                style={{ width: '100%', height: '100%', border: 'none' }}
+              />
+            );
+          })()}
+          {!previewLoading && !previewBlobUrl && previewDoc && (
+            <Alert severity="error" sx={{ m: 2 }}>Impossible de charger l'aperçu du document.</Alert>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <DialogActions sx={{ px: 3, py: 2, flexDirection: 'column', alignItems: 'stretch' }}>
         {/* Success/Error Messages */}

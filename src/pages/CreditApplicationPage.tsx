@@ -122,6 +122,7 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
   const [numberOfYears] = useState<number>(3);
   const [financialData, setFinancialData] = useState<Record<number, any>>({});
   const [financialDocuments, setFinancialDocuments] = useState<any[]>([]);
+  const [pendingDocuments, setPendingDocuments] = useState<any[]>([]);
 
   const handleDataInput = (year: number, data: any) => {
     setFinancialData(prev => ({ ...prev, [year]: data }));
@@ -264,6 +265,33 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
 
       if (result.success) {
         console.log('Application submitted successfully:', result.data);
+
+        // Upload any pending documents to the real application ID
+        const realAppId = result.data?.id || (result.data as any)?.application?.id;
+        if (realAppId && pendingDocuments.length > 0) {
+          const token = localStorage.getItem('optimus_access_token');
+          const protocol = window.location.protocol;
+          const hostname = window.location.hostname;
+          const apiPort = process.env.REACT_APP_API_PORT || '5007';
+          const uploadUrl = `${protocol}//${hostname}:${apiPort}/api/documents/${realAppId}/upload`;
+
+          for (const doc of pendingDocuments) {
+            if (!doc.file) continue;
+            try {
+              const fd = new FormData();
+              fd.append('documents', doc.file, doc.name);
+              fd.append('category', (doc.category || 'other').toUpperCase());
+              await fetch(uploadUrl, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: fd
+              });
+            } catch (err) {
+              console.error('Document upload failed for', doc.name, err);
+            }
+          }
+        }
+
         // Navigate to workflow management
         onNavigate('workflow');
       } else {
@@ -604,9 +632,9 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
                         </Typography>
                       </Alert>
                       <DocumentManager
-                        clientId={`app-${Date.now()}`}
-                        applicationId={`CR-${new Date().getFullYear()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`}
+                        clientId={selectedClientId || 'new'}
                         initialDocuments={financialDocuments}
+                        onDocumentsChange={(docs) => setPendingDocuments(docs)}
                         onDocumentProcessed={(document) => {
                           console.log('Document processed for application:', document);
                         }}

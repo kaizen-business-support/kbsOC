@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -41,6 +41,7 @@ import {
   ListItemSecondaryAction,
   Checkbox,
   FormGroup,
+  TablePagination,
 } from '@mui/material';
 import {
   Person as PersonIcon,
@@ -60,8 +61,12 @@ import {
   LocationOn as BranchIcon,
   Lock as LockIcon,
   Visibility as VisibilityIcon,
+  Shield as ShieldIcon,
+  History as HistoryIcon,
+  FilterList as FilterListIcon,
 } from '@mui/icons-material';
-import { ApiService } from '../services/api';
+import api, { ApiService, authPasswordApi } from '../services/api';
+import { DialogHeader } from '../components/ui/DialogHeader';
 import { useUser } from '../contexts/UserContext';
 import { useTranslation } from 'react-i18next';
 
@@ -77,6 +82,8 @@ interface User {
   lastLogin?: string;
   createdAt: string;
   permissions: string[];
+  twoFactorEnabled?: boolean;
+  twoFactorRequired?: boolean;
 }
 
 interface Department {
@@ -98,6 +105,7 @@ interface Role {
   userCount?: number;
   isActive: boolean;
   createdAt: string;
+  twoFactorRequired?: boolean;
 }
 
 interface Branch {
@@ -217,6 +225,17 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
   const [roles, setRoles] = useState<Role[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Inline editing — Departments
+  const [deptEditingId, setDeptEditingId] = useState<string | null>(null);
+  const [deptEditData, setDeptEditData] = useState({ name: '', code: '', description: '' });
+  const [deptSaving, setDeptSaving] = useState(false);
+
+  // Inline editing — Branches
+  const [branchEditingId, setBranchEditingId] = useState<string | null>(null);
+  const [branchEditData, setBranchEditData] = useState({ name: '', code: '', city: '', manager: '' });
+  const [branchSaving, setBranchSaving] = useState(false);
+
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [departmentDialogOpen, setDepartmentDialogOpen] = useState(false);
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
@@ -304,6 +323,98 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     { value: 'CREDIT_COMMITTEE', label: 'Comité de Crédit' }
   ];
 
+  // 2FA management state
+  const [saving2FA, setSaving2FA] = useState<string | null>(null);
+
+  const ROLE_2FA_LABELS: Record<string, string> = {
+    ADMIN:            'Administrateur',
+    MANAGEMENT:       'Directeur Général',
+    BRANCH_MANAGER:   "Directeur d'Agence",
+    ACCOUNT_MANAGER:  "Chargé d'Affaires",
+    CREDIT_ANALYST:   'Analyste Crédit',
+    CREDIT_COMMITTEE: 'Comité de Crédit',
+  };
+
+  const handleRoleToggle2FA = async (roleName: string, required: boolean) => {
+    setSaving2FA(`role-${roleName}`);
+    try {
+      await authPasswordApi.setRole2FARequired(roleName, required);
+      setRoles(prev => prev.map(r => r.name === roleName ? { ...r, twoFactorRequired: required } : r));
+      setNotification({ open: true, message: `2FA ${required ? 'activé' : 'désactivé'} pour le rôle ${ROLE_2FA_LABELS[roleName] || roleName}`, severity: 'success' });
+    } catch {
+      setNotification({ open: true, message: 'Erreur lors de la modification du paramètre 2FA.', severity: 'error' });
+    } finally {
+      setSaving2FA(null);
+    }
+  };
+
+  const handleUserToggle2FA = async (userId: string, required: boolean) => {
+    setSaving2FA(`user-${userId}`);
+    try {
+      await authPasswordApi.setUser2FARequired(userId, required);
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, twoFactorRequired: required } : u));
+    } catch {
+      setNotification({ open: true, message: 'Erreur lors de la modification du paramètre 2FA utilisateur.', severity: 'error' });
+    } finally {
+      setSaving2FA(null);
+    }
+  };
+
+  // ── Audit Log state ─────────────────────────────────────────────────────────
+  const [auditLogs, setAuditLogs]         = useState<any[]>([]);
+  const [auditLoading, setAuditLoading]   = useState(false);
+  const [auditError, setAuditError]       = useState('');
+  const [auditPage, setAuditPage]         = useState(0);
+  const [auditRowsPerPage, setAuditRowsPerPage] = useState(25);
+  const [auditTotal, setAuditTotal]       = useState(0);
+  const [auditUsers, setAuditUsers]       = useState<any[]>([]);
+  const [auditActions, setAuditActions]   = useState<string[]>([]);
+  const [auditFilters, setAuditFilters]   = useState({
+    userId: '', action: '', entityType: '', dateFrom: '', dateTo: '',
+  });
+
+  const ROLE_LABEL_MAP: Record<string, string> = {
+    ADMIN: 'Administrateur', MANAGEMENT: 'Directeur Général',
+    BRANCH_MANAGER: "Dir. d'Agence", ACCOUNT_MANAGER: "Chargé d'Affaires",
+    CREDIT_ANALYST: 'Analyste Crédit', CREDIT_COMMITTEE: 'Comité de Crédit',
+  };
+
+  const formatAuditDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
+  const ACTION_COLOR: Record<string, 'error' | 'warning' | 'success' | 'default'> = {
+    CREATE: 'success', UPDATE: 'warning', DELETE: 'error',
+  };
+  const getActionColor = (action: string): 'error' | 'warning' | 'success' | 'default' => {
+    return ACTION_COLOR[action.split('_')[0]] || 'default';
+  };
+
+  const fetchAuditLogs = useCallback(async (page = auditPage, rowsPerPage = auditRowsPerPage, filters = auditFilters) => {
+    setAuditLoading(true);
+    setAuditError('');
+    try {
+      const params: any = { page: page + 1, limit: rowsPerPage };
+      if (filters.userId)     params.userId     = filters.userId;
+      if (filters.action)     params.action     = filters.action;
+      if (filters.entityType) params.entityType = filters.entityType;
+      if (filters.dateFrom)   params.dateFrom   = filters.dateFrom;
+      if (filters.dateTo)     params.dateTo     = filters.dateTo;
+      const res = await api.get('/audit-logs', { params });
+      setAuditLogs(res.data.logs || []);
+      setAuditTotal(res.data.pagination?.total || 0);
+    } catch {
+      setAuditError("Impossible de charger le journal d'activité.");
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [auditPage, auditRowsPerPage, auditFilters]);
+
+  const handleAuditSearch = () => { setAuditPage(0); fetchAuditLogs(0, auditRowsPerPage, auditFilters); };
+  const handleAuditFilterChange = (field: string, value: string) => setAuditFilters(prev => ({ ...prev, [field]: value }));
+
   // Check if user has access to user management
   const canViewUserManagement = isRole('admin') || isRole('management');
   const canEditUserManagement = isRole('admin');
@@ -331,6 +442,20 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
       loadBranches();
     }
   }, [users]);
+
+  // Audit log: load support data once when admin tab is active
+  useEffect(() => {
+    if (activeTab === 5 && canEditUserManagement) {
+      api.get('/users').then(r => setAuditUsers(r.data.users || [])).catch(() => {});
+      api.get('/audit-logs/actions').then(r => setAuditActions(r.data.actions || [])).catch(() => {});
+      fetchAuditLogs(0, auditRowsPerPage, auditFilters);
+    }
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-fetch when pagination changes (not filters — those use handleAuditSearch)
+  useEffect(() => {
+    if (activeTab === 5) fetchAuditLogs(auditPage, auditRowsPerPage, auditFilters);
+  }, [auditPage, auditRowsPerPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadUsers = async () => {
     setLoading(true);
@@ -738,6 +863,25 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     }
   };
 
+  const saveDeptInline = async () => {
+    if (!deptEditingId || !deptEditData.name) return;
+    setDeptSaving(true);
+    try {
+      await ApiService.updateDepartment(deptEditingId, {
+        name: deptEditData.name,
+        code: deptEditData.code,
+        description: deptEditData.description,
+      });
+      await loadDepartments();
+      setDeptEditingId(null);
+      setNotification({ open: true, message: 'Département mis à jour', severity: 'success' });
+    } catch {
+      setNotification({ open: true, message: 'Erreur lors de la mise à jour', severity: 'error' });
+    } finally {
+      setDeptSaving(false);
+    }
+  };
+
   const deleteDepartment = async (departmentId: string) => {
     if (!window.confirm('Êtes-vous sûr de vouloir supprimer ce département ?')) {
       return;
@@ -1066,6 +1210,26 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     }
   };
 
+  const saveBranchInline = async () => {
+    if (!branchEditingId || !branchEditData.name) return;
+    setBranchSaving(true);
+    try {
+      await ApiService.updateBranch(branchEditingId, {
+        name: branchEditData.name,
+        code: branchEditData.code,
+        city: branchEditData.city,
+        manager: branchEditData.manager,
+      });
+      await loadBranches();
+      setBranchEditingId(null);
+      setNotification({ open: true, message: 'Agence mise à jour', severity: 'success' });
+    } catch {
+      setNotification({ open: true, message: 'Erreur lors de la mise à jour', severity: 'error' });
+    } finally {
+      setBranchSaving(false);
+    }
+  };
+
   const deleteBranch = async (branchId: string) => {
     if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette agence ?')) {
       return;
@@ -1238,11 +1402,23 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
               icon={<RoleIcon />}
               iconPosition="start"
             />
-            <Tab 
-              label="Agences" 
+            <Tab
+              label="Agences"
               icon={<BranchIcon />}
               iconPosition="start"
             />
+            <Tab
+              label="Sécurité 2FA"
+              icon={<ShieldIcon />}
+              iconPosition="start"
+            />
+            {canEditUserManagement && (
+              <Tab
+                label="Journal d'activité"
+                icon={<HistoryIcon />}
+                iconPosition="start"
+              />
+            )}
           </Tabs>
         </Box>
 
@@ -1516,48 +1692,91 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                 </Button>
               </Box>
 
-              <List>
-                {departments.map((department) => (
-                  <ListItem key={department.id} divider>
-                    <ListItemIcon>
-                      <DepartmentIcon />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={department.name}
-                      secondary={
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            {department.description}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {department.userCount} utilisateurs
-                          </Typography>
-                        </Box>
-                      }
-                    />
-                    <ListItemSecondaryAction>
-                      <IconButton 
-                        edge="end" 
-                        aria-label="edit"
-                        onClick={() => openDepartmentDialog(department)}
-                        sx={{ mr: 1 }}
-                        disabled={!canEditUserManagement}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton 
-                        edge="end" 
-                        aria-label="delete"
-                        onClick={() => deleteDepartment(department.id)}
-                        color="error"
-                        disabled={!canEditUserManagement}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                ))}
-              </List>
+              <TableContainer sx={{ border: '1px solid #e8ecf0', borderRadius: '8px' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Nom</TableCell>
+                      <TableCell sx={{ width: 100 }}>Code</TableCell>
+                      <TableCell>Description</TableCell>
+                      <TableCell sx={{ width: 130 }}>Utilisateurs</TableCell>
+                      <TableCell align="right" sx={{ width: 96 }}>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {departments.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center">
+                          <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>Aucun département.</Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {departments.map((dept) =>
+                      deptEditingId === dept.id ? (
+                        <TableRow key={dept.id} sx={{ bgcolor: 'rgba(31,78,121,0.04)' }}>
+                          <TableCell>
+                            <TextField autoFocus size="small" value={deptEditData.name}
+                              onChange={e => setDeptEditData(p => ({ ...p, name: e.target.value }))}
+                              onKeyDown={e => e.key === 'Enter' && saveDeptInline()} sx={{ width: '100%' }} />
+                          </TableCell>
+                          <TableCell>
+                            <TextField size="small" value={deptEditData.code}
+                              onChange={e => setDeptEditData(p => ({ ...p, code: e.target.value }))}
+                              sx={{ width: 80 }} />
+                          </TableCell>
+                          <TableCell>
+                            <TextField size="small" value={deptEditData.description}
+                              onChange={e => setDeptEditData(p => ({ ...p, description: e.target.value }))}
+                              onKeyDown={e => e.key === 'Enter' && saveDeptInline()} sx={{ width: '100%' }} />
+                          </TableCell>
+                          <TableCell>—</TableCell>
+                          <TableCell align="right">
+                            <Tooltip title="Enregistrer">
+                              <span>
+                                <IconButton size="small" color="success" onClick={saveDeptInline}
+                                  disabled={!deptEditData.name || deptSaving}>
+                                  {deptSaving ? <CircularProgress size={14} /> : <SaveIcon fontSize="small" />}
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="Annuler">
+                              <IconButton size="small" onClick={() => setDeptEditingId(null)}>
+                                <CancelIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        <TableRow key={dept.id} hover
+                          onDoubleClick={() => { if (canEditUserManagement) { setDeptEditingId(dept.id); setDeptEditData({ name: dept.name, code: dept.code || '', description: dept.description || '' }); } }}>
+                          <TableCell sx={{ fontWeight: 500 }}>{dept.name}</TableCell>
+                          <TableCell>
+                            {dept.code ? <Chip label={dept.code} size="small" variant="outlined" /> : <Typography variant="body2" color="text.secondary">—</Typography>}
+                          </TableCell>
+                          <TableCell sx={{ color: 'text.secondary', fontSize: '13px' }}>{dept.description || '—'}</TableCell>
+                          <TableCell><Chip label={`${dept.userCount ?? 0} utilisateurs`} size="small" /></TableCell>
+                          <TableCell align="right">
+                            <Tooltip title="Modifier">
+                              <IconButton size="small"
+                                onClick={() => { setDeptEditingId(dept.id); setDeptEditData({ name: dept.name, code: dept.code || '', description: dept.description || '' }); }}
+                                disabled={!canEditUserManagement || deptEditingId !== null}>
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Supprimer">
+                              <IconButton size="small" color="error"
+                                onClick={() => deleteDepartment(dept.id)}
+                                disabled={!canEditUserManagement || deptEditingId !== null}>
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             </>
           )}
 
@@ -1640,63 +1859,370 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                 </Button>
               </Box>
 
-              <List>
-                {branches.map((branch) => (
-                  <ListItem key={branch.id} divider>
-                    <ListItemIcon>
-                      <BranchIcon />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={branch.name}
-                      secondary={
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            {branch.address}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            Code: {branch.code} • Responsable: {branch.manager || 'Non assigné'} • {branch.userCount} utilisateurs
-                          </Typography>
-                        </Box>
-                      }
-                    />
-                    <ListItemSecondaryAction>
-                      <IconButton 
-                        edge="end" 
-                        aria-label="edit"
-                        onClick={() => openBranchDialog(branch)}
-                        sx={{ mr: 1 }}
-                        disabled={!canEditUserManagement}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton 
-                        edge="end" 
-                        aria-label="delete"
-                        onClick={() => deleteBranch(branch.id)}
-                        color="error"
-                        disabled={!canEditUserManagement}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                ))}
-              </List>
+              <TableContainer sx={{ border: '1px solid #e8ecf0', borderRadius: '8px' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Nom</TableCell>
+                      <TableCell sx={{ width: 90 }}>Code</TableCell>
+                      <TableCell sx={{ width: 140 }}>Ville</TableCell>
+                      <TableCell sx={{ width: 160 }}>Responsable</TableCell>
+                      <TableCell sx={{ width: 120 }}>Utilisateurs</TableCell>
+                      <TableCell align="right" sx={{ width: 96 }}>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {branches.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} align="center">
+                          <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>Aucune agence.</Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {branches.map((branch) =>
+                      branchEditingId === branch.id ? (
+                        <TableRow key={branch.id} sx={{ bgcolor: 'rgba(31,78,121,0.04)' }}>
+                          <TableCell>
+                            <TextField autoFocus size="small" value={branchEditData.name}
+                              onChange={e => setBranchEditData(p => ({ ...p, name: e.target.value }))}
+                              onKeyDown={e => e.key === 'Enter' && saveBranchInline()} sx={{ width: '100%' }} />
+                          </TableCell>
+                          <TableCell>
+                            <TextField size="small" value={branchEditData.code}
+                              onChange={e => setBranchEditData(p => ({ ...p, code: e.target.value }))}
+                              sx={{ width: 70 }} />
+                          </TableCell>
+                          <TableCell>
+                            <TextField size="small" value={branchEditData.city}
+                              onChange={e => setBranchEditData(p => ({ ...p, city: e.target.value }))}
+                              sx={{ width: 120 }} />
+                          </TableCell>
+                          <TableCell>
+                            <TextField size="small" value={branchEditData.manager}
+                              onChange={e => setBranchEditData(p => ({ ...p, manager: e.target.value }))}
+                              onKeyDown={e => e.key === 'Enter' && saveBranchInline()} sx={{ width: 140 }} />
+                          </TableCell>
+                          <TableCell>—</TableCell>
+                          <TableCell align="right">
+                            <Tooltip title="Enregistrer">
+                              <span>
+                                <IconButton size="small" color="success" onClick={saveBranchInline}
+                                  disabled={!branchEditData.name || branchSaving}>
+                                  {branchSaving ? <CircularProgress size={14} /> : <SaveIcon fontSize="small" />}
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="Annuler">
+                              <IconButton size="small" onClick={() => setBranchEditingId(null)}>
+                                <CancelIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        <TableRow key={branch.id} hover
+                          onDoubleClick={() => { if (canEditUserManagement) { setBranchEditingId(branch.id); setBranchEditData({ name: branch.name, code: branch.code || '', city: (branch as any).city || '', manager: branch.manager || '' }); } }}>
+                          <TableCell sx={{ fontWeight: 500 }}>{branch.name}</TableCell>
+                          <TableCell>
+                            {branch.code ? <Chip label={branch.code} size="small" variant="outlined" /> : <Typography variant="body2" color="text.secondary">—</Typography>}
+                          </TableCell>
+                          <TableCell sx={{ color: 'text.secondary' }}>{(branch as any).city || '—'}</TableCell>
+                          <TableCell sx={{ color: 'text.secondary' }}>{branch.manager || 'Non assigné'}</TableCell>
+                          <TableCell><Chip label={`${branch.userCount ?? 0} utilisateurs`} size="small" /></TableCell>
+                          <TableCell align="right">
+                            <Tooltip title="Modifier">
+                              <IconButton size="small"
+                                onClick={() => { setBranchEditingId(branch.id); setBranchEditData({ name: branch.name, code: branch.code || '', city: (branch as any).city || '', manager: branch.manager || '' }); }}
+                                disabled={!canEditUserManagement || branchEditingId !== null}>
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Supprimer">
+                              <IconButton size="small" color="error"
+                                onClick={() => deleteBranch(branch.id)}
+                                disabled={!canEditUserManagement || branchEditingId !== null}>
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             </>
+          )}
+
+          {/* ── Sécurité 2FA ── */}
+          {activeTab === 4 && (
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, gap: 1 }}>
+                <ShieldIcon sx={{ color: 'primary.main' }} />
+                <Typography variant="h6" fontWeight={600}>
+                  Authentification à deux facteurs (2FA)
+                </Typography>
+                <Chip label="Administration" size="small" color="primary" />
+              </Box>
+
+              {loading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress />
+                </Box>
+              ) : (
+                <Grid container spacing={4}>
+                  {/* Par rôle */}
+                  <Grid item xs={12} md={5}>
+                    <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                      Par rôle
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Tous les utilisateurs du rôle seront obligés de configurer la 2FA.
+                    </Typography>
+                    <List dense disablePadding>
+                      {Object.keys(ROLE_2FA_LABELS).map(roleName => {
+                        const roleData = roles.find(r => r.name === roleName);
+                        const required = roleData?.twoFactorRequired ?? false;
+                        return (
+                          <ListItem
+                            key={roleName}
+                            sx={{ px: 0, py: 0.75, borderBottom: '1px solid', borderColor: 'divider' }}
+                          >
+                            <ListItemText
+                              primary={ROLE_2FA_LABELS[roleName]}
+                              primaryTypographyProps={{ fontSize: 14, fontWeight: 500 }}
+                            />
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Chip
+                                label={required ? 'Obligatoire' : 'Optionnel'}
+                                size="small"
+                                color={required ? 'success' : 'default'}
+                                sx={{ minWidth: 80 }}
+                              />
+                              {saving2FA === `role-${roleName}` ? (
+                                <CircularProgress size={20} />
+                              ) : (
+                                <Switch
+                                  checked={required}
+                                  onChange={e => canEditUserManagement && handleRoleToggle2FA(roleName, e.target.checked)}
+                                  size="small"
+                                  disabled={!canEditUserManagement}
+                                />
+                              )}
+                            </Box>
+                          </ListItem>
+                        );
+                      })}
+                    </List>
+                  </Grid>
+
+                  {/* Par utilisateur */}
+                  <Grid item xs={12} md={7}>
+                    <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                      Par utilisateur
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Forcer la 2FA pour un utilisateur spécifique, indépendamment de son rôle.
+                    </Typography>
+                    <Box sx={{ overflowX: 'auto' }}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                            {['Nom', 'Rôle', '2FA activé', 'Obligatoire'].map(h => (
+                              <TableCell
+                                key={h}
+                                sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', py: 1.5 }}
+                              >
+                                {h}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {users.filter(u => u.isActive).map(user => {
+                            const roleObj = roles.find(r => r.name === user.role);
+                            const byRole  = roleObj?.twoFactorRequired ?? false;
+                            const isRequired = user.twoFactorRequired || byRole;
+                            return (
+                              <TableRow key={user.id} hover sx={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <TableCell sx={{ py: 1.25 }}>
+                                  <Typography variant="body2" fontWeight={500} sx={{ fontSize: '13px' }}>{user.name}</Typography>
+                                  <Typography variant="caption" color="text.secondary">{user.email}</Typography>
+                                </TableCell>
+                                <TableCell sx={{ py: 1.25 }}>
+                                  <Chip label={ROLE_2FA_LABELS[user.role] || user.role} size="small" variant="outlined" />
+                                </TableCell>
+                                <TableCell sx={{ py: 1.25 }} align="center">
+                                  <Chip
+                                    label={user.twoFactorEnabled ? 'Oui' : 'Non'}
+                                    size="small"
+                                    color={user.twoFactorEnabled ? 'success' : 'default'}
+                                  />
+                                </TableCell>
+                                <TableCell sx={{ py: 1.25 }} align="center">
+                                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                                    {byRole && (
+                                      <Chip label="Via rôle" size="small" color="info" variant="outlined" sx={{ fontSize: 10, height: 20 }} />
+                                    )}
+                                    {saving2FA === `user-${user.id}` ? (
+                                      <CircularProgress size={20} />
+                                    ) : (
+                                      <Switch
+                                        checked={isRequired}
+                                        onChange={e => handleUserToggle2FA(user.id, e.target.checked)}
+                                        size="small"
+                                        disabled={byRole || !canEditUserManagement}
+                                      />
+                                    )}
+                                  </Box>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </Box>
+                  </Grid>
+                </Grid>
+              )}
+            </Box>
+          )}
+
+          {/* Journal d'activité (admin only, tab 5) */}
+          {activeTab === 5 && canEditUserManagement && (
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
+                <HistoryIcon sx={{ mr: 1, color: 'primary.main' }} />
+                <Typography variant="h6" fontWeight={600} sx={{ flex: 1 }}>
+                  Journal d'activité
+                </Typography>
+                <Chip label="Administration" size="small" color="primary" />
+                <Chip label="Conservation 60 j" size="small" variant="outlined" icon={<HistoryIcon sx={{ fontSize: 14 }} />} />
+                <Tooltip title="Rafraîchir">
+                  <IconButton size="small" onClick={() => fetchAuditLogs(auditPage, auditRowsPerPage, auditFilters)} disabled={auditLoading}>
+                    <RefreshIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+
+              {/* Filters */}
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mb: 2, p: 2, bgcolor: '#f8fafc', borderRadius: 2, border: '1px solid #e8ecf0' }}>
+                <FilterListIcon sx={{ color: '#9ca3af', alignSelf: 'center', mr: 0.5 }} />
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <InputLabel>Utilisateur</InputLabel>
+                  <Select label="Utilisateur" value={auditFilters.userId} onChange={(e) => handleAuditFilterChange('userId', e.target.value)}>
+                    <MenuItem value="">Tous</MenuItem>
+                    {auditUsers.filter(u => u.isActive).map((u: any) => (
+                      <MenuItem key={u.id} value={u.id}>{u.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <InputLabel>Action</InputLabel>
+                  <Select label="Action" value={auditFilters.action} onChange={(e) => handleAuditFilterChange('action', e.target.value)}>
+                    <MenuItem value="">Toutes</MenuItem>
+                    {auditActions.map(a => <MenuItem key={a} value={a}>{a}</MenuItem>)}
+                  </Select>
+                </FormControl>
+                <FormControl size="small" sx={{ minWidth: 140 }}>
+                  <InputLabel>Type d'entité</InputLabel>
+                  <Select label="Type d'entité" value={auditFilters.entityType} onChange={(e) => handleAuditFilterChange('entityType', e.target.value)}>
+                    <MenuItem value="">Tous</MenuItem>
+                    {['client','application','workflow','user','role','backup','announcement','notification_channel'].map(t => (
+                      <MenuItem key={t} value={t}>{t}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <TextField size="small" label="Date début" type="date" InputLabelProps={{ shrink: true }} value={auditFilters.dateFrom} onChange={(e) => handleAuditFilterChange('dateFrom', e.target.value)} sx={{ minWidth: 140 }} />
+                <TextField size="small" label="Date fin" type="date" InputLabelProps={{ shrink: true }} value={auditFilters.dateTo} onChange={(e) => handleAuditFilterChange('dateTo', e.target.value)} sx={{ minWidth: 140 }} />
+                <Button variant="contained" size="small" onClick={handleAuditSearch} disabled={auditLoading} sx={{ alignSelf: 'center' }}>Filtrer</Button>
+                <Button variant="outlined" size="small" onClick={() => {
+                  const reset = { userId: '', action: '', entityType: '', dateFrom: '', dateTo: '' };
+                  setAuditFilters(reset);
+                  setAuditPage(0);
+                  fetchAuditLogs(0, auditRowsPerPage, reset);
+                }} disabled={auditLoading} sx={{ alignSelf: 'center' }}>Réinitialiser</Button>
+              </Box>
+
+              {auditError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setAuditError('')}>{auditError}</Alert>}
+
+              {auditLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+              ) : (
+                <>
+                  <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                          {['Horodatage', 'Utilisateur', 'Rôle', 'Action', 'Entité', 'ID', 'Adresse IP'].map(h => (
+                            <TableCell key={h} sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', py: 1.5, whiteSpace: 'nowrap' }}>{h}</TableCell>
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {auditLogs.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={7} align="center" sx={{ py: 4, color: '#9ca3af' }}>Aucune entrée trouvée</TableCell>
+                          </TableRow>
+                        ) : auditLogs.map((log: any) => (
+                          <TableRow key={log.id} sx={{ '&:hover': { bgcolor: 'rgba(31,78,121,0.03)' }, borderBottom: '1px solid #f1f5f9', '&:last-child': { borderBottom: 'none' } }}>
+                            <TableCell sx={{ py: 1.25, fontSize: '12px', whiteSpace: 'nowrap', color: '#374151' }}>{formatAuditDate(log.createdAt)}</TableCell>
+                            <TableCell sx={{ py: 1.25 }}>
+                              <Typography variant="body2" fontWeight={500} sx={{ fontSize: '13px' }}>{log.user?.name || '—'}</Typography>
+                              <Typography variant="caption" color="text.secondary">{log.user?.email || ''}</Typography>
+                            </TableCell>
+                            <TableCell sx={{ py: 1.25 }}>
+                              <Chip label={ROLE_LABEL_MAP[log.user?.role] || log.user?.role || '—'} size="small" variant="outlined" sx={{ fontSize: '11px', height: 22 }} />
+                            </TableCell>
+                            <TableCell sx={{ py: 1.25 }}>
+                              <Chip label={log.action} size="small" color={getActionColor(log.action)} sx={{ fontSize: '11px', height: 22, fontFamily: 'monospace' }} />
+                            </TableCell>
+                            <TableCell sx={{ py: 1.25, fontSize: '13px', color: '#374151' }}>{log.entityType || '—'}</TableCell>
+                            <TableCell sx={{ py: 1.25 }}>
+                              {log.entityId ? (
+                                <Typography variant="caption" sx={{ fontFamily: 'monospace', color: '#6b7280', fontSize: '11px' }}>
+                                  {log.entityId.length > 12 ? log.entityId.slice(0, 8) + '…' : log.entityId}
+                                </Typography>
+                              ) : '—'}
+                            </TableCell>
+                            <TableCell sx={{ py: 1.25, fontSize: '12px', fontFamily: 'monospace', color: '#6b7280' }}>{log.ipAddress || '—'}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  <TablePagination
+                    component="div"
+                    count={auditTotal}
+                    page={auditPage}
+                    onPageChange={(_, p) => setAuditPage(p)}
+                    rowsPerPage={auditRowsPerPage}
+                    onRowsPerPageChange={(e) => { setAuditRowsPerPage(parseInt(e.target.value, 10)); setAuditPage(0); }}
+                    rowsPerPageOptions={[10, 25, 50, 100]}
+                    labelRowsPerPage="Lignes par page :"
+                    labelDisplayedRows={({ from, to, count }) => `${from}–${to} sur ${count}`}
+                  />
+                </>
+              )}
+            </Box>
           )}
         </CardContent>
       </Card>
 
       {/* Edit User Dialog */}
       <Dialog open={editDialogOpen} onClose={closeEditDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {selectedUser ? 'Modifier l\'Utilisateur' : 'Ajouter un Utilisateur'}
-        </DialogTitle>
+        <DialogHeader
+          title={selectedUser ? `Modifier — ${selectedUser.name}` : 'Nouvel utilisateur'}
+          subtitle={selectedUser?.email}
+          icon={<PersonIcon sx={{ fontSize: 17 }} />}
+          onClose={closeEditDialog}
+        />
         <DialogContent>
-          <Grid container spacing={3} sx={{ mt: 1 }}>
+          <Grid container spacing={2}>
+            {/* ── Identité ── */}
             <Grid item xs={12}>
               <TextField
-                fullWidth
+                fullWidth size="small"
                 label="Nom complet"
                 value={editForm.name}
                 onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
@@ -1707,19 +2233,26 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
 
             <Grid item xs={12}>
               <TextField
-                fullWidth
+                fullWidth size="small"
                 label="Email"
                 type="email"
                 value={editForm.email}
                 onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
                 required={!selectedUser}
                 disabled={!!selectedUser || !canEditUserManagement}
-                helperText={selectedUser ? "L'email ne peut pas être modifié" : ""}
+                helperText={selectedUser ? "L'email ne peut pas être modifié" : ''}
               />
             </Grid>
 
+            {/* ── Affectation ── */}
+            <Grid item xs={12}>
+              <Typography sx={{ fontSize: '10.5px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.8px', pt: 0.5 }}>
+                Affectation
+              </Typography>
+            </Grid>
+
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
+              <FormControl fullWidth size="small">
                 <InputLabel>Rôle</InputLabel>
                 <Select
                   value={editForm.role}
@@ -1728,16 +2261,14 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                   disabled={!canEditUserManagement}
                 >
                   {availableRoles.map((role) => (
-                    <MenuItem key={role.value} value={role.value}>
-                      {role.label}
-                    </MenuItem>
+                    <MenuItem key={role.value} value={role.value}>{role.label}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
             </Grid>
 
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
+              <FormControl fullWidth size="small">
                 <InputLabel>Département</InputLabel>
                 <Select
                   value={editForm.department}
@@ -1745,20 +2276,16 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                   label="Département"
                   disabled={!canEditUserManagement}
                 >
-                  <MenuItem value="">
-                    <em>Non spécifié</em>
-                  </MenuItem>
+                  <MenuItem value=""><em>Non spécifié</em></MenuItem>
                   {getAvailableDepartments().map((dept) => (
-                    <MenuItem key={dept} value={dept}>
-                      {dept}
-                    </MenuItem>
+                    <MenuItem key={dept} value={dept}>{dept}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
             </Grid>
 
-            <Grid item xs={12}>
-              <FormControl fullWidth>
+            <Grid item xs={12} sm={8}>
+              <FormControl fullWidth size="small">
                 <InputLabel>Agence</InputLabel>
                 <Select
                   value={editForm.branch}
@@ -1766,9 +2293,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                   label="Agence"
                   disabled={!canEditUserManagement}
                 >
-                  <MenuItem value="Siège Social">
-                    <em>Siège Social (accès à toutes les agences)</em>
-                  </MenuItem>
+                  <MenuItem value="Siège Social"><em>Siège Social</em></MenuItem>
                   {branches.map((branch) => (
                     <MenuItem key={branch.id} value={branch.code || branch.name}>
                       {branch.name} {branch.code && `(${branch.code})`}
@@ -1778,13 +2303,13 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
               </FormControl>
             </Grid>
 
-            <Grid item xs={12}>
+            <Grid item xs={12} sm={4}>
               <TextField
-                fullWidth
+                fullWidth size="small"
                 label="Titre du poste"
                 value={editForm.jobTitle}
                 onChange={(e) => setEditForm({ ...editForm, jobTitle: e.target.value })}
-                placeholder="Ex: Responsable Crédit Senior"
+                placeholder="Ex: Chargé Crédit"
                 disabled={!canEditUserManagement}
               />
             </Grid>
@@ -1796,43 +2321,46 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                     checked={editForm.isActive}
                     onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
                     disabled={!canEditUserManagement}
+                    size="small"
                   />
                 }
-                label="Compte actif"
+                label={<Typography sx={{ fontSize: '13px' }}>Compte actif</Typography>}
               />
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeEditDialog} startIcon={<CancelIcon />}>
-            Annuler
-          </Button>
+          <Button onClick={closeEditDialog} startIcon={<CancelIcon />} size="small">Annuler</Button>
           <Button
             onClick={saveUser}
             variant="contained"
             startIcon={<SaveIcon />}
+            size="small"
             disabled={
               !canEditUserManagement ||
-              !editForm.name.trim() || 
-              !editForm.role.trim() || 
+              !editForm.name.trim() ||
+              !editForm.role.trim() ||
               (!selectedUser && !editForm.email.trim())
             }
           >
-            {selectedUser ? 'Modifier' : 'Créer'}
+            {selectedUser ? 'Enregistrer' : 'Créer'}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Department Dialog */}
       <Dialog open={departmentDialogOpen} onClose={closeDepartmentDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {selectedDepartment ? 'Modifier le Département' : 'Ajouter un Département'}
-        </DialogTitle>
+        <DialogHeader
+          title={selectedDepartment ? `Département — ${selectedDepartment.name}` : 'Nouveau Département'}
+          icon={<DepartmentIcon sx={{ fontSize: 17 }} />}
+          onClose={closeDepartmentDialog}
+        />
         <DialogContent>
-          <Grid container spacing={3} sx={{ mt: 1 }}>
+          <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
+                size="small"
                 label="Nom du Département"
                 value={departmentForm.name}
                 onChange={(e) => setDepartmentForm({ ...departmentForm, name: e.target.value })}
@@ -1844,6 +2372,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
+                size="small"
                 label="Code"
                 value={departmentForm.code}
                 onChange={(e) => setDepartmentForm({ ...departmentForm, code: e.target.value })}
@@ -1856,6 +2385,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
             <Grid item xs={12}>
               <TextField
                 fullWidth
+                size="small"
                 label="Description"
                 value={departmentForm.description}
                 onChange={(e) => setDepartmentForm({ ...departmentForm, description: e.target.value })}
@@ -1897,14 +2427,17 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
 
       {/* Role Dialog */}
       <Dialog open={roleDialogOpen} onClose={closeRoleDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {selectedRole ? 'Modifier le Rôle' : 'Ajouter un Rôle'}
-        </DialogTitle>
+        <DialogHeader
+          title={selectedRole ? `Rôle — ${selectedRole.label}` : 'Nouveau Rôle'}
+          icon={<RoleIcon sx={{ fontSize: 17 }} />}
+          onClose={closeRoleDialog}
+        />
         <DialogContent>
-          <Grid container spacing={3} sx={{ mt: 1 }}>
+          <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
+                size="small"
                 label="Code du Rôle"
                 value={roleForm.name}
                 onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value.toUpperCase() })}
@@ -1913,10 +2446,11 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                 disabled={!canEditUserManagement}
               />
             </Grid>
-            
+
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
+                size="small"
                 label="Nom d'Affichage"
                 value={roleForm.label}
                 onChange={(e) => setRoleForm({ ...roleForm, label: e.target.value })}
@@ -1929,6 +2463,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
             <Grid item xs={12}>
               <TextField
                 fullWidth
+                size="small"
                 label="Description"
                 value={roleForm.description}
                 onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
@@ -2022,14 +2557,17 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
 
       {/* Branch Dialog */}
       <Dialog open={branchDialogOpen} onClose={closeBranchDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {selectedBranch ? 'Modifier l\'Agence' : 'Ajouter une Agence'}
-        </DialogTitle>
+        <DialogHeader
+          title={selectedBranch ? `Agence — ${selectedBranch.name}` : 'Nouvelle Agence'}
+          icon={<BranchIcon sx={{ fontSize: 17 }} />}
+          onClose={closeBranchDialog}
+        />
         <DialogContent>
-          <Grid container spacing={3} sx={{ mt: 1 }}>
+          <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
+                size="small"
                 label="Nom de l'Agence"
                 value={branchForm.name}
                 onChange={(e) => setBranchForm({ ...branchForm, name: e.target.value })}
@@ -2037,10 +2575,11 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                 disabled={!canEditUserManagement}
               />
             </Grid>
-            
+
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
+                size="small"
                 label="Code de l'Agence"
                 value={branchForm.code}
                 onChange={(e) => setBranchForm({ ...branchForm, code: e.target.value.toUpperCase() })}
@@ -2053,6 +2592,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
             <Grid item xs={12}>
               <TextField
                 fullWidth
+                size="small"
                 label="Adresse"
                 value={branchForm.address}
                 onChange={(e) => setBranchForm({ ...branchForm, address: e.target.value })}
@@ -2063,7 +2603,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
             </Grid>
 
             <Grid item xs={12}>
-              <FormControl fullWidth>
+              <FormControl fullWidth size="small">
                 <InputLabel>Responsable</InputLabel>
                 <Select
                   value={branchForm.manager}
