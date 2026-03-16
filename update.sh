@@ -44,41 +44,68 @@ log "=== Mise à jour OptimusCredit ==="
 log "Répertoire : $APP_DIR"
 log "Heure      : $(date '+%Y-%m-%d %H:%M:%S')"
 
-# ─── 1. Backup de sécurité automatique ──────────────────────────────────────
-section "Sauvegarde automatique pré-mise à jour"
+# --- Chargement du .env et extraction des variables DB ---
 source "$BACKEND_ENV" 2>/dev/null || true
 DB_URL="${DATABASE_URL:-}"
-if [[ -n "$DB_URL" ]]; then
-  BACKUP_DIR="$APP_DIR/backups/pre-update"
-  mkdir -p "$BACKUP_DIR"
-  BACKUP_FILE="$BACKUP_DIR/backup_$(date +%Y%m%d_%H%M%S).sql.gz"
-  # Extraire les infos de connexion depuis DATABASE_URL
-  # Format : postgresql://user:pass@host:port/dbname
-  DB_HOST=$(echo "$DB_URL" | sed -E 's|postgresql://[^:]+:[^@]+@([^:/]+).*|\1|')
-  DB_PORT=$(echo "$DB_URL" | sed -E 's|postgresql://[^:]+:[^@]+@[^:]+:([0-9]+)/.*|\1|' || echo "5432")
-  DB_NAME=$(echo "$DB_URL" | sed -E 's|.*/([^?]+).*|\1|')
-  DB_USER=$(echo "$DB_URL" | sed -E 's|postgresql://([^:]+):.*|\1|')
-  DB_PASS=$(echo "$DB_URL" | sed -E 's|postgresql://[^:]+:([^@]+)@.*|\1|')
+if [[ -z "$DB_URL" ]]; then
+  error "DATABASE_URL non définie dans $BACKEND_ENV."
+fi
+DB_HOST=$(echo "$DB_URL" | sed -E 's|postgresql://[^:]+:[^@]+@([^:/]+).*|\1|')
+DB_PORT=$(echo "$DB_URL" | sed -E 's|postgresql://[^:]+:[^@]+@[^:]+:([0-9]+)/.*|\1|' || echo "5432")
+DB_NAME=$(echo "$DB_URL" | sed -E 's|.*/([^?]+).*|\1|')
+DB_USER=$(echo "$DB_URL" | sed -E 's|postgresql://([^:]+):.*|\1|')
+DB_PASS=$(echo "$DB_URL" | sed -E 's|postgresql://[^:]+:([^@]+)@.*|\1|')
 
-  if PGPASSWORD="$DB_PASS" pg_dump -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME" 2>/dev/null | gzip > "$BACKUP_FILE"; then
-    log "Backup BDD : $BACKUP_FILE"
-    # Nettoyer les backups pré-update de plus de 7 jours
-    find "$BACKUP_DIR" -name "*.sql.gz" -mtime +7 -delete 2>/dev/null || true
-  else
-    warn "Backup BDD non effectué (pg_dump indisponible ou DB inaccessible) — continuation quand même."
-    rm -f "$BACKUP_FILE"
-  fi
+# ─── 1. Services pré-requis (PostgreSQL + Redis) ─────────────────────────────
+section "Vérification des services pré-requis"
+
+# PostgreSQL
+if ! systemctl is-active --quiet postgresql; then
+  warn "PostgreSQL n'est pas actif — tentative de démarrage..."
+  systemctl start postgresql || error "Impossible de démarrer PostgreSQL. Vérifiez : journalctl -u postgresql -n 50"
+fi
+systemctl enable postgresql 2>/dev/null || true
+log "PostgreSQL : actif"
+
+# Redis
+if ! systemctl is-active --quiet redis-server; then
+  warn "Redis n'est pas actif — tentative de démarrage..."
+  systemctl start redis-server || error "Impossible de démarrer Redis. Vérifiez : journalctl -u redis-server -n 50"
+fi
+# Restreindre Redis à localhost si ce n'est pas déjà le cas
+if [[ -f /etc/redis/redis.conf ]]; then
+  sed -i 's/^bind .*/bind 127.0.0.1 -::1/' /etc/redis/redis.conf
+  systemctl reload redis-server 2>/dev/null || true
+fi
+systemctl enable redis-server 2>/dev/null || true
+log "Redis : actif"
+
+# Tester la connectivité DB avant de continuer
+if ! PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1" &>/dev/null; then
+  error "Impossible de se connecter à la base de données (${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}). Vérifiez PostgreSQL et le .env."
+fi
+log "Connexion base de données : OK"
+
+# ─── 2. Backup de sécurité automatique ──────────────────────────────────────
+section "Sauvegarde automatique pré-mise à jour"
+BACKUP_DIR="$APP_DIR/backups/pre-update"
+mkdir -p "$BACKUP_DIR"
+BACKUP_FILE="$BACKUP_DIR/backup_$(date +%Y%m%d_%H%M%S).sql.gz"
+
+if PGPASSWORD="$DB_PASS" pg_dump -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME" 2>/dev/null | gzip > "$BACKUP_FILE"; then
+  log "Backup BDD : $BACKUP_FILE"
+  find "$BACKUP_DIR" -name "*.sql.gz" -mtime +7 -delete 2>/dev/null || true
 else
-  warn "DATABASE_URL non définie dans .env — backup ignoré."
+  warn "Backup BDD non effectué (pg_dump indisponible) — continuation quand même."
+  rm -f "$BACKUP_FILE"
 fi
 
-# ─── 2. Mise à jour du code source (git pull) ───────────────────────────────
+# ─── 3. Mise à jour du code source (git pull) ───────────────────────────────
 section "Mise à jour du code source"
 if [[ "$SKIP_PULL" == "true" ]]; then
   warn "--skip-pull activé : mise à jour git ignorée."
 else
   cd "$APP_DIR"
-  # Vérifier que le dépôt git est propre (pas de modifications non commitées)
   if ! git diff --quiet || ! git diff --cached --quiet; then
     warn "Des modifications locales non commitées ont été détectées."
     warn "Pour éviter tout conflit, ces modifications sont préservées (git stash)."
@@ -103,19 +130,19 @@ else
   log "Code à jour (commit : $COMMIT)"
 fi
 
-# ─── 3. Nouveaux packages npm backend ───────────────────────────────────────
+# ─── 4. Nouveaux packages npm backend ───────────────────────────────────────
 section "Mise à jour des dépendances backend"
 cd "$APP_DIR/backend"
 npm install --prefer-offline 2>&1 | tail -3
 log "Dépendances backend OK"
 
-# ─── 4. Nouveaux packages npm frontend ──────────────────────────────────────
+# ─── 5. Nouveaux packages npm frontend ──────────────────────────────────────
 section "Mise à jour des dépendances frontend"
 cd "$APP_DIR"
 npm install --prefer-offline 2>&1 | tail -3
 log "Dépendances frontend OK"
 
-# ─── 5. Migration Prisma (schéma → base de données) ─────────────────────────
+# ─── 6. Migration Prisma (schéma → base de données) ─────────────────────────
 section "Migration du schéma base de données"
 cd "$APP_DIR/backend"
 set -o allexport && source "$BACKEND_ENV" && set +o allexport
@@ -124,7 +151,23 @@ npx prisma generate
 npx prisma db push --accept-data-loss
 log "Schéma Prisma synchronisé"
 
-# ─── 6. Compilation backend ──────────────────────────────────────────────────
+# Re-accorder les privilèges sur les nouvelles tables/séquences créées par Prisma
+log "Mise à jour des privilèges base de données..."
+sudo -u postgres psql -c \
+  "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" 2>/dev/null || true
+sudo -u postgres psql -d "$DB_NAME" -c \
+  "GRANT ALL ON SCHEMA public TO ${DB_USER};" 2>/dev/null || true
+sudo -u postgres psql -d "$DB_NAME" -c \
+  "GRANT ALL ON ALL TABLES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
+sudo -u postgres psql -d "$DB_NAME" -c \
+  "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
+sudo -u postgres psql -d "$DB_NAME" -c \
+  "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};" 2>/dev/null || true
+sudo -u postgres psql -d "$DB_NAME" -c \
+  "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};" 2>/dev/null || true
+log "Privilèges DB accordés"
+
+# ─── 7. Compilation backend ──────────────────────────────────────────────────
 section "Compilation du backend (TypeScript)"
 cd "$APP_DIR/backend"
 # Compiler dans un dossier temporaire pour valider avant le swap
@@ -132,7 +175,7 @@ rm -rf dist_new
 npx tsc --outDir dist_new
 log "Backend compilé → dist_new/"
 
-# ─── 7. Swap et redémarrage backend ──────────────────────────────────────────
+# ─── 8. Swap et redémarrage backend ──────────────────────────────────────────
 section "Déploiement backend (swap + redémarrage)"
 cd "$APP_DIR/backend"
 # Swap atomique : dist → dist_old, dist_new → dist
@@ -141,7 +184,7 @@ mv dist_new dist
 rm -rf dist_old
 log "Swap dist effectué"
 
-# Redémarrage backend (typiquement < 3s)
+# Droits avant redémarrage
 chown -R www-data:www-data "$APP_DIR/backend/dist"
 systemctl restart optimuscredit-backend
 log "Service backend redémarré"
@@ -159,7 +202,7 @@ if [[ "$HEALTH" != "200" ]]; then
   warn "Backend HTTP ${HEALTH} après 15s — vérifiez : journalctl -u optimuscredit-backend -n 50"
 fi
 
-# ─── 8. Compilation frontend ─────────────────────────────────────────────────
+# ─── 9. Compilation frontend ─────────────────────────────────────────────────
 section "Compilation du frontend (React)"
 cd "$APP_DIR"
 # Build dans un dossier temporaire
@@ -170,9 +213,8 @@ export REACT_APP_API_PORT
 BUILD_PATH="$BUILD_TMP" npm run build
 log "Frontend compilé → build_new/"
 
-# ─── 9. Swap et redémarrage frontend ─────────────────────────────────────────
+# ─── 10. Swap et redémarrage frontend ─────────────────────────────────────────
 section "Déploiement frontend (swap + redémarrage)"
-# Swap atomique
 [[ -d "$APP_DIR/build" ]] && mv "$APP_DIR/build" "$APP_DIR/build_old"
 mv "$BUILD_TMP" "$APP_DIR/build"
 rm -rf "$APP_DIR/build_old"
@@ -182,12 +224,12 @@ chown -R www-data:www-data "$APP_DIR/build"
 systemctl restart optimuscredit-frontend
 log "Service frontend redémarré"
 
-# ─── 10. Droits finaux ────────────────────────────────────────────────────────
+# ─── 11. Droits finaux ────────────────────────────────────────────────────────
 section "Vérification des droits"
 chown -R www-data:www-data "$APP_DIR"
 systemctl reload nginx 2>/dev/null || true
 
-# ─── 11. Vérification santé finale ───────────────────────────────────────────
+# ─── 12. Vérification santé finale ───────────────────────────────────────────
 section "Vérification finale"
 sleep 2
 HEALTH_BACKEND=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:5007/api/health" 2>/dev/null || echo "000")
