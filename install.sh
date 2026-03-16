@@ -25,8 +25,11 @@ APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MACHINE_IP=$(hostname -I | awk '{print $1}')
 DB_NAME="optimuscredit"
 DB_USER="optimuscredit"
+BACKEND_ENV="$APP_DIR/backend/.env"
 
-# Mot de passe DB : argument CLI ou auto-généré
+# Mot de passe DB : argument CLI > .env existant > auto-généré
+# Priorité : si le .env existe déjà, on réutilise son mot de passe pour éviter
+# tout désalignement entre le fichier de config et la base de données.
 DB_PASS="${DB_PASSWORD:-}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -34,6 +37,10 @@ while [[ $# -gt 0 ]]; do
     *) shift ;;
   esac
 done
+if [[ -z "$DB_PASS" && -f "$BACKEND_ENV" ]]; then
+  EXISTING_PASS=$(grep -E '^DATABASE_URL=' "$BACKEND_ENV" | sed -E 's|postgresql://[^:]+:([^@]+)@.*|\1|')
+  [[ -n "$EXISTING_PASS" ]] && DB_PASS="$EXISTING_PASS" && warn "Mot de passe DB récupéré depuis backend/.env existant."
+fi
 [[ -z "$DB_PASS" ]] && DB_PASS=$(openssl rand -hex 16)
 
 JWT_SECRET=$(openssl rand -hex 32)
@@ -94,25 +101,77 @@ systemctl enable nginx
 
 # --- 7. Utilisateur et base de données PostgreSQL ---
 log "Configuration de PostgreSQL (user=${DB_USER}, db=${DB_NAME})..."
+
+# Créer l'utilisateur s'il n'existe pas, puis TOUJOURS synchroniser son mot de passe.
+# Sans ce ALTER USER, une réinstallation génère un nouveau mot de passe en .env
+# mais laisse l'ancien en base → erreur "credentials not valid".
 sudo -u postgres psql -tc \
   "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1 \
   || sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASS}';"
+
+sudo -u postgres psql -c \
+  "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASS}';"
 
 sudo -u postgres psql -tc \
   "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1 \
   || sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};"
 
+# Privilèges base de données
 sudo -u postgres psql -c \
   "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};"
 
+# Privilèges schéma et tables (PostgreSQL 15+ : public schema n'est plus ouvert par défaut)
+sudo -u postgres psql -d "$DB_NAME" -c \
+  "GRANT ALL ON SCHEMA public TO ${DB_USER};"
+sudo -u postgres psql -d "$DB_NAME" -c \
+  "GRANT ALL ON ALL TABLES IN SCHEMA public TO ${DB_USER};"
+sudo -u postgres psql -d "$DB_NAME" -c \
+  "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};"
+# Garantir les privilèges sur les futures tables créées par Prisma
+sudo -u postgres psql -d "$DB_NAME" -c \
+  "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};"
+sudo -u postgres psql -d "$DB_NAME" -c \
+  "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};"
+
+log "Utilisateur et base de données configurés"
+
+# --- 7b. Configuration pg_hba.conf (authentification par mot de passe) ---
+log "Configuration de l'authentification PostgreSQL..."
+PG_HBA=$(sudo -u postgres psql -t -c "SHOW hba_file;" 2>/dev/null | tr -d ' \n')
+if [[ -n "$PG_HBA" && -f "$PG_HBA" ]]; then
+  # Supprimer les anciennes règles spécifiques à optimuscredit pour éviter les doublons
+  sed -i "/optimuscredit/d" "$PG_HBA"
+  # Injecter les règles scram-sha-256 pour notre utilisateur (IPv4 + IPv6)
+  # Insertion après la ligne "# IPv4 local connections:" si elle existe, sinon en fin de fichier
+  if grep -q "# IPv4 local connections:" "$PG_HBA"; then
+    sed -i "/# IPv4 local connections:/a host    ${DB_NAME}    ${DB_USER}    127.0.0.1\/32    scram-sha-256" "$PG_HBA"
+  else
+    echo "host    ${DB_NAME}    ${DB_USER}    127.0.0.1/32    scram-sha-256" >> "$PG_HBA"
+  fi
+  if grep -q "# IPv6 local connections:" "$PG_HBA"; then
+    sed -i "/# IPv6 local connections:/a host    ${DB_NAME}    ${DB_USER}    ::1\/128    scram-sha-256" "$PG_HBA"
+  else
+    echo "host    ${DB_NAME}    ${DB_USER}    ::1/128    scram-sha-256" >> "$PG_HBA"
+  fi
+  systemctl reload postgresql
+  log "pg_hba.conf mis à jour — authentification scram-sha-256 activée pour ${DB_USER}"
+else
+  warn "pg_hba.conf introuvable — vérification manuelle recommandée."
+fi
+
+# Vérifier la connectivité DB avant de continuer
+if ! PGPASSWORD="$DB_PASS" psql -h 127.0.0.1 -p 5432 -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1" &>/dev/null; then
+  error "Impossible de se connecter à la base de données après configuration. Vérifiez pg_hba.conf et les logs : journalctl -u postgresql -n 50"
+fi
+log "Connexion base de données : OK"
+
 # --- 8. Fichier .env backend ---
-BACKEND_ENV="$APP_DIR/backend/.env"
 if [[ ! -f "$BACKEND_ENV" ]]; then
   log "Génération de backend/.env..."
   cat > "$BACKEND_ENV" <<EOF
 NODE_ENV=production
 PORT=5007
-DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@localhost:5432/${DB_NAME}
+DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@127.0.0.1:5432/${DB_NAME}
 JWT_SECRET=${JWT_SECRET}
 JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
 JWT_EXPIRY=1h
@@ -125,6 +184,11 @@ AUDIT_RETENTION_DAYS=60
 EOF
 else
   warn "backend/.env existe déjà — conservé tel quel."
+  # Mettre à jour DATABASE_URL avec l'IP explicite pour éviter les ambiguïtés localhost/socket
+  if grep -q 'DATABASE_URL=postgresql://.*@localhost:' "$BACKEND_ENV"; then
+    sed -i 's|@localhost:|@127.0.0.1:|' "$BACKEND_ENV"
+    log "DATABASE_URL mise à jour : localhost → 127.0.0.1 (connexion TCP explicite)"
+  fi
 fi
 
 # --- 9. Fichier .env frontend ---
@@ -156,6 +220,13 @@ cd "$APP_DIR/backend"
 set -o allexport && source "$BACKEND_ENV" && set +o allexport
 npx prisma generate
 npx prisma db push --accept-data-loss
+
+# Re-accorder les privilèges après db push (Prisma peut créer de nouvelles tables)
+sudo -u postgres psql -d "$DB_NAME" -c \
+  "GRANT ALL ON ALL TABLES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
+sudo -u postgres psql -d "$DB_NAME" -c \
+  "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
+log "Schéma Prisma synchronisé"
 
 # --- 13. Seed de la base de données ---
 log "Initialisation des données initiales..."
