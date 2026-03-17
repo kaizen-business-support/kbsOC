@@ -28,8 +28,7 @@ DB_USER="optimuscredit"
 BACKEND_ENV="$APP_DIR/backend/.env"
 
 # Mot de passe DB : argument CLI > .env existant > auto-généré
-# Priorité : si le .env existe déjà, on réutilise son mot de passe pour éviter
-# tout désalignement entre le fichier de config et la base de données.
+# Si .env existe, on réutilise son mot de passe pour éviter tout désalignement.
 DB_PASS="${DB_PASSWORD:-}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -38,8 +37,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 if [[ -z "$DB_PASS" && -f "$BACKEND_ENV" ]]; then
-  EXISTING_PASS=$(grep -E '^DATABASE_URL=' "$BACKEND_ENV" | sed -E 's|postgresql://[^:]+:([^@]+)@.*|\1|')
-  [[ -n "$EXISTING_PASS" ]] && DB_PASS="$EXISTING_PASS" && warn "Mot de passe DB récupéré depuis backend/.env existant."
+  EXISTING_PASS=$(grep -E '^DATABASE_URL=' "$BACKEND_ENV" \
+    | sed -E 's|postgresql://[^:]+:([^@]+)@.*|\1|')
+  [[ -n "$EXISTING_PASS" ]] && DB_PASS="$EXISTING_PASS" \
+    && warn "Mot de passe DB récupéré depuis backend/.env existant."
 fi
 [[ -z "$DB_PASS" ]] && DB_PASS=$(openssl rand -hex 16)
 
@@ -53,7 +54,7 @@ log "IP détectée : $MACHINE_IP"
 # --- 2. Dépendances système ---
 log "Mise à jour et installation des paquets système..."
 apt update -qq
-apt install -y curl git build-essential openssl ca-certificates gnupg lsb-release
+apt install -y curl git build-essential openssl ca-certificates gnupg lsb-release python3
 
 # --- 3. Node.js 18 ---
 log "Installation de Node.js 18..."
@@ -89,7 +90,6 @@ https://packages.redis.io/deb $(lsb_release -cs) main" \
   apt update -qq
   apt install -y redis
 fi
-# Restreindre Redis à localhost
 sed -i 's/^bind .*/bind 127.0.0.1 -::1/' /etc/redis/redis.conf
 systemctl enable --now redis-server
 log "Redis $(redis-server --version | awk '{print $3}' | tr -d 'v=')"
@@ -99,71 +99,105 @@ log "Installation de nginx..."
 apt install -y nginx
 systemctl enable nginx
 
-# --- 7. Utilisateur et base de données PostgreSQL ---
+# --- 7. Configuration PostgreSQL — utilisateur et base de données ---
 log "Configuration de PostgreSQL (user=${DB_USER}, db=${DB_NAME})..."
 
-# Créer l'utilisateur s'il n'existe pas, puis TOUJOURS synchroniser son mot de passe.
-# Sans ce ALTER USER, une réinstallation génère un nouveau mot de passe en .env
-# mais laisse l'ancien en base → erreur "credentials not valid".
+# 7a. Forcer le chiffrement scram-sha-256 AVANT de créer/modifier le mot de passe.
+#     Sans ça, le mot de passe peut être stocké en md5 (ancien format) alors que
+#     pg_hba.conf attend scram-sha-256 → "credentials not valid".
+sudo -u postgres psql -c "ALTER SYSTEM SET password_encryption = 'scram-sha-256';"
+sudo -u postgres psql -c "SELECT pg_reload_conf();"
+log "Chiffrement des mots de passe : scram-sha-256"
+
+# 7b. Créer l'utilisateur s'il n'existe pas, puis TOUJOURS synchroniser le mot de passe.
+#     Le ALTER USER re-hache le mot de passe avec le format actuel (scram-sha-256),
+#     ce qui garantit la cohérence même en cas de réinstallation.
 sudo -u postgres psql -tc \
   "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1 \
   || sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASS}';"
+sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASS}';"
+log "Utilisateur PostgreSQL : OK"
 
-sudo -u postgres psql -c \
-  "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASS}';"
-
+# 7c. Créer la base si elle n'existe pas
 sudo -u postgres psql -tc \
   "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1 \
   || sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};"
+log "Base de données : OK"
 
-# Privilèges base de données
+# 7d. Privilèges complets (base + schéma + tables + séquences + futurs objets)
 sudo -u postgres psql -c \
   "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};"
-
-# Privilèges schéma et tables (PostgreSQL 15+ : public schema n'est plus ouvert par défaut)
 sudo -u postgres psql -d "$DB_NAME" -c \
   "GRANT ALL ON SCHEMA public TO ${DB_USER};"
 sudo -u postgres psql -d "$DB_NAME" -c \
   "GRANT ALL ON ALL TABLES IN SCHEMA public TO ${DB_USER};"
 sudo -u postgres psql -d "$DB_NAME" -c \
   "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};"
-# Garantir les privilèges sur les futures tables créées par Prisma
 sudo -u postgres psql -d "$DB_NAME" -c \
   "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};"
 sudo -u postgres psql -d "$DB_NAME" -c \
   "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};"
+log "Privilèges : OK"
 
-log "Utilisateur et base de données configurés"
-
-# --- 7b. Configuration pg_hba.conf (authentification par mot de passe) ---
-log "Configuration de l'authentification PostgreSQL..."
+# 7e. pg_hba.conf — injecter les règles scram-sha-256 pour notre utilisateur
+#     avant les règles génériques existantes (première règle qui correspond gagne).
 PG_HBA=$(sudo -u postgres psql -t -c "SHOW hba_file;" 2>/dev/null | tr -d ' \n')
-if [[ -n "$PG_HBA" && -f "$PG_HBA" ]]; then
-  # Supprimer les anciennes règles spécifiques à optimuscredit pour éviter les doublons
-  sed -i "/optimuscredit/d" "$PG_HBA"
-  # Injecter les règles scram-sha-256 pour notre utilisateur (IPv4 + IPv6)
-  # Insertion après la ligne "# IPv4 local connections:" si elle existe, sinon en fin de fichier
-  if grep -q "# IPv4 local connections:" "$PG_HBA"; then
-    sed -i "/# IPv4 local connections:/a host    ${DB_NAME}    ${DB_USER}    127.0.0.1\/32    scram-sha-256" "$PG_HBA"
-  else
-    echo "host    ${DB_NAME}    ${DB_USER}    127.0.0.1/32    scram-sha-256" >> "$PG_HBA"
-  fi
-  if grep -q "# IPv6 local connections:" "$PG_HBA"; then
-    sed -i "/# IPv6 local connections:/a host    ${DB_NAME}    ${DB_USER}    ::1\/128    scram-sha-256" "$PG_HBA"
-  else
-    echo "host    ${DB_NAME}    ${DB_USER}    ::1/128    scram-sha-256" >> "$PG_HBA"
-  fi
-  systemctl reload postgresql
-  log "pg_hba.conf mis à jour — authentification scram-sha-256 activée pour ${DB_USER}"
-else
-  warn "pg_hba.conf introuvable — vérification manuelle recommandée."
+if [[ -z "$PG_HBA" || ! -f "$PG_HBA" ]]; then
+  error "pg_hba.conf introuvable. Vérifiez votre installation PostgreSQL."
 fi
 
-# Vérifier la connectivité DB avant de continuer
-if ! PGPASSWORD="$DB_PASS" psql -h 127.0.0.1 -p 5432 -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1" &>/dev/null; then
-  error "Impossible de se connecter à la base de données après configuration. Vérifiez pg_hba.conf et les logs : journalctl -u postgresql -n 50"
-fi
-log "Connexion base de données : OK"
+cp "$PG_HBA" "${PG_HBA}.bak.$(date +%Y%m%d_%H%M%S)"
+
+python3 - <<PYEOF
+import re, sys
+
+hba_path = "$PG_HBA"
+db_name  = "$DB_NAME"
+db_user  = "$DB_USER"
+
+with open(hba_path) as f:
+    lines = f.readlines()
+
+# Supprimer les anciennes règles optimuscredit pour éviter les doublons
+lines = [l for l in lines if db_name not in l and db_user not in l]
+
+# Nos règles à insérer (IPv4 + IPv6)
+our_rules = [
+    "# OptimusCredit — application user\n",
+    f"host    {db_name}    {db_user}    127.0.0.1/32    scram-sha-256\n",
+    f"host    {db_name}    {db_user}    ::1/128         scram-sha-256\n",
+]
+
+# Insérer avant la première règle 'host' existante (priorité maximale)
+insert_at = next(
+    (i for i, l in enumerate(lines) if re.match(r'^host\b', l)),
+    len(lines)
+)
+lines[insert_at:insert_at] = our_rules
+
+with open(hba_path, 'w') as f:
+    f.writelines(lines)
+
+print(f"pg_hba.conf mis à jour (insertion à la ligne {insert_at + 1})")
+PYEOF
+
+systemctl reload postgresql
+log "pg_hba.conf : règles scram-sha-256 injectées et PostgreSQL rechargé"
+
+# 7f. Vérification de la connexion — fail fast avec message explicite
+log "Test de connexion à la base de données..."
+for i in {1..5}; do
+  if PGPASSWORD="$DB_PASS" psql \
+      -h 127.0.0.1 -p 5432 -U "$DB_USER" -d "$DB_NAME" \
+      -c "SELECT 1" &>/dev/null; then
+    log "Connexion base de données : OK"
+    break
+  fi
+  [[ $i -eq 5 ]] && error "Impossible de se connecter à la base de données après 5 tentatives.
+  Vérifiez : journalctl -u postgresql -n 50
+  pg_hba.conf : $PG_HBA"
+  sleep 1
+done
 
 # --- 8. Fichier .env backend ---
 if [[ ! -f "$BACKEND_ENV" ]]; then
@@ -184,10 +218,10 @@ AUDIT_RETENTION_DAYS=60
 EOF
 else
   warn "backend/.env existe déjà — conservé tel quel."
-  # Mettre à jour DATABASE_URL avec l'IP explicite pour éviter les ambiguïtés localhost/socket
-  if grep -q 'DATABASE_URL=postgresql://.*@localhost:' "$BACKEND_ENV"; then
-    sed -i 's|@localhost:|@127.0.0.1:|' "$BACKEND_ENV"
-    log "DATABASE_URL mise à jour : localhost → 127.0.0.1 (connexion TCP explicite)"
+  # Forcer 127.0.0.1 au lieu de localhost pour garantir connexion TCP (pas socket Unix)
+  if grep -qE 'DATABASE_URL=postgresql://.*@localhost' "$BACKEND_ENV"; then
+    sed -i 's|@localhost:|@127.0.0.1:|g' "$BACKEND_ENV"
+    log "DATABASE_URL : localhost → 127.0.0.1 (connexion TCP explicite)"
   fi
 fi
 
@@ -221,7 +255,7 @@ set -o allexport && source "$BACKEND_ENV" && set +o allexport
 npx prisma generate
 npx prisma db push --accept-data-loss
 
-# Re-accorder les privilèges après db push (Prisma peut créer de nouvelles tables)
+# Re-accorder les privilèges après db push (Prisma crée de nouvelles tables)
 sudo -u postgres psql -d "$DB_NAME" -c \
   "GRANT ALL ON ALL TABLES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
 sudo -u postgres psql -d "$DB_NAME" -c \
@@ -231,7 +265,8 @@ log "Schéma Prisma synchronisé"
 # --- 13. Seed de la base de données ---
 log "Initialisation des données initiales..."
 cd "$APP_DIR/backend"
-npm run seed && log "Seed effectué." || warn "Seed ignoré (données déjà présentes ou erreur non bloquante)."
+npm run seed && log "Seed effectué." \
+  || warn "Seed ignoré (données déjà présentes ou erreur non bloquante)."
 
 # --- 14. Build backend TypeScript ---
 log "Compilation du backend (TypeScript → dist/)..."
@@ -243,7 +278,7 @@ log "Compilation du frontend (React → build/)..."
 cd "$APP_DIR"
 npm run build
 
-# --- 16. Installation de serve (pour les fichiers statiques React) ---
+# --- 16. Installation de serve ---
 log "Installation de serve (serveur de fichiers statiques)..."
 npm install -g serve
 SERVE_BIN="$(npm root -g)/../bin/serve"
@@ -297,7 +332,6 @@ SyslogIdentifier=optimuscredit-frontend
 WantedBy=multi-user.target
 EOF
 
-# Droits d'accès pour www-data
 chown -R www-data:www-data "$APP_DIR"
 
 # --- 19. Configuration nginx ---
@@ -309,7 +343,6 @@ server {
 
     client_max_body_size 50M;
 
-    # Backend API
     location /api {
         proxy_pass         http://127.0.0.1:5007;
         proxy_http_version 1.1;
@@ -322,7 +355,6 @@ server {
         proxy_read_timeout 120s;
     }
 
-    # WebSocket Socket.IO
     location /socket.io {
         proxy_pass         http://127.0.0.1:5007;
         proxy_http_version 1.1;
@@ -333,7 +365,6 @@ server {
         proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 
-    # Frontend React
     location / {
         proxy_pass         http://127.0.0.1:3006;
         proxy_http_version 1.1;
@@ -347,24 +378,23 @@ server {
 }
 NGINXCONF
 
-# --- 20. Activer le site nginx ---
 ln -sf /etc/nginx/sites-available/optimuscredit /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
-nginx -t || error "Configuration nginx invalide, vérifiez /etc/nginx/sites-available/optimuscredit"
+nginx -t || error "Configuration nginx invalide."
 
-# --- 21. Démarrage et activation au boot ---
+# --- 20. Démarrage des services ---
 log "Activation et démarrage des services..."
 systemctl daemon-reload
 systemctl enable --now optimuscredit-backend
 systemctl enable --now optimuscredit-frontend
 systemctl reload nginx
 
-# Attendre que les services soient prêts
 sleep 3
 
-# --- 22. Vérification santé ---
+# --- 21. Vérification santé ---
 log "Vérification de l'API backend..."
-HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:5007/api/health" || echo "000")
+HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+  "http://127.0.0.1:5007/api/health" || echo "000")
 if [[ "$HEALTH_STATUS" == "200" ]]; then
   log "API backend : OK (HTTP 200)"
 else
