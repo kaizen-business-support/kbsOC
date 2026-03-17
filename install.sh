@@ -230,10 +230,13 @@ check_ok "Service nginx : activé"
 echo ""
 echo -e "${BLUE}━━━ Configuration base de données ━━━${NC}"
 
-# Forcer scram-sha-256 AVANT de créer/modifier le mot de passe
-sudo -u postgres psql -c "ALTER SYSTEM SET password_encryption = 'scram-sha-256';"
+# Forcer md5 AVANT de créer/modifier le mot de passe.
+# md5 est universellement compatible avec toutes versions de PostgreSQL (9.x–16.x)
+# et tous les clients (Prisma, libpq...). scram-sha-256 peut échouer si le client
+# embarque une libpq ancienne ou si la version PG ne correspond pas.
+sudo -u postgres psql -c "ALTER SYSTEM SET password_encryption = 'md5';"
 sudo -u postgres psql -c "SELECT pg_reload_conf();"
-check_ok "Chiffrement des mots de passe : scram-sha-256"
+check_ok "Chiffrement des mots de passe : md5 (compatible tous clients)"
 
 # Créer l'utilisateur (si absent) puis TOUJOURS synchroniser le mot de passe
 sudo -u postgres psql -tc \
@@ -279,8 +282,8 @@ with open(hba_path) as f:
 lines = [l for l in lines if db_name not in l and db_user not in l]
 our_rules = [
     "# OptimusCredit — application user\n",
-    f"host    {db_name}    {db_user}    127.0.0.1/32    scram-sha-256\n",
-    f"host    {db_name}    {db_user}    ::1/128         scram-sha-256\n",
+    f"host    {db_name}    {db_user}    127.0.0.1/32    md5\n",
+    f"host    {db_name}    {db_user}    ::1/128         md5\n",
 ]
 insert_at = next(
     (i for i, l in enumerate(lines) if re.match(r'^host\b', l)),
@@ -293,7 +296,7 @@ print(f"pg_hba.conf mis à jour (ligne {insert_at + 1})")
 PYEOF
 
 systemctl reload postgresql
-check_ok "pg_hba.conf : règles scram-sha-256 injectées"
+check_ok "pg_hba.conf : règles md5 injectées"
 
 # Test de connexion avec retry
 log "Test de connexion à la base de données..."
