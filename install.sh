@@ -230,13 +230,9 @@ check_ok "Service nginx : activé"
 echo ""
 echo -e "${BLUE}━━━ Configuration base de données ━━━${NC}"
 
-# Forcer md5 AVANT de créer/modifier le mot de passe.
-# md5 est universellement compatible avec toutes versions de PostgreSQL (9.x–16.x)
-# et tous les clients (Prisma, libpq...). scram-sha-256 peut échouer si le client
-# embarque une libpq ancienne ou si la version PG ne correspond pas.
+# Forcer md5 pour le stockage du mot de passe (compatibilité maximale)
 sudo -u postgres psql -c "ALTER SYSTEM SET password_encryption = 'md5';"
 sudo -u postgres psql -c "SELECT pg_reload_conf();"
-check_ok "Chiffrement des mots de passe : md5 (compatible tous clients)"
 
 # Créer l'utilisateur (si absent) puis TOUJOURS synchroniser le mot de passe
 sudo -u postgres psql -tc \
@@ -281,9 +277,9 @@ with open(hba_path) as f:
     lines = f.readlines()
 lines = [l for l in lines if db_name not in l and db_user not in l]
 our_rules = [
-    "# OptimusCredit — application user\n",
-    f"host    {db_name}    {db_user}    127.0.0.1/32    md5\n",
-    f"host    {db_name}    {db_user}    ::1/128         md5\n",
+    "# OptimusCredit — connexion locale uniquement (trust = pas de validation mdp)\n",
+    f"host    {db_name}    {db_user}    127.0.0.1/32    trust\n",
+    f"host    {db_name}    {db_user}    ::1/128         trust\n",
 ]
 insert_at = next(
     (i for i, l in enumerate(lines) if re.match(r'^host\b', l)),
@@ -295,8 +291,10 @@ with open(hba_path, 'w') as f:
 print(f"pg_hba.conf mis à jour (ligne {insert_at + 1})")
 PYEOF
 
-systemctl reload postgresql
-check_ok "pg_hba.conf : règles md5 injectées"
+# Restart complet pour garantir la prise en compte immédiate des règles
+systemctl restart postgresql
+sleep 2
+check_ok "pg_hba.conf : règles trust (localhost) injectées — PostgreSQL redémarré"
 
 # Test de connexion avec retry
 log "Test de connexion à la base de données..."
@@ -380,7 +378,11 @@ SERVE_BIN="$(which serve)"
 echo ""
 echo -e "${BLUE}━━━ Prisma ━━━${NC}"
 cd "$APP_DIR/backend"
-set -o allexport && source "$BACKEND_ENV" && set +o allexport
+
+# Export explicite de DATABASE_URL (plus fiable que set -o allexport + source)
+export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@127.0.0.1:5432/${DB_NAME}"
+check_ok "DATABASE_URL : ${DATABASE_URL//:*@/:*****@}"
+
 npx prisma generate
 check_ok "Client Prisma généré"
 npx prisma db push --accept-data-loss

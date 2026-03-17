@@ -277,7 +277,8 @@ dep_ok "Frontend npm : OK"
 # ─── 6. Migration Prisma ────────────────────────────────────────────────────
 section "Migration base de données (Prisma)"
 cd "$APP_DIR/backend"
-set -o allexport && source "$BACKEND_ENV" && set +o allexport
+# Export explicite — plus fiable que set -o allexport pour les sous-processus Prisma
+export DATABASE_URL="$DB_URL"
 npx prisma generate
 npx prisma db push --accept-data-loss
 dep_ok "Schéma Prisma synchronisé"
