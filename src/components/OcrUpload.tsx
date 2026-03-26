@@ -16,9 +16,12 @@ import {
   Check as ConfirmIcon,
   Close as CancelIcon,
   DocumentScanner as ScanIcon,
+  TableChart as ExcelIcon,
+  PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import { ocrService } from '../services/ocrService';
+import { ExcelProcessor } from '../services/excelProcessor';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface OcrUploadProps {
@@ -41,6 +44,13 @@ interface DetectedStatement {
 }
 
 type Phase = 'idle' | 'scanning' | 'done' | 'review' | 'error';
+type FileMode = 'pdf' | 'excel';
+
+const EXCEL_TYPES = [
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+];
+const isExcel = (f: File) => EXCEL_TYPES.includes(f.type) || /\.(xlsx?|csv)$/i.test(f.name);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const STATEMENT_LABELS: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
@@ -76,6 +86,7 @@ const fmt = (d: Date) => d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute
 // ─── Main component ───────────────────────────────────────────────────────────
 export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumentUploaded, targetYear }) => {
   const [phase, setPhase] = useState<Phase>('idle');
+  const [fileMode, setFileMode] = useState<FileMode>('pdf');
   const [file, setFile] = useState<File | null>(null);
   const [logs, setLogs] = useState<ScanLog[]>([]);
   const [progress, setProgress] = useState(0);
@@ -86,6 +97,7 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
   const [confidence, setConfidence] = useState(0);
   const [reviewData, setReviewData] = useState<any>({});
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   const logRef = useRef<HTMLDivElement>(null);
   const logId = useRef(0);
@@ -108,55 +120,109 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
     setFieldsFound(0);
     setScanningPage(null);
     setError(null);
+    setWarnings([]);
     logId.current = 0;
 
+    const mode: FileMode = isExcel(f) ? 'excel' : 'pdf';
+    setFileMode(mode);
+
     pushLog(`Fichier : ${f.name} (${(f.size / 1024 / 1024).toFixed(1)} Mo)`, 'info');
+    pushLog(mode === 'excel' ? 'Mode : Import Excel SYSCOHADA' : 'Mode : Scan PDF par OCR', 'info');
 
     try {
-      await ocrService.initializeOcr();
-      pushLog('Moteur Tesseract OCR initialisé', 'success');
+      // ── EXCEL PATH ──────────────────────────────────────────────────────────
+      if (mode === 'excel') {
+        pushLog('Lecture du classeur Excel…', 'info');
+        setProgress(20);
 
-      const financialData = await ocrService.extractFinancialData(f, {
-        language: 'fra',
-        onProgress: (step, detail, pct, extra) => {
-          setProgress(pct ?? 0);
+        const result = await ExcelProcessor.processExcelFile(f, targetYear ? {
+          primaryYear: targetYear,
+          startYear: targetYear,
+          endYear: targetYear,
+        } : undefined);
 
-          if (step === 'page' && extra) {
-            setScanningPage({ current: extra.page, total: extra.totalPages });
-            if (extra.page % 3 === 0 || extra.page === 1) {
-              pushLog(detail, 'page');
+        if (!result.success || !result.data) {
+          throw new Error(result.error ?? 'Échec de la lecture Excel');
+        }
+
+        setProgress(60);
+        pushLog('Classeur lu — extraction des données…', 'extract');
+
+        if (result.warnings?.length) {
+          result.warnings.forEach(w => pushLog(w, 'warn'));
+          setWarnings(result.warnings);
+        }
+
+        // Pick the year matching targetYear, or fallback to first available
+        const yearEntries = Object.values(result.data);
+        let yearData = yearEntries.find(e => e.year === targetYear) ?? yearEntries[0];
+
+        if (!yearData?.data || Object.keys(yearData.data).length === 0) {
+          throw new Error('Aucune donnée financière trouvée dans le fichier Excel');
+        }
+
+        const extracted = yearData.data as any;
+        const fieldCount = Object.keys(extracted).filter(k => extracted[k] !== 0).length;
+
+        setProgress(90);
+        pushLog(`${fieldCount} champs extraits (exercice ${yearData.year})`, 'done');
+        setProgress(100);
+        pushLog('Import Excel terminé avec succès', 'done');
+
+        setResult(extracted);
+        setConfidence(fieldCount > 10 ? 95 : fieldCount > 5 ? 75 : 50);
+        setFieldsFound(fieldCount);
+        setStatements([
+          { type: 'bilan', page: 0, confidence: 95 },
+          { type: 'compte_resultat', page: 0, confidence: 95 },
+          { type: 'tableau_flux', page: 0, confidence: 90 },
+        ]);
+        setPhase('done');
+
+      // ── PDF / OCR PATH ──────────────────────────────────────────────────────
+      } else {
+        await ocrService.initializeOcr();
+        pushLog('Moteur Tesseract OCR initialisé', 'success');
+
+        const financialData = await ocrService.extractFinancialData(f, {
+          language: 'fra',
+          onProgress: (step, detail, pct, extra) => {
+            setProgress(pct ?? 0);
+            if (step === 'page' && extra) {
+              setScanningPage({ current: extra.page, total: extra.totalPages });
+              if (extra.page % 3 === 0 || extra.page === 1) pushLog(detail, 'page');
+            } else if (step === 'found' && extra) {
+              setStatements(prev => {
+                const without = prev.filter(s => s.type !== extra.type);
+                return [...without, { type: extra.type, page: extra.page, confidence: extra.confidence }];
+              });
+              pushLog(detail, 'found');
+            } else if (step === 'extract') {
+              pushLog(detail, 'extract');
+            } else if (step === 'field' && extra) {
+              setFieldsFound(prev => prev + (extra.count ?? 0));
+              pushLog(detail, 'success');
+            } else if (step === 'done' && extra) {
+              setFieldsFound(extra.fieldCount ?? 0);
+              setConfidence(extra.confidence ?? 0);
+              pushLog(detail, 'done');
+            } else if (step === 'warn') {
+              pushLog(detail, 'warn');
+            } else if (step === 'error') {
+              pushLog(detail, 'error');
+            } else {
+              pushLog(detail, 'info');
             }
-          } else if (step === 'found' && extra) {
-            setStatements(prev => {
-              const without = prev.filter(s => s.type !== extra.type);
-              return [...without, { type: extra.type, page: extra.page, confidence: extra.confidence }];
-            });
-            pushLog(detail, 'found');
-          } else if (step === 'extract') {
-            pushLog(detail, 'extract');
-          } else if (step === 'field' && extra) {
-            setFieldsFound(prev => prev + (extra.count ?? 0));
-            pushLog(detail, 'success');
-          } else if (step === 'done' && extra) {
-            setFieldsFound(extra.fieldCount ?? 0);
-            setConfidence(extra.confidence ?? 0);
-            pushLog(detail, 'done');
-          } else if (step === 'warn') {
-            pushLog(detail, 'warn');
-          } else if (step === 'error') {
-            pushLog(detail, 'error');
-          } else {
-            pushLog(detail, 'info');
-          }
-        },
-      });
+          },
+        });
 
-      const optimusData = ocrService.convertToOptimusFormat(financialData);
-      const conf = (financialData.confidence ?? 0) as number;
-      setResult(optimusData);
-      setConfidence(conf);
-      setFieldsFound(Object.keys(optimusData).length);
-      setPhase('done');
+        const optimusData = ocrService.convertToOptimusFormat(financialData);
+        const conf = (financialData.confidence ?? 0) as number;
+        setResult(optimusData);
+        setConfidence(conf);
+        setFieldsFound(Object.keys(optimusData).length);
+        setPhase('done');
+      }
 
       if (onDocumentUploaded) {
         onDocumentUploaded({
@@ -171,22 +237,33 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
       setError(msg);
       setPhase('error');
     } finally {
-      await ocrService.cleanup();
+      if (!isExcel(f)) await ocrService.cleanup();
     }
-  }, [onDocumentUploaded, pushLog]);
+  }, [onDocumentUploaded, pushLog, targetYear]);
 
   // ── Drop zone ─────────────────────────────────────────────────────────────────
   const onDrop = useCallback(async (files: File[]) => {
     const f = files[0];
     if (!f) return;
-    if (f.type !== 'application/pdf') { setError('Seuls les PDF sont acceptés.'); return; }
+    const isPdf = f.type === 'application/pdf';
+    if (!isPdf && !isExcel(f)) {
+      setError('Formats acceptés : PDF, Excel (.xlsx, .xls)');
+      return;
+    }
     setFile(f);
     setError(null);
     await processFile(f);
   }, [processFile]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop, accept: { 'application/pdf': ['.pdf'] }, multiple: false, maxSize: 15 * 1024 * 1024,
+    onDrop,
+    accept: {
+      'application/pdf': ['.pdf'],
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+      'application/vnd.ms-excel': ['.xls'],
+    },
+    multiple: false,
+    maxSize: 15 * 1024 * 1024,
   });
 
   const handleUseData = () => {
@@ -230,23 +307,30 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
           }}
         >
           <input {...getInputProps()} />
-          <Box sx={{
-            width: 64, height: 64, borderRadius: '50%',
-            bgcolor: '#e3f2fd', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <ScanIcon sx={{ fontSize: 32, color: '#1565c0' }} />
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Box sx={{ width: 56, height: 56, borderRadius: '50%', bgcolor: '#e3f2fd', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <PdfIcon sx={{ fontSize: 28, color: '#c62828' }} />
+            </Box>
+            <Box sx={{ width: 56, height: 56, borderRadius: '50%', bgcolor: '#e8f5e9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <ExcelIcon sx={{ fontSize: 28, color: '#2e7d32' }} />
+            </Box>
           </Box>
           <Box sx={{ textAlign: 'center' }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1e293b' }}>
-              {isDragActive ? 'Déposer le fichier ici…' : 'Glisser-déposer un PDF ou cliquer pour sélectionner'}
+              {isDragActive ? 'Déposer le fichier ici…' : 'Glisser-déposer ou cliquer pour sélectionner'}
             </Typography>
             <Typography variant="body2" sx={{ color: '#64748b', mt: 0.5 }}>
-              États financiers SYSCOHADA / BCEAO — PDF jusqu'à 15 Mo
+              PDF (scan OCR) ou Excel SYSCOHADA (.xlsx / .xls) — États financiers BCEAO — 15 Mo max
             </Typography>
           </Box>
-          <Button variant="outlined" startIcon={<UploadIcon />} sx={{ borderRadius: 3, fontWeight: 600 }}>
-            Choisir un fichier PDF
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button variant="outlined" startIcon={<PdfIcon />} sx={{ borderRadius: 3, fontWeight: 600, color: '#c62828', borderColor: '#c62828', '&:hover': { borderColor: '#c62828', bgcolor: '#fff5f5' } }}>
+              PDF
+            </Button>
+            <Button variant="outlined" startIcon={<ExcelIcon />} sx={{ borderRadius: 3, fontWeight: 600, color: '#2e7d32', borderColor: '#2e7d32', '&:hover': { borderColor: '#2e7d32', bgcolor: '#f1f8f1' } }}>
+              Excel
+            </Button>
+          </Box>
         </Box>
         {error && (
           <Box sx={{ mt: 2, p: 2, bgcolor: '#fef2f2', borderRadius: 2, border: '1px solid #fecaca' }}>
@@ -284,16 +368,17 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
             ))}
           </Box>
           <Typography sx={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#94a3b8', ml: 1 }}>
-            kbs-ocr — {file?.name}
+            {fileMode === 'excel' ? 'kbs-excel' : 'kbs-ocr'} — {file?.name}
           </Typography>
           <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
             <Box sx={{
-              width: 8, height: 8, borderRadius: '50%', bgcolor: '#22d3ee',
+              width: 8, height: 8, borderRadius: '50%',
+              bgcolor: fileMode === 'excel' ? '#4ade80' : '#22d3ee',
               animation: 'pulse 1s ease-in-out infinite',
               '@keyframes pulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.3 } },
             }} />
-            <Typography sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#22d3ee' }}>
-              SCANNING
+            <Typography sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: fileMode === 'excel' ? '#4ade80' : '#22d3ee' }}>
+              {fileMode === 'excel' ? 'EXCEL IMPORT' : 'OCR SCAN'}
             </Typography>
           </Box>
         </Box>
@@ -551,6 +636,15 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
             <Typography sx={{ fontSize: '0.65rem', color: confColor }}>Confiance</Typography>
           </Box>
         </Box>
+
+        {/* Warnings */}
+        {warnings.length > 0 && (
+          <Box sx={{ p: 2, mb: 2, bgcolor: '#fffbeb', borderRadius: 2, border: '1px solid #fde68a' }}>
+            {warnings.map((w, i) => (
+              <Typography key={i} variant="caption" sx={{ display: 'block', color: '#92400e' }}>{w}</Typography>
+            ))}
+          </Box>
+        )}
 
         {/* Detected statements */}
         <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
