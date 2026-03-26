@@ -22,6 +22,7 @@ interface OcrOptions {
   language?: string;
   pages?: number[];
   dpi?: number;
+  onProgress?: (step: string, detail: string, percent: number, extra?: any) => void;
 }
 
 interface FinancialStatement {
@@ -182,51 +183,58 @@ export class OcrService {
    * Main extraction method - detects statements first, then extracts data
    */
   async extractFinancialData(file: File, options: OcrOptions = {}): Promise<ExtractedFinancialData> {
+    const { onProgress } = options;
     try {
+      onProgress?.('init', 'Initialisation des moteurs OCR Tesseract…', 5);
       console.log('🚀 Starting SYSCOHADA financial statement detection and extraction...');
-      console.log(`📄 File: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
-      
+
       // Step 1: Detect financial statements in the document
-      const detectedStatements = await this.detectFinancialStatements(file);
-      
+      onProgress?.('scan', `Lecture du document : ${file.name}`, 10);
+      const detectedStatements = await this.detectFinancialStatements(file, onProgress);
+
       if (detectedStatements.length === 0) {
+        onProgress?.('warn', 'Aucun état financier détecté dans le document', 40);
         console.warn('⚠️ No financial statements detected in the document');
         return { confidence: 0 };
       }
-      
+
+      onProgress?.('detect', `${detectedStatements.length} état(s) financier(s) détecté(s)`, 55,
+        { statements: detectedStatements });
+
       // Step 2: Extract data from each detected statement
       const extractedData: ExtractedFinancialData = {};
       let totalConfidence = 0;
-      
+      let stepIdx = 0;
+
       for (const statement of detectedStatements) {
         try {
+          const label = { bilan: 'Bilan', compte_resultat: 'Compte de Résultat', tableau_flux: 'Tableau des Flux' }[statement.type] ?? statement.type;
+          onProgress?.('extract', `Extraction des données : ${label} (page ${statement.pageNumber})`,
+            60 + stepIdx * 10);
           const rawData = await this.extractStatementData(file, statement);
-          
-          // Save raw data to file for debugging (as specified)
           await this.saveDebugOutput(statement.type, rawData);
-          
-          // Parse the raw data to extract financial values
           const parsedData = this.parseStatementData(statement.type, rawData);
-          
-          // Merge parsed data into main result
           Object.assign(extractedData, parsedData);
           totalConfidence += statement.confidence;
-          
+          onProgress?.('field', `${label} : ${Object.keys(parsedData).length} champ(s) extrait(s)`,
+            65 + stepIdx * 10, { count: Object.keys(parsedData).length });
+          stepIdx++;
         } catch (error) {
           console.warn(`⚠️ Error extracting ${statement.type}:`, error);
+          onProgress?.('warn', `Erreur sur ${statement.type}: ${error instanceof Error ? error.message : '?'}`, 60 + stepIdx * 10);
         }
       }
-      
-      // Calculate overall confidence
+
       extractedData.confidence = detectedStatements.length > 0 ? totalConfidence / detectedStatements.length : 0;
-      
-      console.log(`✅ Final extraction confidence: ${extractedData.confidence?.toFixed(1)}%`);
-      console.log(`📊 Extracted ${Object.keys(extractedData).length - 1} financial fields`);
-      
+      const fieldCount = Object.keys(extractedData).filter(k => k !== 'confidence').length;
+      onProgress?.('done', `Extraction terminée — ${fieldCount} champs — confiance ${extractedData.confidence?.toFixed(0)}%`, 100,
+        { fieldCount, confidence: extractedData.confidence });
+
       return extractedData;
-      
+
     } catch (error) {
       console.error('❌ OCR extraction failed:', error);
+      onProgress?.('error', `Erreur OCR : ${error instanceof Error ? error.message : 'Erreur inconnue'}`, 100);
       throw new Error(`Erreur lors de l'extraction OCR: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
     }
   }
@@ -234,7 +242,7 @@ export class OcrService {
   /**
    * Detect financial statements in PDF by scanning all pages
    */
-  async detectFinancialStatements(file: File): Promise<FinancialStatement[]> {
+  async detectFinancialStatements(file: File, onProgress?: OcrOptions['onProgress']): Promise<FinancialStatement[]> {
     console.log('🔍 Starting financial statement detection...');
     
     // Validate file parameter
@@ -252,16 +260,19 @@ export class OcrService {
       
       const pdf = await pdfjsLib.getDocument({ data: fileArrayBuffer }).promise;
     const totalPages = pdf.numPages;
-    
+    onProgress?.('scan', `Document chargé — ${totalPages} pages à analyser`, 12, { totalPages });
     console.log(`📄 Scanning ${totalPages} pages for financial statements...`);
-    
+
     for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
       console.log(`🔎 Analyzing page ${pageNum}/${totalPages}...`);
-      
+      const pct = 12 + Math.round((pageNum / totalPages) * 40);
+      onProgress?.('page', `Analyse page ${pageNum} / ${totalPages}`, pct, { page: pageNum, totalPages });
+
       // Check if we already found all three financial statements
       const foundStatements = new Set(detectedStatements.map(s => s.type));
       if (foundStatements.has('bilan') && foundStatements.has('compte_resultat') && foundStatements.has('tableau_flux')) {
         console.log(`🎯 All three financial statements found! Stopping scan at page ${pageNum - 1}`);
+        onProgress?.('detect', 'Les 3 états financiers détectés — arrêt anticipé', pct);
         break;
       }
       
@@ -367,20 +378,22 @@ export class OcrService {
           
           console.log(`📊 Page ${pageNum} - ${statementType}: ${confidence.toFixed(1)}% match`);
           
-          if (confidence >= 70) { // Set to 70% minimum confidence as requested
+          if (confidence >= 40) { // lowered threshold for better document coverage
             // Check if we already found this statement type
             const existingStatement = detectedStatements.find(s => s.type === statementType);
-            
+            const labels: Record<string, string> = { bilan: 'Bilan', compte_resultat: 'Compte de Résultat', tableau_flux: 'Tableau des Flux' };
+            const label = labels[statementType] ?? statementType;
+
             if (!existingStatement || confidence > existingStatement.confidence) {
               if (existingStatement) {
-                console.log(`✅ Found better ${statementType} on page ${pageNum} (${confidence.toFixed(1)}% vs ${existingStatement.confidence.toFixed(1)}%)`);
-                // Remove the existing one
                 const index = detectedStatements.indexOf(existingStatement);
                 detectedStatements.splice(index, 1);
-              } else {
-                console.log(`✅ Detected ${statementType} on page ${pageNum} with ${confidence.toFixed(1)}% confidence`);
               }
-              
+              const pct = 12 + Math.round((pageNum / totalPages) * 40);
+              onProgress?.('found', `${label} détecté — page ${pageNum} (confiance ${confidence.toFixed(0)}%)`,
+                pct, { type: statementType, page: pageNum, confidence });
+              console.log(`✅ Detected ${statementType} on page ${pageNum} with ${confidence.toFixed(1)}% confidence`);
+
               detectedStatements.push({
                 type: statementType as 'bilan' | 'compte_resultat' | 'tableau_flux',
                 pageNumber: pageNum,
@@ -1496,101 +1509,67 @@ export class OcrService {
   }
   
   /**
-   * Extract value from ACTIF section (column 6 - Net under 31/12/N)
-   * Handles lines like: "AZ|TOTAL ACTIF IMMOBILISE||237854045|236969499|884546|2133691|DF|TOTAL RESSOURCES STABLES||375947354|373870235"
+   * Parse a single pipe-separated column string as a French integer.
+   * Accepts: "1234567", "1 234 567", "-500000". Returns null if not numeric.
+   */
+  private parseNumericCol(col: string): number | null {
+    if (!col) return null;
+    const s = col.trim();
+    if (s === '' || s === '-' || s.toLowerCase() === 'note') return null;
+    const clean = s.replace(/\s/g, '');
+    if (!/^-?\d+$/.test(clean)) return null;
+    const n = parseInt(clean, 10);
+    return isNaN(n) ? null : n;
+  }
+
+  /**
+   * Smart column extractor: tries preferred indices first, then adjacent columns,
+   * then falls back to the last numeric value after index 1.
+   */
+  private extractFromColumns(line: string, preferredIndices: number[]): number | null {
+    const cols = line.split('|').map(c => c.trim());
+
+    // Try preferred indices
+    for (const idx of preferredIndices) {
+      if (idx < cols.length) {
+        const v = this.parseNumericCol(cols[idx]);
+        if (v !== null) return v;
+      }
+    }
+
+    // Fallback: last numeric value found after label columns
+    for (let i = cols.length - 1; i >= 2; i--) {
+      const v = this.parseNumericCol(cols[i]);
+      if (v !== null) return v;
+    }
+
+    return null;
+  }
+
+  /**
+   * Extract value from ACTIF section.
+   * SYSCOHADA structure: REF | LABEL | [empty?] | BRUT_N | AMORT_N | NET_N | NET_N1 | ...
+   * NET_N is typically the 3rd or 4th numeric value. We try indices 4,5,3,6 then scan right-to-left.
    */
   private extractValueFromActifSection(line: string): number | null {
-    console.log(`🔍 Extracting from ACTIF section column 4 (Net 31/12/N): "${line}"`);
-    
-    const columns = line.split('|').map(col => col.trim());
-    console.log(`📊 Columns: [${columns.map((c, i) => `${i}:"${c}"`).join(', ')}]`);
-    
-    // Target column 4 specifically (Net 31/12/N - current year net for ACTIF)
-    // Structure: REF|LABEL|Brut N(col2)|Brut N-1(col3)|Net N(col4)|Net N-1(col5)|...
-    if (columns.length > 4) {
-      const col = columns[4]; // Column 4 (0-indexed as 4) - Net 31/12/N
-      if (col && col !== '' && col !== '-' && col !== '0') {
-        const numberMatch = col.match(/^(-?\d+(?:\s\d{3})*)$/);
-        if (numberMatch) {
-          const cleanNumber = numberMatch[1].replace(/\s/g, '');
-          const numericValue = parseInt(cleanNumber, 10);
-          if (!isNaN(numericValue) && Math.abs(numericValue) > 0) {
-            console.log(`💰 Found ACTIF value: ${numericValue} in column 4 (Net 31/12/N - original: "${col}")`);
-            return numericValue;
-          }
-        }
-      }
-    }
-    
-    console.log(`❌ No ACTIF value found in column 4`);
-    return null;
+    return this.extractFromColumns(line, [4, 5, 3, 6, 2]);
   }
 
   /**
-   * Extract current year value from compte de résultat line (column 5 - 31/12/N)
-   * Targets column 5 specifically, not NOTE column (column 4)
+   * Extract current year value from Compte de Résultat line.
+   * Structure: REF | LIBELLES | A | NOTE | 31/12/N | 31/12/N-1
+   * 31/12/N is usually at index 4 or 5.
    */
   private extractCurrentYearValue(line: string): number | null {
-    console.log(`🚀 EXTRACT CURRENT YEAR VALUE CALLED`);
-    console.log(`🔍 Extracting current year value from column 5 (31/12/N): "${line}"`);
-    
-    const columns = line.split('|').map(col => col.trim());
-    console.log(`📊 Columns: [${columns.map((c, i) => `${i}:"${c}"`).join(', ')}]`);
-    console.log(`🎯 Target column 5 content: "${columns[5]}"`);
-    console.log(`❌ Column 4 (NOTE) content: "${columns[4]}"`); 
-    
-    // Target column 5 specifically (31/12/N, not NOTE)
-    // Actual OCR structure: REF|LIBELLES|A|Extra|NOTE|31/12/N|31/12/N-1
-    // Indices:              0  |    1   |2|  3  | 4  |  5   |   6
-    if (columns.length > 5) {
-      const col = columns[5]; // Column 5 (0-indexed) = 31/12/N
-      if (col && col !== '' && col !== '-' && col !== '0' && !col.toLowerCase().includes('note')) {
-        // Handle any numeric format (with/without spaces, positive/negative)
-        const numberMatch = col.match(/^-?\d[\d\s]*$/);
-        if (numberMatch) {
-          const cleanNumber = col.replace(/\s/g, '');
-          const numericValue = parseInt(cleanNumber, 10);
-          if (!isNaN(numericValue) && Math.abs(numericValue) > 0) {
-            console.log(`💰 Found current year value: ${numericValue} in column 5 (31/12/N) (original: "${col}")`);
-            return numericValue;
-          }
-        }
-      }
-    }
-    
-    console.log(`❌ No current year value found in column 5 (31/12/N)`);
-    return null;
+    return this.extractFromColumns(line, [5, 4, 3, 6]);
   }
 
   /**
-   * Extract value from PASSIF section (column 11 - Net under exercice au 31/12/N) 
-   * Looks for values in column 11 specifically
+   * Extract value from PASSIF section (right side of bilan row or separate section).
+   * PASSIF columns start after ACTIF data; 31/12/N is typically at index 9 or 10.
    */
   private extractValueFromPassifSection(line: string): number | null {
-    console.log(`🔍 Extracting from PASSIF section column 9 (31/12/N): "${line}"`);
-    
-    const columns = line.split('|').map(col => col.trim());
-    console.log(`📊 Columns: [${columns.map((c, i) => `${i}:"${c}"`).join(', ')}]`);
-    
-    // Target column 9 specifically (Net under exercice au 31/12/N for PASSIF)
-    // Structure: ACTIF_REF|ACTIF_DATA|...|PASSIF_REF|PASSIF_LABEL|PASSIF_EXTRA|31/12/N|31/12/N-1
-    if (columns.length > 9) {
-      const col = columns[9]; // Column 9 (0-indexed as 9) - 31/12/N current year
-      if (col && col !== '' && col !== '-' && col !== '0') {
-        const numberMatch = col.match(/^(-?\d+(?:\s\d{3})*)$/);
-        if (numberMatch) {
-          const cleanNumber = numberMatch[1].replace(/\s/g, '');
-          const numericValue = parseInt(cleanNumber, 10);
-          if (!isNaN(numericValue) && Math.abs(numericValue) > 0) {
-            console.log(`💰 Found PASSIF value: ${numericValue} in column 9 (31/12/N - original: "${col}")`);
-            return numericValue;
-          }
-        }
-      }
-    }
-    
-    console.log(`❌ No PASSIF value found in column 9`);
-    return null;
+    return this.extractFromColumns(line, [9, 10, 8, 11, 7]);
   }
 
   /**

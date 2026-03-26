@@ -3,7 +3,6 @@ import {
   Box,
   Tabs,
   Tab,
-  Typography,
   Paper,
   Chip,
 } from '@mui/material';
@@ -12,11 +11,10 @@ import {
   EditNote as ManualIcon,
   CheckCircle as DoneIcon,
   DocumentScanner as OcrIcon,
-  Lock as LockIcon,
-  Rocket as RocketIcon,
 } from '@mui/icons-material';
 import { UploadPage } from '../pages/UploadPage';
 import ManualInputPage from '../pages/ManualInputPage';
+import { OcrUpload } from './OcrUpload';
 
 interface FinancialDataInputTabsProps {
   referenceYear: number;
@@ -134,14 +132,12 @@ export const FinancialDataInputTabs: React.FC<FinancialDataInputTabsProps> = ({
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                         OCR / IA
                         <Chip
-                          icon={<LockIcon sx={{ fontSize: 11, '&&': { fontSize: 11 } }} />}
-                          label="Bientôt"
+                          label="Nouveau"
                           size="small"
                           sx={{
-                            height: 18, fontSize: '0.65rem', fontWeight: 700,
-                            bgcolor: '#fff3e0', color: '#e65100',
-                            border: '1px solid #ffcc02',
-                            '& .MuiChip-icon': { color: '#e65100', ml: 0.5 },
+                            height: 16, fontSize: '0.6rem', fontWeight: 700,
+                            bgcolor: '#e3f2fd', color: '#1565c0',
+                            border: '1px solid #90caf9',
                             '& .MuiChip-label': { px: 0.75 },
                           }}
                         />
@@ -173,41 +169,11 @@ export const FinancialDataInputTabs: React.FC<FinancialDataInputTabsProps> = ({
                 </TabPanel>
 
                 <TabPanel value={activeDataTab} index={2}>
-                  <Box sx={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center',
-                    justifyContent: 'center', py: 6, gap: 2.5,
-                    background: 'linear-gradient(135deg, #fff8f0 0%, #fff3e0 100%)',
-                    borderRadius: 3, border: '2px dashed #ffcc02',
-                  }}>
-                    <Box sx={{
-                      width: 72, height: 72, borderRadius: '50%',
-                      bgcolor: '#fff3e0', border: '2px solid #ffcc02',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <OcrIcon sx={{ fontSize: 34, color: '#e65100' }} />
-                    </Box>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
-                        <LockIcon sx={{ fontSize: 18, color: '#e65100' }} />
-                        <Typography variant="h6" sx={{ fontWeight: 700, color: '#bf360c' }}>
-                          Bientôt disponible
-                        </Typography>
-                      </Box>
-                      <Typography variant="body2" sx={{ color: '#6d4c41', maxWidth: 360, lineHeight: 1.6 }}>
-                        L'extraction automatique des états financiers par OCR et intelligence artificielle est en cours de développement.
-                      </Typography>
-                    </Box>
-                    <Box sx={{
-                      display: 'flex', alignItems: 'center', gap: 1,
-                      px: 2.5, py: 1, borderRadius: 5,
-                      bgcolor: '#e65100', color: 'white',
-                    }}>
-                      <RocketIcon sx={{ fontSize: 16 }} />
-                      <Typography variant="caption" sx={{ fontWeight: 700, letterSpacing: 0.5 }}>
-                        Fonctionnalité verrouillée
-                      </Typography>
-                    </Box>
-                  </Box>
+                  <OcrUpload
+                    targetYear={year}
+                    onDataExtracted={(data: any) => onDataInput(year, data)}
+                    onDocumentUploaded={onDocumentUploaded}
+                  />
                 </TabPanel>
               </Box>
 

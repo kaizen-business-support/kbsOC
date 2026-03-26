@@ -1,1394 +1,781 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  Box,
-  Typography,
-  Card,
-  CardContent,
-  Button,
-  Alert,
-  LinearProgress,
-  Chip,
-  Grid,
-  Divider,
-  IconButton,
-  List,
-  ListItem,
-  ListItemText,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
+  Box, Typography, Button, Chip, Grid, LinearProgress,
+  Accordion, AccordionSummary, AccordionDetails,
+  TextField, IconButton, Tooltip,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
-  InsertDriveFile as FileIcon,
-  Visibility as ViewIcon,
   CheckCircle as CheckIcon,
-  Refresh as RefreshIcon,
+  Refresh as RetryIcon,
   ExpandMore as ExpandMoreIcon,
-  AccountBalance as BalanceIcon,
-  Assessment as IncomeIcon,
-  Timeline as CashFlowIcon,
-  TrendingDown as LiabilitiesIcon,
+  AccountBalance as BilanIcon,
+  Assessment as CrIcon,
+  Timeline as TftIcon,
+  Edit as EditIcon,
+  Check as ConfirmIcon,
+  Close as CancelIcon,
+  DocumentScanner as ScanIcon,
 } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import { ocrService } from '../services/ocrService';
 
+// ─── Types ─────────────────────────────────────────────────────────────────────
 interface OcrUploadProps {
   onDataExtracted: (data: any, year?: number) => void;
   onDocumentUploaded?: (document: any) => void;
   targetYear?: number;
 }
 
-interface ExtractedData {
-  confidence?: number;
-  data: any;
-  originalText?: string;
+interface ScanLog {
+  id: number;
+  time: string;
+  msg: string;
+  type: 'info' | 'success' | 'warn' | 'page' | 'found' | 'extract' | 'done' | 'error';
 }
 
+interface DetectedStatement {
+  type: string;
+  page: number;
+  confidence: number;
+}
+
+type Phase = 'idle' | 'scanning' | 'done' | 'review' | 'error';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const STATEMENT_LABELS: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+  bilan: { label: 'Bilan', icon: <BilanIcon sx={{ fontSize: 14 }} />, color: '#1565c0' },
+  compte_resultat: { label: 'Compte de Résultat', icon: <CrIcon sx={{ fontSize: 14 }} />, color: '#2e7d32' },
+  tableau_flux: { label: 'Tableau des Flux', icon: <TftIcon sx={{ fontSize: 14 }} />, color: '#6a1b9a' },
+};
+
+const LOG_COLORS: Record<ScanLog['type'], string> = {
+  info: '#94a3b8',
+  success: '#4ade80',
+  warn: '#facc15',
+  page: '#64748b',
+  found: '#22d3ee',
+  extract: '#a78bfa',
+  done: '#34d399',
+  error: '#f87171',
+};
+
+const LOG_PREFIXES: Record<ScanLog['type'], string> = {
+  info: '>',
+  success: '✓',
+  warn: '⚠',
+  page: '·',
+  found: '◉',
+  extract: '◈',
+  done: '★',
+  error: '✗',
+};
+
+const fmt = (d: Date) => d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+// ─── Main component ───────────────────────────────────────────────────────────
 export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumentUploaded, targetYear }) => {
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [processingProgress, setProcessingProgress] = useState(0);
-  const [progressText, setProgressText] = useState('');
-  const [showPreview, setShowPreview] = useState(false);
-  const [extractedText, setExtractedText] = useState<string>('');
-  const [showReviewMode, setShowReviewMode] = useState(false);
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [file, setFile] = useState<File | null>(null);
+  const [logs, setLogs] = useState<ScanLog[]>([]);
+  const [progress, setProgress] = useState(0);
+  const [scanningPage, setScanningPage] = useState<{ current: number; total: number } | null>(null);
+  const [statements, setStatements] = useState<DetectedStatement[]>([]);
+  const [fieldsFound, setFieldsFound] = useState(0);
+  const [result, setResult] = useState<any>(null);
+  const [confidence, setConfidence] = useState(0);
   const [reviewData, setReviewData] = useState<any>({});
+  const [error, setError] = useState<string | null>(null);
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    console.log('📁 OCR UPLOAD: onDrop called with', acceptedFiles.length, 'files');
-    const file = acceptedFiles[0];
-    if (!file) {
-      console.log('❌ OCR UPLOAD: No file provided');
-      return;
-    }
+  const logRef = useRef<HTMLDivElement>(null);
+  const logId = useRef(0);
 
-    console.log('📄 OCR UPLOAD: File details:', {
-      name: file.name,
-      type: file.type,
-      size: file.size
-    });
+  // Auto-scroll logs
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [logs]);
 
-    if (file.type !== 'application/pdf') {
-      console.log('❌ OCR UPLOAD: Invalid file type:', file.type);
-      setError('Seuls les fichiers PDF sont acceptés pour l\'OCR.');
-      return;
-    }
+  const pushLog = useCallback((msg: string, type: ScanLog['type'] = 'info') => {
+    setLogs(prev => [...prev.slice(-120), { id: logId.current++, time: fmt(new Date()), msg, type }]);
+  }, []);
 
-    console.log('✅ OCR UPLOAD: Valid PDF file, starting processing...');
-    setUploadedFile(file);
+  // ── Process file ─────────────────────────────────────────────────────────────
+  const processFile = useCallback(async (f: File) => {
+    setPhase('scanning');
+    setLogs([]);
+    setProgress(0);
+    setStatements([]);
+    setFieldsFound(0);
+    setScanningPage(null);
     setError(null);
-    await processFile(file);
+    logId.current = 0;
 
-    // Notify parent component about the uploaded document
-    if (onDocumentUploaded) {
-      onDocumentUploaded({
-        id: `doc-${Date.now()}`,
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        category: 'financial',
-        uploadDate: new Date(),
-        status: 'pending',
-        file: file,
-      });
-    }
-  }, [onDocumentUploaded]);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'application/pdf': ['.pdf']
-    },
-    multiple: false,
-    maxSize: 10 * 1024 * 1024, // 10MB
-  });
-
-  const processFile = async (file: File) => {
-    console.log('🚀 OCR UPLOAD: processFile called with:', file.name);
-    setIsProcessing(true);
-    setProcessingProgress(10);
-    setProgressText('Initialisation de l\'OCR...');
-    setError(null);
+    pushLog(`Fichier : ${f.name} (${(f.size / 1024 / 1024).toFixed(1)} Mo)`, 'info');
 
     try {
-      console.log('=== OCR UPLOAD: Starting processing ===');
-      console.log(`File: ${file.name}, Size: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
-      console.log('File type:', file.type);
-      console.log('File last modified:', new Date(file.lastModified).toISOString());
-
-      // Step 1: Initialize OCR
       await ocrService.initializeOcr();
-      setProcessingProgress(20);
-      setProgressText('Analyse du document PDF...');
+      pushLog('Moteur Tesseract OCR initialisé', 'success');
 
-      // Step 2: Extract financial data (this handles everything internally)
-      const financialData = await ocrService.extractFinancialData(file, {
-        language: 'fra'
+      const financialData = await ocrService.extractFinancialData(f, {
+        language: 'fra',
+        onProgress: (step, detail, pct, extra) => {
+          setProgress(pct ?? 0);
+
+          if (step === 'page' && extra) {
+            setScanningPage({ current: extra.page, total: extra.totalPages });
+            if (extra.page % 3 === 0 || extra.page === 1) {
+              pushLog(detail, 'page');
+            }
+          } else if (step === 'found' && extra) {
+            setStatements(prev => {
+              const without = prev.filter(s => s.type !== extra.type);
+              return [...without, { type: extra.type, page: extra.page, confidence: extra.confidence }];
+            });
+            pushLog(detail, 'found');
+          } else if (step === 'extract') {
+            pushLog(detail, 'extract');
+          } else if (step === 'field' && extra) {
+            setFieldsFound(prev => prev + (extra.count ?? 0));
+            pushLog(detail, 'success');
+          } else if (step === 'done' && extra) {
+            setFieldsFound(extra.fieldCount ?? 0);
+            setConfidence(extra.confidence ?? 0);
+            pushLog(detail, 'done');
+          } else if (step === 'warn') {
+            pushLog(detail, 'warn');
+          } else if (step === 'error') {
+            pushLog(detail, 'error');
+          } else {
+            pushLog(detail, 'info');
+          }
+        },
       });
 
-      setProcessingProgress(80);
-      setProgressText('Conversion au format OptimusCredit...');
-
-      // Step 3: Convert to OptimusCredit format
       const optimusData = ocrService.convertToOptimusFormat(financialData);
+      const conf = (financialData.confidence ?? 0) as number;
+      setResult(optimusData);
+      setConfidence(conf);
+      setFieldsFound(Object.keys(optimusData).length);
+      setPhase('done');
 
-      setProcessingProgress(90);
-      setProgressText('Extraction du texte pour prévisualisation...');
-
-      // Step 4: Get text for preview (simplified)
-      let previewText = 'Texte extrait du PDF (résumé des données financières trouvées):\n\n';
-      
-      if (Object.keys(optimusData).length > 0) {
-        previewText += 'Données financières extraites:\n';
-        Object.entries(optimusData).forEach(([key, value]) => {
-          previewText += `- ${key}: ${value}\n`;
+      if (onDocumentUploaded) {
+        onDocumentUploaded({
+          id: `doc-${Date.now()}`, name: f.name, type: f.type,
+          size: f.size, category: 'financial',
+          uploadDate: new Date(), status: 'pending', file: f,
         });
-      } else {
-        previewText += 'Aucune donnée financière détectée dans le document.\n';
-        previewText += 'Vérifiez que le document contient des états financiers SYSCOHADA.';
       }
-
-      setExtractedText(previewText);
-
-      setProcessingProgress(100);
-      setProgressText('Traitement terminé !');
-
-      setExtractedData({
-        confidence: financialData.confidence || 0,
-        data: optimusData,
-        originalText: previewText
-      });
-
-      console.log('=== OCR UPLOAD: Processing completed ===');
-      console.log('Extracted fields:', Object.keys(optimusData));
-      console.log('Confidence:', financialData.confidence);
-      console.log('Sample data:', Object.entries(optimusData).slice(0, 3));
-
-    } catch (error) {
-      console.error('=== OCR UPLOAD: Processing failed ===', error);
-      setError(error instanceof Error ? error.message : 'Erreur lors du traitement OCR');
-      
-      // Set empty result for debugging
-      setExtractedData({
-        confidence: 0,
-        data: {},
-        originalText: `Erreur lors du traitement:\n${error instanceof Error ? error.message : 'Erreur inconnue'}`
-      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+      pushLog(`ERREUR : ${msg}`, 'error');
+      setError(msg);
+      setPhase('error');
     } finally {
-      setIsProcessing(false);
       await ocrService.cleanup();
     }
+  }, [onDocumentUploaded, pushLog]);
+
+  // ── Drop zone ─────────────────────────────────────────────────────────────────
+  const onDrop = useCallback(async (files: File[]) => {
+    const f = files[0];
+    if (!f) return;
+    if (f.type !== 'application/pdf') { setError('Seuls les PDF sont acceptés.'); return; }
+    setFile(f);
+    setError(null);
+    await processFile(f);
+  }, [processFile]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop, accept: { 'application/pdf': ['.pdf'] }, multiple: false, maxSize: 15 * 1024 * 1024,
+  });
+
+  const handleUseData = () => {
+    if (result) onDataExtracted(result, targetYear);
   };
 
-  const handleReviewData = () => {
-    if (extractedData) {
-      setReviewData(extractedData.data);
-      setShowReviewMode(true);
-    }
+  const handleReview = () => {
+    setReviewData(result ?? {});
+    setPhase('review');
   };
 
-  const handleConfirmReviewedData = () => {
+  const handleConfirmReview = () => {
     onDataExtracted(reviewData, targetYear);
   };
 
-  const handleUpdateReviewField = (fieldName: string, value: string) => {
-    const numericValue = value === '' ? 0 : parseFloat(value.replace(/\s/g, '')) || 0;
-    setReviewData((prev: any) => ({
-      ...prev,
-      [fieldName]: numericValue
-    }));
-  };
-
-  const handleCancelReview = () => {
-    setShowReviewMode(false);
-    setReviewData({});
-  };
-
-
   const handleRetry = () => {
-    if (uploadedFile) {
-      setExtractedData(null);
-      setError(null);
-      processFile(uploadedFile);
-    }
+    if (file) processFile(file);
+    else setPhase('idle');
   };
 
-  const resetUpload = () => {
-    setUploadedFile(null);
-    setExtractedData(null);
-    setError(null);
-    setProcessingProgress(0);
-    setProgressText('');
-    setExtractedText('');
+  const updateField = (k: string, v: string) => {
+    setReviewData((p: any) => ({ ...p, [k]: v === '' ? 0 : parseFloat(v.replace(/\s/g, '')) || 0 }));
   };
 
-  const getFieldCount = (data: any): number => {
-    return Object.keys(data || {}).filter(key => 
-      data[key] !== null && 
-      data[key] !== undefined && 
-      data[key] !== 0
-    ).length;
-  };
-
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 80) return 'success';
-    if (confidence >= 60) return 'warning';
-    return 'error';
-  };
-
-  // Get value with default 0 for missing fields
-  const getFieldValue = (fieldKey: string) => {
-    return reviewData[fieldKey] || 0;
-  };
-
-  // Calculate totals for hierarchical display
-  const calculateTotal = (subFields: string[]) => {
-    return subFields.reduce((sum, field) => sum + (getFieldValue(field) || 0), 0);
-  };
-
-  // Render hierarchical financial statements structure
-  const renderFinancialStatementsHierarchy = () => {
+  // ─────────────────────────────────────────────────────────────────────────────
+  // IDLE
+  // ─────────────────────────────────────────────────────────────────────────────
+  if (phase === 'idle' || (phase === 'error' && !file)) {
     return (
-      <Grid container spacing={3}>
-        {/* BILAN Section */}
-        <Grid item xs={12}>
-          <Accordion defaultExpanded>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <BalanceIcon sx={{ mr: 1, color: 'primary.main' }} />
-                <Typography variant="h6" sx={{ fontWeight: 600, color: 'primary.main' }}>
-                  📊 BILAN
-                </Typography>
-              </Box>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Grid container spacing={3}>
-                {/* ACTIF IMMOBILISE */}
-                <Grid item xs={12}>
-                  <Accordion defaultExpanded>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                        ACTIF IMMOBILISE ({new Intl.NumberFormat('fr-FR').format(
-                          calculateTotal([
-                            'frais_developpement', 'brevets_licences', 'fonds_commercial', 'autres_immob_incorporelles',
-                            'terrains', 'batiments', 'agencements', 'materiel_mobilier', 'materiel_transport',
-                            'avances_immobilisations', 'titres_participation', 'prets_immobilises'
-                          ])
-                        )})
-                      </Typography>
-                    </AccordionSummary>
-                    <AccordionDetails>
-                      {/* IMMOBILISATIONS INCORPORELLES Sub-section */}
-                      <Accordion>
-                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                            IMMOBILISATIONS INCORPORELLES ({new Intl.NumberFormat('fr-FR').format(
-                              calculateTotal(['frais_developpement', 'brevets_licences', 'fonds_commercial', 'autres_immob_incorporelles'])
-                            )})
-                          </Typography>
-                        </AccordionSummary>
-                        <AccordionDetails>
-                          <Grid container spacing={2}>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Frais de développement et de prospection"
-                                type="number"
-                                value={getFieldValue('frais_developpement')}
-                                onChange={(e) => handleUpdateReviewField('frais_developpement', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Brevets, Licences, logiciels et droit similaire"
-                                type="number"
-                                value={getFieldValue('brevets_licences')}
-                                onChange={(e) => handleUpdateReviewField('brevets_licences', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Fond commercial et droit au bail"
-                                type="number"
-                                value={getFieldValue('fonds_commercial')}
-                                onChange={(e) => handleUpdateReviewField('fonds_commercial', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Autres immobilisations incorporelles"
-                                type="number"
-                                value={getFieldValue('autres_immob_incorporelles')}
-                                onChange={(e) => handleUpdateReviewField('autres_immob_incorporelles', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                          </Grid>
-                        </AccordionDetails>
-                      </Accordion>
-
-                      {/* IMMOBILISATIONS CORPORELLES Sub-section */}
-                      <Accordion>
-                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                            IMMOBILISATIONS CORPORELLES ({new Intl.NumberFormat('fr-FR').format(
-                              calculateTotal(['terrains', 'batiments', 'agencements', 'materiel_mobilier', 'materiel_transport', 'avances_immobilisations'])
-                            )})
-                          </Typography>
-                        </AccordionSummary>
-                        <AccordionDetails>
-                          <Grid container spacing={2}>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Terrains"
-                                type="number"
-                                value={getFieldValue('terrains')}
-                                onChange={(e) => handleUpdateReviewField('terrains', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Bâtiments"
-                                type="number"
-                                value={getFieldValue('batiments')}
-                                onChange={(e) => handleUpdateReviewField('batiments', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Agencements, aménagement et Installations"
-                                type="number"
-                                value={getFieldValue('agencements')}
-                                onChange={(e) => handleUpdateReviewField('agencements', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Matériel mobilier et actifs biologiques"
-                                type="number"
-                                value={getFieldValue('materiel_mobilier')}
-                                onChange={(e) => handleUpdateReviewField('materiel_mobilier', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Matériel de transport"
-                                type="number"
-                                value={getFieldValue('materiel_transport')}
-                                onChange={(e) => handleUpdateReviewField('materiel_transport', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Avances et acomptes versées sur immobilisations"
-                                type="number"
-                                value={getFieldValue('avances_immobilisations')}
-                                onChange={(e) => handleUpdateReviewField('avances_immobilisations', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                          </Grid>
-                        </AccordionDetails>
-                      </Accordion>
-
-                      {/* IMMOBILISATIONS FINANCIERES Sub-section */}
-                      <Accordion>
-                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                            IMMOBILISATIONS FINANCIÈRES ({new Intl.NumberFormat('fr-FR').format(
-                              calculateTotal(['titres_participation', 'prets_immobilises'])
-                            )})
-                          </Typography>
-                        </AccordionSummary>
-                        <AccordionDetails>
-                          <Grid container spacing={2}>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Titres de participation"
-                                type="number"
-                                value={getFieldValue('titres_participation')}
-                                onChange={(e) => handleUpdateReviewField('titres_participation', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Prêts et créances immobilisés"
-                                type="number"
-                                value={getFieldValue('prets_immobilises')}
-                                onChange={(e) => handleUpdateReviewField('prets_immobilises', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                          </Grid>
-                        </AccordionDetails>
-                      </Accordion>
-                    </AccordionDetails>
-                  </Accordion>
-                </Grid>
-
-                {/* ACTIF CIRCULANT */}
-                <Grid item xs={12}>
-                  <Accordion defaultExpanded>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                        ACTIF CIRCULANT ({new Intl.NumberFormat('fr-FR').format(
-                          calculateTotal(['actif_circulant_hao', 'stocks', 'fournisseurs_avances', 'clients', 'autres_creances'])
-                        )})
-                      </Typography>
-                    </AccordionSummary>
-                    <AccordionDetails>
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="ACTIF CIRCULANT HAO"
-                            type="number"
-                            value={getFieldValue('actif_circulant_hao')}
-                            onChange={(e) => handleUpdateReviewField('actif_circulant_hao', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="STOCKS ET ENCOURS"
-                            type="number"
-                            value={getFieldValue('stocks')}
-                            onChange={(e) => handleUpdateReviewField('stocks', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Fournisseurs avances versées"
-                            type="number"
-                            value={getFieldValue('fournisseurs_avances')}
-                            onChange={(e) => handleUpdateReviewField('fournisseurs_avances', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Clients"
-                            type="number"
-                            value={getFieldValue('clients')}
-                            onChange={(e) => handleUpdateReviewField('clients', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Autres créances"
-                            type="number"
-                            value={getFieldValue('autres_creances')}
-                            onChange={(e) => handleUpdateReviewField('autres_creances', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                      </Grid>
-                    </AccordionDetails>
-                  </Accordion>
-                </Grid>
-
-                {/* TRÉSORERIE ACTIF (separate section) */}
-                <Grid item xs={12}>
-                  <Accordion defaultExpanded>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                        TRÉSORERIE ACTIF ({new Intl.NumberFormat('fr-FR').format(
-                          calculateTotal(['titres_placement', 'valeurs_encaisser', 'banques_caisses'])
-                        )})
-                      </Typography>
-                    </AccordionSummary>
-                    <AccordionDetails>
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Titres de placement"
-                            type="number"
-                            value={getFieldValue('titres_placement')}
-                            onChange={(e) => handleUpdateReviewField('titres_placement', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Valeurs à encaisser"
-                            type="number"
-                            value={getFieldValue('valeurs_encaisser')}
-                            onChange={(e) => handleUpdateReviewField('valeurs_encaisser', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Banques, chèques postaux, caisses et assimilés"
-                            type="number"
-                            value={getFieldValue('banques_caisses')}
-                            onChange={(e) => handleUpdateReviewField('banques_caisses', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                      </Grid>
-                    </AccordionDetails>
-                  </Accordion>
-                </Grid>
-              </Grid>
-            </AccordionDetails>
-          </Accordion>
-        </Grid>
-
-        {/* PASSIF Section */}
-        <Grid item xs={12}>
-          <Accordion defaultExpanded>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <LiabilitiesIcon sx={{ mr: 1, color: 'secondary.main' }} />
-                <Typography variant="h6" sx={{ fontWeight: 600, color: 'secondary.main' }}>
-                  📊 PASSIF
-                </Typography>
-              </Box>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Grid container spacing={3}>
-                {/* RESSOURCES STABLES (First Level) */}
-                <Grid item xs={12}>
-                  <Accordion defaultExpanded>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                        RESSOURCES STABLES ({new Intl.NumberFormat('fr-FR').format(
-                          calculateTotal([
-                            'capital_social', 'actionnaires_capital', 'primes_capital', 'ecarts_reevaluation',
-                            'reserves_indisponibles', 'reserves_libres', 'reserves_reportees', 'resultat_exercice',
-                            'subventions_investissement', 'provisions_reglementees',
-                            'emprunts_dettes_financieres', 'dettes_location', 'provisions_financieres'
-                          ])
-                        )})
-                      </Typography>
-                    </AccordionSummary>
-                    <AccordionDetails>
-                      {/* CAPITAUX PROPRES ET RESSOURCES ASSIMILÉES (Second Level) */}
-                      <Accordion defaultExpanded>
-                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                            CAPITAUX PROPRES ET RESSOURCES ASSIMILÉES ({new Intl.NumberFormat('fr-FR').format(
-                              calculateTotal([
-                                'capital_social', 'actionnaires_capital', 'primes_capital', 'ecarts_reevaluation',
-                                'reserves_indisponibles', 'reserves_libres', 'reserves_reportees', 'resultat_exercice',
-                                'subventions_investissement', 'provisions_reglementees'
-                              ])
-                            )})
-                          </Typography>
-                        </AccordionSummary>
-                        <AccordionDetails>
-                          <Grid container spacing={2}>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Capital"
-                                type="number"
-                                value={getFieldValue('capital_social')}
-                                onChange={(e) => handleUpdateReviewField('capital_social', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Apporteurs capital non appelé"
-                                type="number"
-                                value={getFieldValue('actionnaires_capital')}
-                                onChange={(e) => handleUpdateReviewField('actionnaires_capital', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Primes liées au capital"
-                                type="number"
-                                value={getFieldValue('primes_capital')}
-                                onChange={(e) => handleUpdateReviewField('primes_capital', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Ecarts de Réévaluation"
-                                type="number"
-                                value={getFieldValue('ecarts_reevaluation')}
-                                onChange={(e) => handleUpdateReviewField('ecarts_reevaluation', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Réserves Indisponibles"
-                                type="number"
-                                value={getFieldValue('reserves_indisponibles')}
-                                onChange={(e) => handleUpdateReviewField('reserves_indisponibles', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Réserves Libres"
-                                type="number"
-                                value={getFieldValue('reserves_libres')}
-                                onChange={(e) => handleUpdateReviewField('reserves_libres', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Report à nouveau (+ ou -)"
-                                type="number"
-                                value={getFieldValue('reserves_reportees')}
-                                onChange={(e) => handleUpdateReviewField('reserves_reportees', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Résultat net de l'exercice (bénéfice + ou perte -)"
-                                type="number"
-                                value={getFieldValue('resultat_exercice')}
-                                onChange={(e) => handleUpdateReviewField('resultat_exercice', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Subventions d'Investissement"
-                                type="number"
-                                value={getFieldValue('subventions_investissement')}
-                                onChange={(e) => handleUpdateReviewField('subventions_investissement', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Provision Réglementées"
-                                type="number"
-                                value={getFieldValue('provisions_reglementees')}
-                                onChange={(e) => handleUpdateReviewField('provisions_reglementees', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                          </Grid>
-                        </AccordionDetails>
-                      </Accordion>
-
-                      {/* DETTES FINANCIÈRES ET RESSOURCES ASSIMILÉES (Second Level) */}
-                      <Accordion defaultExpanded>
-                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                            DETTES FINANCIÈRES ET RESSOURCES ASSIMILÉES ({new Intl.NumberFormat('fr-FR').format(
-                              calculateTotal(['emprunts_dettes_financieres', 'dettes_location', 'provisions_financieres'])
-                            )})
-                          </Typography>
-                        </AccordionSummary>
-                        <AccordionDetails>
-                          <Grid container spacing={2}>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Emprunts et dettes financières diverses"
-                                type="number"
-                                value={getFieldValue('emprunts_dettes_financieres')}
-                                onChange={(e) => handleUpdateReviewField('emprunts_dettes_financieres', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Dettes de location acquistion"
-                                type="number"
-                                value={getFieldValue('dettes_location')}
-                                onChange={(e) => handleUpdateReviewField('dettes_location', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} sm={6}>
-                              <TextField
-                                fullWidth
-                                label="Provisions financières pour Risques et Charges"
-                                type="number"
-                                value={getFieldValue('provisions_financieres')}
-                                onChange={(e) => handleUpdateReviewField('provisions_financieres', e.target.value)}
-                                InputLabelProps={{ shrink: true }}
-                              />
-                            </Grid>
-                          </Grid>
-                        </AccordionDetails>
-                      </Accordion>
-                    </AccordionDetails>
-                  </Accordion>
-                </Grid>
-
-                {/* PASSIF CIRCULANT (First Level) */}
-                <Grid item xs={12}>
-                  <Accordion defaultExpanded>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                        PASSIF CIRCULANT ({new Intl.NumberFormat('fr-FR').format(
-                          calculateTotal([
-                            'dettes_circulantes_hao', 'clients_avances_recues', 'dettes_fournisseurs',
-                            'dettes_sociales_fiscales', 'autres_dettes', 'provisions_court_terme'
-                          ])
-                        )})
-                      </Typography>
-                    </AccordionSummary>
-                    <AccordionDetails>
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Dettes circulantes HAO"
-                            type="number"
-                            value={getFieldValue('dettes_circulantes_hao')}
-                            onChange={(e) => handleUpdateReviewField('dettes_circulantes_hao', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Clients Avances Reçues"
-                            type="number"
-                            value={getFieldValue('clients_avances_recues')}
-                            onChange={(e) => handleUpdateReviewField('clients_avances_recues', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Fournisseurs d'Exploitation"
-                            type="number"
-                            value={getFieldValue('dettes_fournisseurs')}
-                            onChange={(e) => handleUpdateReviewField('dettes_fournisseurs', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Dettes fiscales et sociales"
-                            type="number"
-                            value={getFieldValue('dettes_sociales_fiscales')}
-                            onChange={(e) => handleUpdateReviewField('dettes_sociales_fiscales', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Autres Dettes"
-                            type="number"
-                            value={getFieldValue('autres_dettes')}
-                            onChange={(e) => handleUpdateReviewField('autres_dettes', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Provision pour risques à court termes"
-                            type="number"
-                            value={getFieldValue('provisions_court_terme')}
-                            onChange={(e) => handleUpdateReviewField('provisions_court_terme', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                      </Grid>
-                    </AccordionDetails>
-                  </Accordion>
-                </Grid>
-
-                {/* TRÉSORERIE PASSIF (First Level) */}
-                <Grid item xs={12}>
-                  <Accordion defaultExpanded>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                        TRÉSORERIE PASSIF ({new Intl.NumberFormat('fr-FR').format(
-                          calculateTotal(['banques_credits_escompte', 'banques_credits_tresorerie'])
-                        )})
-                      </Typography>
-                    </AccordionSummary>
-                    <AccordionDetails>
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Banques, crédits d'escompte"
-                            type="number"
-                            value={getFieldValue('banques_credits_escompte')}
-                            onChange={(e) => handleUpdateReviewField('banques_credits_escompte', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Banques, établissements financiers et crédits de trésorerie"
-                            type="number"
-                            value={getFieldValue('banques_credits_tresorerie')}
-                            onChange={(e) => handleUpdateReviewField('banques_credits_tresorerie', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                      </Grid>
-                    </AccordionDetails>
-                  </Accordion>
-                </Grid>
-              </Grid>
-            </AccordionDetails>
-          </Accordion>
-        </Grid>
-
-        {/* COMPTE DE RESULTAT Section */}
-        <Grid item xs={12}>
-          <Accordion defaultExpanded>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <IncomeIcon sx={{ mr: 1, color: 'info.main' }} />
-                <Typography variant="h6" sx={{ fontWeight: 600, color: 'info.main' }}>
-                  💰 COMPTE DE RÉSULTAT
-                </Typography>
-              </Box>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Grid container spacing={3}>
-                {/* PRODUITS D'EXPLOITATION */}
-                <Grid item xs={12}>
-                  <Accordion defaultExpanded>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                        PRODUITS D'EXPLOITATION ({new Intl.NumberFormat('fr-FR').format(
-                          calculateTotal(['chiffre_affaires', 'ventes_marchandises', 'production_vendue', 'autres_produits_exploitation'])
-                        )})
-                      </Typography>
-                    </AccordionSummary>
-                    <AccordionDetails>
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Chiffre d'affaires"
-                            type="number"
-                            value={getFieldValue('chiffre_affaires')}
-                            onChange={(e) => handleUpdateReviewField('chiffre_affaires', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Ventes de marchandises"
-                            type="number"
-                            value={getFieldValue('ventes_marchandises')}
-                            onChange={(e) => handleUpdateReviewField('ventes_marchandises', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Production vendue"
-                            type="number"
-                            value={getFieldValue('production_vendue')}
-                            onChange={(e) => handleUpdateReviewField('production_vendue', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Autres produits d'exploitation"
-                            type="number"
-                            value={getFieldValue('autres_produits_exploitation')}
-                            onChange={(e) => handleUpdateReviewField('autres_produits_exploitation', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                      </Grid>
-                    </AccordionDetails>
-                  </Accordion>
-                </Grid>
-
-                {/* CHARGES D'EXPLOITATION */}
-                <Grid item xs={12}>
-                  <Accordion defaultExpanded>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                        CHARGES D'EXPLOITATION ({new Intl.NumberFormat('fr-FR').format(
-                          calculateTotal(['achats_marchandises', 'services_exterieurs', 'charges_personnel', 'dotations_amortissements', 'autres_charges_exploitation'])
-                        )})
-                      </Typography>
-                    </AccordionSummary>
-                    <AccordionDetails>
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Achats de marchandises"
-                            type="number"
-                            value={getFieldValue('achats_marchandises')}
-                            onChange={(e) => handleUpdateReviewField('achats_marchandises', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Services extérieurs"
-                            type="number"
-                            value={getFieldValue('services_exterieurs')}
-                            onChange={(e) => handleUpdateReviewField('services_exterieurs', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Charges de personnel"
-                            type="number"
-                            value={getFieldValue('charges_personnel')}
-                            onChange={(e) => handleUpdateReviewField('charges_personnel', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Dotations aux amortissements"
-                            type="number"
-                            value={getFieldValue('dotations_amortissements')}
-                            onChange={(e) => handleUpdateReviewField('dotations_amortissements', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <TextField
-                            fullWidth
-                            label="Autres charges d'exploitation"
-                            type="number"
-                            value={getFieldValue('autres_charges_exploitation')}
-                            onChange={(e) => handleUpdateReviewField('autres_charges_exploitation', e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        </Grid>
-                      </Grid>
-                    </AccordionDetails>
-                  </Accordion>
-                </Grid>
-              </Grid>
-            </AccordionDetails>
-          </Accordion>
-        </Grid>
-
-        {/* TABLEAU DE FLUX DE TRÉSORERIE Section */}
-        <Grid item xs={12}>
-          <Accordion>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <CashFlowIcon sx={{ mr: 1, color: 'warning.main' }} />
-                <Typography variant="h6" sx={{ fontWeight: 600, color: 'warning.main' }}>
-                  📈 TABLEAU DE FLUX DE TRÉSORERIE
-                </Typography>
-              </Box>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Trésorerie début de période"
-                    type="number"
-                    value={getFieldValue('tresorerie_debut_periode')}
-                    onChange={(e) => handleUpdateReviewField('tresorerie_debut_periode', e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Trésorerie fin de période"
-                    type="number"
-                    value={getFieldValue('tresorerie_fin_periode')}
-                    onChange={(e) => handleUpdateReviewField('tresorerie_fin_periode', e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Variation de trésorerie"
-                    type="number"
-                    value={getFieldValue('variation_tresorerie')}
-                    onChange={(e) => handleUpdateReviewField('variation_tresorerie', e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Flux de trésorerie d'activité"
-                    type="number"
-                    value={getFieldValue('flux_tresorerie_activite')}
-                    onChange={(e) => handleUpdateReviewField('flux_tresorerie_activite', e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Flux de trésorerie d'investissement"
-                    type="number"
-                    value={getFieldValue('flux_tresorerie_investissement')}
-                    onChange={(e) => handleUpdateReviewField('flux_tresorerie_investissement', e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Flux de trésorerie de financement"
-                    type="number"
-                    value={getFieldValue('flux_tresorerie_financement')}
-                    onChange={(e) => handleUpdateReviewField('flux_tresorerie_financement', e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-              </Grid>
-            </AccordionDetails>
-          </Accordion>
-        </Grid>
-      </Grid>
-    );
-  };
-
-  return (
-    <Box>
-      <Typography variant="h6" gutterBottom>
-        📸 Reconnaissance OCR de Documents PDF
-      </Typography>
-      <Typography variant="body2" color="text.secondary" paragraph>
-        Importez un document PDF contenant des états financiers au format OHADA. 
-        L'OCR analysera automatiquement toutes les pages pour extraire les données financières.
-      </Typography>
-
-      {/* Upload Area */}
-      {!uploadedFile && (
-        <Card
+      <Box>
+        <Box
           {...getRootProps()}
           sx={{
-            p: 4,
-            textAlign: 'center',
             border: '2px dashed',
-            borderColor: isDragActive ? 'primary.main' : 'grey.300',
-            bgcolor: isDragActive ? 'primary.50' : 'grey.50',
-            cursor: 'pointer',
-            transition: 'all 0.3s ease',
-            '&:hover': {
-              borderColor: 'primary.main',
-              bgcolor: 'primary.50',
-            },
+            borderColor: isDragActive ? '#1565c0' : 'rgba(0,0,0,0.15)',
+            borderRadius: 3, p: 5,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+            cursor: 'pointer', transition: 'all 0.2s',
+            bgcolor: isDragActive ? '#e3f2fd' : '#fafafa',
+            '&:hover': { borderColor: '#1565c0', bgcolor: '#f0f7ff' },
           }}
         >
           <input {...getInputProps()} />
-          <UploadIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
-          <Typography variant="h6" gutterBottom>
-            {isDragActive ? 'Déposez le fichier PDF ici' : 'Cliquez ou glissez un fichier PDF'}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Formats acceptés: PDF uniquement • Taille max: 10MB
-          </Typography>
-          <Typography variant="caption" display="block" sx={{ mt: 1, fontStyle: 'italic' }}>
-            L'OCR analysera toutes les pages du document pour trouver les états financiers
-          </Typography>
-        </Card>
-      )}
+          <Box sx={{
+            width: 64, height: 64, borderRadius: '50%',
+            bgcolor: '#e3f2fd', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <ScanIcon sx={{ fontSize: 32, color: '#1565c0' }} />
+          </Box>
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1e293b' }}>
+              {isDragActive ? 'Déposer le fichier ici…' : 'Glisser-déposer un PDF ou cliquer pour sélectionner'}
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#64748b', mt: 0.5 }}>
+              États financiers SYSCOHADA / BCEAO — PDF jusqu'à 15 Mo
+            </Typography>
+          </Box>
+          <Button variant="outlined" startIcon={<UploadIcon />} sx={{ borderRadius: 3, fontWeight: 600 }}>
+            Choisir un fichier PDF
+          </Button>
+        </Box>
+        {error && (
+          <Box sx={{ mt: 2, p: 2, bgcolor: '#fef2f2', borderRadius: 2, border: '1px solid #fecaca' }}>
+            <Typography variant="body2" color="error">{error}</Typography>
+          </Box>
+        )}
+      </Box>
+    );
+  }
 
-      {/* File Processing */}
-      {uploadedFile && (
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <FileIcon sx={{ mr: 2, color: 'primary.main' }} />
-              <Box sx={{ flexGrow: 1 }}>
-                <Typography variant="subtitle1" fontWeight={600}>
-                  {uploadedFile.name}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {(uploadedFile.size / (1024 * 1024)).toFixed(2)} MB
-                </Typography>
-              </Box>
-              <Button
-                onClick={resetUpload}
-                size="small"
-                color="secondary"
-                disabled={isProcessing}
-              >
-                Changer de fichier
-              </Button>
+  // ─────────────────────────────────────────────────────────────────────────────
+  // SCANNING — cinematic terminal
+  // ─────────────────────────────────────────────────────────────────────────────
+  if (phase === 'scanning') {
+    const STEPS = [
+      { key: 'init', label: 'Init' },
+      { key: 'scan', label: 'Lecture' },
+      { key: 'detect', label: 'Détection' },
+      { key: 'extract', label: 'Extraction' },
+      { key: 'done', label: 'Terminé' },
+    ];
+    const currentStepIdx = progress < 12 ? 0 : progress < 52 ? 1 : progress < 60 ? 2 : progress < 95 ? 3 : 4;
+
+    return (
+      <Box sx={{ borderRadius: 3, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.08)' }}>
+        {/* Header */}
+        <Box sx={{
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+          px: 3, py: 1.5,
+          display: 'flex', alignItems: 'center', gap: 1.5,
+        }}>
+          <Box sx={{ display: 'flex', gap: 0.75 }}>
+            {['#ff5f57', '#febc2e', '#28c840'].map(c => (
+              <Box key={c} sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: c }} />
+            ))}
+          </Box>
+          <Typography sx={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#94a3b8', ml: 1 }}>
+            kbs-ocr — {file?.name}
+          </Typography>
+          <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{
+              width: 8, height: 8, borderRadius: '50%', bgcolor: '#22d3ee',
+              animation: 'pulse 1s ease-in-out infinite',
+              '@keyframes pulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.3 } },
+            }} />
+            <Typography sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#22d3ee' }}>
+              SCANNING
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* Main body */}
+        <Box sx={{ bgcolor: '#0d1117', display: 'flex', gap: 0, minHeight: 340 }}>
+          {/* Left: document visual */}
+          <Box sx={{
+            width: 200, flexShrink: 0,
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', p: 3, gap: 2,
+            borderRight: '1px solid rgba(255,255,255,0.06)',
+          }}>
+            {/* Page representation with scan line */}
+            <Box sx={{
+              width: 120, height: 156, bgcolor: '#1e293b',
+              borderRadius: 1, border: '1px solid rgba(255,255,255,0.1)',
+              position: 'relative', overflow: 'hidden',
+            }}>
+              {/* Page lines decoration */}
+              {[20, 35, 50, 65, 80, 95, 110, 125, 140].map(top => (
+                <Box key={top} sx={{
+                  position: 'absolute', left: 10, right: 10, top,
+                  height: 2, borderRadius: 1,
+                  bgcolor: 'rgba(148,163,184,0.15)',
+                }} />
+              ))}
+              {/* Sweeping scan line */}
+              <Box sx={{
+                position: 'absolute', left: 0, right: 0, height: 3,
+                background: 'linear-gradient(90deg, transparent, #22d3ee, #22d3ee, transparent)',
+                boxShadow: '0 0 12px 3px rgba(34,211,238,0.5)',
+                animation: 'scanline 1.8s linear infinite',
+                '@keyframes scanline': {
+                  '0%': { top: '-4px' },
+                  '100%': { top: '160px' },
+                },
+              }} />
+              {/* Highlighted rows as found */}
+              {statements.map((s, i) => (
+                <Box key={i} sx={{
+                  position: 'absolute', left: 4, right: 4,
+                  top: 20 + (s.page % 5) * 26, height: 14, borderRadius: 1,
+                  bgcolor: s.type === 'bilan' ? 'rgba(21,101,192,0.3)'
+                    : s.type === 'compte_resultat' ? 'rgba(46,125,50,0.3)'
+                    : 'rgba(106,27,154,0.3)',
+                  border: '1px solid',
+                  borderColor: s.type === 'bilan' ? '#1565c0'
+                    : s.type === 'compte_resultat' ? '#2e7d32' : '#6a1b9a',
+                }} />
+              ))}
             </Box>
 
-            {/* Progress */}
-            {isProcessing && (
-              <Box sx={{ mb: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <Typography variant="body2" sx={{ flexGrow: 1 }}>
-                    {progressText}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {processingProgress}%
-                  </Typography>
-                </Box>
-                <LinearProgress 
-                  variant="determinate" 
-                  value={processingProgress} 
-                  sx={{ height: 8, borderRadius: 4 }}
-                />
-              </Box>
-            )}
-
-            {/* Error */}
-            {error && !isProcessing && (
-              <Alert 
-                severity="error" 
-                sx={{ mb: 2 }}
-                action={
-                  <IconButton onClick={handleRetry} size="small" color="inherit">
-                    <RefreshIcon />
-                  </IconButton>
-                }
-              >
-                {error}
-              </Alert>
-            )}
-
-            {/* Success with extracted data */}
-            {extractedData && !isProcessing && !error && (
-              <>
-                <Alert severity="success" sx={{ mb: 3 }}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    ✅ Extraction OCR terminée avec succès !
-                  </Typography>
-                  <Typography variant="body2">
-                    {getFieldCount(extractedData.data)} champs extraits • 
-                    Confiance: {extractedData.confidence}% • 
-                    Année cible: {targetYear}
-                  </Typography>
-                </Alert>
-
-                <Grid container spacing={2} sx={{ mb: 3 }}>
-                  <Grid item xs={12} sm={4}>
-                    <Chip
-                      icon={<CheckIcon />}
-                      label={`${getFieldCount(extractedData.data)} champs extraits`}
-                      color="primary"
-                      variant="outlined"
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <Chip
-                      label={`Confiance: ${extractedData.confidence}%`}
-                      color={getConfidenceColor(extractedData.confidence || 0)}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <Chip
-                      label={`Année: ${targetYear}`}
-                      color="default"
-                      size="small"
-                    />
-                  </Grid>
-                </Grid>
-
-                {/* Extracted Fields Preview */}
-                <Box sx={{ mb: 3 }}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Champs extraits:
-                  </Typography>
-                  <List dense sx={{ maxHeight: 200, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1 }}>
-                    {Object.entries(extractedData.data).map(([key, value]) => (
-                      <ListItem key={key} sx={{ py: 0.5 }}>
-                        <ListItemText
-                          primary={key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                          secondary={typeof value === 'number' ? 
-                            new Intl.NumberFormat('fr-FR').format(value) : 
-                            String(value)
-                          }
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-                </Box>
-
-                <Divider sx={{ my: 2 }} />
-
-                {/* Action Buttons */}
-                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
-                  <Button
-                    variant="outlined"
-                    startIcon={<ViewIcon />}
-                    onClick={() => setShowPreview(true)}
-                  >
-                    Voir le texte extrait
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<RefreshIcon />}
-                    onClick={handleRetry}
-                  >
-                    Retraiter
-                  </Button>
-                  <Button
-                    variant="contained"
-                    startIcon={<CheckIcon />}
-                    onClick={handleReviewData}
-                    sx={{ fontWeight: 600 }}
-                  >
-                    Réviser et éditer les données
-                  </Button>
-                </Box>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Data Review Interface */}
-      {showReviewMode && (
-        <Card sx={{ mt: 3 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              📝 Révision et édition des données extraites
-            </Typography>
-            <Typography variant="body2" color="text.secondary" paragraph>
-              Vérifiez et modifiez les données extraites avant de procéder à l'analyse. 
-              Les valeurs numériques doivent être saisies sans espaces (ex: 1000000 au lieu de 1 000 000).
+            {/* Page counter */}
+            <Typography sx={{ fontFamily: 'monospace', fontSize: '0.7rem', color: '#475569', textAlign: 'center' }}>
+              {scanningPage
+                ? `Page ${scanningPage.current} / ${scanningPage.total}`
+                : 'Initialisation…'}
             </Typography>
 
-            {/* Hierarchical Structure with All Excel Fields */}
-            {renderFinancialStatementsHierarchy()}
-
-            <Divider sx={{ my: 3 }} />
-
-            {/* Action Buttons */}
-            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <Button
-                variant="outlined"
-                onClick={handleCancelReview}
-              >
-                Annuler
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={<CheckIcon />}
-                onClick={handleConfirmReviewedData}
-                sx={{ fontWeight: 600 }}
-              >
-                Utiliser ces données pour l'analyse
-              </Button>
+            {/* Detected badges */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, width: '100%' }}>
+              {Object.entries(STATEMENT_LABELS).map(([type, meta]) => {
+                const found = statements.find(s => s.type === type);
+                return (
+                  <Box key={type} sx={{
+                    display: 'flex', alignItems: 'center', gap: 0.75,
+                    px: 1, py: 0.5, borderRadius: 1,
+                    bgcolor: found ? `${meta.color}22` : 'rgba(255,255,255,0.03)',
+                    border: '1px solid',
+                    borderColor: found ? meta.color : 'rgba(255,255,255,0.06)',
+                    transition: 'all 0.3s',
+                  }}>
+                    <Box sx={{ color: found ? meta.color : '#475569', display: 'flex' }}>{meta.icon}</Box>
+                    <Typography sx={{
+                      fontFamily: 'monospace', fontSize: '0.65rem',
+                      color: found ? meta.color : '#475569',
+                      fontWeight: found ? 700 : 400,
+                    }}>
+                      {meta.label}
+                    </Typography>
+                    {found && (
+                      <Typography sx={{ fontFamily: 'monospace', fontSize: '0.6rem', color: meta.color, ml: 'auto' }}>
+                        {found.confidence.toFixed(0)}%
+                      </Typography>
+                    )}
+                  </Box>
+                );
+              })}
             </Box>
-          </CardContent>
-        </Card>
-      )}
+          </Box>
 
-      {/* Text Preview Dialog */}
-      <Dialog
-        open={showPreview}
-        onClose={() => setShowPreview(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          Texte extrait par OCR
-        </DialogTitle>
-        <DialogContent>
-          <Typography
-            component="pre"
-            variant="body2"
+          {/* Right: scrolling terminal log */}
+          <Box
+            ref={logRef}
             sx={{
-              whiteSpace: 'pre-wrap',
-              fontFamily: 'monospace',
-              fontSize: '0.8rem',
-              maxHeight: '60vh',
-              overflow: 'auto',
-              bgcolor: 'grey.100',
-              p: 2,
-              borderRadius: 1,
+              flex: 1, overflowY: 'auto', px: 2.5, py: 2,
+              fontFamily: 'monospace', fontSize: '0.75rem',
+              '&::-webkit-scrollbar': { width: 4 },
+              '&::-webkit-scrollbar-thumb': { bgcolor: '#334155', borderRadius: 2 },
             }}
           >
-            {extractedText}
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowPreview(false)}>
-            Fermer
-          </Button>
-        </DialogActions>
-      </Dialog>
+            {logs.map(log => (
+              <Box key={log.id} sx={{
+                display: 'flex', gap: 1.5, mb: 0.5,
+                animation: 'fadeIn 0.2s ease',
+                '@keyframes fadeIn': { from: { opacity: 0, transform: 'translateX(-4px)' }, to: { opacity: 1, transform: 'none' } },
+              }}>
+                <Typography component="span" sx={{ color: '#334155', flexShrink: 0, fontSize: '0.7rem' }}>
+                  {log.time}
+                </Typography>
+                <Typography component="span" sx={{ color: LOG_COLORS[log.type], flexShrink: 0 }}>
+                  {LOG_PREFIXES[log.type]}
+                </Typography>
+                <Typography component="span" sx={{ color: LOG_COLORS[log.type] }}>
+                  {log.msg}
+                </Typography>
+              </Box>
+            ))}
+            {/* Blinking cursor */}
+            <Box sx={{
+              display: 'inline-block', width: 8, height: 14, bgcolor: '#22d3ee',
+              animation: 'blink 1s step-end infinite',
+              '@keyframes blink': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0 } },
+            }} />
+          </Box>
+        </Box>
 
-      {/* Instructions */}
-      <Alert severity="info" sx={{ mt: 3 }}>
-        <Typography variant="subtitle2" gutterBottom>
-          📋 Instructions pour de meilleurs résultats:
+        {/* Progress bar + stats */}
+        <Box sx={{
+          bgcolor: '#0d1117', px: 3, pb: 2, pt: 1,
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+        }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+            <Typography sx={{ fontFamily: 'monospace', fontSize: '0.7rem', color: '#475569' }}>
+              {fieldsFound > 0 ? `${fieldsFound} champs extraits` : 'Analyse en cours…'}
+            </Typography>
+            <Typography sx={{ fontFamily: 'monospace', fontSize: '0.7rem', color: '#22d3ee', fontWeight: 700 }}>
+              {progress}%
+            </Typography>
+          </Box>
+          <LinearProgress
+            variant="determinate"
+            value={progress}
+            sx={{
+              height: 4, borderRadius: 2,
+              bgcolor: '#1e293b',
+              '& .MuiLinearProgress-bar': {
+                background: 'linear-gradient(90deg, #1565c0, #22d3ee)',
+                borderRadius: 2,
+              },
+            }}
+          />
+        </Box>
+
+        {/* Step pills */}
+        <Box sx={{
+          bgcolor: '#111827', px: 3, py: 1.5,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, flexWrap: 'wrap',
+        }}>
+          {STEPS.map((s, i) => {
+            const done = i < currentStepIdx;
+            const active = i === currentStepIdx;
+            return (
+              <Box key={s.key} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{
+                  px: 1.5, py: 0.5, borderRadius: 5,
+                  bgcolor: active ? '#1565c020' : done ? '#22d3ee20' : 'transparent',
+                  border: '1px solid',
+                  borderColor: active ? '#22d3ee' : done ? '#22d3ee80' : '#1e293b',
+                  display: 'flex', alignItems: 'center', gap: 0.5,
+                }}>
+                  <Box sx={{
+                    width: 6, height: 6, borderRadius: '50%',
+                    bgcolor: active ? '#22d3ee' : done ? '#22d3ee' : '#334155',
+                    animation: active ? 'pulse 1s ease-in-out infinite' : 'none',
+                    '@keyframes pulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.3 } },
+                  }} />
+                  <Typography sx={{
+                    fontFamily: 'monospace', fontSize: '0.65rem',
+                    color: active ? '#22d3ee' : done ? '#94a3b8' : '#334155',
+                    fontWeight: active ? 700 : 400,
+                  }}>
+                    {s.label}
+                  </Typography>
+                </Box>
+                {i < STEPS.length - 1 && (
+                  <Box sx={{ width: 16, height: 1, bgcolor: done ? '#22d3ee40' : '#1e293b' }} />
+                )}
+              </Box>
+            );
+          })}
+        </Box>
+      </Box>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ERROR
+  // ─────────────────────────────────────────────────────────────────────────────
+  if (phase === 'error') {
+    return (
+      <Box sx={{ p: 3, bgcolor: '#fff1f2', borderRadius: 3, border: '1px solid #fecdd3' }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#9f1239', mb: 1 }}>
+          Erreur lors de l'extraction OCR
         </Typography>
-        <ul style={{ margin: 0, paddingLeft: '1.2em' }}>
-          <li>Assurez-vous que le document PDF est de bonne qualité</li>
-          <li>Les états financiers doivent être au format OHADA standard</li>
-          <li>L'OCR fonctionne mieux avec des documents scannés à haute résolution</li>
-          <li>Vérifiez les données extraites avant de les utiliser</li>
-        </ul>
-      </Alert>
+        <Typography variant="body2" sx={{ color: '#be123c', mb: 2, fontFamily: 'monospace', fontSize: '0.8rem' }}>
+          {error}
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button variant="outlined" size="small" startIcon={<RetryIcon />} onClick={handleRetry} sx={{ borderRadius: 3 }}>
+            Réessayer
+          </Button>
+          <Button variant="text" size="small" onClick={() => { setPhase('idle'); setFile(null); }} sx={{ borderRadius: 3 }}>
+            Choisir un autre fichier
+          </Button>
+        </Box>
+      </Box>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // DONE — results
+  // ─────────────────────────────────────────────────────────────────────────────
+  if (phase === 'done') {
+    const confColor = confidence >= 75 ? '#2e7d32' : confidence >= 50 ? '#e65100' : '#c62828';
+    const confBg = confidence >= 75 ? '#e8f5e9' : confidence >= 50 ? '#fff3e0' : '#ffebee';
+    return (
+      <Box>
+        {/* Result header card */}
+        <Box sx={{
+          p: 3, mb: 2, borderRadius: 3,
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+          display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap',
+        }}>
+          <Box sx={{
+            width: 56, height: 56, borderRadius: '50%',
+            bgcolor: '#22d3ee20', border: '2px solid #22d3ee',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <CheckIcon sx={{ fontSize: 28, color: '#22d3ee' }} />
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <Typography sx={{ fontWeight: 700, color: 'white', mb: 0.5 }}>
+              Extraction terminée
+            </Typography>
+            <Typography sx={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+              {file?.name} — {fieldsFound} champs extraits
+            </Typography>
+          </Box>
+          <Box sx={{ px: 2, py: 1, borderRadius: 2, bgcolor: confBg }}>
+            <Typography sx={{ fontWeight: 700, color: confColor, fontSize: '1.1rem' }}>
+              {confidence.toFixed(0)}%
+            </Typography>
+            <Typography sx={{ fontSize: '0.65rem', color: confColor }}>Confiance</Typography>
+          </Box>
+        </Box>
+
+        {/* Detected statements */}
+        <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+          {statements.map(s => {
+            const meta = STATEMENT_LABELS[s.type];
+            if (!meta) return null;
+            return (
+              <Chip
+                key={s.type}
+                icon={meta.icon as any}
+                label={`${meta.label} — p.${s.page} (${s.confidence.toFixed(0)}%)`}
+                size="small"
+                sx={{
+                  bgcolor: `${meta.color}15`, color: meta.color,
+                  border: `1px solid ${meta.color}40`, fontWeight: 600, fontSize: '0.75rem',
+                }}
+              />
+            );
+          })}
+          {statements.length === 0 && (
+            <Chip label="Aucun état détecté" color="warning" size="small" />
+          )}
+        </Box>
+
+        {/* Action buttons */}
+        <Box sx={{ display: 'flex', gap: 1, mb: 3, flexWrap: 'wrap' }}>
+          <Button
+            variant="contained"
+            startIcon={<CheckIcon />}
+            onClick={handleUseData}
+            disabled={fieldsFound === 0}
+            sx={{
+              borderRadius: 3, fontWeight: 700, px: 3,
+              background: 'linear-gradient(135deg, #1565c0, #1976d2)',
+            }}
+          >
+            Utiliser ces données
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<EditIcon />}
+            onClick={handleReview}
+            disabled={fieldsFound === 0}
+            sx={{ borderRadius: 3 }}
+          >
+            Réviser avant validation
+          </Button>
+          <Button variant="text" startIcon={<RetryIcon />} onClick={handleRetry} sx={{ borderRadius: 3 }}>
+            Réanalyser
+          </Button>
+        </Box>
+
+        {/* Field preview */}
+        {fieldsFound > 0 && (
+          <Box sx={{ p: 2, bgcolor: '#f8fafc', borderRadius: 2, border: '1px solid rgba(0,0,0,0.06)' }}>
+            <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, mb: 1, display: 'block' }}>
+              Aperçu des champs extraits
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+              {Object.entries(result ?? {}).slice(0, 18).map(([k, v]) => (
+                <Chip
+                  key={k}
+                  label={`${k.replace(/_/g, ' ')}: ${new Intl.NumberFormat('fr-FR').format(v as number)}`}
+                  size="small"
+                  variant="outlined"
+                  sx={{ fontSize: '0.7rem', fontFamily: 'monospace' }}
+                />
+              ))}
+              {Object.keys(result ?? {}).length > 18 && (
+                <Chip label={`+${Object.keys(result ?? {}).length - 18} autres`} size="small" />
+              )}
+            </Box>
+          </Box>
+        )}
+      </Box>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // REVIEW — editable accordions
+  // ─────────────────────────────────────────────────────────────────────────────
+  const fv = (k: string) => reviewData[k] ?? 0;
+  const sum = (keys: string[]) => keys.reduce((acc, k) => acc + (fv(k) || 0), 0);
+  const fmt2 = (n: number) => new Intl.NumberFormat('fr-FR').format(n);
+
+  const BilanField = ({ label, field }: { label: string; field: string }) => (
+    <Grid item xs={12} sm={6}>
+      <TextField
+        fullWidth size="small" label={label} type="number"
+        value={fv(field)}
+        onChange={e => updateField(field, e.target.value)}
+        InputLabelProps={{ shrink: true }}
+        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+      />
+    </Grid>
+  );
+
+  return (
+    <Box>
+      {/* Review header */}
+      <Box sx={{
+        p: 2, mb: 2, borderRadius: 3, bgcolor: '#fffbeb',
+        border: '1px solid #fde68a', display: 'flex', alignItems: 'center', gap: 2,
+      }}>
+        <EditIcon sx={{ color: '#d97706' }} />
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#92400e' }}>
+            Mode révision — vérifiez et corrigez les valeurs avant validation
+          </Typography>
+        </Box>
+        <Button
+          variant="contained" size="small" startIcon={<ConfirmIcon />}
+          onClick={handleConfirmReview}
+          sx={{ borderRadius: 3, bgcolor: '#2e7d32', fontWeight: 700 }}
+        >
+          Valider
+        </Button>
+        <Tooltip title="Annuler la révision">
+          <IconButton size="small" onClick={() => setPhase('done')}><CancelIcon fontSize="small" /></IconButton>
+        </Tooltip>
+      </Box>
+
+      {/* BILAN */}
+      <Accordion defaultExpanded>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <BilanIcon sx={{ color: '#1565c0' }} />
+            <Typography sx={{ fontWeight: 700, color: '#1565c0' }}>
+              BILAN ACTIF — Total : {fmt2(sum(['total_actif_immobilise', 'total_actif_circulant', 'tresorerie_actif']))}
+            </Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Grid container spacing={2}>
+            <BilanField label="Immobilisations incorporelles" field="immobilisations_incorporelles" />
+            <BilanField label="Immobilisations corporelles" field="immobilisations_corporelles" />
+            <BilanField label="Immobilisations financières" field="immobilisations_financieres" />
+            <BilanField label="Total Actif Immobilisé" field="total_actif_immobilise" />
+            <BilanField label="Stocks et encours" field="stocks" />
+            <BilanField label="Créances clients" field="creances_clients" />
+            <BilanField label="Clients" field="clients" />
+            <BilanField label="Autres créances" field="autres_creances" />
+            <BilanField label="Total Actif Circulant" field="total_actif_circulant" />
+            <BilanField label="Trésorerie Actif" field="tresorerie_actif" />
+            <BilanField label="Banques / Caisses" field="banques_caisses" />
+            <BilanField label="TOTAL ACTIF" field="total_actif" />
+          </Grid>
+        </AccordionDetails>
+      </Accordion>
+
+      <Accordion>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <BilanIcon sx={{ color: '#1565c0' }} />
+            <Typography sx={{ fontWeight: 700, color: '#1565c0' }}>
+              BILAN PASSIF — Total : {fmt2(sum(['capitaux_propres', 'emprunts_dettes_financieres', 'total_passif']))}
+            </Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Grid container spacing={2}>
+            <BilanField label="Capital social" field="capital_social" />
+            <BilanField label="Réserves indisponibles" field="reserves_indisponibles" />
+            <BilanField label="Réserves libres" field="reserves_libres" />
+            <BilanField label="Report à nouveau" field="report_nouveau" />
+            <BilanField label="Résultat exercice" field="resultat_exercice" />
+            <BilanField label="Total Capitaux Propres" field="capitaux_propres" />
+            <BilanField label="Emprunts & dettes financières" field="emprunts_dettes_financieres" />
+            <BilanField label="Fournisseurs" field="fournisseurs" />
+            <BilanField label="Dettes fiscales" field="dettes_fiscales" />
+            <BilanField label="Trésorerie Passif" field="tresorerie_passif" />
+            <BilanField label="TOTAL PASSIF" field="total_passif" />
+          </Grid>
+        </AccordionDetails>
+      </Accordion>
+
+      <Accordion>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CrIcon sx={{ color: '#2e7d32' }} />
+            <Typography sx={{ fontWeight: 700, color: '#2e7d32' }}>Compte de Résultat</Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Grid container spacing={2}>
+            <BilanField label="Chiffre d'affaires" field="chiffre_affaires" />
+            <BilanField label="Marge brute marchandises" field="marge_brute_marchandises" />
+            <BilanField label="Valeur ajoutée" field="valeur_ajoutee" />
+            <BilanField label="Excédent brut d'exploitation" field="excedent_brut_exploitation" />
+            <BilanField label="Résultat d'exploitation" field="resultat_exploitation" />
+            <BilanField label="Résultat financier" field="resultat_financier" />
+            <BilanField label="Résultat net" field="resultat_net" />
+          </Grid>
+        </AccordionDetails>
+      </Accordion>
+
+      <Accordion>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TftIcon sx={{ color: '#6a1b9a' }} />
+            <Typography sx={{ fontWeight: 700, color: '#6a1b9a' }}>Tableau des Flux de Trésorerie</Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Grid container spacing={2}>
+            <BilanField label="Flux activités opérationnelles" field="flux_activites_operationnelles" />
+            <BilanField label="Flux activités d'investissement" field="flux_activites_investissement" />
+            <BilanField label="Flux activités de financement" field="flux_activites_financement" />
+            <BilanField label="Variation trésorerie nette" field="variation_tresorerie_nette" />
+          </Grid>
+        </AccordionDetails>
+      </Accordion>
+
+      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+        <Button variant="text" onClick={() => setPhase('done')} sx={{ borderRadius: 3 }}>Annuler</Button>
+        <Button
+          variant="contained" startIcon={<ConfirmIcon />}
+          onClick={handleConfirmReview}
+          sx={{ borderRadius: 3, fontWeight: 700, background: 'linear-gradient(135deg, #2e7d32, #388e3c)' }}
+        >
+          Valider et utiliser ces données
+        </Button>
+      </Box>
     </Box>
   );
 };
+
+export default OcrUpload;
