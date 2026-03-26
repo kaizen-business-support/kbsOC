@@ -235,8 +235,25 @@ model CreditType {
   createdAt       DateTime            @default(now()) @map("created_at")
   updatedAt       DateTime            @updatedAt @map("updated_at")
   applications    CreditApplication[]
+  workflowSteps   CreditTypeWorkflowStep[]
 
   @@map("credit_types")
+}
+
+model CreditTypeWorkflowStep {
+  id           String     @id @default(cuid())
+  creditTypeId String     @map("credit_type_id")
+  stepName     String     @map("step_name")
+  stepLabel    String     @map("step_label")
+  role         UserRole
+  order        Int
+  isRequired   Boolean    @default(true) @map("is_required")
+  durationDays Int        @default(3) @map("duration_days")
+  description  String?
+  creditType   CreditType @relation(fields: [creditTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([creditTypeId, order])
+  @@map("credit_type_workflow_steps")
 }
 
 model Department {

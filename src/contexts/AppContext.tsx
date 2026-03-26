@@ -269,18 +269,16 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     }
   }, [state.analysisData]);
 
-  // Session timeout management
+  // Nettoyage de session AppContext aligné sur 15 min (cohérence avec SessionTimeoutDialog)
   useEffect(() => {
     if (state.lastActivity) {
       const timeout = setTimeout(() => {
         const now = new Date();
-        const timeDiff = now.getTime() - state.lastActivity!.getTime();
-        const hoursDiff = timeDiff / (1000 * 60 * 60);
-        
-        if (hoursDiff > 2) { // 2 hours timeout
+        const minutesDiff = (now.getTime() - state.lastActivity!.getTime()) / (1000 * 60);
+        if (minutesDiff >= 15) {
           clearSession();
         }
-      }, 60000); // Check every minute
+      }, 60000); // Vérification chaque minute
 
       return () => clearTimeout(timeout);
     }

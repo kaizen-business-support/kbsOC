@@ -45,6 +45,7 @@ import { WorkflowTimestamps } from '../types';
 import { WorkflowTimeline } from './WorkflowTimeline';
 import { useUser } from '../contexts/UserContext';
 import { ApiService } from '../services/api';
+import { OtpVerificationDialog } from './OtpVerificationDialog';
 
 interface WorkflowDetailsDialogProps {
   open: boolean;
@@ -86,6 +87,12 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const { state: userState } = useUser();
+
+  // OTP dialog state
+  const [otpDialog, setOtpDialog] = useState<{
+    open: boolean;
+    pendingDecision: 'APPROVED' | 'REJECTED' | null;
+  }>({ open: false, pendingDecision: null });
 
   // Documents tab state
   const [documents, setDocuments] = useState<any[]>([]);
@@ -224,40 +231,30 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
     setSubmitSuccess(null);
 
     try {
-      const response = await fetch(`http://localhost:5006/api/workflows/${workflow.applicationId}/approve`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: userState.currentUser.id,
-          decision,
-          comments: comments.trim() || undefined
-        })
+      const data = await ApiService.approveWorkflow(workflow.applicationId, {
+        userId: userState.currentUser.id,
+        decision,
+        comments: comments.trim() || undefined,
       });
 
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Failed to submit decision');
       }
 
-      setSubmitSuccess(data.message || 'Decision submitted successfully');
+      setSubmitSuccess(data.message || 'Décision soumise avec succès');
       setComments('');
 
-      // Notify parent to reload data
       if (onApprovalSubmitted) {
         onApprovalSubmitted();
       }
 
-      // Close dialog after a short delay
       setTimeout(() => {
         onClose();
       }, 2000);
 
     } catch (error: any) {
       console.error('Error submitting approval:', error);
-      setSubmitError(error.message || 'Error submitting decision');
+      setSubmitError(error.message || 'Erreur lors de la soumission');
     } finally {
       setSubmitting(false);
     }
@@ -2259,7 +2256,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                 variant="outlined"
                 color="error"
                 startIcon={submitting ? <CircularProgress size={20} /> : <RejectIcon />}
-                onClick={() => handleApproval('REJECTED')}
+                onClick={() => setOtpDialog({ open: true, pendingDecision: 'REJECTED' })}
                 disabled={submitting}
                 size="large"
               >
@@ -2269,7 +2266,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                 variant="contained"
                 color="success"
                 startIcon={submitting ? <CircularProgress size={20} /> : <ApproveIcon />}
-                onClick={() => handleApproval('APPROVED')}
+                onClick={() => setOtpDialog({ open: true, pendingDecision: 'APPROVED' })}
                 disabled={submitting}
                 size="large"
               >
@@ -2286,6 +2283,19 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
           </Button>
         </Box>
       </DialogActions>
+
+      {/* OTP Verification */}
+      <OtpVerificationDialog
+        open={otpDialog.open}
+        actionLabel={otpDialog.pendingDecision === 'APPROVED' ? 'Approuver la demande' : 'Rejeter la demande'}
+        purpose={otpDialog.pendingDecision === 'APPROVED' ? 'approve_credit' : 'reject_credit'}
+        onClose={() => setOtpDialog({ open: false, pendingDecision: null })}
+        onVerified={async () => {
+          if (otpDialog.pendingDecision) {
+            await handleApproval(otpDialog.pendingDecision);
+          }
+        }}
+      />
     </Dialog>
   );
 };

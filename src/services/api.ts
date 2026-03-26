@@ -179,6 +179,41 @@ export class ApiService {
       throw new Error(error.response?.data?.message || 'Failed to get user profile');
     }
   }
+
+  // ── Workflow approval ───────────────────────────────────────────────────────
+  static async approveWorkflow(
+    applicationId: string,
+    payload: { userId: string; decision: 'APPROVED' | 'REJECTED'; comments?: string }
+  ): Promise<{ success: boolean; message?: string; status?: string; error?: string }> {
+    try {
+      const response = await api.post(`/workflows/${applicationId}/approve`, payload);
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.error || 'Erreur lors de la soumission de la décision');
+    }
+  }
+
+  // ── OTP ────────────────────────────────────────────────────────────────────
+  static async generateOtp(purpose: string): Promise<{ _testCode?: string }> {
+    try {
+      const response = await api.post('/otp/generate', { purpose });
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.error || 'Impossible de générer l\'OTP');
+    }
+  }
+
+  static async verifyOtp(code: string, purpose: string): Promise<void> {
+    try {
+      const response = await api.post('/otp/verify', { code, purpose });
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'OTP incorrect');
+      }
+    } catch (error: any) {
+      throw new Error(error.response?.data?.error || error.message || 'Code OTP incorrect');
+    }
+  }
+
   // File Upload and Processing
   static async uploadExcelFile(file: File): Promise<FileUploadResult> {
     try {
@@ -998,6 +1033,37 @@ export class ApiService {
         error: error.response?.data?.error || error.response?.data?.message || 'Erreur lors de la suppression du type de crédit',
       };
     }
+  }
+
+  static async getCreditTypeWorkflowSteps(creditTypeId: string) {
+    const response = await api.get(`/credit-types/${creditTypeId}/workflow-steps`);
+    return response.data;
+  }
+
+  static async createCreditTypeWorkflowStep(creditTypeId: string, step: {
+    stepName: string; stepLabel: string; role: string; order: number;
+    isRequired?: boolean; durationDays?: number; description?: string;
+  }) {
+    const response = await api.post(`/credit-types/${creditTypeId}/workflow-steps`, step);
+    return response.data;
+  }
+
+  static async updateCreditTypeWorkflowStep(creditTypeId: string, stepId: string, step: Partial<{
+    stepName: string; stepLabel: string; role: string; order: number;
+    isRequired: boolean; durationDays: number; description: string;
+  }>) {
+    const response = await api.put(`/credit-types/${creditTypeId}/workflow-steps/${stepId}`, step);
+    return response.data;
+  }
+
+  static async deleteCreditTypeWorkflowStep(creditTypeId: string, stepId: string) {
+    const response = await api.delete(`/credit-types/${creditTypeId}/workflow-steps/${stepId}`);
+    return response.data;
+  }
+
+  static async reorderCreditTypeWorkflowSteps(creditTypeId: string, steps: { id: string; order: number }[]) {
+    const response = await api.put(`/credit-types/${creditTypeId}/workflow-steps/reorder`, { steps });
+    return response.data;
   }
 
   // Workflow Configuration API

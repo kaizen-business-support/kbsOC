@@ -513,7 +513,7 @@ async function main() {
         collateralType: 'Hypothèque commerciale',
         collateralValue: 8000000.00,
         repaymentSchedule: 'MONTHLY',
-        status: 'SUBMITTED',
+        status: 'UNDER_REVIEW',
         score: {
           overall: 85,
           profitability: 82,
@@ -527,10 +527,17 @@ async function main() {
           recommendations: ["Surveillance mensuelle de la trésorerie", "Diversification des sources de revenus recommandée"],
           strengths: ["Position de marché solide", "Équipe de direction expérimentée"],
           weaknesses: ["Dépendance à quelques gros clients", "Saisonnalité des ventes"],
-          conclusion: "Dossier acceptable avec surveillance renforcée"
+          conclusion: "Dossier acceptable avec surveillance renforcée",
+          preliminaryAnalysis: {
+            overallScore: 85,
+            financialScore: 80,
+            analystScore: 85,
+            overallAnalysis: "Dossier solide avec risque faible",
+            recommendations: ["Surveillance mensuelle de la trésorerie"]
+          }
         },
-        submittedAt: daysAgo(1),
-        createdAt: daysAgo(1),
+        submittedAt: daysAgo(2),
+        createdAt: daysAgo(2),
         createdBy: 'user1'
       }
     }),
@@ -1007,23 +1014,26 @@ async function main() {
 
   // Create workflow steps
   const workflowSteps = await Promise.all([
-    // For app1 (submitted - all pending)
+    // For app1 (under review - analyst completed, branch manager pending)
     prisma.workflowStep.create({
       data: {
         id: 'ws1',
         applicationId: 'app1',
-        stepName: 'Review by credit analyst',
+        stepName: 'credit_analysis',
         role: 'CREDIT_ANALYST',
         assigneeId: 'user2',
-        status: 'PENDING',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+        status: 'COMPLETED',
+        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+        decision: 'APPROVE',
+        completedAt: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000),
+        comments: 'Analyse crédit complétée par Fatou Ndiaye'
       }
     }),
     prisma.workflowStep.create({
       data: {
         id: 'ws2',
         applicationId: 'app1',
-        stepName: 'Review by branch manager',
+        stepName: 'branch_manager_review',
         role: 'BRANCH_MANAGER',
         assigneeId: 'user3',
         status: 'PENDING',
@@ -1031,28 +1041,27 @@ async function main() {
       }
     }),
     
-    // For app2 (under review - analyst completed, branch pending)
+    // For app2 (under review - analyst completed, credit committee pending - 15M exceeds branch manager limit)
     prisma.workflowStep.create({
       data: {
         id: 'ws4',
         applicationId: 'app2',
-        stepName: 'Review by credit analyst',
+        stepName: 'credit_analysis',
         role: 'CREDIT_ANALYST',
         assigneeId: 'user2',
         status: 'COMPLETED',
         deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
         decision: 'APPROVE',
         completedAt: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000),
-        comments: 'Reviewed and approved by Fatou Ndiaye'
+        comments: 'Analyse crédit complétée par Fatou Ndiaye'
       }
     }),
     prisma.workflowStep.create({
       data: {
         id: 'ws5',
         applicationId: 'app2',
-        stepName: 'Review by branch manager',
-        role: 'BRANCH_MANAGER',
-        assigneeId: 'user3',
+        stepName: 'credit_committee_review',
+        role: 'CREDIT_COMMITTEE',
         status: 'PENDING',
         deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
       }
@@ -1344,6 +1353,113 @@ async function main() {
   ]);
 
   console.log('📝 Created audit logs');
+
+  // ── Limites d'approbation ──────────────────────────────────────────────────
+  await prisma.approvalLimit.deleteMany();
+  await Promise.all([
+    prisma.approvalLimit.create({ data: {
+      role: 'BRANCH_MANAGER',   displayName: 'Directeur Agence',
+      minAmount: 0,              maxAmount: 10000000,
+      currency: 'XOF',          reviewDuration: 3, isActive: true
+    }}),
+    prisma.approvalLimit.create({ data: {
+      role: 'CREDIT_COMMITTEE', displayName: 'Comité de Crédit',
+      minAmount: 10000001,       maxAmount: 50000000,
+      currency: 'XOF',          reviewDuration: 5, isActive: true
+    }}),
+    prisma.approvalLimit.create({ data: {
+      role: 'MANAGEMENT',       displayName: 'Direction Générale',
+      minAmount: 50000001,       maxAmount: 999999999,
+      currency: 'XOF',          reviewDuration: 7, isActive: true
+    }}),
+  ]);
+  console.log('🔒 Created approval limits');
+
+  // ── Types de crédit avec workflows ────────────────────────────────────────────
+  await prisma.creditType.deleteMany();
+  await prisma.creditTypeWorkflowStep.deleteMany();
+
+  const creditTypeData = [
+    {
+      id: 'ct-court-terme',
+      code: 'CT',
+      name: 'Crédit Court Terme',
+      description: 'Financement du fonds de roulement, durée ≤ 12 mois',
+      defaultRate: 12.5, minRate: 10.0, maxRate: 18.0,
+      minDuration: 1, maxDuration: 12, requiresCollateral: false,
+      steps: [
+        { order: 1, stepName: 'credit_analysis',       stepLabel: 'Analyse de crédit',           role: 'CREDIT_ANALYST',   durationDays: 2 },
+        { order: 2, stepName: 'branch_manager_review', stepLabel: 'Validation Directeur Agence',  role: 'BRANCH_MANAGER',   durationDays: 2 },
+      ]
+    },
+    {
+      id: 'ct-moyen-terme',
+      code: 'CMT',
+      name: 'Crédit Moyen Terme',
+      description: 'Investissements, durée 1-5 ans',
+      defaultRate: 11.0, minRate: 9.0, maxRate: 15.0,
+      minDuration: 13, maxDuration: 60, requiresCollateral: true,
+      steps: [
+        { order: 1, stepName: 'credit_analysis',         stepLabel: 'Analyse de crédit',           role: 'CREDIT_ANALYST',   durationDays: 3 },
+        { order: 2, stepName: 'branch_manager_review',   stepLabel: 'Validation Directeur Agence',  role: 'BRANCH_MANAGER',   durationDays: 3 },
+        { order: 3, stepName: 'credit_committee_review', stepLabel: 'Comité de Crédit',             role: 'CREDIT_COMMITTEE', durationDays: 5 },
+      ]
+    },
+    {
+      id: 'ct-long-terme',
+      code: 'CLT',
+      name: 'Crédit Long Terme',
+      description: 'Grands investissements, durée > 5 ans',
+      defaultRate: 10.0, minRate: 8.0, maxRate: 14.0,
+      minDuration: 61, maxDuration: 240, requiresCollateral: true,
+      steps: [
+        { order: 1, stepName: 'credit_analysis',         stepLabel: 'Analyse de crédit',           role: 'CREDIT_ANALYST',   durationDays: 5 },
+        { order: 2, stepName: 'branch_manager_review',   stepLabel: 'Validation Directeur Agence',  role: 'BRANCH_MANAGER',   durationDays: 3 },
+        { order: 3, stepName: 'credit_committee_review', stepLabel: 'Comité de Crédit',             role: 'CREDIT_COMMITTEE', durationDays: 5 },
+        { order: 4, stepName: 'management_review',       stepLabel: 'Direction Générale',           role: 'MANAGEMENT',       durationDays: 7 },
+      ]
+    },
+    {
+      id: 'ct-leasing',
+      code: 'LEASE',
+      name: 'Crédit-Bail (Leasing)',
+      description: 'Financement par location avec option d\'achat',
+      defaultRate: 13.0, minRate: 11.0, maxRate: 17.0,
+      minDuration: 12, maxDuration: 60, requiresCollateral: false,
+      steps: [
+        { order: 1, stepName: 'credit_analysis',         stepLabel: 'Analyse de crédit',           role: 'CREDIT_ANALYST',   durationDays: 3 },
+        { order: 2, stepName: 'credit_committee_review', stepLabel: 'Comité de Crédit',             role: 'CREDIT_COMMITTEE', durationDays: 5 },
+        { order: 3, stepName: 'management_review',       stepLabel: 'Direction Générale',           role: 'MANAGEMENT',       durationDays: 5 },
+      ]
+    },
+    {
+      id: 'ct-decouvert',
+      code: 'DEC',
+      name: 'Découvert Autorisé',
+      description: 'Ligne de crédit renouvelable',
+      defaultRate: 15.0, minRate: 12.0, maxRate: 22.0,
+      minDuration: 1, maxDuration: 12, requiresCollateral: false,
+      steps: [
+        { order: 1, stepName: 'credit_analysis',       stepLabel: 'Analyse de crédit',           role: 'CREDIT_ANALYST', durationDays: 1 },
+        { order: 2, stepName: 'branch_manager_review', stepLabel: 'Validation Directeur Agence', role: 'BRANCH_MANAGER', durationDays: 1 },
+      ]
+    },
+  ];
+
+  for (const ct of creditTypeData) {
+    const { steps, ...typeData } = ct;
+    await prisma.creditType.create({
+      data: {
+        ...typeData,
+        workflowSteps: {
+          create: steps as any
+        }
+      }
+    });
+  }
+  console.log('💳 Created credit types with workflow configurations');
+
+  console.log('⏳ Pending approval steps already included in workflow steps above');
 
   console.log('✅ Database seeding completed successfully!');
   console.log('📊 Summary:');

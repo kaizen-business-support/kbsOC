@@ -91,7 +91,9 @@ router.get('/', async (req: Request, res: Response) => {
             return currentStep?.stepName === 'credit_analysis';
 
           case 'BRANCH_MANAGER':
-            // Show applications where credit analysis is complete and amount falls in branch manager range
+            // Dynamic: current step role matches this role
+            if (currentStep && currentStep.role === 'BRANCH_MANAGER' && workflow.status === 'UNDER_REVIEW') return true;
+            // Legacy amount-based
             const branchManagerLimit = approvalLimits.find(l => l.role === 'BRANCH_MANAGER');
             if (!branchManagerLimit) return false;
 
@@ -119,7 +121,9 @@ router.get('/', async (req: Request, res: Response) => {
             return false;
 
           case 'CREDIT_COMMITTEE':
-            // Show applications where amount falls in credit committee range
+            // Dynamic: current step role matches this role
+            if (currentStep && currentStep.role === 'CREDIT_COMMITTEE' && workflow.status === 'UNDER_REVIEW') return true;
+            // Legacy amount-based
             const committeeLimit = approvalLimits.find(l => l.role === 'CREDIT_COMMITTEE');
             if (!committeeLimit) return false;
 
@@ -147,7 +151,9 @@ router.get('/', async (req: Request, res: Response) => {
             return false;
 
           case 'MANAGEMENT':
-            // Show applications where amount falls in management range
+            // Dynamic: current step role matches this role
+            if (currentStep && currentStep.role === 'MANAGEMENT' && workflow.status === 'UNDER_REVIEW') return true;
+            // Legacy amount-based
             const mgmtLimit = approvalLimits.find(l => l.role === 'MANAGEMENT');
             if (!mgmtLimit) return false;
 
@@ -274,7 +280,8 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
         client: {
           include: { creator: true }
         },
-        creator: true
+        creator: true,
+        creditType: true
       }
     });
 
@@ -332,68 +339,95 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       });
     }
 
-    // If approved, determine next step based on sequential approval hierarchy
-    const approvalLimits = await prisma.approvalLimit.findMany({
-      where: { isActive: true },
-      orderBy: { minAmount: 'asc' }
-    });
+    // If approved, determine next step — try credit type workflow first
+    let nextStepCreated = false;
 
-    const amount = Number(application.amount);
+    if (application.creditTypeId) {
+      const creditTypeSteps = await prisma.creditTypeWorkflowStep.findMany({
+        where: { creditTypeId: application.creditTypeId },
+        orderBy: { order: 'asc' }
+      });
 
-    // Get the approval limits
-    const branchManagerLimit = approvalLimits.find(l => l.role === 'BRANCH_MANAGER');
-    const committeeLimit = approvalLimits.find(l => l.role === 'CREDIT_COMMITTEE');
-    const managementLimit = approvalLimits.find(l => l.role === 'MANAGEMENT');
+      if (creditTypeSteps.length > 0) {
+        // Find current step index in credit type workflow
+        const currentStepIndex = creditTypeSteps.findIndex(s => s.stepName === currentStep.stepName);
+        const nextStepConfig = currentStepIndex >= 0 ? creditTypeSteps[currentStepIndex + 1] : null;
 
-    // Determine if we need another approval level based on SEQUENTIAL hierarchy
-    let needsMoreApprovals = false;
-    let nextApprovalRole: string | null = null;
+        if (nextStepConfig) {
+          await prisma.workflowStep.create({
+            data: {
+              applicationId: applicationId,
+              stepName: nextStepConfig.stepName,
+              role: nextStepConfig.role as any,
+              status: 'PENDING',
+              deadline: new Date(Date.now() + nextStepConfig.durationDays * 24 * 60 * 60 * 1000),
+              createdAt: new Date()
+            }
+          });
+          nextStepCreated = true;
 
-    // Sequential approval logic:
-    // Branch Manager (if within limit) → Credit Committee (if exceeds BM) → Management (if exceeds CC)
+          triggerNotification('STEP_ASSIGNED', applicationId, { nextRole: nextStepConfig.role });
 
-    if (currentStep.stepName === 'branch_manager_review') {
-      // Just completed branch manager review
-
-      // If amount exceeds branch manager limit, go to credit committee
-      if (committeeLimit && amount > Number(branchManagerLimit?.maxAmount || 0)) {
-        needsMoreApprovals = true;
-        nextApprovalRole = 'CREDIT_COMMITTEE';
-      }
-    } else if (currentStep.stepName === 'credit_committee_review') {
-      // Just completed credit committee review
-
-      // If amount exceeds credit committee limit, go to management
-      if (managementLimit && amount > Number(committeeLimit?.maxAmount || 0)) {
-        needsMoreApprovals = true;
-        nextApprovalRole = 'MANAGEMENT';
+          return res.json({
+            success: true,
+            message: `Approuvé. Transféré à ${nextStepConfig.stepLabel}`,
+            status: 'UNDER_REVIEW',
+            nextStep: nextStepConfig.stepName
+          });
+        }
+        // No more steps in credit type workflow → falls through to final approval
       }
     }
 
-    if (needsMoreApprovals && nextApprovalRole) {
-      // Create the next approval step
-      const nextStepName = nextApprovalRole === 'BRANCH_MANAGER' ? 'branch_manager_review' :
-                          nextApprovalRole === 'CREDIT_COMMITTEE' ? 'credit_committee_review' :
-                          nextApprovalRole === 'MANAGEMENT' ? 'management_review' : 'final_decision';
+    if (!nextStepCreated) {
+      // Fallback: legacy amount-based approval chain
+      const approvalLimits = await prisma.approvalLimit.findMany({
+        where: { isActive: true },
+        orderBy: { minAmount: 'asc' }
+      });
 
-      await prisma.workflowStep.create({
-        data: {
-          applicationId: applicationId,
-          stepName: nextStepName,
-          role: nextApprovalRole as any,
-          status: 'PENDING',
-          createdAt: new Date()
+      const amount = Number(application.amount);
+      const branchManagerLimit = approvalLimits.find(l => l.role === 'BRANCH_MANAGER');
+      const committeeLimit = approvalLimits.find(l => l.role === 'CREDIT_COMMITTEE');
+      const managementLimit = approvalLimits.find(l => l.role === 'MANAGEMENT');
+
+      let needsMoreApprovals = false;
+      let nextApprovalRole: string | null = null;
+
+      if (currentStep.stepName === 'branch_manager_review') {
+        if (committeeLimit && amount > Number(branchManagerLimit?.maxAmount || 0)) {
+          needsMoreApprovals = true;
+          nextApprovalRole = 'CREDIT_COMMITTEE';
         }
-      });
+      } else if (currentStep.stepName === 'credit_committee_review') {
+        if (managementLimit && amount > Number(committeeLimit?.maxAmount || 0)) {
+          needsMoreApprovals = true;
+          nextApprovalRole = 'MANAGEMENT';
+        }
+      }
 
-      triggerNotification('STEP_ASSIGNED', applicationId, { nextRole: nextApprovalRole });
+      if (needsMoreApprovals && nextApprovalRole) {
+        const nextStepName = nextApprovalRole === 'CREDIT_COMMITTEE' ? 'credit_committee_review' : 'management_review';
 
-      return res.json({
-        success: true,
-        message: `Approved. Forwarded to ${nextApprovalRole} for review`,
-        status: 'UNDER_REVIEW',
-        nextStep: nextStepName
-      });
+        await prisma.workflowStep.create({
+          data: {
+            applicationId: applicationId,
+            stepName: nextStepName,
+            role: nextApprovalRole as any,
+            status: 'PENDING',
+            createdAt: new Date()
+          }
+        });
+
+        triggerNotification('STEP_ASSIGNED', applicationId, { nextRole: nextApprovalRole });
+
+        return res.json({
+          success: true,
+          message: `Approuvé. Transféré à ${nextApprovalRole}`,
+          status: 'UNDER_REVIEW',
+          nextStep: nextStepName
+        });
+      }
     }
 
     // No more approvals needed - application is fully approved

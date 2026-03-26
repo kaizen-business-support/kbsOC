@@ -12,6 +12,7 @@ import { Sidebar, FULL_WIDTH, MINI_WIDTH } from './components/Sidebar';
 import { AnnouncementModal, useAnnouncements } from './components/AnnouncementModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DialogHeader } from './components/ui/DialogHeader';
+import { SessionTimeoutDialog } from './components/SessionTimeoutDialog';
 
 // ── Lazy-loaded pages (code splitting) ────────────────────────────────────────
 // Each page is a separate JS chunk loaded only when first visited.
@@ -346,6 +347,9 @@ const AppContent: React.FC = () => {
           </ErrorBoundary>
         </Container>
       </Box>
+
+      {/* Session timeout — avertissement 2 min avant, déconnexion auto à 15 min */}
+      <SessionTimeoutDialog />
 
       {/* Reset Confirmation Dialog */}
       {/* Announcement Modal */}

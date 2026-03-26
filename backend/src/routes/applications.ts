@@ -166,6 +166,7 @@ router.post('/', async (req: Request, res: Response) => {
       currency = 'XOF',
       purpose,
       durationMonths,
+      creditTypeId,
       proposedRate,
       collateralType,
       collateralValue,
@@ -208,6 +209,7 @@ router.post('/', async (req: Request, res: Response) => {
         currency,
         purpose,
         durationMonths: durationMonths || null,
+        creditTypeId: creditTypeId || null,
         proposedRate: proposedRate || null,
         collateralType: collateralType || null,
         collateralValue: collateralValue || null,
@@ -223,10 +225,10 @@ router.post('/', async (req: Request, res: Response) => {
       }
     });
 
-    // Create workflow steps: first two completed, credit analysis pending
+    // Create workflow steps
     const now = new Date();
 
-    // Step 1: Application created (completed immediately)
+    // Step 1: Application created (always completed)
     await prisma.workflowStep.create({
       data: {
         applicationId: application.id,
@@ -235,21 +237,57 @@ router.post('/', async (req: Request, res: Response) => {
         assigneeId: createdBy,
         status: 'COMPLETED',
         completedAt: now,
-        comments: 'Demande de crédit créée'
+        comments: 'Demande de crédit soumise'
       }
     });
 
-    // Step 2: Credit analysis (pending, assigned to analyst - includes document verification)
-    if (assignedAnalystId) {
-      await prisma.workflowStep.create({
-        data: {
-          applicationId: application.id,
-          stepName: 'credit_analysis',
-          role: 'CREDIT_ANALYST',
-          assigneeId: assignedAnalystId,
-          status: 'PENDING'
-        }
+    // Step 2+: Use credit type workflow if configured, otherwise fallback
+    if (application.creditTypeId) {
+      const creditTypeSteps = await prisma.creditTypeWorkflowStep.findMany({
+        where: { creditTypeId: application.creditTypeId },
+        orderBy: { order: 'asc' }
       });
+
+      if (creditTypeSteps.length > 0) {
+        // Create first step as PENDING
+        const firstStep = creditTypeSteps[0];
+        await prisma.workflowStep.create({
+          data: {
+            applicationId: application.id,
+            stepName: firstStep.stepName,
+            role: firstStep.role as any,
+            assigneeId: firstStep.role === 'CREDIT_ANALYST' ? (assignedAnalystId || null) : null,
+            status: 'PENDING',
+            deadline: new Date(now.getTime() + firstStep.durationDays * 24 * 60 * 60 * 1000)
+          }
+        });
+      } else {
+        // Credit type exists but no workflow configured → fallback
+        if (assignedAnalystId) {
+          await prisma.workflowStep.create({
+            data: {
+              applicationId: application.id,
+              stepName: 'credit_analysis',
+              role: 'CREDIT_ANALYST',
+              assigneeId: assignedAnalystId,
+              status: 'PENDING'
+            }
+          });
+        }
+      }
+    } else {
+      // No credit type → legacy fallback
+      if (assignedAnalystId) {
+        await prisma.workflowStep.create({
+          data: {
+            applicationId: application.id,
+            stepName: 'credit_analysis',
+            role: 'CREDIT_ANALYST',
+            assigneeId: assignedAnalystId,
+            status: 'PENDING'
+          }
+        });
+      }
     }
 
     // Trigger notification (non-blocking)
@@ -413,10 +451,25 @@ router.put('/:id', async (req: Request, res: Response) => {
         }
       }
 
-      // Find and complete the credit_analysis workflow step
-      const creditAnalysisStep = application.workflowSteps.find(
+      // Trouver OU créer l'étape credit_analysis, puis la compléter
+      let creditAnalysisStep = application.workflowSteps.find(
         step => step.stepName === 'credit_analysis' && step.status !== 'COMPLETED'
       );
+
+      // Si elle n'existe pas encore, la créer maintenant (cas sans analyste assigné)
+      if (!creditAnalysisStep && !existingSteps.has('credit_analysis')) {
+        console.log('📝 Creating missing credit_analysis step on-the-fly');
+        const created = await prisma.workflowStep.create({
+          data: {
+            applicationId: application.id,
+            stepName: 'credit_analysis',
+            role: 'CREDIT_ANALYST',
+            assigneeId: application.createdBy,
+            status: 'PENDING'
+          }
+        });
+        creditAnalysisStep = created as any;
+      }
 
       if (creditAnalysisStep) {
         await prisma.workflowStep.update({
@@ -429,26 +482,30 @@ router.put('/:id', async (req: Request, res: Response) => {
         });
         console.log('✅ Credit analysis workflow step marked as COMPLETED');
 
-        // After completing credit analysis, ALWAYS start with branch_manager_review
-        // The sequential approval chain will be handled when each level approves
-        const branchManagerLimit = await prisma.approvalLimit.findFirst({
-          where: { role: 'BRANCH_MANAGER', isActive: true }
-        });
+        // Vérifier que branch_manager_review n'existe pas déjà
+        const alreadyHasBranchStep = application.workflowSteps.some(
+          s => s.stepName === 'branch_manager_review'
+        );
 
-        if (branchManagerLimit) {
-          // Create the branch manager review step (first step in approval chain)
-          await prisma.workflowStep.create({
-            data: {
-              applicationId: application.id,
-              stepName: 'branch_manager_review',
-              role: 'BRANCH_MANAGER' as any,
-              status: 'PENDING',
-              createdAt: now
-            }
+        if (!alreadyHasBranchStep) {
+          const branchManagerLimit = await prisma.approvalLimit.findFirst({
+            where: { role: 'BRANCH_MANAGER', isActive: true }
           });
-          console.log(`✅ Created branch_manager_review workflow step (first in approval chain)`);
-        } else {
-          console.warn(`⚠️ No branch manager approval limit found`);
+
+          if (branchManagerLimit) {
+            await prisma.workflowStep.create({
+              data: {
+                applicationId: application.id,
+                stepName: 'branch_manager_review',
+                role: 'BRANCH_MANAGER' as any,
+                status: 'PENDING',
+                createdAt: now
+              }
+            });
+            console.log('✅ Created branch_manager_review workflow step');
+          } else {
+            console.warn('⚠️ No branch manager approval limit found');
+          }
         }
       }
     }
