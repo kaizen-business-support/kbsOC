@@ -1223,286 +1223,117 @@ async function main() {
   console.log('📋 Created credit applications');
 
   // Create workflow steps
+  // Logic:
+  //   ≤ 10M XOF  → analyst + branch_manager (2 steps)
+  //   10M–50M    → analyst + branch_manager + credit_committee (3 steps)
+  //   > 50M      → analyst + branch_manager + credit_committee + management (4 steps)
+  //   Duration > 60 months → add management step regardless of amount
+  //   UNDER_REVIEW: last completed step + next step IN_PROGRESS + remaining PENDING
+  //   REJECTED: all steps up to reject COMPLETED (last one REJECT decision)
+  //   APPROVED: all required steps COMPLETED APPROVE
+
+  const ws = (id: string, appId: string, stepName: string, role: any, assigneeId: string | null,
+    status: string, daysAgoCompleted: number | null, decision: string | null, comment: string, deadlineDaysFromNow = 7): any => ({
+    id,
+    applicationId: appId,
+    stepName,
+    role,
+    ...(assigneeId ? { assigneeId } : {}),
+    status,
+    deadline: new Date(now.getTime() + deadlineDaysFromNow * 24 * 60 * 60 * 1000),
+    ...(decision ? { decision } : {}),
+    ...(daysAgoCompleted !== null ? { completedAt: daysAgo(daysAgoCompleted) } : {}),
+    ...(comment ? { comments: comment } : {}),
+  });
+
   const workflowSteps = await Promise.all([
-    // For app1 (under review - analyst completed, branch manager pending)
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws1',
-        applicationId: 'app1',
-        stepName: 'credit_analysis',
-        role: 'CREDIT_ANALYST',
-        assigneeId: 'user2',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'APPROVE',
-        completedAt: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000),
-        comments: 'Analyse crédit complétée par Fatou Ndiaye'
-      }
-    }),
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws2',
-        applicationId: 'app1',
-        stepName: 'branch_manager_review',
-        role: 'BRANCH_MANAGER',
-        assigneeId: 'user3',
-        status: 'PENDING',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-      }
-    }),
-    
-    // For app2 (under review - analyst completed, credit committee pending - 15M exceeds branch manager limit)
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws4',
-        applicationId: 'app2',
-        stepName: 'credit_analysis',
-        role: 'CREDIT_ANALYST',
-        assigneeId: 'user2',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'APPROVE',
-        completedAt: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000),
-        comments: 'Analyse crédit complétée par Fatou Ndiaye'
-      }
-    }),
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws5',
-        applicationId: 'app2',
-        stepName: 'credit_committee_review',
-        role: 'CREDIT_COMMITTEE',
-        status: 'PENDING',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-      }
-    }),
-    
-    // For app3 (approved - all completed)
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws7',
-        applicationId: 'app3',
-        stepName: 'Review by credit analyst',
-        role: 'CREDIT_ANALYST',
-        assigneeId: 'user2',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'APPROVE',
-        completedAt: new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000),
-        comments: 'Reviewed and approved by Fatou Ndiaye'
-      }
-    }),
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws8',
-        applicationId: 'app3',
-        stepName: 'Review by branch manager',
-        role: 'BRANCH_MANAGER',
-        assigneeId: 'user3',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'APPROVE',
-        completedAt: new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000),
-        comments: 'Reviewed and approved by Moussa Sarr'
-      }
-    }),
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws9',
-        applicationId: 'app3',
-        stepName: 'Review by credit committee',
-        role: 'CREDIT_COMMITTEE',
-        assigneeId: 'user4',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'APPROVE',
-        completedAt: new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000),
-        comments: 'Reviewed and approved by Secrétariat Comité de Crédit'
-      }
-    }),
 
-    // For approved applications (app4-app15), add completed workflow steps
-    // App4 - Approved (Marie Fall, Dakar Central)
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws10',
-        applicationId: 'app4',
-        stepName: 'Review by credit analyst',
-        role: 'CREDIT_ANALYST',
-        assigneeId: 'user2',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'APPROVE',
-        completedAt: new Date(now.getTime() - 20 * 24 * 60 * 60 * 1000),
-        comments: 'Analysé et approuvé'
-      }
-    }),
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws11',
-        applicationId: 'app4',
-        stepName: 'Review by branch manager',
-        role: 'BRANCH_MANAGER',
-        assigneeId: 'user3',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'APPROVE',
-        completedAt: new Date(now.getTime() - 18 * 24 * 60 * 60 * 1000),
-        comments: 'Validé par la direction'
-      }
-    }),
+    // ── app1 · 5M · 24m · UNDER_REVIEW ────────────────────────────────────────
+    // analyst done, branch_manager en cours
+    prisma.workflowStep.create({ data: ws('ws1','app1','credit_analysis','CREDIT_ANALYST','user2','COMPLETED',1,'APPROVE','Analyse financière favorable, ratios dans les normes') }),
+    prisma.workflowStep.create({ data: ws('ws2','app1','branch_manager_review','BRANCH_MANAGER','user3','IN_REVIEW',null,null,'En attente de validation du directeur agence') }),
 
-    // App5 - Rejected (Ousmane Ba, Thiès)
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws12',
-        applicationId: 'app5',
-        stepName: 'Review by credit analyst',
-        role: 'CREDIT_ANALYST',
-        assigneeId: 'user2',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'REJECT',
-        completedAt: new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000),
-        comments: 'Risques financiers trop élevés'
-      }
-    }),
+    // ── app2 · 15M · 36m · UNDER_REVIEW ──────────────────────────────────────
+    // analyst done, branch_manager en cours, committee pending
+    prisma.workflowStep.create({ data: ws('ws3','app2','credit_analysis','CREDIT_ANALYST','user2','COMPLETED',2,'APPROVE','Dossier industriel solide, équipements bien valorisés') }),
+    prisma.workflowStep.create({ data: ws('ws4','app2','branch_manager_review','BRANCH_MANAGER','user3','IN_REVIEW',null,null,'Révision en cours par le directeur agence') }),
+    prisma.workflowStep.create({ data: ws('ws5','app2','credit_committee_review','CREDIT_COMMITTEE',null,'PENDING',null,null,'En attente passage en comité de crédit') }),
 
-    // App6 - Approved (Aissatou Diagne, Saint-Louis)
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws13',
-        applicationId: 'app6',
-        stepName: 'Review by credit analyst',
-        role: 'CREDIT_ANALYST',
-        assigneeId: 'user2',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'APPROVE',
-        completedAt: new Date(now.getTime() - 12 * 24 * 60 * 60 * 1000),
-        comments: 'Dossier solide, approuvé'
-      }
-    }),
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws14',
-        applicationId: 'app6',
-        stepName: 'Review by branch manager',
-        role: 'BRANCH_MANAGER',
-        assigneeId: 'user3',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'APPROVE',
-        completedAt: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000),
-        comments: 'Approuvé définitivement'
-      }
-    }),
+    // ── app3 · 3M · 18m · APPROVED ────────────────────────────────────────────
+    // 2 étapes complètes
+    prisma.workflowStep.create({ data: ws('ws6','app3','credit_analysis','CREDIT_ANALYST','user2','COMPLETED',8,'APPROVE','Excellente gestion de la trésorerie, croissance régulière') }),
+    prisma.workflowStep.create({ data: ws('ws7','app3','branch_manager_review','BRANCH_MANAGER','user3','COMPLETED',6,'APPROVE','Dossier transport fiable, garanties suffisantes') }),
 
-    // App8 - Approved (Aissatou Diagne, Saint-Louis)
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws15',
-        applicationId: 'app8',
-        stepName: 'Review by credit analyst',
-        role: 'CREDIT_ANALYST',
-        assigneeId: 'user2',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'APPROVE',
-        completedAt: new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000),
-        comments: 'Projet viable, approuvé'
-      }
-    }),
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws16',
-        applicationId: 'app8',
-        stepName: 'Review by branch manager',
-        role: 'BRANCH_MANAGER',
-        assigneeId: 'user3',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'APPROVE',
-        completedAt: new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000),
-        comments: 'Validation finale accordée'
-      }
-    }),
+    // ── app4 · 8.5M · 30m · APPROVED ─────────────────────────────────────────
+    // 2 étapes complètes (< 10M)
+    prisma.workflowStep.create({ data: ws('ws8','app4','credit_analysis','CREDIT_ANALYST','user2','COMPLETED',14,'APPROVE','Distribution alimentaire bien positionnée, marché porteur') }),
+    prisma.workflowStep.create({ data: ws('ws9','app4','branch_manager_review','BRANCH_MANAGER','user3','COMPLETED',12,'APPROVE','Garanties hypothécaires suffisantes, projet approuvé') }),
 
-    // App9 - Approved (Ousmane Ba, Thiès)
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws17',
-        applicationId: 'app9',
-        stepName: 'Review by credit analyst',
-        role: 'CREDIT_ANALYST',
-        assigneeId: 'user2',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'APPROVE',
-        completedAt: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000),
-        comments: 'Analyse positive'
-      }
-    }),
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws18',
-        applicationId: 'app9',
-        stepName: 'Review by branch manager',
-        role: 'BRANCH_MANAGER',
-        assigneeId: 'user3',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'APPROVE',
-        completedAt: new Date(now.getTime() - 12 * 24 * 60 * 60 * 1000),
-        comments: 'Approuvé sans réserve'
-      }
-    }),
+    // ── app5 · 25M · 48m · REJECTED ──────────────────────────────────────────
+    // analyst + branch_manager complètes, rejet au comité
+    prisma.workflowStep.create({ data: ws('ws10','app5','credit_analysis','CREDIT_ANALYST','user2','COMPLETED',16,'APPROVE','Secteur en place mais structure financière tendue') }),
+    prisma.workflowStep.create({ data: ws('ws11','app5','branch_manager_review','BRANCH_MANAGER','user3','COMPLETED',15,'APPROVE','Transmis au comité avec réserves sur l\'endettement') }),
+    prisma.workflowStep.create({ data: ws('ws12','app5','credit_committee_review','CREDIT_COMMITTEE','user4','COMPLETED',14,'REJECT','Ratio d\'endettement 4.07x, liquidité insuffisante — dossier refusé en comité') }),
 
-    // App10 - Approved (Marie Fall, Dakar Central)
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws19',
-        applicationId: 'app10',
-        stepName: 'Review by credit analyst',
-        role: 'CREDIT_ANALYST',
-        assigneeId: 'user2',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'APPROVE',
-        completedAt: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
-        comments: 'Secteur IT prometteur'
-      }
-    }),
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws20',
-        applicationId: 'app10',
-        stepName: 'Review by branch manager',
-        role: 'BRANCH_MANAGER',
-        assigneeId: 'user3',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'APPROVE',
-        completedAt: new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000),
-        comments: 'Approuvé'
-      }
-    }),
+    // ── app6 · 12M · 36m · APPROVED ──────────────────────────────────────────
+    // 3 étapes complètes (> 10M)
+    prisma.workflowStep.create({ data: ws('ws13','app6','credit_analysis','CREDIT_ANALYST','user2','COMPLETED',20,'APPROVE','Innovation produit avérée, marché export identifié') }),
+    prisma.workflowStep.create({ data: ws('ws14','app6','branch_manager_review','BRANCH_MANAGER','user3','COMPLETED',18,'APPROVE','Secteur agroalimentaire porteur, management solide') }),
+    prisma.workflowStep.create({ data: ws('ws15','app6','credit_committee_review','CREDIT_COMMITTEE','user4','COMPLETED',16,'APPROVE','Approuvé en comité — fort potentiel d\'exportation') }),
 
-    // App11 - Rejected (Amadou Diop, Dakar Central)
-    prisma.workflowStep.create({
-      data: {
-        id: 'ws21',
-        applicationId: 'app11',
-        stepName: 'Review by credit analyst',
-        role: 'CREDIT_ANALYST',
-        assigneeId: 'user2',
-        status: 'COMPLETED',
-        deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-        decision: 'REJECT',
-        completedAt: new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000),
-        comments: 'Risques trop élevés pour ce projet'
-      }
-    })
+    // ── app7 · 18M · 42m · UNDER_REVIEW ──────────────────────────────────────
+    // analyst done, branch_manager en cours, committee pending
+    prisma.workflowStep.create({ data: ws('ws16','app7','credit_analysis','CREDIT_ANALYST','user2','COMPLETED',3,'APPROVE','Flotte transport vérifiée, licences en règle') }),
+    prisma.workflowStep.create({ data: ws('ws17','app7','branch_manager_review','BRANCH_MANAGER','user3','IN_REVIEW',null,null,'Validation en cours du parc véhicules') }),
+    prisma.workflowStep.create({ data: ws('ws18','app7','credit_committee_review','CREDIT_COMMITTEE',null,'PENDING',null,null,'En attente comité — dépasse le seuil directeur agence') }),
+
+    // ── app8 · 6.5M · 12m · APPROVED ─────────────────────────────────────────
+    // 2 étapes complètes (≤ 10M, court terme)
+    prisma.workflowStep.create({ data: ws('ws19','app8','credit_analysis','CREDIT_ANALYST','user2','COMPLETED',27,'APPROVE','Coopérative agricole bien structurée, débouchés garantis') }),
+    prisma.workflowStep.create({ data: ws('ws20','app8','branch_manager_review','BRANCH_MANAGER','user3','COMPLETED',25,'APPROVE','Financement campagne agricole approuvé, nantissement sur récolte validé') }),
+
+    // ── app9 · 9.5M · 24m · APPROVED ─────────────────────────────────────────
+    // 2 étapes complètes (< 10M)
+    prisma.workflowStep.create({ data: ws('ws21','app9','credit_analysis','CREDIT_ANALYST','user2','COMPLETED',30,'APPROVE','Secteur avicole porteur, expérience technique avérée') }),
+    prisma.workflowStep.create({ data: ws('ws22','app9','branch_manager_review','BRANCH_MANAGER','user3','COMPLETED',28,'APPROVE','Installations hypothéquées, projet approuvé sans réserve') }),
+
+    // ── app10 · 4.5M · 18m · APPROVED ────────────────────────────────────────
+    // 2 étapes complètes (< 10M)
+    prisma.workflowStep.create({ data: ws('ws23','app10','credit_analysis','CREDIT_ANALYST','user2','COMPLETED',37,'APPROVE','Équipe IT qualifiée, contrats clients stables') }),
+    prisma.workflowStep.create({ data: ws('ws24','app10','branch_manager_review','BRANCH_MANAGER','user3','COMPLETED',35,'APPROVE','Secteur numérique en croissance, caution personnelle acceptée') }),
+
+    // ── app11 · 22M · 36m · REJECTED ─────────────────────────────────────────
+    // analyst + branch_manager + rejet au comité
+    prisma.workflowStep.create({ data: ws('ws25','app11','credit_analysis','CREDIT_ANALYST','user2','COMPLETED',44,'APPROVE','Innovation intéressante mais liquidité préoccupante') }),
+    prisma.workflowStep.create({ data: ws('ws26','app11','branch_manager_review','BRANCH_MANAGER','user3','COMPLETED',43,'APPROVE','Transmis au comité avec mise en garde sur les fonds propres') }),
+    prisma.workflowStep.create({ data: ws('ws27','app11','credit_committee_review','CREDIT_COMMITTEE','user4','COMPLETED',42,'REJECT','Fonds propres insuffisants (ratio 3.83x), liquidité < 1 — refusé en comité') }),
+
+    // ── app12 · 35M · 60m · APPROVED ─────────────────────────────────────────
+    // 3 étapes complètes (> 10M, ≤ 50M)
+    prisma.workflowStep.create({ data: ws('ws28','app12','credit_analysis','CREDIT_ANALYST','user2','COMPLETED',47,'APPROVE','Promoteur immobilier expérimenté, demande de logements forte') }),
+    prisma.workflowStep.create({ data: ws('ws29','app12','branch_manager_review','BRANCH_MANAGER','user3','COMPLETED',46,'APPROVE','Hypothèque sur terrain et constructions validée') }),
+    prisma.workflowStep.create({ data: ws('ws30','app12','credit_committee_review','CREDIT_COMMITTEE','user4','COMPLETED',45,'APPROVE','Comité approuve — emplacement stratégique, précommercialisation en cours') }),
+
+    // ── app13 · 15.5M · 48m · UNDER_REVIEW ───────────────────────────────────
+    // analyst + branch_manager done, committee en cours
+    prisma.workflowStep.create({ data: ws('ws31','app13','credit_analysis','CREDIT_ANALYST','user2','COMPLETED',6,'APPROVE','Hôtel bien situé, saison haute rentable') }),
+    prisma.workflowStep.create({ data: ws('ws32','app13','branch_manager_review','BRANCH_MANAGER','user3','COMPLETED',5,'APPROVE','Hypothèque hôtelière acceptée, plan marketing à renforcer') }),
+    prisma.workflowStep.create({ data: ws('ws33','app13','credit_committee_review','CREDIT_COMMITTEE','user4','IN_REVIEW',null,null,'Examen en comité — saisonnalité à modéliser') }),
+
+    // ── app14 · 28M · 84m · APPROVED ─────────────────────────────────────────
+    // 4 étapes complètes (durée > 60m → management requis)
+    prisma.workflowStep.create({ data: ws('ws34','app14','credit_analysis','CREDIT_ANALYST','user2','COMPLETED',57,'APPROVE','Licences de pêche confirmées, marchés export documentés') }),
+    prisma.workflowStep.create({ data: ws('ws35','app14','branch_manager_review','BRANCH_MANAGER','user3','COMPLETED',56,'APPROVE','Hypothèque maritime validée, assurance à souscrire') }),
+    prisma.workflowStep.create({ data: ws('ws36','app14','credit_committee_review','CREDIT_COMMITTEE','user4','COMPLETED',55,'APPROVE','Comité approuve — secteur profitable, contrats export sécurisés') }),
+    prisma.workflowStep.create({ data: ws('ws37','app14','management_review','MANAGEMENT','user6','COMPLETED',54,'APPROVE','Direction générale approuve — dossier pêche industrielle stratégique') }),
+
+    // ── app15 · 20M · 72m · APPROVED ─────────────────────────────────────────
+    // 4 étapes complètes (durée > 60m → management requis)
+    prisma.workflowStep.create({ data: ws('ws38','app15','credit_analysis','CREDIT_ANALYST','user2','COMPLETED',62,'APPROVE','Projet EnR exemplaire, subventions gouvernementales confirmées') }),
+    prisma.workflowStep.create({ data: ws('ws39','app15','branch_manager_review','BRANCH_MANAGER','user3','COMPLETED',61,'APPROVE','Nantissement équipements solaires validé, contrats long terme en place') }),
+    prisma.workflowStep.create({ data: ws('ws40','app15','credit_committee_review','CREDIT_COMMITTEE','user4','COMPLETED',60,'APPROVE','Comité approuve — ratios excellents, secteur d\'avenir prioritaire') }),
+    prisma.workflowStep.create({ data: ws('ws41','app15','management_review','MANAGEMENT','user6','COMPLETED',59,'APPROVE','Direction générale approuve — projet aligné avec stratégie développement durable') }),
+
   ]);
 
   console.log('🔄 Created workflow steps');
