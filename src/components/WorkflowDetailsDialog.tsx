@@ -290,14 +290,27 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   const years = Object.keys(financialData).map(Number).sort((a, b) => a - b);
   const latestYear = years[years.length - 1];
 
+  // Resolve year data: handle both nested {multiyear_data.N.data} and flat {field: value} formats
+  const resolveYearData = (entry: any): any | null => {
+    if (!entry) return null;
+    // New format (after fix): { multiyear_data: { N: { data: {...} } } }
+    if (entry?.multiyear_data?.N?.data) return entry.multiyear_data.N.data;
+    // Old flat format: { chiffre_affaires: ..., total_actif: ... }
+    const hasFinancialFields = entry && typeof entry === 'object' &&
+      Object.keys(entry).some(k => ['chiffre_affaires', 'total_actif', 'capitaux_propres',
+        'resultat_net', 'actif_immobilise', 'stocks'].includes(k));
+    if (hasFinancialFields) return entry;
+    return null;
+  };
+
   // Get all years data
   const allYearsData = years.map(year => ({
     year,
-    data: financialData[year]?.multiyear_data?.N?.data || null,
+    data: resolveYearData(financialData[year]),
     ratios: financialData[year]?.ratios || null
   })).filter(yearData => yearData.data !== null);
 
-  const latestYearData = latestYear ? financialData[latestYear]?.multiyear_data?.N?.data : null;
+  const latestYearData = latestYear ? resolveYearData(financialData[latestYear]) : null;
 
   const getProgressColor = (score: number): 'success' | 'warning' | 'error' | 'info' => {
     if (score >= 80) return 'success';

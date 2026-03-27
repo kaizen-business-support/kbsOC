@@ -309,7 +309,17 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
         creditTypeId: creditRequest.creditTypeId || undefined,
         createdBy: userState.currentUser.id,
         assignedAnalystId: selectedAnalystId || undefined,
-        analysisResults: { preliminaryAnalysis, financialData },
+        analysisResults: {
+          preliminaryAnalysis,
+          // Wrap each year's flat data into the structure WorkflowDetailsDialog expects:
+          // financialData[year].multiyear_data.N.data
+          financialData: Object.fromEntries(
+            Object.entries(financialData).map(([year, data]) => [
+              year,
+              { multiyear_data: { N: { data } }, ratios: null },
+            ])
+          ),
+        },
       });
 
       if (result.success) {
