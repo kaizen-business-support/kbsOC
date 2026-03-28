@@ -36,6 +36,7 @@ import {
   BackupOutlined as BackupIcon,
   CampaignOutlined as CampaignIcon,
   NotificationsNone as NotificationsActiveIcon,
+  CallSplit as DispatchIcon,
   ExpandLess,
   ExpandMore,
 } from '@mui/icons-material';
@@ -97,6 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canViewAnalytics       = isRole('management') || isRole('admin') || isRole('branch_manager') || isRole('credit_committee');
   const canCreateApplications  = isRole('account_manager') || isRole('admin');
   const canViewConfiguration   = isRole('admin') || isRole('management');
+  const canDispatching         = isRole('analyst_supervisor') || isRole('admin');
 
   const outOfProcessItems = [
     { id: 'data-input'  as PageType, label: t('navigation.dataInput'), icon: DataInputIcon },
@@ -107,6 +109,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const creditProcessItems = [
     { id: 'clients'            as PageType, label: t('navigation.clients'),   icon: ClientsIcon },
     ...(canCreateApplications ? [{ id: 'credit-application' as PageType, label: 'Nouvelle Demande', icon: ApplicationIcon }] : []),
+    ...(canDispatching ? [{ id: 'dispatching' as PageType, label: 'Dispatching', icon: DispatchIcon }] : []),
     { id: 'workflow'           as PageType, label: t('navigation.workflow'),  icon: WorkflowIcon },
     ...(canViewAnalytics ? [{ id: 'analytics' as PageType, label: t('navigation.analytics'), icon: InsightsIcon }] : []),
   ];

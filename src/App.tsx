@@ -41,6 +41,7 @@ const ProfilePage           = lazy(() => import('./pages/ProfilePage').then(m =>
 const BackupPage            = lazy(() => import('./pages/BackupPage').then(m => ({ default: m.BackupPage })));
 const AnnouncementsAdminPage = lazy(() => import('./pages/AnnouncementsAdminPage'));
 const NotificationsConfigPage = lazy(() => import('./pages/NotificationsConfigPage'));
+const DispatchingPage        = lazy(() => import('./pages/DispatchingPage').then(m => ({ default: m.DispatchingPage })));
 
 // ── Thin branded progress bar while chunk loads ────────────────────────────
 const PageLoader = () => (
@@ -339,6 +340,10 @@ const AppContent: React.FC = () => {
               <Route
                 path="/notifications-config"
                 element={<NotificationsConfigPage />}
+              />
+              <Route
+                path="/dispatching"
+                element={<DispatchingPage />}
               />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

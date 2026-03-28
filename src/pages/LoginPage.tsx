@@ -176,6 +176,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     { email: 'direction@bank.sn',       role: 'Directeur Général',    color: 'info'      as const },
     { email: 'moussa.sarr@bank.sn',    role: 'Directeur d\'Agence',  color: 'success'   as const },
     { email: 'amadou.diop@bank.sn',    role: 'Chargé d\'Affaires',   color: 'primary'   as const },
+    { email: 'resp.analyste@bank.sn',  role: 'Responsable Analyste', color: 'secondary' as const },
     { email: 'fatou.ndiaye@bank.sn',   role: 'Analyste Crédit',      color: 'secondary' as const },
     { email: 'comite@bank.sn',         role: 'Comité de Crédit',     color: 'warning'   as const },
   ];

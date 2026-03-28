@@ -296,7 +296,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       '/reports': 'reports',
       '/settings': 'settings',
       '/documentation': 'documentation',
-      '/credit-simulation': 'credit-simulation'
+      '/credit-simulation': 'credit-simulation',
+      '/dispatching': 'dispatching'
     };
     
     const currentPageFromUrl = pathToPageMap[location.pathname];
@@ -362,7 +363,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       'profile': '/profile',
       'backup': '/backup',
       'announcements': '/announcements',
-      'notifications-config': '/notifications-config'
+      'notifications-config': '/notifications-config',
+      'dispatching': '/dispatching'
     };
     
     const route = routeMap[page];

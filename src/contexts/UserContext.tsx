@@ -19,9 +19,10 @@ export interface User {
   createdAt?: string;
 }
 
-export type UserRole = 
+export type UserRole =
   | 'account_manager'     // Chargé d'Affaires
-  | 'credit_analyst'      // Analyste Crédit  
+  | 'credit_analyst'      // Analyste Crédit
+  | 'analyst_supervisor'  // Responsable Analyste
   | 'branch_manager'      // Directeur d'Agence
   | 'credit_committee'    // Membre Comité de Crédit
   | 'management'          // Direction Générale
@@ -163,6 +164,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
             'BRANCH_MANAGER': 'branch_manager',
             'ACCOUNT_MANAGER': 'account_manager',
             'CREDIT_ANALYST': 'credit_analyst',
+            'ANALYST_SUPERVISOR': 'analyst_supervisor',
             'CREDIT_COMMITTEE': 'credit_committee'
           };
           
@@ -269,6 +271,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     const roleLabels: Record<UserRole, string> = {
       account_manager: 'Chargé d\'Affaires',
       credit_analyst: 'Analyste Crédit',
+      analyst_supervisor: 'Responsable Analyste',
       branch_manager: 'Directeur d\'Agence',
       credit_committee: 'Comité de Crédit',
       management: 'Direction Générale',

@@ -1,424 +1,527 @@
-#!/bin/bash
-# ============================================================
-#  OptimusCredit — Script d'installation Ubuntu
-#  Usage : sudo ./install.sh [--db-password <mot_de_passe>]
-# ============================================================
-set -e
+#!/usr/bin/env bash
+# =============================================================================
+#  OptimusCredit — Script d'installation Ubuntu 24.04 LTS
+#  Usage  : sudo bash install.sh [OPTIONS]
+#  Options: --db-password <mdp>    Mot de passe PostgreSQL (auto-généré sinon)
+#           --domain      <fqdn>   Domaine nginx (IP locale par défaut)
+#           --skip-seed           Ne pas exécuter le seed initial
+#           --no-build            Ne pas compiler (si build déjà présent)
+# =============================================================================
+set -euo pipefail
+IFS=$'\n\t'
 
-# --- Couleurs ---
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
-log()     { echo -e "${GREEN}[+]${NC} $1"; }
-warn()    { echo -e "${YELLOW}[!]${NC} $1"; }
-error()   { echo -e "${RED}[ERREUR]${NC} $1"; exit 1; }
-check_ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
-check_warn() { echo -e "  ${YELLOW}⚠${NC} $1"; }
-check_fail() { echo -e "  ${RED}✗${NC} $1"; }
+# ─── Couleurs ─────────────────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
-# ─── 1. Vérifications préalables ─────────────────────────────────────────────
+log()     { echo -e "${GREEN}[✔]${NC} $*"; }
+info()    { echo -e "${CYAN}[→]${NC} $*"; }
+warn()    { echo -e "${YELLOW}[⚠]${NC} $*"; }
+die()     { echo -e "${RED}[ERREUR FATALE]${NC} $*" >&2; exit 1; }
+section() { echo ""; echo -e "${BLUE}${BOLD}━━━ $* ━━━${NC}"; }
 
-# Root
-if [[ $EUID -ne 0 ]]; then
-  error "Lancez ce script en root : sudo ./install.sh"
-fi
+# ─── Constantes application ───────────────────────────────────────────────────
+APP_NAME="optimuscredit"
+DB_NAME="optimus_credit"
+DB_USER="optimus"
+BACKEND_PORT=5007
+FRONTEND_PORT=3006
+NODE_MAJOR=20
+PG_MAJOR=16
 
-# OS Ubuntu
-[[ -f /etc/os-release ]] && source /etc/os-release
-if [[ "${ID:-}" != "ubuntu" && "${ID_LIKE:-}" != *"ubuntu"* ]]; then
-  error "Ce script requiert Ubuntu (22.04 ou plus récent). OS détecté : ${PRETTY_NAME:-inconnu}"
-fi
-UBUNTU_VER="${VERSION_ID:-0}"
-UBUNTU_MAJOR=$(echo "$UBUNTU_VER" | cut -d. -f1)
-if [[ "$UBUNTU_MAJOR" -lt 22 ]]; then
-  error "Ubuntu 22.04 minimum requis. Version détectée : $UBUNTU_VER"
-fi
+# ─── Parsing des arguments ────────────────────────────────────────────────────
+OPT_DB_PASS=""
+OPT_DOMAIN=""
+OPT_SKIP_SEED=false
+OPT_NO_BUILD=false
 
-# Variables
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --db-password) OPT_DB_PASS="$2"; shift 2 ;;
+    --domain)      OPT_DOMAIN="$2";  shift 2 ;;
+    --skip-seed)   OPT_SKIP_SEED=true; shift ;;
+    --no-build)    OPT_NO_BUILD=true;  shift ;;
+    *) warn "Argument inconnu ignoré : $1"; shift ;;
+  esac
+done
+
+# ─── Vérification root ────────────────────────────────────────────────────────
+[[ $EUID -eq 0 ]] || die "Lancez ce script en root : sudo bash install.sh"
+
+# ─── Répertoire de l'application ──────────────────────────────────────────────
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MACHINE_IP=$(hostname -I | awk '{print $1}')
-DB_NAME="optimuscredit"
-DB_USER="optimuscredit"
-BACKEND_ENV="$APP_DIR/backend/.env"
+BACKEND_DIR="$APP_DIR/backend"
+[[ -d "$BACKEND_DIR" && -f "$APP_DIR/package.json" ]] \
+  || die "Répertoire invalide : $APP_DIR — backend/ ou package.json manquant"
 
-# ─── 2. Pré-flight checks (système) ──────────────────────────────────────────
+MACHINE_IP=$(hostname -I | awk '{print $1}')
+DOMAIN="${OPT_DOMAIN:-$MACHINE_IP}"
+
+# ─── Bannière ─────────────────────────────────────────────────────────────────
 echo ""
-echo -e "${BLUE}━━━ Pré-flight checks ━━━${NC}"
+echo -e "${BLUE}${BOLD}"
+echo "  ╔═══════════════════════════════════════════════════════╗"
+echo "  ║           OptimusCredit — Installateur v3.0           ║"
+echo "  ║          Ubuntu 24.04 LTS · Node 20 · PG 16           ║"
+echo "  ╚═══════════════════════════════════════════════════════╝"
+echo -e "${NC}"
+echo -e "  Répertoire : ${CYAN}$APP_DIR${NC}"
+echo -e "  IP Machine  : ${CYAN}$MACHINE_IP${NC}"
+echo -e "  Domaine     : ${CYAN}$DOMAIN${NC}"
+echo ""
+
+# =============================================================================
+# 1. PRÉ-FLIGHT CHECKS
+# =============================================================================
+section "Pré-flight checks"
 
 PREFLIGHT_OK=true
 
-# Espace disque libre >= 3 Go sur /
-DISK_FREE_KB=$(df / --output=avail 2>/dev/null | tail -1 | tr -d ' ')
-DISK_FREE_GB=$(( DISK_FREE_KB / 1024 / 1024 ))
-if [[ "$DISK_FREE_GB" -ge 3 ]]; then
-  check_ok "Espace disque : ${DISK_FREE_GB} Go disponibles (minimum 3 Go)"
+# OS
+source /etc/os-release 2>/dev/null || true
+if [[ "${ID:-}" != "ubuntu" ]]; then
+  echo -e "  ${RED}[✗]${NC} OS non supporté : ${PRETTY_NAME:-inconnu}  (Ubuntu requis)"
+  PREFLIGHT_OK=false
 else
-  check_fail "Espace disque insuffisant : ${DISK_FREE_GB} Go (minimum 3 Go requis)"
+  UBUNTU_VER="${VERSION_ID:-0}"
+  UBUNTU_MAJOR=$(echo "$UBUNTU_VER" | cut -d. -f1)
+  if [[ "$UBUNTU_MAJOR" -ge 22 ]]; then
+    log "Ubuntu $UBUNTU_VER détecté"
+  else
+    echo -e "  ${RED}[✗]${NC} Ubuntu 22.04+ requis — version : $UBUNTU_VER"
+    PREFLIGHT_OK=false
+  fi
+fi
+
+# Disque >= 4 Go
+DISK_FREE_GB=$(( $(df / --output=avail 2>/dev/null | tail -1 | tr -d ' ') / 1024 / 1024 ))
+if [[ $DISK_FREE_GB -ge 4 ]]; then
+  log "Espace disque : ${DISK_FREE_GB} Go disponibles"
+else
+  echo -e "  ${RED}[✗]${NC} Espace disque insuffisant : ${DISK_FREE_GB} Go (minimum 4 Go)"
   PREFLIGHT_OK=false
 fi
 
 # RAM >= 512 Mo
 RAM_MB=$(free -m | awk '/^Mem:/{print $2}')
-if [[ "$RAM_MB" -ge 512 ]]; then
-  check_ok "RAM : ${RAM_MB} Mo (minimum 512 Mo)"
+if [[ $RAM_MB -ge 1024 ]]; then
+  log "RAM : ${RAM_MB} Mo"
+elif [[ $RAM_MB -ge 512 ]]; then
+  warn "RAM faible : ${RAM_MB} Mo (1 Go recommandé)"
 else
-  check_warn "RAM faible : ${RAM_MB} Mo — l'installation peut être lente (minimum recommandé : 1 Go)"
-fi
-
-# Connectivité internet
-if curl -s --connect-timeout 5 https://registry.npmjs.org/ -o /dev/null; then
-  check_ok "Connectivité internet : OK"
-else
-  check_fail "Pas de connexion internet — impossible de télécharger les dépendances"
+  echo -e "  ${RED}[✗]${NC} RAM insuffisante : ${RAM_MB} Mo (minimum 512 Mo)"
   PREFLIGHT_OK=false
 fi
 
-# Ports requis libres (80, 3006, 5007, 5432, 6379)
-for port in 80 3006 5007 5432 6379; do
+# Internet
+if curl -s --connect-timeout 6 https://registry.npmjs.org/ -o /dev/null; then
+  log "Connectivité internet : OK"
+else
+  echo -e "  ${RED}[✗]${NC} Pas de connexion internet"
+  PREFLIGHT_OK=false
+fi
+
+# Ports
+for port in 80 "$BACKEND_PORT" "$FRONTEND_PORT" 5432 6379; do
   if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
-    check_warn "Port ${port} déjà utilisé — sera libéré ou réutilisé par l'installation"
+    warn "Port $port déjà utilisé (sera réutilisé)"
   else
-    check_ok "Port ${port} : disponible"
+    log "Port $port : libre"
   fi
 done
 
-# Répertoire de l'application
-if [[ -d "$APP_DIR/backend" && -f "$APP_DIR/package.json" ]]; then
-  check_ok "Répertoire app : $APP_DIR"
-else
-  check_fail "Répertoire invalide : $APP_DIR (backend/ ou package.json manquant)"
-  PREFLIGHT_OK=false
-fi
+[[ "$PREFLIGHT_OK" == "true" ]] \
+  || die "Pré-requis non satisfaits. Corrigez les erreurs ci-dessus."
 
-if [[ "$PREFLIGHT_OK" != "true" ]]; then
-  error "Des pré-requis système ne sont pas satisfaits. Corrigez les erreurs ci-dessus avant de continuer."
-fi
-echo ""
+# =============================================================================
+# 2. RÉSOLUTION MOT DE PASSE DB
+# =============================================================================
+BACKEND_ENV="$BACKEND_DIR/.env"
+DB_PASS="${OPT_DB_PASS:-}"
 
-# ─── Mot de passe DB : argument CLI > .env existant > auto-généré ────────────
-DB_PASS="${DB_PASSWORD:-}"
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --db-password) DB_PASS="$2"; shift 2 ;;
-    *) shift ;;
-  esac
-done
 if [[ -z "$DB_PASS" && -f "$BACKEND_ENV" ]]; then
-  EXISTING_PASS=$(grep -E '^DATABASE_URL=' "$BACKEND_ENV" \
-    | sed -E 's|postgresql://[^:]+:([^@]+)@.*|\1|')
-  [[ -n "$EXISTING_PASS" ]] && DB_PASS="$EXISTING_PASS" \
-    && warn "Mot de passe DB récupéré depuis backend/.env existant."
+  _existing=$(grep -E '^DATABASE_URL=' "$BACKEND_ENV" \
+    | sed -E 's|postgresql://[^:]+:([^@]+)@.*|\1|' || true)
+  [[ -n "$_existing" ]] && DB_PASS="$_existing" \
+    && warn "Mot de passe DB récupéré depuis backend/.env"
 fi
-[[ -z "$DB_PASS" ]] && DB_PASS=$(openssl rand -hex 16)
+[[ -z "$DB_PASS" ]] && DB_PASS=$(openssl rand -base64 24 | tr -d '+/=')
 
 JWT_SECRET=$(openssl rand -hex 32)
 JWT_REFRESH_SECRET=$(openssl rand -hex 32)
 
-log "=== Installation OptimusCredit ==="
-log "Répertoire : $APP_DIR"
-log "IP détectée : $MACHINE_IP"
-log "Ubuntu : $UBUNTU_VER"
+# =============================================================================
+# 3. DÉPENDANCES SYSTÈME
+# =============================================================================
+section "Dépendances système (Ubuntu 24.04)"
 
-# ─── 3. Dépendances système ───────────────────────────────────────────────────
-echo ""
-echo -e "${BLUE}━━━ Installation des dépendances système ━━━${NC}"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
 
-apt update -qq
+PKGS=(curl wget git build-essential openssl ca-certificates gnupg lsb-release
+      python3 python3-pip software-properties-common apt-transport-https unzip jq)
 
-SYSTEM_PKGS=(curl git build-essential openssl ca-certificates gnupg lsb-release python3)
-MISSING_PKGS=()
-for pkg in "${SYSTEM_PKGS[@]}"; do
-  if dpkg -s "$pkg" &>/dev/null; then
-    check_ok "$pkg : déjà installé ($(dpkg -s "$pkg" | grep Version | awk '{print $2}'))"
-  else
-    check_warn "$pkg : à installer"
-    MISSING_PKGS+=("$pkg")
-  fi
+MISSING=()
+for pkg in "${PKGS[@]}"; do
+  dpkg -s "$pkg" &>/dev/null || MISSING+=("$pkg")
 done
 
-if [[ ${#MISSING_PKGS[@]} -gt 0 ]]; then
-  log "Installation : ${MISSING_PKGS[*]}"
-  apt install -y "${MISSING_PKGS[@]}"
+if [[ ${#MISSING[@]} -gt 0 ]]; then
+  info "Installation : ${MISSING[*]}"
+  apt-get install -y "${MISSING[@]}"
 fi
 log "Dépendances système : OK"
 
-# ─── 4. Node.js >= 18 ────────────────────────────────────────────────────────
-echo ""
-echo -e "${BLUE}━━━ Node.js ━━━${NC}"
-NODE_MAJOR=$(node -v 2>/dev/null | cut -d'v' -f2 | cut -d'.' -f1 || echo "0")
-if [[ "$NODE_MAJOR" -ge 18 ]]; then
-  check_ok "Node.js $(node -v) — npm $(npm -v) : déjà installé"
+# =============================================================================
+# 4. NODE.JS 20 LTS
+# =============================================================================
+section "Node.js $NODE_MAJOR LTS"
+
+CURRENT_NODE=$(node -v 2>/dev/null | sed 's/v//' | cut -d. -f1 || echo "0")
+
+if [[ "$CURRENT_NODE" -ge "$NODE_MAJOR" ]]; then
+  log "Node.js $(node -v) déjà installé — npm $(npm -v)"
 else
-  if [[ "$NODE_MAJOR" -gt 0 ]]; then
-    check_warn "Node.js $(node -v) trop ancien — mise à jour vers v18 requise"
-  else
-    check_warn "Node.js absent — installation de Node.js 18"
-  fi
-  curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-  apt install -y nodejs
-  check_ok "Node.js $(node -v) — npm $(npm -v) installé"
+  [[ "$CURRENT_NODE" -gt 0 ]] \
+    && warn "Node.js $(node -v) trop ancien — mise à jour vers v${NODE_MAJOR}" \
+    || info "Installation de Node.js ${NODE_MAJOR}..."
+
+  curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - 2>&1 \
+    | grep -E '(##|ERROR|error)' || true
+  apt-get install -y nodejs
+  log "Node.js $(node -v) installé — npm $(npm -v)"
 fi
 
-# ─── 5. PostgreSQL 15 ────────────────────────────────────────────────────────
-echo ""
-echo -e "${BLUE}━━━ PostgreSQL ━━━${NC}"
-if command -v psql &>/dev/null; then
-  PG_VER=$(psql --version | awk '{print $3}')
-  PG_MAJOR=$(echo "$PG_VER" | cut -d. -f1)
-  if [[ "$PG_MAJOR" -ge 14 ]]; then
-    check_ok "PostgreSQL $PG_VER : déjà installé"
-  else
-    check_warn "PostgreSQL $PG_VER : version ancienne (recommandé : 15+), continuation quand même"
-  fi
+# =============================================================================
+# 5. POSTGRESQL 16
+# =============================================================================
+section "PostgreSQL $PG_MAJOR"
+
+PG_INSTALLED=$(psql --version 2>/dev/null | awk '{print $3}' | cut -d. -f1 || echo "0")
+
+if [[ "$PG_INSTALLED" -ge "$PG_MAJOR" ]]; then
+  log "PostgreSQL $(psql --version | awk '{print $3}') déjà installé"
 else
-  check_warn "PostgreSQL absent — installation de PostgreSQL 15"
+  [[ "$PG_INSTALLED" -gt 0 ]] \
+    && warn "PostgreSQL $PG_INSTALLED détecté — installation de $PG_MAJOR en parallèle" \
+    || info "Installation de PostgreSQL $PG_MAJOR..."
+
   curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
     | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg
+
   echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] \
 https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
     > /etc/apt/sources.list.d/pgdg.list
-  apt update -qq
-  apt install -y postgresql-15
-  check_ok "PostgreSQL $(psql --version | awk '{print $3}') installé"
+
+  apt-get update -qq
+  apt-get install -y "postgresql-${PG_MAJOR}" "postgresql-client-${PG_MAJOR}"
+  log "PostgreSQL $(psql --version | awk '{print $3}') installé"
 fi
-# S'assurer que pg_dump est présent (utile pour update.sh aussi)
-if ! command -v pg_dump &>/dev/null; then
-  warn "pg_dump absent — installation de postgresql-client-15"
-  apt install -y postgresql-client-15 2>/dev/null || apt install -y postgresql-client
-fi
+
+command -v pg_dump &>/dev/null \
+  || apt-get install -y "postgresql-client-${PG_MAJOR}" 2>/dev/null \
+  || apt-get install -y postgresql-client
+
 systemctl enable --now postgresql
-check_ok "Service postgresql : actif"
+log "Service postgresql : actif"
 
-# ─── 6. Redis 7 ──────────────────────────────────────────────────────────────
-echo ""
-echo -e "${BLUE}━━━ Redis ━━━${NC}"
-if command -v redis-server &>/dev/null; then
-  REDIS_VER=$(redis-server --version | awk '{print $3}' | tr -d 'v=')
-  REDIS_MAJOR=$(echo "$REDIS_VER" | cut -d. -f1)
-  if [[ "$REDIS_MAJOR" -ge 6 ]]; then
-    check_ok "Redis $REDIS_VER : déjà installé"
-  else
-    check_warn "Redis $REDIS_VER : version ancienne (recommandé : 7+), continuation quand même"
-  fi
+# =============================================================================
+# 6. REDIS 7
+# =============================================================================
+section "Redis 7"
+
+REDIS_VER=$(redis-server --version 2>/dev/null | awk '{print $3}' | tr -d 'v=' | cut -d. -f1 || echo "0")
+
+if [[ "$REDIS_VER" -ge 7 ]]; then
+  log "Redis $(redis-server --version | awk '{print $3}' | tr -d 'v=') déjà installé"
 else
-  check_warn "Redis absent — installation de Redis 7"
-  curl -fsSL https://packages.redis.io/gpg \
-    | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
-  echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] \
-https://packages.redis.io/deb $(lsb_release -cs) main" \
-    > /etc/apt/sources.list.d/redis.list
-  apt update -qq
-  apt install -y redis
-  check_ok "Redis $(redis-server --version | awk '{print $3}' | tr -d 'v=') installé"
+  info "Installation de Redis 7 (dépôts Ubuntu 24.04)..."
+  apt-get install -y redis-server
+  log "Redis installé"
 fi
-sed -i 's/^bind .*/bind 127.0.0.1 -::1/' /etc/redis/redis.conf
-systemctl enable --now redis-server
-check_ok "Service redis-server : actif"
 
-# ─── 7. nginx ────────────────────────────────────────────────────────────────
-echo ""
-echo -e "${BLUE}━━━ nginx ━━━${NC}"
+sed -i 's/^bind .*/bind 127.0.0.1 -::1/' /etc/redis/redis.conf 2>/dev/null || true
+systemctl enable --now redis-server
+log "Service redis-server : actif (127.0.0.1 uniquement)"
+
+# =============================================================================
+# 7. NGINX
+# =============================================================================
+section "nginx"
+
 if command -v nginx &>/dev/null; then
-  check_ok "nginx $(nginx -v 2>&1 | grep -oP '[\d.]+') : déjà installé"
+  log "nginx $(nginx -v 2>&1 | grep -oP '[\d.]+') déjà installé"
 else
-  check_warn "nginx absent — installation"
-  apt install -y nginx
-  check_ok "nginx installé"
+  info "Installation de nginx..."
+  apt-get install -y nginx
+  log "nginx installé"
 fi
 systemctl enable nginx
-check_ok "Service nginx : activé"
+log "Service nginx : activé"
 
-# ─── 8. Configuration PostgreSQL — utilisateur et base de données ─────────────
-echo ""
-echo -e "${BLUE}━━━ Configuration base de données ━━━${NC}"
+# =============================================================================
+# 8. CONFIGURATION POSTGRESQL
+# =============================================================================
+section "Configuration base de données"
 
-# Forcer md5 pour le stockage du mot de passe (compatibilité maximale)
-sudo -u postgres psql -c "ALTER SYSTEM SET password_encryption = 'md5';"
-sudo -u postgres psql -c "SELECT pg_reload_conf();"
+sudo -u postgres psql -c "ALTER SYSTEM SET password_encryption = 'scram-sha-256';" 2>/dev/null || true
+sudo -u postgres psql -c "SELECT pg_reload_conf();" 2>/dev/null || true
 
-# Créer l'utilisateur (si absent) puis TOUJOURS synchroniser le mot de passe
-sudo -u postgres psql -tc \
-  "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1 \
-  || sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASS}';"
-sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASS}';"
-check_ok "Utilisateur PostgreSQL '${DB_USER}' : OK"
+# Utilisateur DB
+if sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" \
+    | grep -q 1 2>/dev/null; then
+  sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASS}';"
+  log "Utilisateur '${DB_USER}' : mot de passe mis à jour"
+else
+  sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASS}';"
+  log "Utilisateur '${DB_USER}' créé"
+fi
 
-# Créer la base si absente
-sudo -u postgres psql -tc \
-  "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1 \
-  || sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};"
-check_ok "Base de données '${DB_NAME}' : OK"
+# Base de données
+if ! sudo -u postgres psql -tc \
+    "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1 2>/dev/null; then
+  sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};"
+  log "Base '${DB_NAME}' créée"
+else
+  log "Base '${DB_NAME}' : déjà présente"
+fi
 
-# Privilèges complets
-sudo -u postgres psql -c \
-  "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};"
+# Privilèges
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};"
+sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL ON SCHEMA public TO ${DB_USER};" 2>/dev/null || true
+sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL ON ALL TABLES    IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
+sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
 sudo -u postgres psql -d "$DB_NAME" -c \
-  "GRANT ALL ON SCHEMA public TO ${DB_USER};"
+  "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES    TO ${DB_USER};" 2>/dev/null || true
 sudo -u postgres psql -d "$DB_NAME" -c \
-  "GRANT ALL ON ALL TABLES IN SCHEMA public TO ${DB_USER};"
-sudo -u postgres psql -d "$DB_NAME" -c \
-  "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};"
-sudo -u postgres psql -d "$DB_NAME" -c \
-  "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${DB_USER};"
-sudo -u postgres psql -d "$DB_NAME" -c \
-  "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};"
-check_ok "Privilèges accordés"
+  "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};" 2>/dev/null || true
+log "Privilèges accordés"
 
-# pg_hba.conf — règles scram-sha-256 pour notre utilisateur (python3 pour fiabilité)
+# pg_hba.conf — trust localhost pour Prisma
 PG_HBA=$(sudo -u postgres psql -t -c "SHOW hba_file;" 2>/dev/null | tr -d ' \n')
-[[ -z "$PG_HBA" || ! -f "$PG_HBA" ]] && error "pg_hba.conf introuvable."
+[[ -z "$PG_HBA" || ! -f "$PG_HBA" ]] && die "pg_hba.conf introuvable"
 
 cp "$PG_HBA" "${PG_HBA}.bak.$(date +%Y%m%d_%H%M%S)"
 
 python3 - <<PYEOF
 import re
-hba_path = "$PG_HBA"
-db_name  = "$DB_NAME"
-db_user  = "$DB_USER"
-with open(hba_path) as f:
+hba  = "$PG_HBA"
+db   = "$DB_NAME"
+user = "$DB_USER"
+with open(hba) as f:
     lines = f.readlines()
-lines = [l for l in lines if db_name not in l and db_user not in l]
-our_rules = [
-    "# OptimusCredit — connexion locale uniquement (trust = pas de validation mdp)\n",
-    f"host    {db_name}    {db_user}    127.0.0.1/32    trust\n",
-    f"host    {db_name}    {db_user}    ::1/128         trust\n",
+lines = [l for l in lines if not (db in l and user in l)]
+lines = [l for l in lines if "OptimusCredit" not in l]
+rules = [
+    "# OptimusCredit — connexions locales uniquement\n",
+    f"host   {db}   {user}   127.0.0.1/32   trust\n",
+    f"host   {db}   {user}   ::1/128        trust\n",
+    f"local  {db}   {user}                  trust\n",
 ]
-insert_at = next(
-    (i for i, l in enumerate(lines) if re.match(r'^host\b', l)),
-    len(lines)
-)
-lines[insert_at:insert_at] = our_rules
-with open(hba_path, 'w') as f:
+idx = next((i for i, l in enumerate(lines) if re.match(r'^host\b', l)), len(lines))
+lines[idx:idx] = rules
+with open(hba, 'w') as f:
     f.writelines(lines)
-print(f"pg_hba.conf mis à jour (ligne {insert_at + 1})")
+print(f"  pg_hba.conf : règles trust injectées à la ligne {idx+1}")
 PYEOF
 
-# Restart complet pour garantir la prise en compte immédiate des règles
 systemctl restart postgresql
 sleep 2
-check_ok "pg_hba.conf : règles trust (localhost) injectées — PostgreSQL redémarré"
+log "PostgreSQL redémarré"
 
-# Test de connexion avec retry
-log "Test de connexion à la base de données..."
+# Test connexion
+info "Test de connexion..."
 for i in {1..5}; do
-  if PGPASSWORD="$DB_PASS" psql \
-      -h 127.0.0.1 -p 5432 -U "$DB_USER" -d "$DB_NAME" \
-      -c "SELECT 1" &>/dev/null; then
-    check_ok "Connexion base de données : OK"
+  if PGPASSWORD="$DB_PASS" psql -h 127.0.0.1 -p 5432 -U "$DB_USER" \
+      -d "$DB_NAME" -c "SELECT 1" &>/dev/null; then
+    log "Connexion base de données : OK"
     break
   fi
-  [[ $i -eq 5 ]] && error "Impossible de se connecter après 5 tentatives.
-  Vérifiez : journalctl -u postgresql -n 50
-  pg_hba.conf : $PG_HBA"
-  sleep 1
+  [[ $i -eq 5 ]] && die "Connexion impossible.\n  Vérifiez : journalctl -u postgresql -n 30"
+  sleep 2
 done
 
-# ─── 9. Fichiers .env ─────────────────────────────────────────────────────────
-echo ""
-echo -e "${BLUE}━━━ Configuration .env ━━━${NC}"
+# =============================================================================
+# 9. FICHIERS .ENV
+# =============================================================================
+section "Configuration .env"
 
+# Backend
 if [[ ! -f "$BACKEND_ENV" ]]; then
-  log "Génération de backend/.env..."
+  info "Génération de backend/.env..."
   cat > "$BACKEND_ENV" <<EOF
+# ── OptimusCredit Backend — généré le $(date '+%Y-%m-%d %H:%M') ──
+
 NODE_ENV=production
-PORT=5007
+PORT=${BACKEND_PORT}
+
+# Base de données
 DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@127.0.0.1:5432/${DB_NAME}
+
+# JWT
 JWT_SECRET=${JWT_SECRET}
 JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-JWT_EXPIRY=1h
+JWT_EXPIRY=8h
+JWT_REFRESH_EXPIRY=7d
+
+# Redis
 REDIS_URL=redis://127.0.0.1:6379
-FRONTEND_URL=http://${MACHINE_IP}:3006
-FRONTEND_PORT=3006
+
+# URLs
+FRONTEND_URL=http://${DOMAIN}
+FRONTEND_PORT=${FRONTEND_PORT}
+API_BASE_URL=http://${DOMAIN}/api
+
+# Upload
+UPLOAD_PATH=./uploads
+MAX_FILE_SIZE=10485760
+ALLOWED_FILE_TYPES=pdf,png,jpg,jpeg,xlsx,xls,doc,docx
+
+# Email (configurer après installation)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=
+SMTP_PASS=
+EMAIL_FROM=OptimusCredit <noreply@${DOMAIN}>
+
+# Sécurité
+BCRYPT_ROUNDS=12
 RATE_LIMIT_WINDOW=15
 RATE_LIMIT_MAX=100
 AUDIT_RETENTION_DAYS=60
+
+# Logging
+LOG_LEVEL=info
+LOG_FILE=logs/app.log
+
+# CORS
+ALLOWED_ORIGINS=http://${DOMAIN},http://${MACHINE_IP}
 EOF
-  check_ok "backend/.env généré"
+  log "backend/.env généré"
 else
-  warn "backend/.env existe déjà — conservé tel quel."
-  if grep -qE 'DATABASE_URL=postgresql://.*@localhost' "$BACKEND_ENV"; then
-    sed -i 's|@localhost:|@127.0.0.1:|g' "$BACKEND_ENV"
-    check_ok "DATABASE_URL : localhost → 127.0.0.1 (TCP explicite)"
-  fi
+  warn "backend/.env existe — conservé"
+  grep -qE 'DATABASE_URL=.*@localhost' "$BACKEND_ENV" \
+    && sed -i 's|@localhost:|@127.0.0.1:|g' "$BACKEND_ENV" \
+    && log "DATABASE_URL : localhost → 127.0.0.1"
 fi
 
+# Frontend
 FRONTEND_ENV="$APP_DIR/.env"
 if [[ ! -f "$FRONTEND_ENV" ]]; then
   cat > "$FRONTEND_ENV" <<EOF
-REACT_APP_API_PORT=5007
+REACT_APP_API_PORT=${BACKEND_PORT}
 HOST=0.0.0.0
-PORT=3006
+PORT=${FRONTEND_PORT}
+GENERATE_SOURCEMAP=false
 EOF
-  check_ok ".env frontend généré"
+  log ".env frontend généré"
 else
-  warn ".env frontend existe déjà — conservé tel quel."
+  warn ".env frontend existe — conservé"
 fi
 
-# ─── 10. Dépendances npm ──────────────────────────────────────────────────────
-echo ""
-echo -e "${BLUE}━━━ Installation des dépendances npm ━━━${NC}"
+# =============================================================================
+# 10. DÉPENDANCES NPM
+# =============================================================================
+section "Dépendances npm"
 
-log "Backend..."
-cd "$APP_DIR/backend" && npm install
-check_ok "npm install backend : OK"
+info "Backend..."
+cd "$BACKEND_DIR"
+npm ci --prefer-offline 2>/dev/null || npm install
+log "npm install backend : OK"
 
-log "Frontend..."
-cd "$APP_DIR" && npm install
-check_ok "npm install frontend : OK"
+info "Frontend..."
+cd "$APP_DIR"
+npm ci --prefer-offline 2>/dev/null || npm install
+log "npm install frontend : OK"
 
-# serve (pour servir le build React)
-if command -v serve &>/dev/null; then
-  check_ok "serve : déjà installé ($(serve --version 2>/dev/null || echo 'version inconnue'))"
-else
-  check_warn "serve absent — installation globale"
+# serve — pour distribuer le build React
+if ! command -v serve &>/dev/null; then
+  info "Installation de serve (global)..."
   npm install -g serve
-  check_ok "serve installé"
 fi
-SERVE_BIN="$(which serve)"
+SERVE_BIN="$(command -v serve)"
+log "serve : OK ($(serve --version 2>/dev/null || echo 'installé'))"
 
-# ─── 11. Prisma — schéma et base de données ──────────────────────────────────
-echo ""
-echo -e "${BLUE}━━━ Prisma ━━━${NC}"
-cd "$APP_DIR/backend"
+# =============================================================================
+# 11. PRISMA — MIGRATIONS & SEED
+# =============================================================================
+section "Prisma — migrations"
 
-# Export explicite de DATABASE_URL (plus fiable que set -o allexport + source)
+cd "$BACKEND_DIR"
 export DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@127.0.0.1:5432/${DB_NAME}"
-check_ok "DATABASE_URL : ${DATABASE_URL//:*@/:*****@}"
 
+info "Génération du client Prisma..."
 npx prisma generate
-check_ok "Client Prisma généré"
-npx prisma db push --accept-data-loss
-check_ok "Schéma Prisma appliqué"
+log "Client Prisma généré"
 
-# Re-grant après db push
-sudo -u postgres psql -d "$DB_NAME" -c \
-  "GRANT ALL ON ALL TABLES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
-sudo -u postgres psql -d "$DB_NAME" -c \
-  "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
+info "Application des migrations..."
+if npx prisma migrate deploy 2>/dev/null; then
+  log "Migrations Prisma appliquées"
+else
+  warn "migrate deploy non disponible — tentative db push..."
+  npx prisma db push --accept-data-loss
+  log "Schéma Prisma appliqué"
+fi
 
-# ─── 12. Seed ─────────────────────────────────────────────────────────────────
-log "Initialisation des données initiales..."
-cd "$APP_DIR/backend"
-npm run seed && check_ok "Seed effectué." \
-  || warn "Seed ignoré (données déjà présentes ou erreur non bloquante)."
+# Re-grant après migration
+sudo -u postgres psql -d "$DB_NAME" \
+  -c "GRANT ALL ON ALL TABLES    IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
+sudo -u postgres psql -d "$DB_NAME" \
+  -c "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
 
-# ─── 13. Builds ──────────────────────────────────────────────────────────────
-echo ""
-echo -e "${BLUE}━━━ Compilation ━━━${NC}"
+# Seed
+if [[ "$OPT_SKIP_SEED" == "false" ]]; then
+  info "Initialisation des données de démonstration..."
+  if npm run seed 2>&1 | tail -5; then
+    log "Seed effectué (comptes démo créés — mot de passe : demo123)"
+  else
+    warn "Seed ignoré (données déjà présentes)"
+  fi
+fi
 
-log "Backend TypeScript..."
-cd "$APP_DIR/backend" && npm run build
-check_ok "Backend compilé → dist/"
+# =============================================================================
+# 12. COMPILATION
+# =============================================================================
+if [[ "$OPT_NO_BUILD" == "false" ]]; then
+  section "Compilation"
 
-log "Frontend React..."
-cd "$APP_DIR" && npm run build
-check_ok "Frontend compilé → build/"
+  info "Backend TypeScript → dist/..."
+  cd "$BACKEND_DIR" && npm run build
+  log "Backend compilé"
 
-# ─── 14. Services systemd ────────────────────────────────────────────────────
-echo ""
-echo -e "${BLUE}━━━ Services systemd ━━━${NC}"
+  info "Frontend React → build/..."
+  cd "$APP_DIR"
+  CI=false npm run build        # CI=false = ne pas traiter les warnings comme erreurs
+  log "Frontend compilé"
+else
+  warn "--no-build : compilation ignorée"
+fi
 
-cat > /etc/systemd/system/optimuscredit-backend.service <<EOF
+# =============================================================================
+# 13. RÉPERTOIRES APPLICATIFS
+# =============================================================================
+section "Répertoires"
+
+for dir in "$BACKEND_DIR/logs" "$BACKEND_DIR/uploads" "$BACKEND_DIR/backups"; do
+  mkdir -p "$dir"
+  chown www-data:www-data "$dir"
+  chmod 755 "$dir"
+  log "Répertoire : $dir"
+done
+
+chown -R www-data:www-data "$APP_DIR" 2>/dev/null || true
+
+# =============================================================================
+# 14. SERVICES SYSTEMD
+# =============================================================================
+section "Services systemd"
+
+# ── Backend ───────────────────────────────────────────────────────────────────
+cat > /etc/systemd/system/${APP_NAME}-backend.service <<EOF
 [Unit]
-Description=OptimusCredit Backend API
+Description=OptimusCredit — API Backend (Node.js)
+Documentation=https://github.com/kaizen-business-support/kbsOC
 After=network.target postgresql.service redis-server.service
 Requires=postgresql.service redis-server.service
 
@@ -426,23 +529,32 @@ Requires=postgresql.service redis-server.service
 Type=simple
 User=www-data
 Group=www-data
-WorkingDirectory=${APP_DIR}/backend
-EnvironmentFile=${APP_DIR}/backend/.env
-ExecStart=/usr/bin/node ${APP_DIR}/backend/dist/server.js
+WorkingDirectory=${BACKEND_DIR}
+EnvironmentFile=${BACKEND_DIR}/.env
+ExecStart=/usr/bin/node ${BACKEND_DIR}/dist/server.js
 Restart=always
 RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=5
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=optimuscredit-backend
+SyslogIdentifier=${APP_NAME}-backend
+# Isolation sécurité
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=${BACKEND_DIR}/logs ${BACKEND_DIR}/uploads ${BACKEND_DIR}/backups
 
 [Install]
 WantedBy=multi-user.target
 EOF
-check_ok "optimuscredit-backend.service créé"
+log "Service ${APP_NAME}-backend créé"
 
-cat > /etc/systemd/system/optimuscredit-frontend.service <<EOF
+# ── Frontend ──────────────────────────────────────────────────────────────────
+cat > /etc/systemd/system/${APP_NAME}-frontend.service <<EOF
 [Unit]
-Description=OptimusCredit Frontend (React)
+Description=OptimusCredit — Frontend React (serve)
+Documentation=https://github.com/kaizen-business-support/kbsOC
 After=network.target
 
 [Service]
@@ -450,120 +562,184 @@ Type=simple
 User=www-data
 Group=www-data
 WorkingDirectory=${APP_DIR}
-ExecStart=${SERVE_BIN} -s ${APP_DIR}/build -l 3006
+ExecStart=${SERVE_BIN} -s ${APP_DIR}/build -l ${FRONTEND_PORT} --no-clipboard
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=optimuscredit-frontend
+SyslogIdentifier=${APP_NAME}-frontend
 
 [Install]
 WantedBy=multi-user.target
 EOF
-check_ok "optimuscredit-frontend.service créé"
+log "Service ${APP_NAME}-frontend créé"
 
-chown -R www-data:www-data "$APP_DIR"
+# =============================================================================
+# 15. NGINX — REVERSE PROXY
+# =============================================================================
+section "nginx — reverse proxy"
 
-# ─── 15. nginx ────────────────────────────────────────────────────────────────
-echo ""
-echo -e "${BLUE}━━━ Configuration nginx ━━━${NC}"
-cat > /etc/nginx/sites-available/optimuscredit <<'NGINXCONF'
+cat > /etc/nginx/sites-available/${APP_NAME} <<NGINXEOF
+# OptimusCredit — Configuration nginx ($(date '+%Y-%m-%d'))
 server {
     listen 80;
-    server_name _;
+    server_name ${DOMAIN} _;
 
     client_max_body_size 50M;
+    client_body_timeout  120s;
+    server_tokens off;
 
+    # En-têtes de sécurité
+    add_header X-Frame-Options        "SAMEORIGIN"                   always;
+    add_header X-Content-Type-Options "nosniff"                      always;
+    add_header Referrer-Policy        "strict-origin-when-cross-origin" always;
+
+    # ── API Backend ──────────────────────────────────────────────────────────
     location /api {
-        proxy_pass         http://127.0.0.1:5007;
-        proxy_http_version 1.1;
-        proxy_set_header   Upgrade $http_upgrade;
-        proxy_set_header   Connection 'upgrade';
-        proxy_set_header   Host $host;
-        proxy_set_header   X-Real-IP $remote_addr;
-        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_cache_bypass $http_upgrade;
-        proxy_read_timeout 120s;
+        proxy_pass            http://127.0.0.1:${BACKEND_PORT};
+        proxy_http_version    1.1;
+        proxy_set_header      Upgrade           \$http_upgrade;
+        proxy_set_header      Connection        "upgrade";
+        proxy_set_header      Host              \$host;
+        proxy_set_header      X-Real-IP         \$remote_addr;
+        proxy_set_header      X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header      X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass    \$http_upgrade;
+        proxy_read_timeout    120s;
+        proxy_connect_timeout 10s;
     }
 
+    # ── WebSocket (notifications temps réel) ─────────────────────────────────
     location /socket.io {
-        proxy_pass         http://127.0.0.1:5007;
-        proxy_http_version 1.1;
-        proxy_set_header   Upgrade $http_upgrade;
-        proxy_set_header   Connection "upgrade";
-        proxy_set_header   Host $host;
-        proxy_set_header   X-Real-IP $remote_addr;
-        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_pass            http://127.0.0.1:${BACKEND_PORT};
+        proxy_http_version    1.1;
+        proxy_set_header      Upgrade           \$http_upgrade;
+        proxy_set_header      Connection        "upgrade";
+        proxy_set_header      Host              \$host;
+        proxy_set_header      X-Real-IP         \$remote_addr;
+        proxy_set_header      X-Forwarded-For   \$proxy_add_x_forwarded_for;
     }
 
+    # ── Frontend React ────────────────────────────────────────────────────────
     location / {
-        proxy_pass         http://127.0.0.1:3006;
-        proxy_http_version 1.1;
-        proxy_set_header   Upgrade $http_upgrade;
-        proxy_set_header   Connection 'upgrade';
-        proxy_set_header   Host $host;
-        proxy_set_header   X-Real-IP $remote_addr;
-        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_cache_bypass $http_upgrade;
+        proxy_pass            http://127.0.0.1:${FRONTEND_PORT};
+        proxy_http_version    1.1;
+        proxy_set_header      Upgrade           \$http_upgrade;
+        proxy_set_header      Connection        "upgrade";
+        proxy_set_header      Host              \$host;
+        proxy_set_header      X-Real-IP         \$remote_addr;
+        proxy_set_header      X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_cache_bypass    \$http_upgrade;
+    }
+
+    # ── Health check ──────────────────────────────────────────────────────────
+    location /health {
+        proxy_pass  http://127.0.0.1:${BACKEND_PORT}/api/health;
+        access_log  off;
     }
 }
-NGINXCONF
+NGINXEOF
 
-ln -sf /etc/nginx/sites-available/optimuscredit /etc/nginx/sites-enabled/
-rm -f /etc/nginx/sites-enabled/default
-nginx -t || error "Configuration nginx invalide."
-check_ok "nginx configuré (proxy inverse)"
+ln -sf /etc/nginx/sites-available/${APP_NAME} /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
 
-# ─── 16. Démarrage des services ───────────────────────────────────────────────
-echo ""
-echo -e "${BLUE}━━━ Démarrage des services ━━━${NC}"
+nginx -t || die "Configuration nginx invalide"
+log "nginx configuré (reverse proxy :80 → :${FRONTEND_PORT} + :${BACKEND_PORT})"
+
+# =============================================================================
+# 16. UFW — PARE-FEU
+# =============================================================================
+section "Pare-feu UFW"
+
+if command -v ufw &>/dev/null; then
+  ufw allow OpenSSH      2>/dev/null | grep -v '^$' | head -1 || true
+  ufw allow 'Nginx HTTP' 2>/dev/null | grep -v '^$' | head -1 || true
+  # Ports internes (5007, 3006, 5432, 6379) FERMÉS au WAN — accès via nginx uniquement
+  ufw --force enable 2>/dev/null | head -1 || true
+  log "UFW : SSH + HTTP/80 autorisés — ports internes protégés"
+else
+  warn "UFW non disponible — pare-feu non configuré"
+fi
+
+# =============================================================================
+# 17. DÉMARRAGE DES SERVICES
+# =============================================================================
+section "Démarrage des services"
+
 systemctl daemon-reload
-systemctl enable --now optimuscredit-backend
-systemctl enable --now optimuscredit-frontend
-systemctl reload nginx
-check_ok "Services démarrés et activés au boot"
 
-sleep 3
+for svc in ${APP_NAME}-backend ${APP_NAME}-frontend; do
+  systemctl enable "$svc"
+  systemctl restart "$svc"
+  sleep 3
+  if systemctl is-active --quiet "$svc"; then
+    log "$svc : ✔ actif"
+  else
+    warn "$svc : pas encore actif — journalctl -u $svc -n 30"
+  fi
+done
 
-# ─── 17. Vérification santé finale ───────────────────────────────────────────
-echo ""
-echo -e "${BLUE}━━━ Vérification santé ━━━${NC}"
-HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-  "http://127.0.0.1:5007/api/health" || echo "000")
-if [[ "$HEALTH_STATUS" == "200" ]]; then
-  check_ok "API backend : HTTP 200"
-else
-  check_warn "API backend : HTTP ${HEALTH_STATUS} — vérifiez : journalctl -u optimuscredit-backend -n 50"
-fi
+systemctl reload nginx && log "nginx rechargé"
 
-FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-  "http://127.0.0.1:3006" || echo "000")
-if [[ "$FRONTEND_STATUS" == "200" ]]; then
-  check_ok "Frontend : HTTP 200"
-else
-  check_warn "Frontend : HTTP ${FRONTEND_STATUS} — vérifiez : journalctl -u optimuscredit-frontend -n 50"
-fi
+# =============================================================================
+# 18. VÉRIFICATION SANTÉ FINALE
+# =============================================================================
+section "Vérification santé"
+sleep 5
 
-# ─── Résumé final ─────────────────────────────────────────────────────────────
+_check() {
+  local label="$1" url="$2"
+  local code
+  code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 8 "$url" || echo "000")
+  if [[ "$code" == "200" ]]; then
+    log "$label : HTTP $code ✔"
+  else
+    warn "$label : HTTP $code — vérifiez les logs"
+  fi
+}
+
+_check "API health (direct)"  "http://127.0.0.1:${BACKEND_PORT}/api/health"
+_check "Frontend (direct)"    "http://127.0.0.1:${FRONTEND_PORT}"
+_check "nginx :80 /api"       "http://127.0.0.1/api/health"
+_check "nginx :80 frontend"   "http://127.0.0.1/"
+
+# =============================================================================
+# RÉSUMÉ FINAL
+# =============================================================================
 echo ""
-echo -e "${GREEN}╔══════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║   OptimusCredit installé avec succès !   ║${NC}"
-echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
+echo -e "${GREEN}${BOLD}"
+echo "  ╔═══════════════════════════════════════════════════════╗"
+echo "  ║        OptimusCredit installé avec succès !           ║"
+echo "  ╚═══════════════════════════════════════════════════════╝"
+echo -e "${NC}"
+echo -e "  ${BOLD}Application${NC}  :  ${CYAN}http://${DOMAIN}${NC}"
+echo -e "  ${BOLD}API${NC}          :  ${CYAN}http://${DOMAIN}/api${NC}"
+echo -e "  ${BOLD}Health${NC}       :  ${CYAN}http://${DOMAIN}/api/health${NC}"
 echo ""
-echo -e "  ${BLUE}Application :${NC}  http://${MACHINE_IP}"
-echo -e "  ${BLUE}API Backend :${NC}  http://${MACHINE_IP}/api"
-echo -e "  ${BLUE}Health      :${NC}  http://${MACHINE_IP}/api/health"
+echo -e "  ${YELLOW}${BOLD}Comptes démo — mot de passe : demo123${NC}"
+echo "  ┌────────────────────────────────────┬──────────────────────────┐"
+echo "  │ admin@bank.sn                      │ Administrateur           │"
+echo "  │ resp.analyste@bank.sn              │ Responsable Analyste     │"
+echo "  │ fatou.ndiaye@bank.sn               │ Analyste Crédit          │"
+echo "  │ amadou.diop@bank.sn                │ Chargé d'Affaires        │"
+echo "  │ moussa.sarr@bank.sn                │ Directeur d'Agence       │"
+echo "  │ comite@bank.sn                     │ Comité de Crédit         │"
+echo "  │ direction@bank.sn                  │ Direction Générale       │"
+echo "  └────────────────────────────────────┴──────────────────────────┘"
 echo ""
-echo -e "${YELLOW}  Commandes utiles :${NC}"
-echo "    systemctl status optimuscredit-backend"
-echo "    systemctl status optimuscredit-frontend"
-echo "    journalctl -u optimuscredit-backend  -f"
-echo "    journalctl -u optimuscredit-frontend -f"
+echo -e "  ${YELLOW}${BOLD}Gestion des services${NC}"
+echo "    systemctl status  ${APP_NAME}-backend"
+echo "    systemctl status  ${APP_NAME}-frontend"
+echo "    systemctl restart ${APP_NAME}-backend"
+echo "    journalctl -u     ${APP_NAME}-backend  -f"
+echo "    journalctl -u     ${APP_NAME}-frontend -f"
 echo ""
-echo -e "${YELLOW}  Redémarrage après reboot :${NC} activé (systemctl enable)"
+echo -e "  ${YELLOW}${BOLD}Mise à jour${NC}"
+echo "    git pull && sudo bash install.sh --no-build=false --skip-seed"
 echo ""
-echo -e "${RED}  IMPORTANT — Sauvegardez ces informations :${NC}"
+echo -e "  ${RED}${BOLD}IMPORTANT — Sauvegardez ces informations :${NC}"
 echo "    DB_USER  = ${DB_USER}"
 echo "    DB_NAME  = ${DB_NAME}"
 echo "    DB_PASS  = ${DB_PASS}"
+echo "    Fichier  : ${BACKEND_ENV}"
 echo ""

@@ -311,12 +311,13 @@ model BackupLog {
 }
 
 enum UserRole {
-  ACCOUNT_MANAGER  @map("account_manager")
-  CREDIT_ANALYST   @map("credit_analyst")
-  BRANCH_MANAGER   @map("branch_manager")
-  CREDIT_COMMITTEE @map("credit_committee")
-  MANAGEMENT       @map("management")
-  ADMIN            @map("admin")
+  ACCOUNT_MANAGER    @map("account_manager")
+  CREDIT_ANALYST     @map("credit_analyst")
+  ANALYST_SUPERVISOR @map("analyst_supervisor")
+  BRANCH_MANAGER     @map("branch_manager")
+  CREDIT_COMMITTEE   @map("credit_committee")
+  MANAGEMENT         @map("management")
+  ADMIN              @map("admin")
 
   @@map("user_role")
 }

@@ -30,6 +30,7 @@ import notificationRuleRoutes from './routes/notification-rules';
 import notificationRoutes from './routes/notifications';
 import auditLogRoutes from './routes/audit-logs';
 import documentRoutes from './routes/documents';
+import dispatchingRoutes from './routes/dispatching';
 import { startScheduler } from './services/schedulerService';
 
 // Import middleware
@@ -193,6 +194,7 @@ app.use('/api/notification-rules', authenticate, notificationRuleRoutes);
 app.use('/api/notifications', authenticate, notificationRoutes);
 app.use('/api/audit-logs',   authenticate, auditLogRoutes);
 app.use('/api/documents',    authenticate, documentRoutes);
+app.use('/api/dispatching',  authenticate, dispatchingRoutes);
 
 // ─── Root endpoint ────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {

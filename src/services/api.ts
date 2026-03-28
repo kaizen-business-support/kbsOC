@@ -1313,6 +1313,45 @@ export const authPasswordApi = {
   },
 };
 
+// ─── Dispatching (Responsable Analyste) ──────────────────────────────────────
+export const dispatchingApi = {
+  async getWorkload(): Promise<ApiResponse<any[]>> {
+    try {
+      const res = await api.get('/dispatching/workload');
+      return { success: true, data: res.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur workload' };
+    }
+  },
+
+  async getPendingApplications(): Promise<ApiResponse<any[]>> {
+    try {
+      const res = await api.get('/dispatching/pending');
+      return { success: true, data: res.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur pending' };
+    }
+  },
+
+  async suggestAnalyst(applicationId: string): Promise<ApiResponse<any>> {
+    try {
+      const res = await api.get(`/dispatching/suggest/${applicationId}`);
+      return { success: true, data: res.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur suggestion' };
+    }
+  },
+
+  async assignAnalyst(applicationId: string, analystId: string, comment?: string): Promise<ApiResponse<any>> {
+    try {
+      const res = await api.post('/dispatching/assign', { applicationId, analystId, comment });
+      return { success: true, data: res.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur affectation' };
+    }
+  }
+};
+
 // Utility function to handle API errors
 export const handleApiError = (error: any): string => {
   if (error.response) {

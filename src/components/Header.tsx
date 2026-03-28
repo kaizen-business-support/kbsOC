@@ -69,6 +69,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
     backup: 'Sauvegarde & Restauration',
     announcements: 'Notes d\'information',
     'notifications-config': 'Configuration Notifications',
+    dispatching: 'Dispatching des Demandes',
   };
 
   const handleUserMenuClick = (event: React.MouseEvent<HTMLElement>) => {

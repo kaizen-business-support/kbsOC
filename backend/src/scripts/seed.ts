@@ -210,6 +210,22 @@ async function main() {
         lastLogin: new Date(),
         isActive: true
       }
+    }),
+
+    // Responsable Analyste
+    prisma.user.create({
+      data: {
+        id: 'user16',
+        email: 'resp.analyste@bank.sn',
+        passwordHash: hashedPassword,
+        name: 'Aminata Niang',
+        role: 'ANALYST_SUPERVISOR',
+        department: 'Risques',
+        jobTitle: 'Responsable Analyste Crédit',
+        permissions: ["dispatch_applications", "view_analyst_workload", "assign_analyst", "view_applications", "review_applications"],
+        lastLogin: new Date(),
+        isActive: true
+      }
     })
   ]);
 

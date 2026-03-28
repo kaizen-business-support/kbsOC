@@ -224,7 +224,10 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
     const d = loadFormDraft<any>(DRAFT_KEY);
     return d?.numberOfYears ?? 3;
   });
-  const [financialData, setFinancialData] = useState<Record<number, any>>({});
+  const [financialData, setFinancialData] = useState<Record<number, any>>(() => {
+    const d = loadFormDraft<any>(DRAFT_KEY);
+    return d?.financialData ?? {};
+  });
   const [financialDocuments, setFinancialDocuments] = useState<any[]>([]);
   const [pendingDocuments, setPendingDocuments] = useState<any[]>([]);
 
@@ -747,6 +750,89 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
               onDocumentsChange={setPendingDocuments}
               onDocumentProcessed={() => {}}
             />
+          </SectionCard>
+        )}
+
+        {/* ── STEP 4 : Résumé des données financières ─────────────────────────── */}
+        {activeStep === 4 && filledYears > 0 && (
+          <SectionCard
+            title="Résumé des données financières"
+            icon={<FinancialIcon sx={{ fontSize: 18, color: STEP_COLORS[2] }} />}
+            accent={STEP_COLORS[2]}
+          >
+            <Box sx={{ overflowX: 'auto' }}>
+              <Box
+                component="table"
+                sx={{
+                  width: '100%', borderCollapse: 'collapse',
+                  '& th, & td': { px: 2, py: 1.25, textAlign: 'right', fontSize: '0.8rem', borderBottom: '1px solid rgba(0,0,0,0.06)' },
+                  '& th': { fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', bgcolor: '#f8fafc' },
+                  '& td:first-of-type, & th:first-of-type': { textAlign: 'left' },
+                  '& tr:last-child td': { borderBottom: 'none' },
+                  '& tr:hover td': { bgcolor: '#f8fafc' },
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th>Indicateur</th>
+                    {financialYears.filter(y => !!financialData[y]).sort((a, b) => b - a).map(y => (
+                      <th key={y}>{y === referenceYear ? `${y} (N)` : `${y} (N-${referenceYear - y})`}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { key: 'chiffre_affaires',   label: "Chiffre d'affaires" },
+                    { key: 'resultat_net',        label: 'Résultat net' },
+                    { key: 'total_actif',         label: 'Total actif' },
+                    { key: 'capitaux_propres',    label: 'Capitaux propres' },
+                    { key: 'dettes_financieres',  label: 'Dettes financières' },
+                  ].map(({ key, label }) => (
+                    <tr key={key}>
+                      <td><Typography variant="body2" fontWeight={600}>{label}</Typography></td>
+                      {financialYears.filter(y => !!financialData[y]).sort((a, b) => b - a).map(y => {
+                        const entry = financialData[y];
+                        const d = entry?.multiyear_data?.N?.data ?? entry;
+                        const val = d?.[key];
+                        return (
+                          <td key={y}>
+                            <Typography variant="body2" color={key === 'resultat_net' && val < 0 ? 'error.main' : 'text.primary'}>
+                              {val != null ? formatCurrency(val) : '—'}
+                            </Typography>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                  <tr>
+                    <td colSpan={financialYears.filter(y => !!financialData[y]).length + 1}>
+                      <Box sx={{ height: 8 }} />
+                    </td>
+                  </tr>
+                  {[
+                    { key: 'netMargin',     label: 'Marge nette',       isRatio: true },
+                    { key: 'currentRatio',  label: 'Ratio de liquidité', isRatio: true },
+                    { key: 'roa',           label: 'ROA',               isRatio: true },
+                    { key: 'debtToEquity',  label: 'Dette / FP',        isRatio: true },
+                  ].map(({ key, label }) => (
+                    <tr key={key}>
+                      <td><Typography variant="body2" fontWeight={600} color="text.secondary">{label}</Typography></td>
+                      {financialYears.filter(y => !!financialData[y]).sort((a, b) => b - a).map(y => {
+                        const entry = financialData[y];
+                        const val = entry?.ratios?.[key];
+                        return (
+                          <td key={y}>
+                            <Typography variant="body2" color="text.secondary">
+                              {val != null ? (key === 'netMargin' || key === 'roa' ? `${(val * 100).toFixed(1)}%` : Number(val).toFixed(2)) : '—'}
+                            </Typography>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </Box>
+            </Box>
           </SectionCard>
         )}
 
