@@ -2151,9 +2151,6 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
               </Card>
             </Grid>
 
-            {/* Financial Summary — displayed just before preliminary analysis */}
-            {financialSummaryBlock}
-
             {/* Analysis & Recommendations */}
             {(preliminaryAnalysis?.overallAnalysis || preliminaryAnalysis?.recommendations) && (
               <Grid item xs={12}>
@@ -2221,6 +2218,9 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                 </Card>
               </Grid>
             )}
+
+            {/* Financial Summary — before comments */}
+            {financialSummaryBlock}
 
             {/* Comments from Workflow Steps */}
             {workflow?.steps && workflow.steps.length > 0 && (
