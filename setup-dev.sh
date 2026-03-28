@@ -138,6 +138,7 @@ cat > "$APP_DIR/.env" <<EOF
 HOST=0.0.0.0
 PORT=${FRONTEND_PORT}
 BROWSER=none
+DANGEROUSLY_DISABLE_HOST_CHECK=true
 EOF
 
 chown "${APP_USER}:${APP_USER}" "$BACKEND_DIR/.env" "$APP_DIR/.env"
@@ -167,14 +168,6 @@ tgt.forEach(function(f) {
   if (c !== u) { fs.writeFileSync(f, u); console.log('FIXED : ' + f); }
 });
 
-// Fix getApiBaseUrl in api.ts
-var apiTs = '${APP_DIR}/src/services/api.ts';
-if (fs.existsSync(apiTs)) {
-  var c = fs.readFileSync(apiTs, 'utf8');
-  var newFn = 'const getApiBaseUrl = (): string => {\n  return ' + bt + '\${window.location.origin}/api' + bt + ';\n};';
-  var u = c.replace(/const getApiBaseUrl[\s\S]*?\n\};/, newFn);
-  if (c !== u) { fs.writeFileSync(apiTs, u); console.log('FIXED : ' + apiTs); }
-}
 console.log('URL API : OK');
 "
 
