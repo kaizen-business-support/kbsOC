@@ -44,7 +44,7 @@ import optimusIcon from '../assets/Optimus_icon.png';
 import { TwoFactorSetup } from '../components/TwoFactorSetup';
 import { tokenManager, authPasswordApi } from '../services/api';
 
-const API_BASE = `${window.location.protocol}//${window.location.hostname}:${process.env.REACT_APP_API_PORT || '5007'}/api`;
+const API_BASE = `${window.location.origin}/api`;
 
 // ─── Keyframes ────────────────────────────────────────────────────────────────
 

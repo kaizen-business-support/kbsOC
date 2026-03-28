@@ -1,12 +1,9 @@
 import axios, { AxiosResponse } from 'axios';
 import { AnalysisData, FileUploadResult, ApiResponse } from '../types';
 
-// API Configuration - Always dynamic: uses the same host as the browser
+// API Configuration - Uses same origin as browser (proxied via nginx on port 80)
 const getApiBaseUrl = (): string => {
-  const protocol = window.location.protocol;
-  const hostname = window.location.hostname;
-  const apiPort = process.env.REACT_APP_API_PORT || '5007';
-  return `${protocol}//${hostname}:${apiPort}/api`;
+  return `${window.location.origin}/api`;
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -1360,6 +1357,13 @@ export const handleApiError = (error: any): string => {
   } else if (error.request) {
     // Request made but no response received
     return 'Erreur de connexion au serveur';
+  } else {
+    // Something else happened
+    return error.message || 'Erreur inconnue';
+  }
+};
+
+export default api; 'Erreur de connexion au serveur';
   } else {
     // Something else happened
     return error.message || 'Erreur inconnue';

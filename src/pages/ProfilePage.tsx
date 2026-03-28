@@ -43,7 +43,7 @@ import axios from 'axios';
 import { TwoFactorSetup } from '../components/TwoFactorSetup';
 import { tokenManager } from '../services/api';
 
-const API_BASE = `${window.location.protocol}//${window.location.hostname}:${process.env.REACT_APP_API_PORT || '5007'}/api`;
+const API_BASE = `${window.location.origin}/api`;
 
 interface ProfilePageProps {
   onNavigate?: (page: any) => void;

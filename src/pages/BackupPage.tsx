@@ -48,7 +48,7 @@ import axios from 'axios';
 import { tokenManager } from '../services/api';
 import { PageType } from '../types';
 
-const API_BASE = `${window.location.protocol}//${window.location.hostname}:${process.env.REACT_APP_API_PORT || '5007'}/api`;
+const API_BASE = `${window.location.origin}/api`;
 
 interface BackupFile {
   filename: string;
