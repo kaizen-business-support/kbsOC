@@ -181,12 +181,15 @@ console.log('URL API : OK');
 # =============================================================================
 # 6. INSTALLATION NPM
 # =============================================================================
-section "6. npm install — backend"
+section "6. npm install"
+
+# Réattribuer la propriété avant npm install
+chown -R "${APP_USER}:${APP_USER}" "$APP_DIR"
+
 cd "$BACKEND_DIR"
 sudo -u "$APP_USER" npm install
 log "Backend : dépendances installées"
 
-section "6. npm install — frontend"
 cd "$APP_DIR"
 sudo -u "$APP_USER" npm install
 log "Frontend : dépendances installées"
