@@ -126,10 +126,11 @@ export async function createBackup(
     const out = fs.createWriteStream(filePath);
     const gzip = createGzip();
 
+    if (!pg.stdout) throw new Error('pg_dump stdout non disponible');
     pg.stdout.pipe(gzip).pipe(out);
 
     let stderr = '';
-    pg.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+    pg.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
 
     pg.on('error', (err) => {
       reject(new Error(`pg_dump spawn failed: ${err.message}`));
@@ -230,7 +231,7 @@ export async function restoreBackup(filename: string): Promise<void> {
     input.pipe(gunzip).pipe(psql.stdin);
 
     let stderr = '';
-    psql.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+    psql.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
 
     psql.on('error', reject);
     psql.on('close', (code) => {
