@@ -403,191 +403,6 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
     };
   };
 
-  // ── Financial summary block (computed before render) ────────────────────────
-  const financialSummaryBlock = (() => {
-    if (allYearsData.length === 0) return null;
-    const latest = allYearsData[allYearsData.length - 1];
-    const prev   = allYearsData.length >= 2 ? allYearsData[allYearsData.length - 2] : null;
-
-    const ca         = getNumericValue(latest.data, 'chiffre_affaires');
-    const rn         = getNumericValue(latest.data, 'resultat_net');
-    const ta         = getNumericValue(latest.data, 'total_actif') || computeBalanceTotals(latest.data).totalActif;
-    const cp         = getNumericValue(latest.data, 'capitaux_propres');
-    const df         = getNumericValue(latest.data, 'dettes_financieres');
-    const stocks     = getNumericValue(latest.data, 'stocks');
-    const creances   = getNumericValue(latest.data, 'creances_clients');
-    const fourn      = getNumericValue(latest.data, 'dettes_fournisseurs');
-    const treso      = getNumericValue(latest.data, 'tresorerie_actif') || getNumericValue(latest.data, 'tresorerie');
-
-    const marge  = ca > 0 ? (rn / ca) * 100 : 0;
-    const roa    = ta > 0 ? (rn / ta) * 100  : 0;
-    const dte    = cp > 0 ? df / cp           : 0;
-    const lcr    = fourn > 0 ? (stocks + creances + treso) / fourn : 0;
-
-    const prevCa   = prev ? getNumericValue(prev.data, 'chiffre_affaires') : 0;
-    const caGrowth = prevCa > 0 && ca > 0 ? ((ca - prevCa) / prevCa) * 100 : null;
-    const revenueGrowth: number | null = latest.ratios?.revenueGrowth != null
-      ? Number(latest.ratios.revenueGrowth) : (caGrowth ?? null);
-
-    const trafficLight = (v: number, good: number, warn: number, reverse = false): string => {
-      if (reverse) return v <= good ? '#22c55e' : v <= warn ? '#f59e0b' : '#ef4444';
-      return v >= good ? '#22c55e' : v >= warn ? '#f59e0b' : '#ef4444';
-    };
-
-    const kpis = [
-      {
-        label: 'Chiffre d\'Affaires', val: formatCurrency(ca),
-        sub: caGrowth !== null ? `${caGrowth >= 0 ? '+' : ''}${caGrowth.toFixed(1)}% vs N-1` : `Exercice ${latest.year}`,
-        subColor: caGrowth !== null ? (caGrowth >= 0 ? '#16a34a' : '#dc2626') : '#6b7280',
-        color: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe',
-      },
-      {
-        label: 'Résultat Net', val: formatCurrency(rn),
-        sub: `Marge ${marge.toFixed(1)}%`,
-        subColor: marge >= 5 ? '#16a34a' : marge >= 2 ? '#d97706' : '#dc2626',
-        color: rn >= 0 ? '#15803d' : '#dc2626', bg: rn >= 0 ? '#f0fdf4' : '#fef2f2', border: rn >= 0 ? '#bbf7d0' : '#fecaca',
-      },
-      {
-        label: 'Total Actif', val: formatCurrency(ta),
-        sub: `Fonds propres ${formatCurrency(cp)}`,
-        subColor: '#6b7280', color: '#7c3aed', bg: '#faf5ff', border: '#ddd6fe',
-      },
-      {
-        label: 'Dettes Financières', val: formatCurrency(df),
-        sub: `Levier D/CP : ${dte.toFixed(2)}x`,
-        subColor: dte <= 1.5 ? '#16a34a' : dte <= 3 ? '#d97706' : '#dc2626',
-        color: dte <= 1.5 ? '#15803d' : dte <= 3 ? '#b45309' : '#dc2626',
-        bg: dte <= 1.5 ? '#f0fdf4' : dte <= 3 ? '#fffbeb' : '#fef2f2',
-        border: dte <= 1.5 ? '#bbf7d0' : dte <= 3 ? '#fde68a' : '#fecaca',
-      },
-    ];
-
-    const badges = [
-      { label: 'Liquidité générale', val: lcr.toFixed(2) + 'x', color: trafficLight(lcr, 1.5, 1.0) },
-      { label: 'Marge nette',       val: marge.toFixed(1) + '%', color: trafficLight(marge, 5, 2) },
-      { label: 'ROA',               val: roa.toFixed(1) + '%',   color: trafficLight(roa, 5, 2) },
-      { label: 'Levier D/CP',       val: dte.toFixed(2) + 'x',   color: trafficLight(dte, 1.5, 3, true) },
-      ...(revenueGrowth !== null ? [{
-        label: 'Croissance CA',
-        val: (revenueGrowth >= 0 ? '+' : '') + revenueGrowth.toFixed(1) + '%',
-        color: trafficLight(revenueGrowth, 5, 0),
-      }] : []),
-    ];
-
-    return (
-      <Grid item xs={12}>
-        <Card sx={{ border: '2px solid #e0e7ff', borderRadius: 3, background: 'linear-gradient(135deg, #f0f4ff 0%, #fafbff 100%)' }}>
-          <CardContent sx={{ pb: '16px !important' }}>
-            {/* Header */}
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Box sx={{ width: 4, height: 24, bgcolor: '#3b82f6', borderRadius: 1 }} />
-                <Typography variant="h6" sx={{ fontWeight: 700, color: '#1e3a5f', fontSize: '0.95rem' }}>
-                  Synthèse Financière — Données de Référence
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Chip label={`Exercice ${latest.year}`} size="small"
-                  sx={{ fontWeight: 600, bgcolor: '#1d4ed8', color: 'white', fontSize: '0.7rem' }} />
-                {allYearsData.length > 1 && (
-                  <Chip label={`${allYearsData.length} exercices`} size="small" variant="outlined"
-                    sx={{ borderColor: '#93c5fd', color: '#1d4ed8', fontSize: '0.7rem' }} />
-                )}
-              </Box>
-            </Box>
-
-            {/* KPI cards */}
-            <Grid container spacing={1.5} sx={{ mb: 2 }}>
-              {kpis.map((k, i) => (
-                <Grid item xs={6} md={3} key={i}>
-                  <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: k.bg, border: `1px solid ${k.border}`, height: '100%' }}>
-                    <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 500, display: 'block', mb: 0.25, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      {k.label}
-                    </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 700, color: k.color, fontSize: '0.82rem', lineHeight: 1.2, mb: 0.5 }}>
-                      {k.val}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: k.subColor, fontWeight: 500, fontSize: '0.68rem' }}>
-                      {k.sub}
-                    </Typography>
-                  </Box>
-                </Grid>
-              ))}
-            </Grid>
-
-            {/* Traffic light badges */}
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: allYearsData.length > 1 ? 2 : 0 }}>
-              {badges.map((b, i) => (
-                <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 1.5, py: 0.5, borderRadius: 5, bgcolor: 'white', border: '1px solid #e2e8f0' }}>
-                  <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: b.color, flexShrink: 0 }} />
-                  <Typography variant="caption" sx={{ color: '#374151', fontSize: '0.72rem' }}>{b.label}</Typography>
-                  <Typography variant="caption" sx={{ fontWeight: 700, color: b.color, fontSize: '0.72rem' }}>{b.val}</Typography>
-                </Box>
-              ))}
-            </Box>
-
-            {/* Multi-year evolution table */}
-            {allYearsData.length > 1 && (
-              <Box sx={{ borderTop: '1px solid #e0e7ff', pt: 1.5 }}>
-                <Typography variant="caption" sx={{ fontWeight: 600, color: '#1e3a5f', mb: 1, display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem' }}>
-                  Évolution pluriannuelle
-                </Typography>
-                <TableContainer>
-                  <Table size="small" sx={{ '& td, & th': { py: 0.5, px: 1, fontSize: '0.75rem', borderColor: '#e0e7ff' } }}>
-                    <TableHead>
-                      <TableRow sx={{ bgcolor: '#e0e7ff' }}>
-                        <TableCell sx={{ fontWeight: 600, color: '#1e3a5f' }}>Indicateur</TableCell>
-                        {allYearsData.map(({ year }) => (
-                          <TableCell key={year} align="right" sx={{ fontWeight: 600, color: '#1e3a5f' }}>{year}</TableCell>
-                        ))}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {([
-                        { label: 'Chiffre d\'Affaires', field: 'chiffre_affaires' },
-                        { label: 'Résultat Net',        field: 'resultat_net' },
-                        { label: 'Total Actif',         field: 'total_actif' },
-                        { label: 'Capitaux Propres',    field: 'capitaux_propres' },
-                      ] as { label: string; field: string }[]).map((row, ri) => (
-                        <TableRow key={ri} sx={{ '&:nth-of-type(odd)': { bgcolor: '#f8faff' } }}>
-                          <TableCell sx={{ color: '#374151', fontWeight: 500 }}>{row.label}</TableCell>
-                          {allYearsData.map(({ year, data: yd }, yi) => {
-                            const v = row.field === 'total_actif'
-                              ? (getNumericValue(yd, 'total_actif') || computeBalanceTotals(yd).totalActif)
-                              : getNumericValue(yd, row.field);
-                            const pvd = yi > 0 ? allYearsData[yi - 1].data : null;
-                            const pv  = pvd ? (row.field === 'total_actif'
-                              ? (getNumericValue(pvd, 'total_actif') || computeBalanceTotals(pvd).totalActif)
-                              : getNumericValue(pvd, row.field)) : null;
-                            const g = pv && pv > 0 ? ((v - pv) / pv) * 100 : null;
-                            return (
-                              <TableCell key={year} align="right">
-                                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                                  <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.72rem' }}>
-                                    {formatCurrency(v)}
-                                  </Typography>
-                                  {g !== null && (
-                                    <Typography variant="caption" sx={{ fontSize: '0.62rem', color: g >= 0 ? '#16a34a' : '#dc2626', fontWeight: 500 }}>
-                                      {g >= 0 ? '▲' : '▼'} {Math.abs(g).toFixed(1)}%
-                                    </Typography>
-                                  )}
-                                </Box>
-                              </TableCell>
-                            );
-                          })}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Box>
-            )}
-          </CardContent>
-        </Card>
-      </Grid>
-    );
-  })();
-
   return (
     <Dialog
       open={open}
@@ -2152,7 +1967,207 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
             </Grid>
 
             {/* Financial Summary — displayed just before preliminary analysis */}
-            {financialSummaryBlock}
+            {allYearsData.length > 0 && (() => {
+              const latest = allYearsData[allYearsData.length - 1];
+              const prev   = allYearsData.length >= 2 ? allYearsData[allYearsData.length - 2] : null;
+
+              const ca      = getNumericValue(latest.data, 'chiffre_affaires');
+              const rn      = getNumericValue(latest.data, 'resultat_net');
+              const ta      = getNumericValue(latest.data, 'total_actif') || computeBalanceTotals(latest.data).totalActif;
+              const cp      = getNumericValue(latest.data, 'capitaux_propres');
+              const df      = getNumericValue(latest.data, 'dettes_financieres');
+              const stocks  = getNumericValue(latest.data, 'stocks');
+              const creances = getNumericValue(latest.data, 'creances_clients');
+              const detteFourn = getNumericValue(latest.data, 'dettes_fournisseurs');
+              const tresoActif = getNumericValue(latest.data, 'tresorerie_actif') || getNumericValue(latest.data, 'tresorerie');
+
+              const marge   = ca > 0 ? ((rn / ca) * 100) : 0;
+              const roa     = ta > 0 ? ((rn / ta) * 100) : 0;
+              const dte     = cp > 0 ? (df / cp) : 0;
+              const lcr     = detteFourn > 0 ? ((stocks + creances + tresoActif) / detteFourn) : 0;
+
+              const prevCa  = prev ? getNumericValue(prev.data, 'chiffre_affaires') : 0;
+              const caGrowth = (prevCa > 0 && ca > 0) ? ((ca - prevCa) / prevCa * 100) : null;
+              const prevRn  = prev ? getNumericValue(prev.data, 'resultat_net') : 0;
+
+              const kpi = (value: number, good: number, warn: number, rev = false): 'success' | 'warning' | 'error' => {
+                const ok = rev ? value <= good : value >= good;
+                const mid = rev ? value <= warn : value >= warn;
+                return ok ? 'success' : mid ? 'warning' : 'error';
+              };
+
+              const dot = (color: 'success' | 'warning' | 'error') => ({
+                success: '#22c55e', warning: '#f59e0b', error: '#ef4444'
+              }[color]);
+
+              return (
+                <Grid item xs={12}>
+                  <Card sx={{
+                    border: '2px solid #e0e7ff',
+                    borderRadius: 3,
+                    background: 'linear-gradient(135deg, #f0f4ff 0%, #fafbff 100%)',
+                  }}>
+                    <CardContent sx={{ pb: '16px !important' }}>
+                      {/* Header */}
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box sx={{ width: 4, height: 24, bgcolor: '#3b82f6', borderRadius: 1 }} />
+                          <Typography variant="h6" sx={{ fontWeight: 700, color: '#1e3a5f', fontSize: '0.95rem' }}>
+                            Synthèse Financière — Données de Référence
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                          <Chip label={`Exercice ${latest.year}`} size="small"
+                            sx={{ fontWeight: 600, bgcolor: '#1d4ed8', color: 'white', fontSize: '0.7rem' }} />
+                          {allYearsData.length > 1 && (
+                            <Chip label={`${allYearsData.length} exercices analysés`} size="small" variant="outlined"
+                              sx={{ fontWeight: 500, borderColor: '#93c5fd', color: '#1d4ed8', fontSize: '0.7rem' }} />
+                          )}
+                        </Box>
+                      </Box>
+
+                      {/* KPI Row */}
+                      <Grid container spacing={1.5} sx={{ mb: 2 }}>
+                        {[
+                          {
+                            label: 'Chiffre d\'Affaires', value: formatCurrency(ca),
+                            sub: caGrowth !== null ? `${caGrowth >= 0 ? '+' : ''}${caGrowth.toFixed(1)}% vs N-1` : `Exercice ${latest.year}`,
+                            subColor: caGrowth !== null ? (caGrowth >= 0 ? '#16a34a' : '#dc2626') : '#6b7280',
+                            color: '#1d4ed8', bg: '#eff6ff',
+                          },
+                          {
+                            label: 'Résultat Net', value: formatCurrency(rn),
+                            sub: `Marge ${marge.toFixed(1)}%`,
+                            subColor: marge >= 5 ? '#16a34a' : marge >= 2 ? '#d97706' : '#dc2626',
+                            color: rn >= 0 ? '#15803d' : '#dc2626', bg: rn >= 0 ? '#f0fdf4' : '#fef2f2',
+                          },
+                          {
+                            label: 'Total Actif', value: formatCurrency(ta),
+                            sub: `Fonds propres ${formatCurrency(cp)}`,
+                            subColor: '#6b7280',
+                            color: '#7c3aed', bg: '#faf5ff',
+                          },
+                          {
+                            label: 'Dettes Financières', value: formatCurrency(df),
+                            sub: `Ratio D/CP : ${dte.toFixed(2)}x`,
+                            subColor: dte <= 1.5 ? '#16a34a' : dte <= 3 ? '#d97706' : '#dc2626',
+                            color: dte <= 1.5 ? '#15803d' : dte <= 3 ? '#b45309' : '#dc2626',
+                            bg: dte <= 1.5 ? '#f0fdf4' : dte <= 3 ? '#fffbeb' : '#fef2f2',
+                          },
+                        ].map((k, i) => (
+                          <Grid item xs={6} md={3} key={i}>
+                            <Box sx={{
+                              p: 1.5, borderRadius: 2, bgcolor: k.bg,
+                              border: '1px solid', borderColor: k.bg === '#eff6ff' ? '#bfdbfe' :
+                                k.bg === '#f0fdf4' ? '#bbf7d0' : k.bg === '#faf5ff' ? '#ddd6fe' :
+                                k.bg === '#fef2f2' ? '#fecaca' : '#fde68a',
+                              height: '100%',
+                            }}>
+                              <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 500, display: 'block', mb: 0.25, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                {k.label}
+                              </Typography>
+                              <Typography variant="body2" sx={{ fontWeight: 700, color: k.color, fontSize: '0.82rem', lineHeight: 1.2, mb: 0.5 }}>
+                                {k.value}
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: k.subColor, fontWeight: 500, fontSize: '0.68rem' }}>
+                                {k.sub}
+                              </Typography>
+                            </Box>
+                          </Grid>
+                        ))}
+                      </Grid>
+
+                      {/* Ratios rapides */}
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: allYearsData.length > 1 ? 2 : 0 }}>
+                        {[
+                          { label: 'Liquidité générale', val: lcr.toFixed(2) + 'x', color: kpi(lcr, 1.5, 1.0) },
+                          { label: 'Marge nette', val: marge.toFixed(1) + '%', color: kpi(marge, 5, 2) },
+                          { label: 'ROA', val: roa.toFixed(1) + '%', color: kpi(roa, 5, 2) },
+                          { label: 'Levier D/CP', val: dte.toFixed(2) + 'x', color: kpi(dte, 1.5, 3, true) },
+                          ...(latest.ratios?.revenueGrowth !== undefined ? [{
+                            label: 'Croissance CA',
+                            val: (latest.ratios.revenueGrowth >= 0 ? '+' : '') + Number(latest.ratios.revenueGrowth).toFixed(1) + '%',
+                            color: kpi(Number(latest.ratios.revenueGrowth), 5, 0) as 'success' | 'warning' | 'error',
+                          }] : []),
+                        ].map((r, i) => (
+                          <Box key={i} sx={{
+                            display: 'flex', alignItems: 'center', gap: 0.75,
+                            px: 1.5, py: 0.5, borderRadius: 5,
+                            bgcolor: 'white', border: '1px solid #e2e8f0',
+                          }}>
+                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: dot(r.color), flexShrink: 0 }} />
+                            <Typography variant="caption" sx={{ color: '#374151', fontSize: '0.72rem' }}>
+                              {r.label}
+                            </Typography>
+                            <Typography variant="caption" sx={{ fontWeight: 700, color: dot(r.color), fontSize: '0.72rem' }}>
+                              {r.val}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Box>
+
+                      {/* Évolution multi-années */}
+                      {allYearsData.length > 1 && (
+                        <Box sx={{ borderTop: '1px solid #e0e7ff', pt: 1.5 }}>
+                          <Typography variant="caption" sx={{ fontWeight: 600, color: '#1e3a5f', mb: 1, display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.65rem' }}>
+                            Évolution pluriannuelle
+                          </Typography>
+                          <TableContainer>
+                            <Table size="small" sx={{ '& td, & th': { py: 0.5, px: 1, fontSize: '0.75rem', borderColor: '#e0e7ff' } }}>
+                              <TableHead>
+                                <TableRow sx={{ bgcolor: '#e0e7ff' }}>
+                                  <TableCell sx={{ fontWeight: 600, color: '#1e3a5f' }}>Indicateur</TableCell>
+                                  {allYearsData.map(({ year }) => (
+                                    <TableCell key={year} align="right" sx={{ fontWeight: 600, color: '#1e3a5f' }}>{year}</TableCell>
+                                  ))}
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {[
+                                  { label: 'Chiffre d\'Affaires', field: 'chiffre_affaires', fmt: 'currency' },
+                                  { label: 'Résultat Net', field: 'resultat_net', fmt: 'currency' },
+                                  { label: 'Total Actif', field: 'total_actif', fmt: 'currency' },
+                                  { label: 'Capitaux Propres', field: 'capitaux_propres', fmt: 'currency' },
+                                ].map((row, i) => (
+                                  <TableRow key={i} sx={{ '&:nth-of-type(odd)': { bgcolor: '#f8faff' } }}>
+                                    <TableCell sx={{ color: '#374151', fontWeight: 500 }}>{row.label}</TableCell>
+                                    {allYearsData.map(({ year, data: yd }, yi) => {
+                                      const v = row.field === 'total_actif'
+                                        ? (getNumericValue(yd, 'total_actif') || computeBalanceTotals(yd).totalActif)
+                                        : getNumericValue(yd, row.field);
+                                      const prevV = yi > 0
+                                        ? (row.field === 'total_actif'
+                                          ? (getNumericValue(allYearsData[yi - 1].data, 'total_actif') || computeBalanceTotals(allYearsData[yi - 1].data).totalActif)
+                                          : getNumericValue(allYearsData[yi - 1].data, row.field))
+                                        : null;
+                                      const growth = (prevV && prevV > 0) ? ((v - prevV) / prevV * 100) : null;
+                                      return (
+                                        <TableCell key={year} align="right">
+                                          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                                            <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.72rem' }}>
+                                              {formatCurrency(v)}
+                                            </Typography>
+                                            {growth !== null && (
+                                              <Typography variant="caption" sx={{ fontSize: '0.62rem', color: growth >= 0 ? '#16a34a' : '#dc2626', fontWeight: 500 }}>
+                                                {growth >= 0 ? '▲' : '▼'} {Math.abs(growth).toFixed(1)}%
+                                              </Typography>
+                                            )}
+                                          </Box>
+                                        </TableCell>
+                                      );
+                                    })}
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        </Box>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              );
+            })()}
 
             {/* Analysis & Recommendations */}
             {(preliminaryAnalysis?.overallAnalysis || preliminaryAnalysis?.recommendations) && (
