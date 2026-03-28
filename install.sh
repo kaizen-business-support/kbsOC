@@ -167,10 +167,16 @@ done
 DB_PASS="${OPT_DB_PASS:-}"
 
 if [[ -z "$DB_PASS" && -f "$BACKEND_ENV" ]]; then
-  _existing=$(grep -E '^DATABASE_URL=' "$BACKEND_ENV" \
+  # Extraire proprement : supprimer guillemets éventuels AVANT d'appliquer sed
+  _raw_url=$(grep -E '^DATABASE_URL=' "$BACKEND_ENV" \
+    | cut -d= -f2- | tr -d '"'"'" | tr -d ' ')
+  _existing=$(echo "$_raw_url" \
     | sed -E 's|postgresql://[^:]+:([^@]+)@.*|\1|' || true)
-  [[ -n "$_existing" ]] && DB_PASS="$_existing" \
-    && warn "Mot de passe DB récupéré depuis backend/.env existant"
+  # Valider que _existing est bien un mot de passe (pas une URL complète)
+  if [[ -n "$_existing" && "$_existing" != postgresql* && "$_existing" != *"://"* ]]; then
+    DB_PASS="$_existing"
+    warn "Mot de passe DB récupéré depuis backend/.env existant"
+  fi
 fi
 [[ -z "$DB_PASS" ]] && DB_PASS=$(openssl rand -base64 24 | tr -d '+/=')
 
