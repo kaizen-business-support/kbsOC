@@ -331,12 +331,26 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
         if (realAppId && pendingDocuments.length > 0) {
           const token = localStorage.getItem('optimus_access_token');
           const uploadUrl = `${window.location.origin}/api/documents/${realAppId}/upload`;
+          let uploadErrors = 0;
           for (const doc of pendingDocuments) {
             if (!doc.file) continue;
             const fd = new FormData();
             fd.append('documents', doc.file, doc.name);
             fd.append('category', (doc.category || 'other').toUpperCase());
-            await fetch(uploadUrl, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd }).catch(console.error);
+            try {
+              const up = await fetch(uploadUrl, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+              if (!up.ok) {
+                uploadErrors++;
+                const err = await up.json().catch(() => ({}));
+                console.error('Upload failed:', up.status, err);
+              }
+            } catch (e) {
+              uploadErrors++;
+              console.error('Upload network error:', e);
+            }
+          }
+          if (uploadErrors > 0) {
+            console.warn(`${uploadErrors} document(s) n'ont pas pu être téléversés.`);
           }
         }
         onNavigate('workflow');

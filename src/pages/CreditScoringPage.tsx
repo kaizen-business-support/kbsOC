@@ -149,6 +149,7 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
 
   const [activeStep, setActiveStep] = useState(applicationId ? 2 : 0); // Start at step 2 (Analyse Crédit) if applicationId present
   const [currentTab, setCurrentTab] = useState(0);
+  const [pendingDocuments, setPendingDocuments] = useState<any[]>([]);
   const [financialScore, setFinancialScore] = useState<number>(0);
   const [analystScore, setAnalystScore] = useState<number>(0);
   const [overallScore, setOverallScore] = useState<number>(0);
@@ -402,7 +403,37 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
 
         if (response.success) {
           console.log('✅ Application updated successfully:', response.data);
-          alert('Analyse sauvegardée avec succès!');
+
+          // Upload any pending documents to the server
+          const docsToUpload = pendingDocuments.filter(d => d.file);
+          if (docsToUpload.length > 0) {
+            const token = localStorage.getItem('optimus_access_token');
+            const uploadBase = `${window.location.origin}/api/documents/${applicationId}/upload`;
+            let uploadErrors = 0;
+            for (const doc of docsToUpload) {
+              const fd = new FormData();
+              fd.append('documents', doc.file, doc.name);
+              fd.append('category', (doc.category || 'other').toUpperCase());
+              try {
+                const up = await fetch(uploadBase, {
+                  method: 'POST',
+                  headers: { Authorization: `Bearer ${token}` },
+                  body: fd,
+                });
+                if (!up.ok) uploadErrors++;
+              } catch (e) {
+                uploadErrors++;
+                console.error('Document upload error:', e);
+              }
+            }
+            if (uploadErrors > 0) {
+              alert(`Analyse sauvegardée. Attention : ${uploadErrors} document(s) n'ont pas pu être téléversés.`);
+            } else {
+              alert('Analyse et documents sauvegardés avec succès !');
+            }
+          } else {
+            alert('Analyse sauvegardée avec succès!');
+          }
         } else {
           console.error('❌ Failed to update application:', response.error);
           alert('Erreur lors de la sauvegarde de l\'analyse: ' + response.error);
@@ -1416,9 +1447,10 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
 
             {/* Documents Tab */}
             {currentTab === 3 && (
-              <DocumentManager 
-                clientId="client-001"
-                applicationId="CR-2024-001"
+              <DocumentManager
+                clientId={selectedClientId || 'new'}
+                applicationId={applicationId || undefined}
+                onDocumentsChange={setPendingDocuments}
                 onDocumentProcessed={(document) => {
                   console.log('Document processed:', document);
                 }}

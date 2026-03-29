@@ -98,6 +98,9 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   // Documents tab state
   const [documents, setDocuments] = useState<any[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
+  const [docsUploading, setDocsUploading] = useState(false);
+  const [docsUploadError, setDocsUploadError] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [previewDoc, setPreviewDoc] = useState<any | null>(null);
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -174,12 +177,57 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
     }
   }, []);
 
+  const uploadDocuments = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0 || !workflow?.applicationId) return;
+    setDocsUploading(true);
+    setDocsUploadError(null);
+    const token = localStorage.getItem('optimus_access_token');
+    let hadError = false;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fd = new FormData();
+      fd.append('documents', file, file.name);
+      fd.append('category', 'OTHER');
+      try {
+        const resp = await fetch(`${getApiBase()}/documents/${workflow.applicationId}/upload`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          hadError = true;
+          setDocsUploadError(`Erreur ${resp.status} — ${err.error || err.message || 'Échec du téléversement'}`);
+        }
+      } catch (e: any) {
+        hadError = true;
+        setDocsUploadError('Erreur réseau lors du téléversement');
+      }
+    }
+    setDocsUploading(false);
+    if (!hadError) {
+      fetchDocuments(workflow.applicationId);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [workflow?.applicationId, fetchDocuments]);
+
   const closePreview = useCallback(() => {
     if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
     setPreviewDoc(null);
     setPreviewBlobUrl(null);
     setPreviewError(null);
   }, [previewBlobUrl]);
+
+  // Reset state when dialog opens for a different workflow
+  useEffect(() => {
+    if (open) {
+      setActiveTab(0);
+      setDocuments([]);
+      setComments('');
+      setSubmitError(null);
+      setSubmitSuccess(null);
+    }
+  }, [open, workflow?.applicationId]);
 
   useEffect(() => {
     if (activeTab === 5 && workflow?.applicationId) {
@@ -2175,19 +2223,48 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
 
         {/* Tab 5: Documents */}
         <TabPanel value={activeTab} index={5}>
-          <Typography variant="h6" gutterBottom>
-            Documents justificatifs
-          </Typography>
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.doc,.docx"
+            style={{ display: 'none' }}
+            onChange={(e) => uploadDocuments(e.target.files)}
+          />
+
+          {/* Header row: title + upload button */}
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Typography variant="h6">Documents justificatifs</Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={docsUploading ? <CircularProgress size={14} /> : <DownloadIcon sx={{ transform: 'rotate(180deg)' }} />}
+              disabled={docsUploading}
+              onClick={() => fileInputRef.current?.click()}
+              sx={{ borderRadius: 6, textTransform: 'none', fontSize: '13px', px: 2 }}
+            >
+              {docsUploading ? 'Envoi…' : 'Ajouter des fichiers'}
+            </Button>
+          </Box>
+
+          {docsUploadError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setDocsUploadError(null)}>
+              {docsUploadError}
+            </Alert>
+          )}
 
           {docsLoading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
               <CircularProgress />
             </Box>
           ) : documents.length === 0 ? (
-            <Alert severity="info">Aucun document justificatif n'a été joint à cette demande.</Alert>
+            <Alert severity="info">
+              Aucun document joint à cette demande. Cliquez sur « Ajouter des fichiers » pour en téléverser.
+            </Alert>
           ) : (
-            <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none' }}>
-              <Table size="small">
+            <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none', overflowX: 'auto' }}>
+              <Table size="small" sx={{ minWidth: 560 }}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: '#f8fafc' }}>
                     <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Nom du fichier</TableCell>
@@ -2195,7 +2272,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                     <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Taille</TableCell>
                     <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Ajouté par</TableCell>
                     <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Date</TableCell>
-                    <TableCell align="center" sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Aperçu</TableCell>
+                    <TableCell align="center" sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -2237,7 +2314,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                               </Tooltip>
                             )}
                             <Tooltip title="Télécharger">
-                              <IconButton size="small" color="default" onClick={() => downloadDoc(doc)}>
+                              <IconButton size="small" onClick={() => downloadDoc(doc)}>
                                 <DownloadIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
