@@ -27,10 +27,6 @@ import {
   TableRow,
   Tabs,
   Tab,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
   Autocomplete,
 } from '@mui/material';
 import {
@@ -42,6 +38,11 @@ import {
   Cancel as CancelIcon,
   BarChart as BarChartIcon,
   AccountBalance as BankIcon,
+  Business as BusinessIcon,
+  FolderOpen as FolderOpenIcon,
+  Send as SendIcon,
+  ArrowForward as NextIcon,
+  ArrowBack as BackIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { IndustryBenchmarking } from '../components/IndustryBenchmarking';
@@ -50,6 +51,70 @@ import { DocumentManager } from '../components/DocumentManager';
 import { FinancialDataInputTabs } from '../components/FinancialDataInputTabs';
 import { ApiService } from '../services/api';
 import { Client, WorkflowTimestamps, WorkflowStep } from '../types';
+
+// ─── Design tokens (alignés avec CreditApplicationPage) ──────────────────────
+const BG_SC = '#f7f8fc';
+const CARD_SHADOW_SC = '0 2px 24px rgba(0,0,0,0.07)';
+const CARD_RADIUS_SC = 20;
+const STEP_COLORS_SC = ['#1565c0', '#0277bd', '#00695c', '#4527a0'];
+
+const SCORING_STEPS = [
+  { label: 'Informations Client',   icon: BusinessIcon,   subtitle: 'Sélection et données client' },
+  { label: 'Documents & Options',   icon: FolderOpenIcon, subtitle: 'Pièces justificatives & paramètres' },
+  { label: 'Analyse Crédit',        icon: BarChartIcon,   subtitle: 'Scoring financier & évaluation' },
+  { label: 'Révision & Soumission', icon: SendIcon,       subtitle: 'Récapitulatif & envoi' },
+];
+
+// ─── Indicateur d'étapes horizontal ───────────────────────────────────────────
+const ScoringStepIndicator: React.FC<{
+  activeStep: number; isStepComplete: (i: number) => boolean;
+}> = ({ activeStep, isStepComplete }) => (
+  <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 5, px: 1 }}>
+    {SCORING_STEPS.map((step, i) => {
+      const done = isStepComplete(i) && i < activeStep;
+      const active = i === activeStep;
+      const color = STEP_COLORS_SC[i];
+      const Icon = step.icon;
+      return (
+        <React.Fragment key={i}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 64 }}>
+            <Box sx={{
+              width: 48, height: 48, borderRadius: '50%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              bgcolor: done ? '#e8f5e9' : active ? color : '#f0f2f5',
+              border: '2px solid',
+              borderColor: done ? '#a5d6a7' : active ? color : 'transparent',
+              boxShadow: active ? `0 4px 16px ${color}40` : 'none',
+              transition: 'all 0.35s cubic-bezier(0.4,0,0.2,1)',
+            }}>
+              {done
+                ? <CheckCircleIcon sx={{ fontSize: 22, color: '#2e7d32' }} />
+                : <Icon sx={{ fontSize: 20, color: active ? 'white' : '#94a3b8' }} />
+              }
+            </Box>
+            <Typography variant="caption" sx={{
+              mt: 0.75, fontWeight: active ? 700 : 500,
+              color: active ? color : done ? '#2e7d32' : '#94a3b8',
+              textAlign: 'center', lineHeight: 1.2,
+              display: { xs: 'none', sm: 'block' },
+              fontSize: '0.7rem', letterSpacing: 0.2,
+            }}>
+              {step.label}
+            </Typography>
+          </Box>
+          {i < SCORING_STEPS.length - 1 && (
+            <Box sx={{
+              flex: 1, height: 2, mt: '23px', mx: 0.5,
+              bgcolor: done ? '#a5d6a7' : '#e8ecf0',
+              borderRadius: 1,
+              transition: 'background-color 0.35s ease',
+            }} />
+          )}
+        </React.Fragment>
+      );
+    })}
+  </Box>
+);
 
 interface CreditScoringPageProps {
   onNavigate: (page: any) => void;
@@ -1831,62 +1896,124 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
     setOverallScore(calculateOverallScore(finScore, anlScore));
   }, [financialWeight, analystWeight, analystScore, financialData, categoryWeights]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const isStepComplete = (i: number) => i < activeStep && validateStep(i);
+
   return (
-    <Box>
-      {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 600 }}>
-          Nouvelle Demande de Crédit
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Processus complet de création et d'analyse d'une demande de crédit
-        </Typography>
+    <Box sx={{ bgcolor: BG_SC, minHeight: '100vh', pb: 9 }}>
+
+      {/* ── En-tête gradient animé ─────────────────────────────────────────── */}
+      <Box sx={{
+        background: `linear-gradient(135deg, ${STEP_COLORS_SC[activeStep]} 0%, ${STEP_COLORS_SC[activeStep]}cc 100%)`,
+        px: { xs: 2, md: 4 }, pt: 4, pb: 6,
+        transition: 'background 0.5s ease',
+      }}>
+        <Box sx={{ maxWidth: 960, mx: 'auto' }}>
+          <Typography variant="overline" sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.7rem', letterSpacing: 2 }}>
+            Nouvelle Demande de Crédit
+          </Typography>
+          <Typography variant="h4" sx={{ fontWeight: 800, color: 'white', lineHeight: 1.1, letterSpacing: -0.5, mb: 0.5 }}>
+            {SCORING_STEPS[activeStep].label}
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', mb: 2.5 }}>
+            {SCORING_STEPS[activeStep].subtitle}
+          </Typography>
+          <LinearProgress
+            variant="determinate"
+            value={((activeStep + 1) / SCORING_STEPS.length) * 100}
+            sx={{
+              height: 6, borderRadius: 3, mb: 3,
+              bgcolor: 'rgba(255,255,255,0.25)',
+              '& .MuiLinearProgress-bar': { bgcolor: 'white', borderRadius: 3 },
+            }}
+          />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.85)', fontWeight: 600 }}>
+              Étape {activeStep + 1} / {SCORING_STEPS.length}
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+              {Math.round(((activeStep + 1) / SCORING_STEPS.length) * 100)}% complété
+            </Typography>
+          </Box>
+          <Box sx={{ mt: 3 }}>
+            <ScoringStepIndicator activeStep={activeStep} isStepComplete={isStepComplete} />
+          </Box>
+        </Box>
       </Box>
 
-      {/* Stepper */}
-      <Card sx={{ mb: 4 }}>
-        <CardContent>
-          <Stepper activeStep={activeStep} orientation="vertical">
-            {steps.map((label, index) => (
-              <Step key={label}>
-                <StepLabel>{label}</StepLabel>
-                <StepContent>
-                  <Box sx={{ mb: 3 }}>
-                    {getStepContent(index)}
-                  </Box>
-                  <Box>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      {index !== 0 && (
-                        <Button onClick={handleBack}>
-                          Précédent
-                        </Button>
-                      )}
-                      <Button 
-                        variant="contained" 
-                        onClick={index === steps.length - 1 ? async () => {
-                          // Complete workflow tracking and submit the application
-                          await completeWorkflow();
-                          onNavigate('workflow');
-                        } : handleNext}
-                        disabled={index < 3 && !validateStep(index)}
-                      >
-                        {index === steps.length - 1 ? 'Soumettre la Demande' : 'Suivant'}
-                      </Button>
-                      <Button 
-                        variant="outlined"
-                        onClick={() => onNavigate('clients')}
-                        sx={{ ml: 'auto' }}
-                      >
-                        Annuler
-                      </Button>
-                    </Box>
-                  </Box>
-                </StepContent>
-              </Step>
+      {/* ── Contenu de l'étape ────────────────────────────────────────────── */}
+      <Box sx={{ maxWidth: 960, mx: 'auto', px: { xs: 2, md: 4 }, mt: -3, position: 'relative', zIndex: 1 }}>
+        <Card sx={{
+          borderRadius: `${CARD_RADIUS_SC}px`,
+          boxShadow: CARD_SHADOW_SC,
+          border: '1px solid rgba(0,0,0,0.05)',
+          mb: 3, overflow: 'visible',
+        }}>
+          <CardContent sx={{ p: 3 }}>
+            {getStepContent(activeStep)}
+          </CardContent>
+        </Card>
+      </Box>
+
+      {/* ── Barre de navigation fixe en bas ──────────────────────────────── */}
+      <Box sx={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1200,
+        bgcolor: 'white',
+        borderTop: '1px solid rgba(0,0,0,0.08)',
+        boxShadow: '0 -4px 24px rgba(0,0,0,0.08)',
+        px: { xs: 2, md: 4 }, py: 2,
+      }}>
+        <Box sx={{ maxWidth: 960, mx: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+          {/* Dots de progression */}
+          <Box sx={{ display: 'flex', gap: 0.75 }}>
+            {SCORING_STEPS.map((_, i) => (
+              <Box key={i} sx={{
+                width: i === activeStep ? 20 : 8, height: 8, borderRadius: 4,
+                bgcolor: i === activeStep ? STEP_COLORS_SC[activeStep] : i < activeStep ? '#a5d6a7' : '#e2e8f0',
+                transition: 'all 0.3s ease',
+              }} />
             ))}
-          </Stepper>
-        </CardContent>
-      </Card>
+          </Box>
+
+          {/* Boutons */}
+          <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+            <Button
+              variant="outlined"
+              onClick={() => onNavigate('clients')}
+              sx={{ borderRadius: 3, borderColor: 'rgba(0,0,0,0.15)', color: 'text.secondary' }}
+            >
+              Annuler
+            </Button>
+            {activeStep > 0 && (
+              <Button
+                variant="outlined"
+                startIcon={<BackIcon />}
+                onClick={handleBack}
+                sx={{ borderRadius: 3 }}
+              >
+                Précédent
+              </Button>
+            )}
+            <Button
+              variant="contained"
+              endIcon={activeStep < SCORING_STEPS.length - 1 ? <NextIcon /> : <SendIcon />}
+              onClick={activeStep === SCORING_STEPS.length - 1 ? async () => {
+                await completeWorkflow();
+                onNavigate('workflow');
+              } : handleNext}
+              disabled={activeStep < 3 && !validateStep(activeStep)}
+              sx={{
+                borderRadius: 3, px: 4, fontWeight: 700,
+                background: `linear-gradient(135deg, ${STEP_COLORS_SC[activeStep]}, ${STEP_COLORS_SC[activeStep]}cc)`,
+                boxShadow: `0 4px 16px ${STEP_COLORS_SC[activeStep]}40`,
+                '&:hover': { boxShadow: `0 6px 20px ${STEP_COLORS_SC[activeStep]}60` },
+                '&:disabled': { background: '#e2e8f0', boxShadow: 'none' },
+              }}
+            >
+              {activeStep === SCORING_STEPS.length - 1 ? 'Soumettre la Demande' : 'Suivant'}
+            </Button>
+          </Box>
+        </Box>
+      </Box>
 
     </Box>
   );
