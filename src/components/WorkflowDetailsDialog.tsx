@@ -37,6 +37,7 @@ import {
   CheckCircle as ApproveIcon,
   Cancel as RejectIcon,
   FolderOpen as FolderIcon,
+  Download as DownloadIcon,
   Visibility as VisibilityIcon,
   Close as CloseIcon,
   InsertDriveFile as FileIcon
@@ -100,6 +101,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   const [previewDoc, setPreviewDoc] = useState<any | null>(null);
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const getApiBase = () => `${window.location.origin}/api`;
 
@@ -126,6 +128,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   const openPreview = useCallback(async (doc: any) => {
     setPreviewDoc(doc);
     setPreviewBlobUrl(null);
+    setPreviewError(null);
     setPreviewLoading(true);
     try {
       const token = localStorage.getItem('optimus_access_token');
@@ -136,11 +139,38 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
         setPreviewBlobUrl(url);
+      } else {
+        const errData = await resp.json().catch(() => ({}));
+        setPreviewError(
+          `Erreur ${resp.status} — ${errData.error || errData.message || 'Fichier introuvable sur le serveur'}`
+        );
       }
-    } catch {
-      // ignore
+    } catch (e: any) {
+      setPreviewError('Erreur réseau — impossible de contacter le serveur');
     } finally {
       setPreviewLoading(false);
+    }
+  }, []);
+
+  const downloadDoc = useCallback(async (doc: any) => {
+    try {
+      const token = localStorage.getItem('optimus_access_token');
+      const resp = await fetch(`${getApiBase()}/documents/download/${doc.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = doc.filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) {
+      console.error('Download failed:', e);
     }
   }, []);
 
@@ -148,6 +178,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
     if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
     setPreviewDoc(null);
     setPreviewBlobUrl(null);
+    setPreviewError(null);
   }, [previewBlobUrl]);
 
   useEffect(() => {
@@ -2147,9 +2178,6 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
           <Typography variant="h6" gutterBottom>
             Documents justificatifs
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Cliquez sur l'icône œil pour prévisualiser un document (lecture seule — le téléchargement est désactivé).
-          </Typography>
 
           {docsLoading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -2192,21 +2220,28 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                           {new Date(doc.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                         </TableCell>
                         <TableCell align="center" sx={{ py: 1.5 }}>
-                          {canPreview ? (
-                            <Tooltip title="Prévisualiser">
-                              <IconButton size="small" color="primary" onClick={() => openPreview(doc)}>
-                                <VisibilityIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          ) : (
-                            <Tooltip title="Aperçu non disponible pour ce type de fichier">
-                              <span>
-                                <IconButton size="small" disabled>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                            {canPreview ? (
+                              <Tooltip title="Prévisualiser">
+                                <IconButton size="small" color="primary" onClick={() => openPreview(doc)}>
                                   <VisibilityIcon fontSize="small" />
                                 </IconButton>
-                              </span>
+                              </Tooltip>
+                            ) : (
+                              <Tooltip title="Aperçu non disponible pour ce type de fichier">
+                                <span>
+                                  <IconButton size="small" disabled>
+                                    <VisibilityIcon fontSize="small" />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            )}
+                            <Tooltip title="Télécharger">
+                              <IconButton size="small" color="default" onClick={() => downloadDoc(doc)}>
+                                <DownloadIcon fontSize="small" />
+                              </IconButton>
                             </Tooltip>
-                          )}
+                          </Box>
                         </TableCell>
                       </TableRow>
                     );
@@ -2237,6 +2272,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
         </DialogTitle>
         <DialogContent sx={{ p: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {previewLoading && <CircularProgress />}
+
           {!previewLoading && previewBlobUrl && (() => {
             const ext = previewDoc?.filename?.split('.').pop()?.toLowerCase() || '';
             if (['png', 'jpg', 'jpeg'].includes(ext)) {
@@ -2254,8 +2290,24 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
               />
             );
           })()}
-          {!previewLoading && !previewBlobUrl && previewDoc && (
-            <Alert severity="error" sx={{ m: 2 }}>Impossible de charger l'aperçu du document.</Alert>
+
+          {!previewLoading && (previewError || (!previewBlobUrl && previewDoc)) && (
+            <Box sx={{ textAlign: 'center', p: 4, maxWidth: 400 }}>
+              <Typography variant="body2" color="error" sx={{ mb: 1, fontWeight: 600 }}>
+                Aperçu indisponible
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 3 }}>
+                {previewError || 'Impossible de charger ce document.'}
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => previewDoc && downloadDoc(previewDoc)}
+                sx={{ borderRadius: '10px', textTransform: 'none', fontSize: '13px' }}
+              >
+                Télécharger le fichier
+              </Button>
+            </Box>
           )}
         </DialogContent>
       </Dialog>
