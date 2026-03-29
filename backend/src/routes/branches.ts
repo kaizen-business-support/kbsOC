@@ -1,9 +1,8 @@
 import express, { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { cacheGet, cacheSet } from '../services/redis';
+import { prisma } from '../prismaClient';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 const CACHE_KEY = 'cache:branches:active';
 const CACHE_TTL = 300;
 

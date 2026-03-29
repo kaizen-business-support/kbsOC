@@ -14,9 +14,8 @@
  *    que l'administrateur peut utiliser pour paramétrer ces conditions depuis l'UI.
  */
 
-import { PrismaClient, UserRole } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { UserRole } from '@prisma/client';
+import { prisma } from '../prismaClient';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

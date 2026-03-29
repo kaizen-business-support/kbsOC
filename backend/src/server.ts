@@ -4,7 +4,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import os from 'os';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from './prismaClient';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -45,8 +45,8 @@ dotenv.config();
 const app = express();
 const PORT = parseInt(process.env.PORT || '5007', 10);
 
-// Initialize Prisma Client
-export const prisma = new PrismaClient();
+// Re-export shared Prisma singleton (imported above)
+export { prisma };
 
 // ─── Security headers ─────────────────────────────────────────────────────────
 app.use(helmet());
