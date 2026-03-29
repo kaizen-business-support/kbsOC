@@ -405,39 +405,77 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
       maxWidth="lg"
       fullWidth
       PaperProps={{
-        sx: { minHeight: '80vh' }
+        sx: {
+          minHeight: '80vh',
+          maxHeight: '92vh',
+          borderRadius: { xs: 0, sm: '16px' },
+          overflow: 'hidden',
+        }
       }}
     >
-      <DialogTitle sx={{ pb: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Typography variant="h6" sx={{ fontSize: '14px', fontWeight: 600, color: '#1f4e79' }}>
-              {workflow.clientName}
-            </Typography>
-            <Chip
-              label={statusDisplay.label}
-              color={statusDisplay.color}
-              size="small"
-            />
+      {/* ── Header Apple-style ──────────────────────────────────────────── */}
+      <DialogTitle sx={{ px: 3, py: 2, borderBottom: '1px solid rgba(0,0,0,0.07)', bgcolor: '#fafafa' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+          <Box sx={{ minWidth: 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Typography sx={{ fontSize: '15px', fontWeight: 700, color: '#111', lineHeight: 1.3 }}>
+                {workflow.clientName}
+              </Typography>
+              <Chip
+                label={statusDisplay.label}
+                color={statusDisplay.color}
+                size="small"
+                sx={{ height: 20, fontSize: '11px', fontWeight: 600 }}
+              />
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.25 }}>
+              <Typography variant="caption" sx={{ color: '#8e8e93', fontWeight: 500 }}>
+                {workflow.applicationNumber}
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#c7c7cc' }}>·</Typography>
+              <Typography variant="caption" sx={{ color: '#8e8e93', fontWeight: 500 }}>
+                {new Intl.NumberFormat('fr-FR').format(workflow.requestedAmount)} {workflow.currency || 'XOF'}
+              </Typography>
+            </Box>
           </Box>
-          <IconButton size="small" onClick={onClose}
-            sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'rgba(0,0,0,0.06)' } }}>
-            <CloseIcon sx={{ fontSize: 15 }} />
+          <IconButton
+            size="small"
+            onClick={onClose}
+            sx={{
+              bgcolor: 'rgba(0,0,0,0.06)',
+              width: 28, height: 28, flexShrink: 0,
+              '&:hover': { bgcolor: 'rgba(0,0,0,0.12)' },
+            }}
+          >
+            <CloseIcon sx={{ fontSize: 14 }} />
           </IconButton>
         </Box>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
-          {workflow.applicationNumber}
-        </Typography>
       </DialogTitle>
 
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
-        <Tabs value={activeTab} onChange={handleTabChange} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
-          <Tab label="Workflow" icon={<AssessmentIcon />} iconPosition="start" />
-          <Tab label="Détails de la Demande" icon={<TrendingUpIcon />} iconPosition="start" />
-          <Tab label="Données Financières" icon={<TrendingUpIcon />} iconPosition="start" />
-          <Tab label="Ratios" icon={<BarChartIcon />} iconPosition="start" />
-          <Tab label="Scoring" icon={<StarIcon />} iconPosition="start" />
-          <Tab label="Documents" icon={<FolderIcon />} iconPosition="start" />
+      <Box sx={{ borderBottom: '1px solid rgba(0,0,0,0.07)', px: 2, bgcolor: '#fafafa' }}>
+        <Tabs
+          value={activeTab}
+          onChange={handleTabChange}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
+          sx={{
+            minHeight: 40,
+            '& .MuiTab-root': {
+              minHeight: 40, fontSize: '12px', fontWeight: 500,
+              px: 1.5, minWidth: 0, gap: 0.5, color: '#8e8e93',
+              textTransform: 'none', letterSpacing: 0,
+            },
+            '& .Mui-selected': { color: '#1c1c1e', fontWeight: 650 },
+            '& .MuiTabs-indicator': { height: 2, borderRadius: '2px 2px 0 0' },
+          }}
+        >
+          <Tab label="Workflow"    icon={<AssessmentIcon sx={{ fontSize: 13 }} />} iconPosition="start" />
+          <Tab label="Demande"     icon={<TrendingUpIcon sx={{ fontSize: 13 }} />} iconPosition="start" />
+          <Tab label="Financier"   icon={<TrendingUpIcon sx={{ fontSize: 13 }} />} iconPosition="start" />
+          <Tab label="Ratios"      icon={<BarChartIcon  sx={{ fontSize: 13 }} />} iconPosition="start" />
+          <Tab label="Scoring"     icon={<StarIcon       sx={{ fontSize: 13 }} />} iconPosition="start" />
+          <Tab label="Documents"   icon={<FolderIcon     sx={{ fontSize: 13 }} />} iconPosition="start" />
         </Tabs>
       </Box>
 
@@ -2222,74 +2260,102 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
         </DialogContent>
       </Dialog>
 
-      <DialogActions sx={{ px: 3, py: 2, flexDirection: 'column', alignItems: 'stretch' }}>
-        {/* Success/Error Messages */}
+      {/* ── Barre d'action Apple-style ─────────────────────────────────── */}
+      <DialogActions
+        sx={{
+          px: 2.5, py: 1.5,
+          borderTop: '1px solid rgba(0,0,0,0.07)',
+          bgcolor: '#fafafa',
+          gap: 1,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          minHeight: 56,
+        }}
+      >
+        {/* Feedback compact */}
         {submitSuccess && (
-          <Alert severity="success" sx={{ mb: 2, width: '100%' }}>
-            {submitSuccess}
-          </Alert>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flex: 1 }}>
+            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'success.main', flexShrink: 0 }} />
+            <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 600, fontSize: '12px' }}>
+              {submitSuccess}
+            </Typography>
+          </Box>
         )}
         {submitError && (
-          <Alert severity="error" sx={{ mb: 2, width: '100%' }}>
-            {submitError}
-          </Alert>
-        )}
-
-        {/* Approval Section - Only show if user can approve */}
-        {canApprove() && !submitSuccess && (
-          <Box sx={{ width: '100%', mb: 2 }}>
-            <Alert severity="info" sx={{ mb: 2 }}>
-              <Typography variant="body2" fontWeight={600}>
-                Cette demande nécessite votre approbation
-              </Typography>
-              <Typography variant="body2">
-                Veuillez examiner les détails de la demande et fournir votre décision.
-              </Typography>
-            </Alert>
-
-            <TextField
-              label="Commentaires (optionnel)"
-              multiline
-              rows={3}
-              fullWidth
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-              placeholder="Ajoutez vos commentaires sur cette demande..."
-              disabled={submitting}
-              sx={{ mb: 2 }}
-            />
-
-            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-              <Button
-                variant="outlined"
-                color="error"
-                startIcon={submitting ? <CircularProgress size={20} /> : <RejectIcon />}
-                onClick={() => setOtpDialog({ open: true, pendingDecision: 'REJECTED' })}
-                disabled={submitting}
-                size="large"
-              >
-                Rejeter
-              </Button>
-              <Button
-                variant="contained"
-                color="success"
-                startIcon={submitting ? <CircularProgress size={20} /> : <ApproveIcon />}
-                onClick={() => setOtpDialog({ open: true, pendingDecision: 'APPROVED' })}
-                disabled={submitting}
-                size="large"
-              >
-                Approuver
-              </Button>
-            </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flex: 1 }}>
+            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'error.main', flexShrink: 0 }} />
+            <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 600, fontSize: '12px' }}>
+              {submitError}
+            </Typography>
           </Box>
         )}
 
-        {/* Close button */}
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
-          <Button onClick={onClose} disabled={submitting}>
-            Fermer
-          </Button>
-        </Box>
+        {/* Zone d'approbation compacte */}
+        {canApprove() && !submitSuccess && (
+          <>
+            <TextField
+              placeholder="Commentaire (optionnel)"
+              size="small"
+              multiline
+              minRows={1}
+              maxRows={3}
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              disabled={submitting}
+              sx={{
+                flex: 1, minWidth: { xs: '100%', sm: 200 },
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: '10px', fontSize: '13px',
+                  bgcolor: 'white',
+                },
+              }}
+            />
+            <Button
+              variant="outlined"
+              color="error"
+              size="small"
+              startIcon={submitting ? <CircularProgress size={13} /> : <RejectIcon sx={{ fontSize: 14 }} />}
+              onClick={() => setOtpDialog({ open: true, pendingDecision: 'REJECTED' })}
+              disabled={submitting}
+              sx={{
+                borderRadius: '10px', px: 2, fontSize: '13px', fontWeight: 600,
+                textTransform: 'none', whiteSpace: 'nowrap',
+              }}
+            >
+              Rejeter
+            </Button>
+            <Button
+              variant="contained"
+              color="success"
+              size="small"
+              startIcon={submitting ? <CircularProgress size={13} /> : <ApproveIcon sx={{ fontSize: 14 }} />}
+              onClick={() => setOtpDialog({ open: true, pendingDecision: 'APPROVED' })}
+              disabled={submitting}
+              sx={{
+                borderRadius: '10px', px: 2, fontSize: '13px', fontWeight: 600,
+                textTransform: 'none', whiteSpace: 'nowrap',
+                boxShadow: 'none', '&:hover': { boxShadow: 'none' },
+              }}
+            >
+              Approuver
+            </Button>
+          </>
+        )}
+
+        {/* Fermer toujours visible à droite */}
+        {!canApprove() && !submitSuccess && !submitError && <Box sx={{ flex: 1 }} />}
+        <Button
+          onClick={onClose}
+          disabled={submitting}
+          size="small"
+          sx={{
+            borderRadius: '10px', px: 2, fontSize: '13px',
+            textTransform: 'none', color: '#636366',
+            '&:hover': { bgcolor: 'rgba(0,0,0,0.05)' },
+          }}
+        >
+          Fermer
+        </Button>
       </DialogActions>
 
       {/* OTP Verification */}
