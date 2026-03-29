@@ -6,7 +6,8 @@
 #  Usage  : sudo bash install.sh [OPTIONS]
 #  Options:
 #    --db-password <mdp>   Mot de passe PostgreSQL (auto-généré sinon)
-#    --domain      <fqdn>  Domaine nginx   (IP locale par défaut)
+#    --domain      <fqdn>  Domaine ou IP publique nginx (auto-détecté sinon)
+#    --public-ip   <ip>    IP publique du serveur (auto-détectée sinon)
 #    --skip-seed           Ne pas exécuter le seed initial
 #    --no-build            Ne pas compiler  (si build déjà présent)
 #
@@ -46,15 +47,17 @@ PG_MAJOR=16
 # ─── Parsing des arguments ────────────────────────────────────────────────────
 OPT_DB_PASS=""
 OPT_DOMAIN=""
+OPT_PUBLIC_IP=""
 OPT_SKIP_SEED=false
 OPT_NO_BUILD=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --db-password) OPT_DB_PASS="$2"; shift 2 ;;
-    --domain)      OPT_DOMAIN="$2";  shift 2 ;;
-    --skip-seed)   OPT_SKIP_SEED=true; shift ;;
-    --no-build)    OPT_NO_BUILD=true;  shift ;;
+    --db-password) OPT_DB_PASS="$2";    shift 2 ;;
+    --domain)      OPT_DOMAIN="$2";     shift 2 ;;
+    --public-ip)   OPT_PUBLIC_IP="$2";  shift 2 ;;
+    --skip-seed)   OPT_SKIP_SEED=true;  shift ;;
+    --no-build)    OPT_NO_BUILD=true;   shift ;;
     *) warn "Argument inconnu ignoré : $1"; shift ;;
   esac
 done
@@ -72,7 +75,23 @@ FRONTEND_ENV="$APP_DIR/.env"
   || die "Répertoire invalide : $APP_DIR (backend/ ou package.json manquant)"
 
 MACHINE_IP=$(hostname -I | awk '{print $1}')
-DOMAIN="${OPT_DOMAIN:-$MACHINE_IP}"
+
+# ─── Détection IP publique ────────────────────────────────────────────────────
+if [[ -n "$OPT_PUBLIC_IP" ]]; then
+  PUBLIC_IP="$OPT_PUBLIC_IP"
+else
+  PUBLIC_IP=$(curl -s --connect-timeout 8 https://ifconfig.me \
+    || curl -s --connect-timeout 8 https://api.ipify.org \
+    || curl -s --connect-timeout 8 https://icanhazip.com \
+    || echo "")
+  PUBLIC_IP=$(echo "$PUBLIC_IP" | tr -d '[:space:]')
+fi
+
+# Fallback sur IP locale si la détection échoue
+[[ -z "$PUBLIC_IP" ]] && PUBLIC_IP="$MACHINE_IP" \
+  && warn "IP publique non détectée — utilisation de l'IP locale ($MACHINE_IP)"
+
+DOMAIN="${OPT_DOMAIN:-$PUBLIC_IP}"
 
 # ─── Bannière ─────────────────────────────────────────────────────────────────
 echo ""
@@ -82,10 +101,11 @@ echo "  ║         OptimusCredit — Installateur v3.1                ║"
 echo "  ║    Ubuntu 22.04 / 24.04 · Node 20 · PG 16 · Redis 7     ║"
 echo "  ╚══════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
-echo -e "  Répertoire : ${CYAN}$APP_DIR${NC}"
-echo -e "  Utilisateur service : ${CYAN}$APP_USER${NC}"
-echo -e "  IP Machine  : ${CYAN}$MACHINE_IP${NC}"
-echo -e "  Domaine     : ${CYAN}$DOMAIN${NC}"
+echo -e "  Répertoire   : ${CYAN}$APP_DIR${NC}"
+echo -e "  Utilisateur  : ${CYAN}$APP_USER${NC}"
+echo -e "  IP locale    : ${CYAN}$MACHINE_IP${NC}"
+echo -e "  IP publique  : ${CYAN}$PUBLIC_IP${NC}"
+echo -e "  Domaine/URL  : ${CYAN}$DOMAIN${NC}"
 echo ""
 
 # =============================================================================
@@ -477,7 +497,7 @@ LOG_LEVEL=info
 LOG_FILE=logs/app.log
 
 # CORS
-ALLOWED_ORIGINS=http://${DOMAIN},http://${MACHINE_IP}
+ALLOWED_ORIGINS=http://${PUBLIC_IP},http://${MACHINE_IP},http://${DOMAIN}
 EOF
   log "backend/.env généré"
 else
@@ -767,7 +787,7 @@ cat > /etc/nginx/sites-available/${APP_NAME} <<NGINXEOF
 # OptimusCredit — nginx ($(date '+%Y-%m-%d'))
 server {
     listen 80;
-    server_name ${DOMAIN} _;
+    server_name ${PUBLIC_IP} ${DOMAIN} _;
 
     client_max_body_size 50M;
     client_body_timeout  120s;
@@ -835,11 +855,16 @@ log "nginx configuré"
 section "Pare-feu UFW"
 
 if command -v ufw &>/dev/null; then
-  ufw allow OpenSSH      2>/dev/null | grep -v '^$' | head -1 || true
-  ufw allow 'Nginx HTTP' 2>/dev/null | grep -v '^$' | head -1 || true
+  ufw allow OpenSSH           2>/dev/null | grep -v '^$' | head -1 || true
+  ufw allow 'Nginx HTTP'      2>/dev/null | grep -v '^$' | head -1 || true
+  ufw allow 'Nginx HTTPS'     2>/dev/null | grep -v '^$' | head -1 || true
   # Ports internes (5007, 3006, 5432, 6379) fermés au WAN
-  ufw --force enable 2>/dev/null | head -1 || true
-  log "UFW : SSH + HTTP ouverts — ports internes protégés"
+  ufw deny "$BACKEND_PORT"    2>/dev/null | grep -v '^$' | head -1 || true
+  ufw deny "$FRONTEND_PORT"   2>/dev/null | grep -v '^$' | head -1 || true
+  ufw deny 5432               2>/dev/null | grep -v '^$' | head -1 || true
+  ufw deny 6379               2>/dev/null | grep -v '^$' | head -1 || true
+  ufw --force enable          2>/dev/null | head -1 || true
+  log "UFW : SSH + HTTP + HTTPS ouverts — ports internes ($BACKEND_PORT, $FRONTEND_PORT, 5432, 6379) bloqués"
 else
   warn "UFW absent — pare-feu non configuré"
 fi
@@ -896,9 +921,9 @@ echo "  ╔═══════════════════════
 echo "  ║          OptimusCredit installé avec succès !            ║"
 echo "  ╚══════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
-echo -e "  ${BOLD}Application${NC}  :  ${CYAN}http://${DOMAIN}${NC}"
-echo -e "  ${BOLD}API${NC}          :  ${CYAN}http://${DOMAIN}/api${NC}"
-echo -e "  ${BOLD}Health${NC}       :  ${CYAN}http://${DOMAIN}/api/health${NC}"
+echo -e "  ${BOLD}Application${NC}  :  ${CYAN}http://${PUBLIC_IP}${NC}"
+echo -e "  ${BOLD}API${NC}          :  ${CYAN}http://${PUBLIC_IP}/api${NC}"
+echo -e "  ${BOLD}Health${NC}       :  ${CYAN}http://${PUBLIC_IP}/api/health${NC}"
 echo ""
 echo -e "  ${YELLOW}${BOLD}Comptes démo — mot de passe : demo123${NC}"
 echo "  ┌────────────────────────────────────┬──────────────────────────┐"

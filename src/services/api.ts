@@ -1363,11 +1363,4 @@ export const handleApiError = (error: any): string => {
   }
 };
 
-export default api; 'Erreur de connexion au serveur';
-  } else {
-    // Something else happened
-    return error.message || 'Erreur inconnue';
-  }
-};
-
 export default api;
