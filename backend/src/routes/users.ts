@@ -46,9 +46,40 @@ const checkUserManagementPermission = async (req: Request, res: Response, next: 
   }
 };
 
-// Get credit analysts (accessible aux utilisateurs authentifiés)
+// Middleware allégé : ADMIN, ANALYST_SUPERVISOR, ou permission user_management
+const checkAnalystListPermission = async (req: Request, res: Response, next: express.NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required', code: 'AUTH_REQUIRED' });
+  }
+  const token = authHeader.substring(7);
+  try {
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) return res.status(500).json({ error: 'Server configuration error' });
+    const payload = jwt.verify(token, jwtSecret) as any;
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { id: true, email: true, role: true, permissions: true }
+    });
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    const permissions = user.permissions as string[];
+    const allowed = ['ADMIN', 'ANALYST_SUPERVISOR'].includes(user.role)
+      || permissions.includes('user_management')
+      || permissions.includes('assign_analyst');
+    if (allowed) {
+      req.user = { id: user.id, email: user.email, role: user.role, permissions };
+      next();
+    } else {
+      return res.status(403).json({ error: 'Insufficient permissions', code: 'INSUFFICIENT_PERMISSIONS' });
+    }
+  } catch {
+    return res.status(401).json({ error: 'Invalid token', code: 'INVALID_TOKEN' });
+  }
+};
+
+// Get credit analysts (accessible aux utilisateurs authentifiés avec droit d'affectation)
 router.get('/credit-analysts',
-  checkUserManagementPermission,
+  checkAnalystListPermission,
   asyncHandler(async (req: Request, res: Response) => {
     const analysts = await prisma.user.findMany({
       where: { role: 'CREDIT_ANALYST', isActive: true },
