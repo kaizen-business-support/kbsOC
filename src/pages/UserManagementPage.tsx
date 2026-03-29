@@ -212,6 +212,14 @@ const PERMISSION_GROUPS = [
       { key: 'workflow_override', label: 'Dérogation workflow' },
     ],
   },
+  {
+    category: 'Dispatching & Affectation',
+    permissions: [
+      { key: 'assign_analyst', label: 'Affecter un analyste' },
+      { key: 'dispatch_applications', label: 'Dispatcher les demandes' },
+      { key: 'view_analyst_workload', label: 'Voir la charge des analystes' },
+    ],
+  },
 ];
 
 const allPermissions = PERMISSION_GROUPS.flatMap(g => g.permissions.map(p => p.key));
