@@ -218,6 +218,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         'BRANCH_MANAGER': 'branch_manager',
         'ACCOUNT_MANAGER': 'account_manager',
         'CREDIT_ANALYST': 'credit_analyst',
+        'ANALYST_SUPERVISOR': 'analyst_supervisor',
         'CREDIT_COMMITTEE': 'credit_committee'
       };
 
