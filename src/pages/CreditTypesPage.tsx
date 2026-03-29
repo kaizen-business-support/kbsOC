@@ -70,6 +70,8 @@ interface WorkflowStepConfig {
   isRequired: boolean;
   durationDays: number;
   description?: string;
+  conditionMinAmount?: number | null;
+  conditionMaxAmount?: number | null;
 }
 
 interface CreditTypeFormData {
@@ -91,6 +93,8 @@ interface NewStepFormData {
   role: string;
   durationDays: string;
   description: string;
+  conditionMinAmount: string;
+  conditionMaxAmount: string;
 }
 
 const ROLES = [
@@ -118,7 +122,9 @@ const emptyStepForm: NewStepFormData = {
   stepLabel: '',
   role: '',
   durationDays: '3',
-  description: ''
+  description: '',
+  conditionMinAmount: '',
+  conditionMaxAmount: '',
 };
 
 export const CreditTypesPage: React.FC = () => {
@@ -396,7 +402,9 @@ export const CreditTypesPage: React.FC = () => {
         role: newStepForm.role,
         order: nextOrder,
         durationDays: parseInt(newStepForm.durationDays) || 3,
-        description: newStepForm.description.trim() || undefined
+        description: newStepForm.description.trim() || undefined,
+        conditionMinAmount: newStepForm.conditionMinAmount ? parseFloat(newStepForm.conditionMinAmount) : null,
+        conditionMaxAmount: newStepForm.conditionMaxAmount ? parseFloat(newStepForm.conditionMaxAmount) : null,
       });
 
       if (response.success) {
@@ -806,7 +814,17 @@ export const CreditTypesPage: React.FC = () => {
                                 <TableCell>
                                   <Chip label={getRoleLabel(step.role)} size="small" color="primary" variant="outlined" />
                                 </TableCell>
-                                <TableCell>{step.durationDays} j</TableCell>
+                                <TableCell>
+                                  {step.durationDays} j
+                                  {(step.conditionMinAmount || step.conditionMaxAmount) && (
+                                    <Typography variant="caption" color="warning.main" display="block">
+                                      {step.conditionMinAmount ? `≥ ${Number(step.conditionMinAmount).toLocaleString('fr-FR')}` : ''}
+                                      {step.conditionMinAmount && step.conditionMaxAmount ? ' · ' : ''}
+                                      {step.conditionMaxAmount ? `≤ ${Number(step.conditionMaxAmount).toLocaleString('fr-FR')}` : ''}
+                                      {' XOF'}
+                                    </Typography>
+                                  )}
+                                </TableCell>
                                 {hasWriteAccess && (
                                   <TableCell align="center">
                                     <Tooltip title="Monter">
@@ -923,6 +941,35 @@ export const CreditTypesPage: React.FC = () => {
                                 label="Description (optionnel)"
                                 value={newStepForm.description}
                                 onChange={(e) => setNewStepForm(prev => ({ ...prev, description: e.target.value }))}
+                              />
+                            </Grid>
+                            <Grid item xs={12}>
+                              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                                Condition sur le montant (optionnel) — laisser vide pour une étape toujours obligatoire
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={12} md={6}>
+                              <TextField
+                                fullWidth
+                                size="small"
+                                label="Montant minimum (XOF)"
+                                type="number"
+                                value={newStepForm.conditionMinAmount}
+                                onChange={(e) => setNewStepForm(prev => ({ ...prev, conditionMinAmount: e.target.value }))}
+                                helperText="Étape active si montant ≥ cette valeur"
+                                inputProps={{ min: 0 }}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={6}>
+                              <TextField
+                                fullWidth
+                                size="small"
+                                label="Montant maximum (XOF)"
+                                type="number"
+                                value={newStepForm.conditionMaxAmount}
+                                onChange={(e) => setNewStepForm(prev => ({ ...prev, conditionMaxAmount: e.target.value }))}
+                                helperText="Étape active si montant ≤ cette valeur"
+                                inputProps={{ min: 0 }}
                               />
                             </Grid>
                             <Grid item xs={12}>

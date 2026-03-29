@@ -210,8 +210,9 @@ model ApprovalLimit {
   minAmount         Decimal  @map("min_amount") @db.Decimal(15, 2)
   maxAmount         Decimal  @map("max_amount") @db.Decimal(15, 2)
   currency          String   @default("XOF")
-  reviewDuration    Int      @map("review_duration") // Time in minutes for this role to review
-  maxReviewDuration Int?     @map("max_review_duration") // Max time before escalation
+  order             Int      @default(1) // Niveau hiérarchique : 1=premier, 2=deuxième, etc.
+  reviewDuration    Int      @map("review_duration") // Durée en minutes pour ce rôle
+  maxReviewDuration Int?     @map("max_review_duration") // Durée max avant escalade
   description       String?
   isActive          Boolean  @default(true) @map("is_active")
   createdAt         DateTime @default(now()) @map("created_at")
@@ -241,16 +242,19 @@ model CreditType {
 }
 
 model CreditTypeWorkflowStep {
-  id           String     @id @default(cuid())
-  creditTypeId String     @map("credit_type_id")
-  stepName     String     @map("step_name")
-  stepLabel    String     @map("step_label")
-  role         UserRole
-  order        Int
-  isRequired   Boolean    @default(true) @map("is_required")
-  durationDays Int        @default(3) @map("duration_days")
-  description  String?
-  creditType   CreditType @relation(fields: [creditTypeId], references: [id], onDelete: Cascade)
+  id                 String     @id @default(cuid())
+  creditTypeId       String     @map("credit_type_id")
+  stepName           String     @map("step_name")
+  stepLabel          String     @map("step_label")
+  role               UserRole
+  order              Int
+  isRequired         Boolean    @default(true) @map("is_required")
+  durationDays       Int        @default(3) @map("duration_days")
+  description        String?
+  // Conditions dynamiques sur le montant (null = étape toujours obligatoire)
+  conditionMinAmount Decimal?   @map("condition_min_amount") @db.Decimal(15, 2)
+  conditionMaxAmount Decimal?   @map("condition_max_amount") @db.Decimal(15, 2)
+  creditType         CreditType @relation(fields: [creditTypeId], references: [id], onDelete: Cascade)
 
   @@unique([creditTypeId, order])
   @@map("credit_type_workflow_steps")

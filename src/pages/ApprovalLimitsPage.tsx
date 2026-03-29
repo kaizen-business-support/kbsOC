@@ -64,6 +64,7 @@ interface ApprovalLimit {
   minAmount: number;
   maxAmount: number;
   currency: string;
+  order: number;
   isActive: boolean;
   description?: string;
   createdAt: string;
@@ -115,6 +116,7 @@ export const ApprovalLimitsPage: React.FC<ApprovalLimitsPageProps> = ({ onNaviga
     minAmount: 0,
     maxAmount: 0,
     currency: 'XOF',
+    order: 1,
     isActive: true,
     description: ''
   });
@@ -281,6 +283,7 @@ export const ApprovalLimitsPage: React.FC<ApprovalLimitsPageProps> = ({ onNaviga
       minAmount: limit.minAmount,
       maxAmount: limit.maxAmount,
       currency: limit.currency,
+      order: limit.order ?? 1,
       isActive: limit.isActive,
       description: limit.description || ''
     });
@@ -289,11 +292,13 @@ export const ApprovalLimitsPage: React.FC<ApprovalLimitsPageProps> = ({ onNaviga
 
   const openAddDialog = () => {
     setSelectedLimit(null);
+    const nextOrder = limits.length > 0 ? Math.max(...limits.map(l => l.order ?? 1)) + 1 : 1;
     setLimitForm({
       role: '',
       minAmount: 0,
       maxAmount: 0,
       currency: 'XOF',
+      order: nextOrder,
       isActive: true,
       description: ''
     });
@@ -601,6 +606,7 @@ export const ApprovalLimitsPage: React.FC<ApprovalLimitsPageProps> = ({ onNaviga
               <Table>
                 <TableHead>
                   <TableRow>
+                    <TableCell>Niveau</TableCell>
                     <TableCell>Rôle</TableCell>
                     <TableCell>Limite Min</TableCell>
                     <TableCell>Limite Max</TableCell>
@@ -610,8 +616,17 @@ export const ApprovalLimitsPage: React.FC<ApprovalLimitsPageProps> = ({ onNaviga
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {limits.map((limit) => (
+                  {[...limits].sort((a, b) => (a.order ?? 1) - (b.order ?? 1)).map((limit) => (
                     <TableRow key={limit.id} hover>
+                      <TableCell>
+                        <Chip
+                          label={`N°${limit.order ?? 1}`}
+                          size="small"
+                          color="secondary"
+                          variant="outlined"
+                          sx={{ fontWeight: 700 }}
+                        />
+                      </TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
                           <Avatar sx={{ mr: 2, bgcolor: `${getRoleColor(limit.role)}.main` }}>
@@ -874,15 +889,25 @@ export const ApprovalLimitsPage: React.FC<ApprovalLimitsPageProps> = ({ onNaviga
               />
             </Grid>
 
-            <Grid item xs={12}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Niveau hiérarchique"
+                type="number"
+                value={limitForm.order}
+                onChange={(e) => setLimitForm({ ...limitForm, order: Number(e.target.value) })}
+                helperText="1 = premier niveau, 2 = deuxième, etc."
+                inputProps={{ min: 1 }}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Description"
                 value={limitForm.description}
                 onChange={(e) => setLimitForm({ ...limitForm, description: e.target.value })}
                 placeholder="Description de la limite d'approbation"
-                multiline
-                rows={2}
               />
             </Grid>
 

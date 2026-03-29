@@ -1417,17 +1417,26 @@ async function main() {
     prisma.approvalLimit.create({ data: {
       role: 'BRANCH_MANAGER',   displayName: 'Directeur Agence',
       minAmount: 0,              maxAmount: 10000000,
-      currency: 'XOF',          reviewDuration: 3, isActive: true
+      currency: 'XOF',          order: 1,
+      reviewDuration: 4320,      // 3 jours en minutes
+      description: '1er niveau — dossiers jusqu\'à 10 millions XOF',
+      isActive: true
     }}),
     prisma.approvalLimit.create({ data: {
       role: 'CREDIT_COMMITTEE', displayName: 'Comité de Crédit',
       minAmount: 10000001,       maxAmount: 50000000,
-      currency: 'XOF',          reviewDuration: 5, isActive: true
+      currency: 'XOF',          order: 2,
+      reviewDuration: 7200,      // 5 jours en minutes
+      description: '2ème niveau — dossiers de 10 à 50 millions XOF',
+      isActive: true
     }}),
     prisma.approvalLimit.create({ data: {
       role: 'MANAGEMENT',       displayName: 'Direction Générale',
       minAmount: 50000001,       maxAmount: 999999999,
-      currency: 'XOF',          reviewDuration: 7, isActive: true
+      currency: 'XOF',          order: 3,
+      reviewDuration: 10080,     // 7 jours en minutes
+      description: '3ème niveau — dossiers au-delà de 50 millions XOF',
+      isActive: true
     }}),
   ]);
   console.log('🔒 Created approval limits');
@@ -1445,8 +1454,9 @@ async function main() {
       defaultRate: 12.5, minRate: 10.0, maxRate: 18.0,
       minDuration: 1, maxDuration: 12, requiresCollateral: false,
       steps: [
-        { order: 1, stepName: 'credit_analysis',       stepLabel: 'Analyse de crédit',           role: 'CREDIT_ANALYST',   durationDays: 2 },
-        { order: 2, stepName: 'branch_manager_review', stepLabel: 'Validation Directeur Agence',  role: 'BRANCH_MANAGER',   durationDays: 2 },
+        // Étapes toujours obligatoires (pas de condition montant)
+        { order: 1, stepName: 'credit_analysis',       stepLabel: 'Analyse de crédit',          role: 'CREDIT_ANALYST', durationDays: 2 },
+        { order: 2, stepName: 'branch_manager_review', stepLabel: 'Validation Directeur Agence', role: 'BRANCH_MANAGER', durationDays: 2 },
       ]
     },
     {
@@ -1457,9 +1467,10 @@ async function main() {
       defaultRate: 11.0, minRate: 9.0, maxRate: 15.0,
       minDuration: 13, maxDuration: 60, requiresCollateral: true,
       steps: [
-        { order: 1, stepName: 'credit_analysis',         stepLabel: 'Analyse de crédit',           role: 'CREDIT_ANALYST',   durationDays: 3 },
-        { order: 2, stepName: 'branch_manager_review',   stepLabel: 'Validation Directeur Agence',  role: 'BRANCH_MANAGER',   durationDays: 3 },
-        { order: 3, stepName: 'credit_committee_review', stepLabel: 'Comité de Crédit',             role: 'CREDIT_COMMITTEE', durationDays: 5 },
+        { order: 1, stepName: 'credit_analysis',         stepLabel: 'Analyse de crédit',          role: 'CREDIT_ANALYST',   durationDays: 3 },
+        { order: 2, stepName: 'branch_manager_review',   stepLabel: 'Validation Directeur Agence', role: 'BRANCH_MANAGER',   durationDays: 3 },
+        // Comité requis si montant > 10M
+        { order: 3, stepName: 'credit_committee_review', stepLabel: 'Comité de Crédit',            role: 'CREDIT_COMMITTEE', durationDays: 5, conditionMinAmount: 10000001 },
       ]
     },
     {
@@ -1470,10 +1481,12 @@ async function main() {
       defaultRate: 10.0, minRate: 8.0, maxRate: 14.0,
       minDuration: 61, maxDuration: 240, requiresCollateral: true,
       steps: [
-        { order: 1, stepName: 'credit_analysis',         stepLabel: 'Analyse de crédit',           role: 'CREDIT_ANALYST',   durationDays: 5 },
-        { order: 2, stepName: 'branch_manager_review',   stepLabel: 'Validation Directeur Agence',  role: 'BRANCH_MANAGER',   durationDays: 3 },
-        { order: 3, stepName: 'credit_committee_review', stepLabel: 'Comité de Crédit',             role: 'CREDIT_COMMITTEE', durationDays: 5 },
-        { order: 4, stepName: 'management_review',       stepLabel: 'Direction Générale',           role: 'MANAGEMENT',       durationDays: 7 },
+        { order: 1, stepName: 'credit_analysis',         stepLabel: 'Analyse de crédit',          role: 'CREDIT_ANALYST',   durationDays: 5 },
+        { order: 2, stepName: 'branch_manager_review',   stepLabel: 'Validation Directeur Agence', role: 'BRANCH_MANAGER',   durationDays: 3 },
+        // Comité requis si montant > 10M
+        { order: 3, stepName: 'credit_committee_review', stepLabel: 'Comité de Crédit',            role: 'CREDIT_COMMITTEE', durationDays: 5, conditionMinAmount: 10000001 },
+        // Direction requise si montant > 50M
+        { order: 4, stepName: 'management_review',       stepLabel: 'Direction Générale',          role: 'MANAGEMENT',       durationDays: 7, conditionMinAmount: 50000001 },
       ]
     },
     {
@@ -1484,9 +1497,11 @@ async function main() {
       defaultRate: 13.0, minRate: 11.0, maxRate: 17.0,
       minDuration: 12, maxDuration: 60, requiresCollateral: false,
       steps: [
-        { order: 1, stepName: 'credit_analysis',         stepLabel: 'Analyse de crédit',           role: 'CREDIT_ANALYST',   durationDays: 3 },
-        { order: 2, stepName: 'credit_committee_review', stepLabel: 'Comité de Crédit',             role: 'CREDIT_COMMITTEE', durationDays: 5 },
-        { order: 3, stepName: 'management_review',       stepLabel: 'Direction Générale',           role: 'MANAGEMENT',       durationDays: 5 },
+        { order: 1, stepName: 'credit_analysis',         stepLabel: 'Analyse de crédit',          role: 'CREDIT_ANALYST',   durationDays: 3 },
+        // Comité requis si montant > 10M
+        { order: 2, stepName: 'credit_committee_review', stepLabel: 'Comité de Crédit',            role: 'CREDIT_COMMITTEE', durationDays: 5, conditionMinAmount: 10000001 },
+        // Direction requise si montant > 50M
+        { order: 3, stepName: 'management_review',       stepLabel: 'Direction Générale',          role: 'MANAGEMENT',       durationDays: 5, conditionMinAmount: 50000001 },
       ]
     },
     {
@@ -1497,7 +1512,7 @@ async function main() {
       defaultRate: 15.0, minRate: 12.0, maxRate: 22.0,
       minDuration: 1, maxDuration: 12, requiresCollateral: false,
       steps: [
-        { order: 1, stepName: 'credit_analysis',       stepLabel: 'Analyse de crédit',           role: 'CREDIT_ANALYST', durationDays: 1 },
+        { order: 1, stepName: 'credit_analysis',       stepLabel: 'Analyse de crédit',          role: 'CREDIT_ANALYST', durationDays: 1 },
         { order: 2, stepName: 'branch_manager_review', stepLabel: 'Validation Directeur Agence', role: 'BRANCH_MANAGER', durationDays: 1 },
       ]
     },

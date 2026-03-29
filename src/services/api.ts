@@ -1040,6 +1040,7 @@ export class ApiService {
   static async createCreditTypeWorkflowStep(creditTypeId: string, step: {
     stepName: string; stepLabel: string; role: string; order: number;
     isRequired?: boolean; durationDays?: number; description?: string;
+    conditionMinAmount?: number | null; conditionMaxAmount?: number | null;
   }) {
     const response = await api.post(`/credit-types/${creditTypeId}/workflow-steps`, step);
     return response.data;
@@ -1048,6 +1049,7 @@ export class ApiService {
   static async updateCreditTypeWorkflowStep(creditTypeId: string, stepId: string, step: Partial<{
     stepName: string; stepLabel: string; role: string; order: number;
     isRequired: boolean; durationDays: number; description: string;
+    conditionMinAmount: number | null; conditionMaxAmount: number | null;
   }>) {
     const response = await api.put(`/credit-types/${creditTypeId}/workflow-steps/${stepId}`, step);
     return response.data;
