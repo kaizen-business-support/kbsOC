@@ -354,7 +354,14 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
         </Box>
       )}
 
-      <Tabs value={activeTab} onChange={handleTabChange} sx={{ mb: 4 }}>
+      <Tabs
+        value={activeTab}
+        onChange={handleTabChange}
+        variant="scrollable"
+        scrollButtons="auto"
+        allowScrollButtonsMobile
+        sx={{ mb: 4 }}
+      >
         <Tab label="Vue d'ensemble" />
         <Tab label="Workflows en cours" />
         <Tab label="Historique complet" />
@@ -541,8 +548,8 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
           </Grid>
         </Box>
 
-        <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none' }}>
-          <Table>
+        <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none', overflowX: 'auto' }}>
+          <Table sx={{ minWidth: 700 }}>
             <TableHead>
               <TableRow sx={{ bgcolor: '#f8fafc' }}>
                 {['Numéro', 'Client', 'Montant', 'Statut / Étape', 'Progrès', "Chargé d'affaires", 'Actions'].map((col) => (
@@ -667,8 +674,8 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
 
       <TabPanel value={activeTab} index={2}>
         {/* Complete History Tab */}
-        <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none' }}>
-          <Table>
+        <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none', overflowX: 'auto' }}>
+          <Table sx={{ minWidth: 780 }}>
             <TableHead>
               <TableRow sx={{ bgcolor: '#f8fafc' }}>
                 {['Numéro', 'Client', 'Montant', 'Statut final', 'Durée totale', 'Date création', 'Date finalisation', 'Actions'].map((col) => (

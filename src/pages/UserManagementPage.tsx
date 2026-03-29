@@ -1390,10 +1390,13 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
       {/* Main Content with Tabs */}
       <Card>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs 
-            value={activeTab} 
+          <Tabs
+            value={activeTab}
             onChange={(_, newValue) => setActiveTab(newValue)}
             aria-label="user management tabs"
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
           >
             <Tab 
               label="Utilisateurs" 

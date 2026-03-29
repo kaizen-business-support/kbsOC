@@ -219,7 +219,7 @@ export const BankHolidaysAdminPage: React.FC<BankHolidaysAdminPageProps> = ({ on
       {/* Tabs */}
       <Card sx={{ mb: 4 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={currentTab} onChange={handleTabChange}>
+          <Tabs value={currentTab} onChange={handleTabChange} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
             <Tab label="Jours Fériés" icon={<EventIcon />} />
             <Tab label="Configuration" icon={<SettingsIcon />} />
           </Tabs>

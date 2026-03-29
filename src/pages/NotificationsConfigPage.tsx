@@ -146,7 +146,7 @@ const NotificationsConfigPage: React.FC = () => {
       )}
 
       <Paper sx={{ borderBottom: 1, borderColor: 'divider', mb: 0 }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)}>
+        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
           <Tab icon={<EmailIcon />} iconPosition="start" label="Canaux" />
           <Tab label="Modèles" />
           <Tab label="Règles" />
@@ -466,7 +466,7 @@ function TemplatesTab() {
       </Box>
 
       {loading ? <CircularProgress /> : (
-        <TableContainer component={Paper}>
+        <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -862,7 +862,7 @@ function RulesTab() {
       </Box>
 
       {loading ? <CircularProgress /> : (
-        <TableContainer component={Paper}>
+        <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
               <TableRow>

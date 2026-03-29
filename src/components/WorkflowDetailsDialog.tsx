@@ -431,7 +431,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
       </DialogTitle>
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
-        <Tabs value={activeTab} onChange={handleTabChange}>
+        <Tabs value={activeTab} onChange={handleTabChange} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
           <Tab label="Workflow" icon={<AssessmentIcon />} iconPosition="start" />
           <Tab label="Détails de la Demande" icon={<TrendingUpIcon />} iconPosition="start" />
           <Tab label="Données Financières" icon={<TrendingUpIcon />} iconPosition="start" />
@@ -758,7 +758,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                             <Typography variant="subtitle1" fontWeight={600} gutterBottom color="primary">
                               ACTIF
                             </Typography>
-                            <TableContainer>
+                            <TableContainer sx={{ overflowX: 'auto' }}>
                               <Table size="small">
                                 <TableHead>
                                   <TableRow>
@@ -835,7 +835,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                             <Typography variant="subtitle1" fontWeight={600} gutterBottom color="secondary">
                               PASSIF
                             </Typography>
-                            <TableContainer>
+                            <TableContainer sx={{ overflowX: 'auto' }}>
                               <Table size="small">
                                 <TableHead>
                                   <TableRow>
@@ -929,7 +929,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                     </Typography>
                     <Divider sx={{ mb: 2 }} />
 
-                    <TableContainer>
+                    <TableContainer sx={{ overflowX: 'auto' }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -1224,7 +1224,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                     </Typography>
                     <Divider sx={{ mb: 2 }} />
 
-                    <TableContainer>
+                    <TableContainer sx={{ overflowX: 'auto' }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -1503,7 +1503,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                       Ratios de Liquidité
                     </Typography>
                     <Divider sx={{ mb: 2 }} />
-                    <TableContainer>
+                    <TableContainer sx={{ overflowX: 'auto' }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -1541,7 +1541,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                       Ratios de Rentabilité
                     </Typography>
                     <Divider sx={{ mb: 2 }} />
-                    <TableContainer>
+                    <TableContainer sx={{ overflowX: 'auto' }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -1589,7 +1589,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                       Ratios d'Endettement
                     </Typography>
                     <Divider sx={{ mb: 2 }} />
-                    <TableContainer>
+                    <TableContainer sx={{ overflowX: 'auto' }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -1637,7 +1637,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                       Ratios d'Efficacité
                     </Typography>
                     <Divider sx={{ mb: 2 }} />
-                    <TableContainer>
+                    <TableContainer sx={{ overflowX: 'auto' }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -1899,7 +1899,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                       <Typography variant="subtitle1" fontWeight={600} gutterBottom>
                         Calcul du Score Financier
                       </Typography>
-                      <TableContainer>
+                      <TableContainer sx={{ overflowX: 'auto' }}>
                         <Table size="small">
                           <TableHead>
                             <TableRow>

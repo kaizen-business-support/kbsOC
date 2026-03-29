@@ -158,7 +158,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
       {/* Main Content */}
       <Card>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={currentTab} onChange={handleTabChange}>
+          <Tabs value={currentTab} onChange={handleTabChange} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
             <Tab label="Liste des Clients" />
             <Tab label="Nouveau Client" />
             <Tab label="Import/Export" />

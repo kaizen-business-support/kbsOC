@@ -468,7 +468,7 @@ export const ApprovalLimitsPage: React.FC<ApprovalLimitsPageProps> = ({ onNaviga
 
       {/* Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
+        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
           <Tab
             icon={<LimitsIcon />}
             label="Limites d'Approbation"

@@ -517,7 +517,7 @@ export const CreditTypesPage: React.FC = () => {
           <CircularProgress />
         </Box>
       ) : (
-        <TableContainer component={Paper}>
+        <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
           <Table>
             <TableHead>
               <TableRow>
@@ -632,7 +632,7 @@ export const CreditTypesPage: React.FC = () => {
         </DialogTitle>
         <DialogContent>
           {editMode && (
-            <Tabs value={activeTab} onChange={handleTabChange} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs value={activeTab} onChange={handleTabChange} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
               <Tab label="Informations générales" />
               <Tab label="Configuration du Workflow" icon={<WorkflowIcon />} iconPosition="start" />
             </Tabs>
@@ -779,7 +779,7 @@ export const CreditTypesPage: React.FC = () => {
                 </Box>
               ) : (
                 <>
-                  <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
+                  <TableContainer component={Paper} variant="outlined" sx={{ mb: 2, overflowX: 'auto' }}>
                     <Table size="small">
                       <TableHead>
                         <TableRow>
