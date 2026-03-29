@@ -280,7 +280,7 @@ cd "$APP_DIR/backend"
 # Export explicite — plus fiable que set -o allexport pour les sous-processus Prisma
 export DATABASE_URL="$DB_URL"
 npx prisma generate
-npx prisma db push --accept-data-loss
+npx prisma migrate deploy
 dep_ok "Schéma Prisma synchronisé"
 
 # Re-grant après db push
