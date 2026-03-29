@@ -330,8 +330,7 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
         const realAppId = result.data?.id || (result.data as any)?.application?.id;
         if (realAppId && pendingDocuments.length > 0) {
           const token = localStorage.getItem('optimus_access_token');
-          const apiPort = process.env.REACT_APP_API_PORT || '5007';
-          const uploadUrl = `${window.location.protocol}//${window.location.hostname}:${apiPort}/api/documents/${realAppId}/upload`;
+          const uploadUrl = `${window.location.origin}/api/documents/${realAppId}/upload`;
           for (const doc of pendingDocuments) {
             if (!doc.file) continue;
             const fd = new FormData();

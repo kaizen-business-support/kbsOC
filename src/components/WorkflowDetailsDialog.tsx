@@ -101,12 +101,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  const getApiBase = () => {
-    const protocol = window.location.protocol;
-    const hostname = window.location.hostname;
-    const apiPort = process.env.REACT_APP_API_PORT || '5007';
-    return `${protocol}//${hostname}:${apiPort}/api`;
-  };
+  const getApiBase = () => `${window.location.origin}/api`;
 
   const fetchDocuments = useCallback(async (applicationId: string) => {
     setDocsLoading(true);
