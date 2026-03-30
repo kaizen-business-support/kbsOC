@@ -259,71 +259,69 @@ export const DispatchingPage: React.FC = () => {
         {loadingData ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress /></Box>
         ) : (
-          <Grid container spacing={3}>
+          <Grid container spacing={2}>
 
             {/* ── Colonne gauche : charge des analystes ── */}
-            <Grid item xs={12} md={4}>
+            <Grid item xs={12} md={3}>
               <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5, color: '#374151', display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <PersonIcon sx={{ fontSize: 16 }} />
-                Charge des Analystes ({analysts.length})
+                Analystes ({analysts.length})
               </Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {analysts.map((a, idx) => (
                   <Card key={a.id} variant="outlined" sx={{
-                    borderRadius: 2.5,
-                    borderLeft: `4px solid ${workloadColor(a.workloadScore)}`,
-                    borderColor: 'rgba(0,0,0,0.08)',
+                    borderRadius: 2,
+                    borderLeft: `3px solid ${workloadColor(a.workloadScore)}`,
                     transition: 'box-shadow .2s',
-                    '&:hover': { boxShadow: '0 4px 16px rgba(0,0,0,0.10)' }
+                    '&:hover': { boxShadow: '0 2px 10px rgba(0,0,0,0.08)' }
                   }}>
-                    <CardContent sx={{ p: 1.75, '&:last-child': { pb: 1.75 } }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 1 }}>
+                    <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
                         <Badge
                           badgeContent={idx === 0 ? '★' : undefined}
-                          sx={{ '& .MuiBadge-badge': { bgcolor: '#ffd740', color: '#000', fontSize: 10, minWidth: 16, height: 16 } }}
+                          sx={{ '& .MuiBadge-badge': { bgcolor: '#ffd740', color: '#000', fontSize: 9, minWidth: 14, height: 14 } }}
                         >
-                          <Avatar sx={{ width: 34, height: 34, bgcolor: workloadColor(a.workloadScore) + '22', color: workloadColor(a.workloadScore), fontSize: '0.8rem', fontWeight: 700 }}>
+                          <Avatar sx={{ width: 28, height: 28, bgcolor: workloadColor(a.workloadScore) + '22', color: workloadColor(a.workloadScore), fontSize: '0.7rem', fontWeight: 700 }}>
                             {a.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                           </Avatar>
                         </Badge>
                         <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography variant="body2" fontWeight={700} noWrap>{a.name}</Typography>
-                          <Typography variant="caption" color="text.secondary" noWrap>{a.jobTitle || a.department || 'Analyste Crédit'}</Typography>
+                          <Typography variant="caption" fontWeight={700} noWrap display="block">{a.name}</Typography>
+                          <Typography sx={{ fontSize: 10 }} color="text.secondary" noWrap>{a.jobTitle || a.department || 'Analyste Crédit'}</Typography>
                         </Box>
                         <Chip
                           label={`${a.activeCount}`}
                           size="small"
-                          sx={{ bgcolor: workloadColor(a.workloadScore) + '18', color: workloadColor(a.workloadScore), fontWeight: 700, minWidth: 32, fontSize: 12 }}
+                          sx={{ bgcolor: workloadColor(a.workloadScore) + '18', color: workloadColor(a.workloadScore), fontWeight: 700, minWidth: 26, height: 20, fontSize: 11 }}
                         />
                       </Box>
                       <LinearProgress
                         variant="determinate"
                         value={Math.min((a.activeCount / 6) * 100, 100)}
                         sx={{
-                          height: 4, borderRadius: 2, bgcolor: '#f1f5f9',
+                          height: 3, borderRadius: 2, bgcolor: '#f1f5f9',
                           '& .MuiLinearProgress-bar': { bgcolor: workloadColor(a.workloadScore), borderRadius: 2 }
                         }}
                       />
-                      <Box sx={{ display: 'flex', gap: 1.5, mt: 0.75 }}>
-                        <Typography variant="caption" color="text.secondary">{a.pendingCount} en attente</Typography>
-                        <Typography variant="caption" color="text.secondary">·</Typography>
-                        <Typography variant="caption" color="text.secondary">{a.inReviewCount} en cours</Typography>
-                        {a.overdueCount > 0 && <>
-                          <Typography variant="caption" color="text.secondary">·</Typography>
-                          <Typography variant="caption" sx={{ color: '#dc2626', fontWeight: 600 }}>{a.overdueCount} en retard</Typography>
-                        </>}
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                        <Typography sx={{ fontSize: 10 }} color="text.secondary">{a.pendingCount} att.</Typography>
+                        <Typography sx={{ fontSize: 10 }} color="text.secondary">·</Typography>
+                        <Typography sx={{ fontSize: 10 }} color="text.secondary">{a.inReviewCount} cours</Typography>
+                        {a.overdueCount > 0 && (
+                          <Typography sx={{ fontSize: 10, color: '#dc2626', fontWeight: 700 }}>· {a.overdueCount} retard</Typography>
+                        )}
                       </Box>
                     </CardContent>
                   </Card>
                 ))}
                 {analysts.length === 0 && (
-                  <Alert severity="info" sx={{ borderRadius: 2 }}>Aucun analyste crédit actif trouvé</Alert>
+                  <Alert severity="info" sx={{ borderRadius: 2, fontSize: '0.78rem' }}>Aucun analyste crédit actif trouvé</Alert>
                 )}
               </Box>
             </Grid>
 
             {/* ── Colonne droite : dossiers + historique ── */}
-            <Grid item xs={12} md={8}>
+            <Grid item xs={12} md={9}>
               <Box sx={{ borderBottom: '1px solid #e2e8f0', mb: 2 }}>
                 <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{
                   '& .MuiTab-root': { fontWeight: 700, fontSize: '0.8rem', textTransform: 'none', minHeight: 40 },
@@ -379,42 +377,44 @@ export const DispatchingPage: React.FC = () => {
                     </Card>
                   ) : (
                     <Paper variant="outlined" sx={{ borderRadius: 2.5, overflow: 'hidden' }}>
-                      <Table size="small">
+                      <Box sx={{ overflowX: 'auto' }}>
+                      <Table size="small" sx={{ minWidth: 560 }}>
                         <TableHead>
                           <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Dossier</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Client / Secteur</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Montant</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Ancienneté</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Chargé / Agence</TableCell>
-                            <TableCell />
+                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>Dossier</TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Client</TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>Montant</TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>Ancienneté</TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }} align="right">Action</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
                           {filteredPending.map(app => (
                             <TableRow key={app.id} sx={{ '&:hover td': { bgcolor: '#f8fafc' } }}>
-                              <TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap' }}>
                                 <Typography variant="caption" fontWeight={800} sx={{ color: ACCENT }}>{app.applicationNumber}</Typography>
-                                {app.creditType && (
-                                  <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: 10 }}>{app.creditType}</Typography>
-                                )}
+                                <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: 10 }}>
+                                  {app.creditType || app.accountManager}
+                                </Typography>
                               </TableCell>
                               <TableCell>
                                 <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
                                   <BizIcon sx={{ fontSize: 13, color: '#94a3b8', mt: 0.2, flexShrink: 0 }} />
                                   <Box>
-                                    <Typography variant="caption" fontWeight={600} display="block" noWrap sx={{ maxWidth: 130 }}>{app.clientName}</Typography>
-                                    {app.clientSector && <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 130, fontSize: 10 }}>{app.clientSector}</Typography>}
+                                    <Typography variant="caption" fontWeight={600} display="block" noWrap sx={{ maxWidth: 160 }}>{app.clientName}</Typography>
+                                    <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 160, fontSize: 10 }}>
+                                      {app.clientSector || app.branch || ''}
+                                    </Typography>
                                   </Box>
                                 </Box>
                               </TableCell>
-                              <TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap' }}>
                                 <Typography variant="caption" fontWeight={700}>{fmtAmount(app.amount, app.currency)}</Typography>
                                 {app.durationMonths && (
                                   <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: 10 }}>{app.durationMonths} mois</Typography>
                                 )}
                               </TableCell>
-                              <TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap' }}>
                                 <Chip
                                   label={urgencyLabel(app.daysPending)}
                                   size="small"
@@ -427,11 +427,7 @@ export const DispatchingPage: React.FC = () => {
                                   }}
                                 />
                               </TableCell>
-                              <TableCell>
-                                <Typography variant="caption" fontWeight={600} display="block" noWrap sx={{ maxWidth: 110 }}>{app.accountManager}</Typography>
-                                {app.branch && <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 110, fontSize: 10 }}>{app.branch}</Typography>}
-                              </TableCell>
-                              <TableCell align="right">
+                              <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                                 <Button
                                   size="small"
                                   variant="contained"
@@ -439,7 +435,7 @@ export const DispatchingPage: React.FC = () => {
                                   onClick={() => openAssignDialog(app)}
                                   disabled={!!autoLoading[app.id] || analysts.length === 0}
                                   sx={{
-                                    fontSize: '0.7rem', px: 1.5, borderRadius: 1.5,
+                                    fontSize: '0.72rem', px: 2, borderRadius: 1.5, minWidth: 90,
                                     bgcolor: ACCENT, '&:hover': { bgcolor: '#4527a0' },
                                     textTransform: 'none', fontWeight: 700, whiteSpace: 'nowrap'
                                   }}
@@ -451,6 +447,7 @@ export const DispatchingPage: React.FC = () => {
                           ))}
                         </TableBody>
                       </Table>
+                      </Box>
                     </Paper>
                   )}
                 </>
@@ -467,15 +464,15 @@ export const DispatchingPage: React.FC = () => {
                     </Card>
                   ) : (
                     <Paper variant="outlined" sx={{ borderRadius: 2.5, overflow: 'hidden' }}>
-                      <Table size="small">
+                      <Box sx={{ overflowX: 'auto' }}>
+                      <Table size="small" sx={{ minWidth: 520 }}>
                         <TableHead>
                           <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Dossier</TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>Dossier</TableCell>
                             <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Client</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Montant</TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>Montant</TableCell>
                             <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Analyste affecté</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Statut</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Affecté le</TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>Statut / Date</TableCell>
                             <TableCell />
                           </TableRow>
                         </TableHead>
@@ -502,16 +499,14 @@ export const DispatchingPage: React.FC = () => {
                                   </Box>
                                 ) : <Typography variant="caption" color="text.secondary">—</Typography>}
                               </TableCell>
-                              <TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap' }}>
                                 <Chip
                                   label={item.appStatus === 'APPROVED' ? 'Approuvé' : item.appStatus === 'REJECTED' ? 'Refusé' : item.appStatus === 'UNDER_REVIEW' ? 'En cours' : item.appStatus}
                                   size="small"
                                   color={item.appStatus === 'APPROVED' ? 'success' : item.appStatus === 'REJECTED' ? 'error' : 'default'}
                                   sx={{ fontSize: 10, height: 20, fontWeight: 700 }}
                                 />
-                              </TableCell>
-                              <TableCell>
-                                <Typography variant="caption" color="text.secondary">
+                                <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: 10, mt: 0.25 }}>
                                   {new Date(item.assignedAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
                                 </Typography>
                               </TableCell>
@@ -535,6 +530,7 @@ export const DispatchingPage: React.FC = () => {
                           ))}
                         </TableBody>
                       </Table>
+                      </Box>
                     </Paper>
                   )}
                 </>
