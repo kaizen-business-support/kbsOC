@@ -1341,12 +1341,21 @@ export const dispatchingApi = {
     }
   },
 
-  async assignAnalyst(applicationId: string, analystId: string, comment?: string): Promise<ApiResponse<any>> {
+  async assignAnalyst(applicationId: string, analystId: string, comment?: string, isReassign = false): Promise<ApiResponse<any>> {
     try {
-      const res = await api.post('/dispatching/assign', { applicationId, analystId, comment });
+      const res = await api.post('/dispatching/assign', { applicationId, analystId, comment, isReassign });
       return { success: true, data: res.data };
     } catch (e: any) {
       return { success: false, error: e.response?.data?.error || 'Erreur affectation' };
+    }
+  },
+
+  async getHistory(): Promise<ApiResponse<any[]>> {
+    try {
+      const res = await api.get('/dispatching/history');
+      return { success: true, data: res.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur historique' };
     }
   }
 };

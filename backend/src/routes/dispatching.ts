@@ -3,7 +3,7 @@ import { prisma } from '../server';
 
 const router = Router();
 
-// ─── Middleware : seuls ANALYST_SUPERVISOR et ADMIN peuvent dispatching ────────
+// ─── Middleware : seuls ANALYST_SUPERVISOR et ADMIN peuvent dispatcher ─────────
 const requireSupervisor = (req: Request, res: Response, next: any) => {
   const user = (req as any).user;
   if (!user || !['ANALYST_SUPERVISOR', 'ADMIN'].includes(user.role)) {
@@ -12,8 +12,10 @@ const requireSupervisor = (req: Request, res: Response, next: any) => {
   next();
 };
 
+// Appliquer le middleware sur toutes les routes
+router.use(requireSupervisor);
+
 // ─── GET /api/dispatching/workload ─────────────────────────────────────────────
-// Retourne tous les analystes avec leur charge de travail (dossiers actifs)
 router.get('/workload', async (req: Request, res: Response) => {
   try {
     const analysts = await prisma.user.findMany({
@@ -46,31 +48,37 @@ router.get('/workload', async (req: Request, res: Response) => {
       }
     });
 
-    const workload = analysts.map(analyst => ({
-      id: analyst.id,
-      name: analyst.name,
-      email: analyst.email,
-      department: analyst.department,
-      jobTitle: analyst.jobTitle,
-      activeCount: analyst.assignedSteps.length,
-      pendingCount: analyst.assignedSteps.filter(s => s.status === 'PENDING').length,
-      inReviewCount: analyst.assignedSteps.filter(s => s.status === 'IN_REVIEW').length,
-      activeDossiers: analyst.assignedSteps.map(s => ({
-        stepId: s.id,
-        applicationId: s.application.id,
-        applicationNumber: s.application.applicationNumber,
-        clientName: s.application.client.companyName,
-        amount: Number(s.application.amount),
-        currency: s.application.currency,
-        appStatus: s.application.status,
-        stepStatus: s.status,
-        deadline: s.deadline
-      })),
-      // Score de charge : moins c'est élevé, plus l'analyste est disponible
-      workloadScore: analyst.assignedSteps.length
-    }));
+    const workload = analysts.map(analyst => {
+      const overdueCount = analyst.assignedSteps.filter(
+        s => s.deadline && new Date(s.deadline) < new Date()
+      ).length;
 
-    // Trier par charge croissante (le moins chargé en premier)
+      return {
+        id: analyst.id,
+        name: analyst.name,
+        email: analyst.email,
+        department: analyst.department,
+        jobTitle: analyst.jobTitle,
+        activeCount: analyst.assignedSteps.length,
+        pendingCount: analyst.assignedSteps.filter(s => s.status === 'PENDING').length,
+        inReviewCount: analyst.assignedSteps.filter(s => s.status === 'IN_REVIEW').length,
+        overdueCount,
+        activeDossiers: analyst.assignedSteps.map(s => ({
+          stepId: s.id,
+          applicationId: s.application.id,
+          applicationNumber: s.application.applicationNumber,
+          clientName: s.application.client.companyName,
+          amount: Number(s.application.amount),
+          currency: s.application.currency,
+          appStatus: s.application.status,
+          stepStatus: s.status,
+          deadline: s.deadline
+        })),
+        // Score = nombre actifs + pénalité délai dépassé
+        workloadScore: analyst.assignedSteps.length + overdueCount * 2
+      };
+    });
+
     workload.sort((a, b) => a.workloadScore - b.workloadScore);
 
     res.json({ success: true, data: workload });
@@ -81,10 +89,8 @@ router.get('/workload', async (req: Request, res: Response) => {
 });
 
 // ─── GET /api/dispatching/pending ─────────────────────────────────────────────
-// Retourne les demandes soumises sans analyste affecté (à dispatcher)
 router.get('/pending', async (req: Request, res: Response) => {
   try {
-    // Applications SUBMITTED ou UNDER_REVIEW sans step CREDIT_ANALYST actif assigné
     const applications = await prisma.creditApplication.findMany({
       where: {
         status: { in: ['SUBMITTED', 'UNDER_REVIEW'] },
@@ -105,21 +111,29 @@ router.get('/pending', async (req: Request, res: Response) => {
       orderBy: { createdAt: 'asc' }
     });
 
-    const data = applications.map(app => ({
-      id: app.id,
-      applicationNumber: app.applicationNumber,
-      clientName: app.client.companyName,
-      clientSector: app.client.sector,
-      amount: Number(app.amount),
-      currency: app.currency,
-      purpose: app.purpose,
-      durationMonths: app.durationMonths,
-      status: app.status,
-      createdAt: app.createdAt,
-      submittedAt: app.submittedAt,
-      accountManager: app.creator.name,
-      creditType: app.creditType?.name
-    }));
+    const data = applications.map(app => {
+      const daysPending = Math.floor(
+        (Date.now() - new Date(app.submittedAt || app.createdAt).getTime()) / (1000 * 60 * 60 * 24)
+      );
+      return {
+        id: app.id,
+        applicationNumber: app.applicationNumber,
+        clientName: app.client.companyName,
+        clientSector: app.client.sector,
+        branch: app.creator.department || 'Non définie',
+        amount: Number(app.amount),
+        currency: app.currency,
+        purpose: app.purpose,
+        durationMonths: app.durationMonths,
+        status: app.status,
+        createdAt: app.createdAt,
+        submittedAt: app.submittedAt,
+        daysPending,
+        accountManager: app.creator.name,
+        accountManagerId: app.creator.id,
+        creditType: app.creditType?.name
+      };
+    });
 
     res.json({ success: true, data });
   } catch (error) {
@@ -129,14 +143,13 @@ router.get('/pending', async (req: Request, res: Response) => {
 });
 
 // ─── GET /api/dispatching/suggest/:applicationId ──────────────────────────────
-// Suggère automatiquement le meilleur analyste pour une demande donnée
 router.get('/suggest/:applicationId', async (req: Request, res: Response) => {
   try {
     const { applicationId } = req.params;
 
     const application = await prisma.creditApplication.findUnique({
       where: { id: applicationId },
-      include: { client: true }
+      include: { client: true, creator: true }
     });
 
     if (!application) {
@@ -156,24 +169,32 @@ router.get('/suggest/:applicationId', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Aucun analyste disponible' });
     }
 
-    // Algorithme : trouver l'analyste avec la plus faible charge
     const ranked = analysts
-      .map(a => ({
-        id: a.id,
-        name: a.name,
-        email: a.email,
-        department: a.department,
-        jobTitle: a.jobTitle,
-        workloadScore: a.assignedSteps.length
-      }))
+      .map(a => {
+        const overdueCount = a.assignedSteps.filter(
+          s => s.deadline && new Date(s.deadline) < new Date()
+        ).length;
+        // Bonus si même agence que le chargé d'affaires
+        const sameDeptBonus = a.department === application.creator?.department ? -0.5 : 0;
+        return {
+          id: a.id,
+          name: a.name,
+          email: a.email,
+          department: a.department,
+          jobTitle: a.jobTitle,
+          activeCount: a.assignedSteps.length,
+          pendingCount: a.assignedSteps.filter(s => s.status === 'PENDING').length,
+          inReviewCount: a.assignedSteps.filter(s => s.status === 'IN_REVIEW').length,
+          overdueCount,
+          workloadScore: a.assignedSteps.length + overdueCount * 2 + sameDeptBonus
+        };
+      })
       .sort((a, b) => a.workloadScore - b.workloadScore);
-
-    const suggested = ranked[0];
 
     res.json({
       success: true,
       data: {
-        suggested,
+        suggested: ranked[0],
         ranked,
         applicationId,
         applicationNumber: application.applicationNumber
@@ -185,12 +206,58 @@ router.get('/suggest/:applicationId', async (req: Request, res: Response) => {
   }
 });
 
-// ─── POST /api/dispatching/assign ─────────────────────────────────────────────
-// Affecter un analyste à une demande (validation par le Responsable Analyste)
-router.post('/assign', requireSupervisor, async (req: Request, res: Response) => {
+// ─── GET /api/dispatching/history ─────────────────────────────────────────────
+// Historique des 30 dernières affectations
+router.get('/history', async (req: Request, res: Response) => {
   try {
-    const { applicationId, analystId, comment } = req.body;
-    const supervisorId = (req as any).user?.userId;
+    const steps = await prisma.workflowStep.findMany({
+      where: {
+        role: 'CREDIT_ANALYST',
+        assigneeId: { not: null }
+      },
+      include: {
+        application: {
+          include: {
+            client: { select: { companyName: true } },
+            creator: { select: { name: true, department: true } }
+          }
+        },
+        assignee: { select: { id: true, name: true, department: true, jobTitle: true } }
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 30
+    });
+
+    const data = steps.map(s => ({
+      stepId: s.id,
+      applicationId: s.application.id,
+      applicationNumber: s.application.applicationNumber,
+      clientName: s.application.client.companyName,
+      amount: Number(s.application.amount),
+      currency: s.application.currency,
+      status: s.status,
+      appStatus: s.application.status,
+      assignedTo: s.assignee,
+      accountManager: s.application.creator.name,
+      branch: s.application.creator.department,
+      assignedAt: s.updatedAt,
+      deadline: s.deadline,
+      comments: s.comments
+    }));
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('History error:', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// ─── POST /api/dispatching/assign ─────────────────────────────────────────────
+// Affecter (ou ré-affecter) un analyste à une demande
+router.post('/assign', async (req: Request, res: Response) => {
+  try {
+    const { applicationId, analystId, comment, isReassign } = req.body;
+    const supervisorId = (req as any).user?.userId || (req as any).user?.id;
 
     if (!applicationId || !analystId) {
       return res.status(400).json({ success: false, error: 'applicationId et analystId requis' });
@@ -209,10 +276,15 @@ router.post('/assign', requireSupervisor, async (req: Request, res: Response) =>
       return res.status(400).json({ success: false, error: 'Analyste invalide' });
     }
 
-    // Chercher le step CREDIT_ANALYST existant non-assigné, ou le créer
-    const existingStep = application.workflowSteps.find(
-      s => s.role === 'CREDIT_ANALYST' && !s.assigneeId
-    );
+    const supervisorUser = await prisma.user.findUnique({
+      where: { id: supervisorId },
+      select: { name: true }
+    });
+    const supervisorName = supervisorUser?.name || 'Responsable Analyste';
+    const dateStr = new Date().toLocaleDateString('fr-FR');
+
+    // Chercher un step CREDIT_ANALYST existant (assigné ou non)
+    const existingStep = application.workflowSteps.find(s => s.role === 'CREDIT_ANALYST');
 
     if (existingStep) {
       await prisma.workflowStep.update({
@@ -220,11 +292,13 @@ router.post('/assign', requireSupervisor, async (req: Request, res: Response) =>
         data: {
           assigneeId: analystId,
           status: 'PENDING',
-          comments: comment || `Affecté par le Responsable Analyste le ${new Date().toLocaleDateString('fr-FR')}`
+          comments: comment ||
+            (isReassign
+              ? `Ré-affecté à ${analyst.name} par ${supervisorName} le ${dateStr}`
+              : `Affecté à ${analyst.name} par ${supervisorName} le ${dateStr}`)
         }
       });
     } else {
-      // Créer un nouveau step si aucun n'existe
       await prisma.workflowStep.create({
         data: {
           applicationId,
@@ -233,12 +307,11 @@ router.post('/assign', requireSupervisor, async (req: Request, res: Response) =>
           assigneeId: analystId,
           status: 'PENDING',
           deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          comments: comment || `Affecté par le Responsable Analyste le ${new Date().toLocaleDateString('fr-FR')}`
+          comments: comment || `Affecté à ${analyst.name} par ${supervisorName} le ${dateStr}`
         }
       });
     }
 
-    // Passer la demande en UNDER_REVIEW si elle était SUBMITTED
     if (application.status === 'SUBMITTED') {
       await prisma.creditApplication.update({
         where: { id: applicationId },
@@ -248,7 +321,9 @@ router.post('/assign', requireSupervisor, async (req: Request, res: Response) =>
 
     res.json({
       success: true,
-      message: `Demande ${application.applicationNumber} affectée à ${analyst.name}`,
+      message: isReassign
+        ? `Dossier ${application.applicationNumber} ré-affecté à ${analyst.name}`
+        : `Dossier ${application.applicationNumber} affecté à ${analyst.name}`,
       data: { applicationId, analystId, analystName: analyst.name }
     });
   } catch (error) {
