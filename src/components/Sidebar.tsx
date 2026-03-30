@@ -85,7 +85,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   hasAnalysisData,
 }) => {
   const { t } = useTranslation();
-  const { isRole } = useUser();
+  const { isRole, hasPermission } = useUser();
 
   const [creditExpanded, setCreditExpanded]     = useState(true);
   const [analysisExpanded, setAnalysisExpanded] = useState(true);
@@ -95,10 +95,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onPageChange(page);
   };
 
-  const canViewAnalytics       = isRole('management') || isRole('admin') || isRole('branch_manager') || isRole('credit_committee');
-  const canCreateApplications  = isRole('account_manager') || isRole('admin');
-  const canViewConfiguration   = isRole('admin') || isRole('management');
-  const canDispatching         = isRole('analyst_supervisor') || isRole('admin');
+  const canViewAnalytics      = hasPermission('view_analytics') || isRole('management') || isRole('admin') || isRole('branch_manager') || isRole('credit_committee');
+  const canCreateApplications = hasPermission('create_application') || isRole('account_manager') || isRole('admin');
+  const canViewConfiguration  = hasPermission('manage_users') || isRole('admin') || isRole('management');
+  const canDispatching        = hasPermission('dispatch_applications') || isRole('analyst_supervisor') || isRole('admin');
 
   const outOfProcessItems = [
     { id: 'data-input'  as PageType, label: t('navigation.dataInput'), icon: DataInputIcon },
