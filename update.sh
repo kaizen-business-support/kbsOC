@@ -283,6 +283,18 @@ npx prisma generate
 npx prisma migrate deploy
 dep_ok "Schéma Prisma synchronisé"
 
+# Seed données initiales (idempotent — ne recrée pas si déjà existant)
+if [[ -f "$APP_DIR/backend/prisma/seed-roles.js" ]]; then
+  node "$APP_DIR/backend/prisma/seed-roles.js" 2>/dev/null \
+    && dep_ok "Rôles système seedés" \
+    || warn "seed-roles.js : erreur (non bloquant)"
+fi
+if [[ -f "$APP_DIR/backend/prisma/seed-data.js" ]]; then
+  node "$APP_DIR/backend/prisma/seed-data.js" 2>/dev/null \
+    && dep_ok "Départements et agences seedés" \
+    || warn "seed-data.js : erreur (non bloquant)"
+fi
+
 # Re-grant après db push
 sudo -u postgres psql -c \
   "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" 2>/dev/null || true
