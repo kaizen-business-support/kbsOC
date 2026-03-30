@@ -1309,9 +1309,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
-                    <PersonIcon />
-                  </Avatar>
+                  <PersonIcon sx={{ color: 'primary.main', fontSize: 28, mr: 2 }} />
                   <Box>
                     <Typography variant="h4" sx={{ fontWeight: 600 }}>
                       {users.length}
@@ -1329,9 +1327,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Avatar sx={{ bgcolor: 'success.main', mr: 2 }}>
-                    <BadgeIcon />
-                  </Avatar>
+                  <BadgeIcon sx={{ color: 'success.main', fontSize: 28, mr: 2 }} />
                   <Box>
                     <Typography variant="h4" sx={{ fontWeight: 600 }}>
                       {users.filter(u => u.isActive).length}
@@ -1349,9 +1345,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Avatar sx={{ bgcolor: 'error.main', mr: 2 }}>
-                    <AdminIcon />
-                  </Avatar>
+                  <AdminIcon sx={{ color: 'error.main', fontSize: 28, mr: 2 }} />
                   <Box>
                     <Typography variant="h4" sx={{ fontWeight: 600 }}>
                       {users.filter(u => u.role === 'ADMIN').length}
@@ -1369,9 +1363,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Avatar sx={{ bgcolor: 'warning.main', mr: 2 }}>
-                    <GroupIcon />
-                  </Avatar>
+                  <GroupIcon sx={{ color: 'warning.main', fontSize: 28, mr: 2 }} />
                   <Box>
                     <Typography variant="h4" sx={{ fontWeight: 600 }}>
                       {new Set(users.map(u => u.department).filter(Boolean)).size}
@@ -1608,7 +1600,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                     <TableRow key={user.id} hover>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <Avatar sx={{ mr: 2, bgcolor: 'primary.main' }}>
+                          <Avatar sx={{ mr: 2, bgcolor: '#e2e8f0', color: '#475569', fontWeight: 600 }}>
                             {user.name.charAt(0).toUpperCase()}
                           </Avatar>
                           <Box>

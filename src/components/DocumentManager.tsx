@@ -294,9 +294,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({
     <Box>
       {/* Header */}
       <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', gap: 2 }}>
-        <Avatar sx={{ bgcolor: 'primary.main' }}>
-          <ScannerIcon />
-        </Avatar>
+        <ScannerIcon sx={{ color: 'primary.main', fontSize: 28 }} />
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 600 }}>
             Gestion Documentaire
@@ -404,9 +402,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({
                 <React.Fragment key={document.id}>
                   <ListItem>
                     <ListItemIcon>
-                      <Avatar sx={{ bgcolor: `${getStatusColor(document.status)}.100` }}>
-                        <DocumentIcon color={getStatusColor(document.status) as any} />
-                      </Avatar>
+                      <DocumentIcon color={getStatusColor(document.status) as any} />
                     </ListItemIcon>
                     
                     <ListItemText

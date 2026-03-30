@@ -160,9 +160,7 @@ export const FinancialDataInput: React.FC<FinancialDataInputProps> = ({
       {/* Header */}
       <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Avatar sx={{ bgcolor: 'primary.main' }}>
-            <AnalysisIcon />
-          </Avatar>
+          <AnalysisIcon sx={{ color: 'primary.main', fontSize: 28 }} />
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 600 }}>
               Saisie des États Financiers

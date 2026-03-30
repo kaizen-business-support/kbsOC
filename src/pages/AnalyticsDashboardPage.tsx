@@ -938,9 +938,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                       </Typography>
                       <Typography variant="caption" color="text.secondary">Sur la période</Typography>
                     </Box>
-                    <Avatar sx={{ bgcolor: '#e3f2fd', width: 44, height: 44 }}>
-                      <AssessmentIcon sx={{ color: '#1565c0', fontSize: 22 }} />
-                    </Avatar>
+                    <AssessmentIcon sx={{ color: '#1565c0', fontSize: 32 }} />
                   </Box>
                 </CardContent>
               </Card>
@@ -962,9 +960,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                         sx={{ height: 5, borderRadius: 3, mt: 1, bgcolor: '#dcfce7', '& .MuiLinearProgress-bar': { bgcolor: '#16a34a' } }}
                       />
                     </Box>
-                    <Avatar sx={{ bgcolor: '#f0fdf4', width: 44, height: 44, ml: 1 }}>
-                      <ApprovedIcon sx={{ color: '#16a34a', fontSize: 22 }} />
-                    </Avatar>
+                    <ApprovedIcon sx={{ color: '#16a34a', fontSize: 32, ml: 1 }} />
                   </Box>
                 </CardContent>
               </Card>
@@ -984,9 +980,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                       </Typography>
                       <Typography variant="caption" color="text.secondary">Montant total demandé</Typography>
                     </Box>
-                    <Avatar sx={{ bgcolor: '#f5f3ff', width: 44, height: 44 }}>
-                      <MoneyIcon sx={{ color: '#7c3aed', fontSize: 22 }} />
-                    </Avatar>
+                    <MoneyIcon sx={{ color: '#7c3aed', fontSize: 32 }} />
                   </Box>
                 </CardContent>
               </Card>
@@ -1008,9 +1002,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                         sx={{ height: 5, borderRadius: 3, mt: 1, bgcolor: '#fef3c7', '& .MuiLinearProgress-bar': { bgcolor: '#d97706' } }}
                       />
                     </Box>
-                    <Avatar sx={{ bgcolor: '#fffbeb', width: 44, height: 44, ml: 1 }}>
-                      <TrendingUpIcon sx={{ color: '#d97706', fontSize: 22 }} />
-                    </Avatar>
+                    <TrendingUpIcon sx={{ color: '#d97706', fontSize: 32, ml: 1 }} />
                   </Box>
                 </CardContent>
               </Card>
@@ -1276,9 +1268,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
               <Grid item xs={12} md={4}>
                 <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)', textAlign: 'center' }}>
                   <CardContent sx={{ py: 2.5 }}>
-                    <Avatar sx={{ width: 50, height: 50, mx: 'auto', mb: 1.5, bgcolor: '#eff6ff' }}>
-                      <TimeIcon sx={{ color: '#1565c0', fontSize: 24 }} />
-                    </Avatar>
+                    <TimeIcon sx={{ color: '#1565c0', fontSize: 36, mb: 1 }} />
                     <Typography variant="h5" sx={{ fontWeight: 700, color: '#1565c0' }}>
                       {(() => {
                         const completedFiltered = getFilteredWorkflows().filter(wf => {
@@ -1298,9 +1288,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
               <Grid item xs={12} md={4}>
                 <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)', textAlign: 'center' }}>
                   <CardContent sx={{ py: 2.5 }}>
-                    <Avatar sx={{ width: 50, height: 50, mx: 'auto', mb: 1.5, bgcolor: '#f0fdf4' }}>
-                      <AssessmentIcon sx={{ color: '#16a34a', fontSize: 24 }} />
-                    </Avatar>
+                    <AssessmentIcon sx={{ color: '#16a34a', fontSize: 36, mb: 1 }} />
                     <Typography variant="h5" sx={{ fontWeight: 700, color: '#16a34a' }}>
                       {getFilteredWorkflows().filter(wf => {
                         const d = wf.finalDecision || wf.status;
@@ -1315,9 +1303,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
               <Grid item xs={12} md={4}>
                 <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)', textAlign: 'center' }}>
                   <CardContent sx={{ py: 2.5 }}>
-                    <Avatar sx={{ width: 50, height: 50, mx: 'auto', mb: 1.5, bgcolor: '#fef3c7' }}>
-                      <PendingIcon sx={{ color: '#d97706', fontSize: 24 }} />
-                    </Avatar>
+                    <PendingIcon sx={{ color: '#d97706', fontSize: 36, mb: 1 }} />
                     <Typography variant="h5" sx={{ fontWeight: 700, color: '#d97706' }}>
                       {getFilteredWorkflows().filter(wf => wf.status === 'in_progress').length}
                     </Typography>

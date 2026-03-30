@@ -489,9 +489,7 @@ export const ApprovalLimitsPage: React.FC<ApprovalLimitsPageProps> = ({ onNaviga
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
-                    <LimitsIcon />
-                  </Avatar>
+                  <LimitsIcon sx={{ color: 'primary.main', fontSize: 28, mr: 2 }} />
                   <Box>
                     <Typography variant="h4" sx={{ fontWeight: 600 }}>
                       {limits.length}
@@ -509,9 +507,7 @@ export const ApprovalLimitsPage: React.FC<ApprovalLimitsPageProps> = ({ onNaviga
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Avatar sx={{ bgcolor: 'success.main', mr: 2 }}>
-                    <SecurityIcon />
-                  </Avatar>
+                  <SecurityIcon sx={{ color: 'success.main', fontSize: 28, mr: 2 }} />
                   <Box>
                     <Typography variant="h4" sx={{ fontWeight: 600 }}>
                       {limits.filter(l => l.isActive).length}
@@ -529,9 +525,7 @@ export const ApprovalLimitsPage: React.FC<ApprovalLimitsPageProps> = ({ onNaviga
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Avatar sx={{ bgcolor: 'warning.main', mr: 2 }}>
-                    <BusinessIcon />
-                  </Avatar>
+                  <BusinessIcon sx={{ color: 'warning.main', fontSize: 28, mr: 2 }} />
                   <Box>
                     <Typography variant="h4" sx={{ fontWeight: 600 }}>
                       {limits.filter(l => l.role === 'CREDIT_COMMITTEE' || l.role === 'MANAGEMENT').length}
@@ -549,9 +543,7 @@ export const ApprovalLimitsPage: React.FC<ApprovalLimitsPageProps> = ({ onNaviga
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Avatar sx={{ bgcolor: 'info.main', mr: 2 }}>
-                    <EuroIcon />
-                  </Avatar>
+                  <EuroIcon sx={{ color: 'info.main', fontSize: 28, mr: 2 }} />
                   <Box>
                     <Typography variant="h4" sx={{ fontWeight: 600 }}>
                       {Math.max(...limits.map(l => l.maxAmount)) / 1000000}M
@@ -629,9 +621,9 @@ export const ApprovalLimitsPage: React.FC<ApprovalLimitsPageProps> = ({ onNaviga
                       </TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <Avatar sx={{ mr: 2, bgcolor: `${getRoleColor(limit.role)}.main` }}>
+                          <Box sx={{ mr: 2, color: `${getRoleColor(limit.role)}.main`, display: 'flex' }}>
                             {getRoleIcon(limit.role)}
-                          </Avatar>
+                          </Box>
                           <Box>
                             <Typography variant="body2" sx={{ fontWeight: 500 }}>
                               {roleLabels[limit.role] || limit.role}
@@ -743,9 +735,7 @@ export const ApprovalLimitsPage: React.FC<ApprovalLimitsPageProps> = ({ onNaviga
                       <TableRow key={step.id} hover>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <Avatar sx={{ mr: 2, bgcolor: 'primary.main' }}>
-                              <ScheduleIcon />
-                            </Avatar>
+                            <ScheduleIcon sx={{ color: 'primary.main', fontSize: 24, mr: 2 }} />
                             <Box>
                               <Typography variant="body2" sx={{ fontWeight: 500 }}>
                                 {step.displayName}
