@@ -295,6 +295,11 @@ if [[ -f "$APP_DIR/backend/prisma/seed-data.js" ]]; then
     || warn "seed-data.js : erreur (non bloquant)"
 fi
 
+# Vider les clés Redis liées aux listes (cache périmé après seed)
+redis-cli DEL cache:departments:active cache:branches:active 2>/dev/null \
+  && dep_ok "Cache Redis departments/branches vidé" \
+  || warn "redis-cli indisponible — cache expirera dans 5 min"
+
 # Re-grant après db push
 sudo -u postgres psql -c \
   "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" 2>/dev/null || true
