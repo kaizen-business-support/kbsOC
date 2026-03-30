@@ -27,6 +27,7 @@ import {
   Button,
   Collapse,
   TextField,
+  CircularProgress,
 } from '@mui/material';
 import {
   TrendingUp as TrendingUpIcon,
@@ -38,10 +39,14 @@ import {
   Schedule as PendingIcon,
   Visibility as ViewIcon,
   AccessTime as TimeIcon,
+  Refresh as RefreshIcon,
+  CheckCircleOutline as CheckCircleOutlineIcon,
+  Cancel as CancelIcon,
+  HourglassEmpty as HourglassIcon,
 } from '@mui/icons-material';
 import { useUser } from '../contexts/UserContext';
 import { useTranslation } from 'react-i18next';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
+import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 import { WorkflowTimestamps } from '../types';
 import {
   loadWorkdayConfiguration
@@ -66,6 +71,11 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   const [apiError, setApiError] = useState<string | null>(null);
   const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [availableManagers, setAvailableManagers] = useState<{name: string, branch: string, clients?: number, applications?: number, approved?: number, volume?: number, performance?: number}[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [refreshCountdown, setRefreshCountdown] = useState(60);
+  const REFRESH_INTERVAL = 60;
+  const CACHE_KEY = 'analytics_dashboard_cache';
+  const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   // Reset manager selection when branch changes
   React.useEffect(() => {
@@ -137,14 +147,23 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
         // Backend returns { workflows: [], summary: {} }, extract workflows array
         const workflows = analyticsResponse.data.workflows || analyticsResponse.data;
         setWorkflowTimestamps(workflows);
+        setLastUpdated(new Date());
+        // Persist to sessionStorage
+        try {
+          sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data: workflows, ts: Date.now(), filters: { timeRange, selectedBranch, selectedManager, startDate, endDate } }));
+        } catch (_) {}
         console.log('📊 Analytics Dashboard loaded from new endpoint:', workflows.length, 'workflow records');
       } else {
         // Try fallback to old workflow endpoint
         console.log('📊 Trying fallback to workflows endpoint');
         const workflowResponse = await ApiService.getWorkflows();
-        
+
         if (workflowResponse.success && workflowResponse.data && workflowResponse.data.length > 0) {
           setWorkflowTimestamps(workflowResponse.data);
+          setLastUpdated(new Date());
+          try {
+            sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data: workflowResponse.data, ts: Date.now(), filters: { timeRange, selectedBranch, selectedManager, startDate, endDate } }));
+          } catch (_) {}
           console.log('📊 Analytics Dashboard loaded from fallback API:', workflowResponse.data.length, 'workflow records');
         } else {
           console.warn('API returned no data');
@@ -161,8 +180,19 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
     }
   };
 
-  // Load data on component mount
+  // Load data on component mount - restore from cache if fresh
   React.useEffect(() => {
+    try {
+      const cached = sessionStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const { data, ts } = JSON.parse(cached);
+        if (Date.now() - ts < CACHE_TTL && data?.length > 0) {
+          setWorkflowTimestamps(data);
+          setLastUpdated(new Date(ts));
+          return; // use cache, skip API call
+        }
+      }
+    } catch (_) {}
     loadWorkflowData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -175,6 +205,27 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranch, selectedManager, timeRange, startDate, endDate]);
+
+  // Auto-refresh every 60 seconds
+  React.useEffect(() => {
+    if (!isTimeframeValid()) return;
+    const interval = setInterval(() => {
+      loadWorkflowData();
+      loadFilterOptions();
+    }, REFRESH_INTERVAL * 1000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeRange, selectedBranch, selectedManager, startDate, endDate]);
+
+  // Countdown timer - resets when data is refreshed
+  React.useEffect(() => {
+    setRefreshCountdown(REFRESH_INTERVAL);
+    const timer = setInterval(() => {
+      setRefreshCountdown(prev => (prev <= 1 ? REFRESH_INTERVAL : prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastUpdated]);
 
   // Generate portfolio evolution data from workflows - grouped by month
   const generatePortfolioData = () => {
@@ -697,69 +748,91 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   }
 
   return (
-    <Box>
-      {/* Header - Fixed */}
-      <Box sx={{ 
-        position: 'sticky', 
-        top: 0, 
-        zIndex: 1000, 
-        backgroundColor: 'background.default',
-        borderBottom: '1px solid',
-        borderColor: 'divider',
-        p: 3,
-        mb: 0
+    <Box sx={{ bgcolor: '#f0f2f5', minHeight: '100vh' }}>
+
+      {/* ── Hero Header ─────────────────────────────────────────── */}
+      <Box sx={{
+        background: 'linear-gradient(135deg, #0f2557 0%, #1565c0 100%)',
+        px: 4, pt: 3, pb: 0,
+        position: 'sticky', top: 0, zIndex: 1100,
       }}>
-        {/* Data status indicator */}
-        {isLoading ? (
-          <Box sx={{ mb: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
-            <Typography variant="body2">
-              🔄 Chargement des données depuis le serveur...
+        {/* Title row */}
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
+          <Box>
+            <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700, letterSpacing: 0.3 }}>
+              Tableau de Bord Analytique
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mt: 0.3 }}>
+              {canViewAllBranches && 'Vue direction — performance globale du portefeuille crédit'}
+              {canViewOwnBranch && `Agence ${userState.currentUser?.department} — performance locale`}
+              {canViewOwnPerformance && 'Votre performance individuelle'}
             </Typography>
           </Box>
-        ) : apiError ? (
-          <Box sx={{ mb: 2, p: 2, bgcolor: 'error.light', borderRadius: 1 }}>
-            <Typography variant="body2" color="error.dark">
-              ❌ {apiError}
-            </Typography>
+
+          {/* Refresh controls */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 0.5 }}>
+            {/* Live indicator */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+              <Box sx={{
+                width: 8, height: 8, borderRadius: '50%',
+                bgcolor: isLoading ? '#ffd740' : '#69f0ae',
+                boxShadow: isLoading ? '0 0 0 2px rgba(255,215,64,0.4)' : '0 0 0 2px rgba(105,240,174,0.4)',
+                animation: 'pulse 2s infinite',
+                '@keyframes pulse': {
+                  '0%': { boxShadow: isLoading ? '0 0 0 0 rgba(255,215,64,0.7)' : '0 0 0 0 rgba(105,240,174,0.7)' },
+                  '70%': { boxShadow: isLoading ? '0 0 0 6px rgba(255,215,64,0)' : '0 0 0 6px rgba(105,240,174,0)' },
+                  '100%': { boxShadow: '0 0 0 0 transparent' },
+                },
+              }} />
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)', fontSize: 11 }}>
+                {isLoading ? 'Actualisation...' : `LIVE — ↻ ${refreshCountdown}s`}
+              </Typography>
+            </Box>
+
+            {lastUpdated && (
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 10 }}>
+                Dernière màj {lastUpdated.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+              </Typography>
+            )}
+
+            <Tooltip title="Actualiser maintenant">
+              <IconButton
+                size="small"
+                disabled={isLoading}
+                onClick={() => { loadWorkflowData(); loadFilterOptions(); }}
+                sx={{ color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 1.5, p: 0.6 }}
+              >
+                {isLoading ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <RefreshIcon sx={{ fontSize: 16 }} />}
+              </IconButton>
+            </Tooltip>
           </Box>
-        ) : workflowTimestamps.length === 0 ? (
-          <Box sx={{ mb: 2, p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
-            <Typography variant="body2">
-              ⚠️ Aucune donnée de workflow disponible. Sélectionnez une période pour charger les données.
-            </Typography>
-          </Box>
-        ) : (
-          <Box sx={{ mb: 1 }}>
-            <Typography variant="caption" color="success.main">
-              ✅ {workflowTimestamps.length} workflows chargés depuis le serveur
+        </Box>
+
+        {/* Error banner */}
+        {apiError && (
+          <Box sx={{ mb: 1.5, px: 2, py: 1, bgcolor: 'rgba(244,67,54,0.18)', borderRadius: 1, border: '1px solid rgba(244,67,54,0.4)' }}>
+            <Typography variant="caption" sx={{ color: '#ffcdd2' }}>
+              Erreur de connexion : {apiError}
             </Typography>
           </Box>
         )}
-        <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 600 }}>
-          {t('dashboard.title')}
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          {canViewAllBranches && 'Vue d\'ensemble de la performance bancaire'}
-          {canViewOwnBranch && `Performance de l'Agence ${userState.currentUser?.department}`}
-          {canViewOwnPerformance && 'Votre performance individuelle'}
-        </Typography>
-        
 
-        {/* Filters - Sticky with header */}
-        <Card sx={{ mt: 3, border: '1px solid', borderColor: 'divider' }}>
-        <CardContent>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-            {t('dashboard.filters')}
-          </Typography>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={4}>
+        {/* ── Filter bar ── */}
+        <Box sx={{ bgcolor: 'rgba(255,255,255,0.08)', borderRadius: '8px 8px 0 0', px: 2, py: 1.5 }}>
+          <Grid container spacing={1.5} alignItems="center">
+            <Grid item xs={12} sm={3}>
               <FormControl fullWidth size="small">
-                <InputLabel>Sélectionner la période</InputLabel>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.7)', '&.Mui-focused': { color: '#90caf9' } }}>Période</InputLabel>
                 <Select
                   value={timeRange}
-                  label="Sélectionner la période"
+                  label="Période"
                   onChange={(e) => handleTimeRangeChange(e.target.value)}
-                  displayEmpty
+                  sx={{
+                    color: '#fff',
+                    '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.6)' },
+                    '.MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+                  }}
                 >
                   <MenuItem value="1month">Dernier mois</MenuItem>
                   <MenuItem value="3months">3 derniers mois</MenuItem>
@@ -770,325 +843,317 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
               </FormControl>
             </Grid>
 
-            {(canViewAllBranches || canViewOwnBranch) && canViewAllBranches && (
-              <Grid item xs={12} sm={4}>
+            {canViewAllBranches && (
+              <Grid item xs={12} sm={3}>
                 <FormControl fullWidth size="small">
-                  <InputLabel>Agence</InputLabel>
+                  <InputLabel sx={{ color: 'rgba(255,255,255,0.7)', '&.Mui-focused': { color: '#90caf9' } }}>Agence</InputLabel>
                   <Select
                     value={selectedBranch}
                     label="Agence"
                     onChange={(e) => setSelectedBranch(e.target.value)}
+                    sx={{
+                      color: '#fff',
+                      '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.6)' },
+                      '.MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+                    }}
                   >
-                    <MenuItem value="all">Toutes les Agences</MenuItem>
-                    {/* Get branches from dedicated API */}
-                    {availableBranches
-                      .filter(branch => canViewAllBranches || 
-                        (canViewOwnBranch && branch === userState.currentUser?.department)
-                      )
-                      .map((branch) => (
-                      <MenuItem key={branch} value={branch}>
-                        {branch}
-                      </MenuItem>
-                    ))}
+                    <MenuItem value="all">Toutes les agences</MenuItem>
+                    {availableBranches.map(b => <MenuItem key={b} value={b}>{b}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
             )}
 
             {(canViewAllBranches || canViewOwnBranch) && (
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={12} sm={3}>
                 <FormControl fullWidth size="small">
-                  <InputLabel>Chargé d'Affaires</InputLabel>
+                  <InputLabel sx={{ color: 'rgba(255,255,255,0.7)', '&.Mui-focused': { color: '#90caf9' } }}>Chargé d'Affaires</InputLabel>
                   <Select
                     value={selectedManager}
                     label="Chargé d'Affaires"
                     onChange={(e) => setSelectedManager(e.target.value)}
+                    sx={{
+                      color: '#fff',
+                      '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.6)' },
+                      '.MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
+                    }}
                   >
                     <MenuItem value="all">Tous les chargés</MenuItem>
                     {availableManagers
-                      .filter(manager => canViewAllBranches || 
-                        (canViewOwnBranch && manager.branch === userState.currentUser?.department) ||
-                        (canViewOwnPerformance && manager.name === userState.currentUser?.name)
-                      )
-                      .map((manager) => (
-                      <MenuItem key={manager.name} value={manager.name}>
-                        {manager.name}
-                      </MenuItem>
-                    ))}
+                      .filter(m => canViewAllBranches || (canViewOwnBranch && m.branch === userState.currentUser?.department))
+                      .map(m => <MenuItem key={m.name} value={m.name}>{m.name}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
             )}
-          </Grid>
 
-          {/* Custom Date Range Section */}
-          <Collapse in={showCustomRange}>
-            <Box sx={{ mt: 3, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
-              <Grid container spacing={2} alignItems="center">
+            {/* Custom date range inline */}
+            <Collapse in={showCustomRange} sx={{ width: '100%' }}>
+              <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
                 <Grid item xs={12} sm={4}>
-                  <TextField
-                    label={t('dashboard.timeframe.startDate')}
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    size="small"
-                    fullWidth
-                    required
+                  <TextField type="date" label={t('dashboard.timeframe.startDate')} value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)} size="small" fullWidth
                     error={startDate !== '' && !isValidDate(startDate)}
-                    helperText={startDate !== '' && !isValidDate(startDate) ? 'Invalid date format' : ''}
-                    InputLabelProps={{
-                      shrink: true,
-                    }}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ input: { color: '#fff' }, label: { color: 'rgba(255,255,255,0.7)' }, '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' } }}
                   />
                 </Grid>
                 <Grid item xs={12} sm={4}>
-                  <TextField
-                    label={t('dashboard.timeframe.endDate')}
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    size="small"
-                    fullWidth
-                    required
+                  <TextField type="date" label={t('dashboard.timeframe.endDate')} value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)} size="small" fullWidth
+                    inputProps={{ min: startDate || undefined }}
                     error={endDate !== '' && (!isValidDate(endDate) || (startDate !== '' && endDate < startDate))}
-                    helperText={endDate !== '' && !isValidDate(endDate) ? 'Invalid date format' : 
-                               endDate !== '' && startDate !== '' && endDate < startDate ? 'End date must be after start date' : ''}
-                    inputProps={{
-                      min: startDate || undefined,
-                    }}
-                    InputLabelProps={{
-                      shrink: true,
-                    }}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ input: { color: '#fff' }, label: { color: 'rgba(255,255,255,0.7)' }, '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' } }}
                   />
                 </Grid>
                 <Grid item xs={12} sm={4}>
-                  <Button
-                    variant="contained"
-                    onClick={applyCustomRange}
-                    disabled={!startDate || !endDate || !isValidDate(startDate) || !isValidDate(endDate) || (startDate !== '' && endDate !== '' && endDate < startDate)}
-                    fullWidth
-                    size="medium"
+                  <Button variant="contained" onClick={applyCustomRange} fullWidth size="small"
+                    disabled={!startDate || !endDate || !isValidDate(startDate) || !isValidDate(endDate) || endDate < startDate}
+                    sx={{ bgcolor: '#1976d2', height: 40 }}
                   >
                     {t('dashboard.timeframe.applyRange')}
                   </Button>
                 </Grid>
               </Grid>
-            </Box>
-          </Collapse>
-        </CardContent>
-      </Card>
+            </Collapse>
+          </Grid>
+        </Box>
       </Box>
 
-      {/* Scrollable Content Area */}
-      <Box sx={{ p: 3, pt: 0 }}>
-      {/* Show message when no timeframe is selected */}
-      {!timeRange && (
-        <Card sx={{ mb: 4, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
-          <CardContent sx={{ textAlign: 'center', py: 6 }}>
-            <Avatar sx={{ bgcolor: 'primary.main', mx: 'auto', mb: 2, width: 56, height: 56 }}>
-              <AssessmentIcon />
-            </Avatar>
-            <Typography variant="h6" gutterBottom color="primary">
-              {t('dashboard.noTimeframeSelected.title')}
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 400, mx: 'auto' }}>
-              {t('dashboard.noTimeframeSelected.description')}
-            </Typography>
-          </CardContent>
-        </Card>
-      )}
+      {/* ── Main scrollable content ───────────────────────────── */}
+      <Box sx={{ px: 3, py: 3 }}>
 
-      {/* Dashboard content - only show when timeframe is selected */}
+        {/* No timeframe selected */}
+        {!timeRange && (
+          <Card sx={{ textAlign: 'center', py: 8 }}>
+            <CardContent>
+              <Avatar sx={{ bgcolor: '#1565c0', mx: 'auto', mb: 2, width: 64, height: 64 }}>
+                <AssessmentIcon sx={{ fontSize: 32 }} />
+              </Avatar>
+              <Typography variant="h6" gutterBottom>{t('dashboard.noTimeframeSelected.title')}</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 400, mx: 'auto' }}>
+                {t('dashboard.noTimeframeSelected.description')}
+              </Typography>
+            </CardContent>
+          </Card>
+        )}
+
+      {/* Dashboard content */}
       {isTimeframeValid() && (
         <>
-          {/* KPI Cards */}
-          <Grid container spacing={3} sx={{ mb: 4 }}>
+          {/* ── KPI Cards ─────────────────────────────────────── */}
+          <Grid container spacing={2.5} sx={{ mb: 3 }}>
+            {/* Total applications */}
             <Grid item xs={12} sm={6} md={3}>
-              <Card>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
-                      <AssessmentIcon />
-                    </Avatar>
+              <Card sx={{ borderTop: '4px solid #1565c0', borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+                <CardContent sx={{ pb: '16px !important' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <Box>
-                      <Typography variant="h4" fontWeight={600}>
-                        {totalApplications.toLocaleString()}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.8, fontSize: 10 }}>
                         Demandes totales
                       </Typography>
+                      <Typography variant="h3" sx={{ fontWeight: 700, color: '#1565c0', lineHeight: 1.1, mt: 0.5 }}>
+                        {totalApplications.toLocaleString()}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">Sur la période</Typography>
                     </Box>
+                    <Avatar sx={{ bgcolor: '#e3f2fd', width: 44, height: 44 }}>
+                      <AssessmentIcon sx={{ color: '#1565c0', fontSize: 22 }} />
+                    </Avatar>
                   </Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                    Sur la période sélectionnée
-                  </Typography>
                 </CardContent>
               </Card>
             </Grid>
 
+            {/* Approval rate */}
             <Grid item xs={12} sm={6} md={3}>
-              <Card>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Avatar sx={{ bgcolor: 'success.main', mr: 2 }}>
-                      <ApprovedIcon />
-                    </Avatar>
-                    <Box>
-                      <Typography variant="h4" fontWeight={600}>
-                        {approvalRate.toFixed(1)}%
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
+              <Card sx={{ borderTop: '4px solid #16a34a', borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+                <CardContent sx={{ pb: '16px !important' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.8, fontSize: 10 }}>
                         Taux d'approbation
                       </Typography>
+                      <Typography variant="h3" sx={{ fontWeight: 700, color: '#16a34a', lineHeight: 1.1, mt: 0.5 }}>
+                        {approvalRate.toFixed(1)}%
+                      </Typography>
+                      <LinearProgress variant="determinate" value={approvalRate}
+                        sx={{ height: 5, borderRadius: 3, mt: 1, bgcolor: '#dcfce7', '& .MuiLinearProgress-bar': { bgcolor: '#16a34a' } }}
+                      />
                     </Box>
+                    <Avatar sx={{ bgcolor: '#f0fdf4', width: 44, height: 44, ml: 1 }}>
+                      <ApprovedIcon sx={{ color: '#16a34a', fontSize: 22 }} />
+                    </Avatar>
                   </Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={approvalRate}
-                    sx={{ height: 8, borderRadius: 4 }}
-                  />
                 </CardContent>
               </Card>
             </Grid>
 
+            {/* Volume */}
             <Grid item xs={12} sm={6} md={3}>
-              <Card>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Avatar sx={{ bgcolor: 'info.main', mr: 2 }}>
-                      <MoneyIcon />
-                    </Avatar>
+              <Card sx={{ borderTop: '4px solid #7c3aed', borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+                <CardContent sx={{ pb: '16px !important' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <Box>
-                      <Typography variant="h4" fontWeight={600}>
-                        {(totalVolume / 1000000).toFixed(1)}M
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.8, fontSize: 10 }}>
                         Volume XOF
                       </Typography>
+                      <Typography variant="h3" sx={{ fontWeight: 700, color: '#7c3aed', lineHeight: 1.1, mt: 0.5 }}>
+                        {(totalVolume / 1000000).toFixed(1)}M
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">Montant total demandé</Typography>
                     </Box>
+                    <Avatar sx={{ bgcolor: '#f5f3ff', width: 44, height: 44 }}>
+                      <MoneyIcon sx={{ color: '#7c3aed', fontSize: 22 }} />
+                    </Avatar>
                   </Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                    Montant total des demandes
-                  </Typography>
                 </CardContent>
               </Card>
             </Grid>
 
+            {/* Performance */}
             <Grid item xs={12} sm={6} md={3}>
-              <Card>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Avatar sx={{ bgcolor: 'warning.main', mr: 2 }}>
-                      <TrendingUpIcon />
-                    </Avatar>
-                    <Box>
-                      <Typography variant="h4" fontWeight={600}>
+              <Card sx={{ borderTop: '4px solid #d97706', borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+                <CardContent sx={{ pb: '16px !important' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.8, fontSize: 10 }}>
+                        Performance globale
+                      </Typography>
+                      <Typography variant="h3" sx={{ fontWeight: 700, color: '#d97706', lineHeight: 1.1, mt: 0.5 }}>
                         {avgPerformance.toFixed(0)}%
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Performance moyenne
-                      </Typography>
+                      <LinearProgress variant="determinate" value={avgPerformance}
+                        sx={{ height: 5, borderRadius: 3, mt: 1, bgcolor: '#fef3c7', '& .MuiLinearProgress-bar': { bgcolor: '#d97706' } }}
+                      />
                     </Box>
+                    <Avatar sx={{ bgcolor: '#fffbeb', width: 44, height: 44, ml: 1 }}>
+                      <TrendingUpIcon sx={{ color: '#d97706', fontSize: 22 }} />
+                    </Avatar>
                   </Box>
-                  <LinearProgress 
-                    variant="determinate" 
-                    value={avgPerformance} 
-                    sx={{ height: 8, borderRadius: 4 }}
-                    color="warning"
-                  />
                 </CardContent>
               </Card>
             </Grid>
           </Grid>
 
-          {/* Charts */}
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            {/* Portfolio Evolution */}
+          {/* ── Status Strip ──────────────────────────────────── */}
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid item xs={12} sm={4}>
+              <Card sx={{ borderRadius: 2, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', bgcolor: '#fffbeb' }}>
+                <CardContent sx={{ py: 1.5, px: 2, display: 'flex', alignItems: 'center', gap: 1.5, '&:last-child': { pb: '12px' } }}>
+                  <HourglassIcon sx={{ color: '#d97706', fontSize: 20 }} />
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#92400e', lineHeight: 1 }}>{totalPending}</Typography>
+                    <Typography variant="caption" color="text.secondary">En attente</Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <Card sx={{ borderRadius: 2, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', bgcolor: '#f0fdf4' }}>
+                <CardContent sx={{ py: 1.5, px: 2, display: 'flex', alignItems: 'center', gap: 1.5, '&:last-child': { pb: '12px' } }}>
+                  <CheckCircleOutlineIcon sx={{ color: '#16a34a', fontSize: 20 }} />
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#166534', lineHeight: 1 }}>{totalApproved}</Typography>
+                    <Typography variant="caption" color="text.secondary">Approuvées</Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <Card sx={{ borderRadius: 2, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', bgcolor: '#fff1f2' }}>
+                <CardContent sx={{ py: 1.5, px: 2, display: 'flex', alignItems: 'center', gap: 1.5, '&:last-child': { pb: '12px' } }}>
+                  <CancelIcon sx={{ color: '#dc2626', fontSize: 20 }} />
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#991b1b', lineHeight: 1 }}>{totalRejected}</Typography>
+                    <Typography variant="caption" color="text.secondary">Refusées</Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+          {/* ── Charts row ────────────────────────────────────── */}
+          <Grid container spacing={2.5} sx={{ mb: 3 }}>
+            {/* Portfolio Area Chart */}
             <Grid item xs={12} md={8}>
-              <Card>
+              <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)' }}>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
                     Évolution du Portefeuille
                   </Typography>
                   {portfolioData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={portfolioData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <RechartsTooltip />
-                        <Legend />
-                        <Line
-                          type="monotone"
-                          dataKey="applications"
-                          stroke="#1976d2"
-                          strokeWidth={2}
-                          name="Demandes"
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="approved"
-                          stroke="#4caf50"
-                          strokeWidth={2}
-                          name="Approuvées"
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="rejected"
-                          stroke="#f44336"
-                          strokeWidth={2}
-                          name="Rejetées"
-                        />
-                      </LineChart>
+                    <ResponsiveContainer width="100%" height={270}>
+                      <AreaChart data={portfolioData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                        <defs>
+                          <linearGradient id="gradApps" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#1565c0" stopOpacity={0.2} />
+                            <stop offset="95%" stopColor="#1565c0" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="gradApproved" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#16a34a" stopOpacity={0.2} />
+                            <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="gradRejected" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#dc2626" stopOpacity={0.15} />
+                            <stop offset="95%" stopColor="#dc2626" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                        <YAxis tick={{ fontSize: 12 }} />
+                        <RechartsTooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }} />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Area type="monotone" dataKey="applications" stroke="#1565c0" strokeWidth={2} fill="url(#gradApps)" name="Demandes" />
+                        <Area type="monotone" dataKey="approved" stroke="#16a34a" strokeWidth={2} fill="url(#gradApproved)" name="Approuvées" />
+                        <Area type="monotone" dataKey="rejected" stroke="#dc2626" strokeWidth={2} fill="url(#gradRejected)" name="Refusées" />
+                      </AreaChart>
                     </ResponsiveContainer>
                   ) : (
-                    <Box sx={{ textAlign: 'center', py: 4 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Aucune donnée disponible pour la période sélectionnée
-                      </Typography>
+                    <Box sx={{ textAlign: 'center', py: 6 }}>
+                      <Typography variant="body2" color="text.secondary">Aucune donnée pour la période sélectionnée</Typography>
                     </Box>
                   )}
                 </CardContent>
               </Card>
             </Grid>
 
-            {/* Risk Distribution */}
+            {/* Donut Risk Distribution */}
             <Grid item xs={12} md={4}>
-              <Card>
+              <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)', height: '100%' }}>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
                     Distribution des Risques
                   </Typography>
                   {filteredRiskDistribution.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={350}>
+                    <ResponsiveContainer width="100%" height={270}>
                       <PieChart>
                         <Pie
                           data={filteredRiskDistribution}
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={70}
-                          fill="#8884d8"
+                          cx="50%" cy="45%"
+                          innerRadius={55} outerRadius={88}
+                          paddingAngle={3}
                           dataKey="value"
                           label={false}
                         >
-                          {filteredRiskDistribution.map((entry: { name: string; value: number; color: string }, index: number) => (
+                          {filteredRiskDistribution.map((entry: any, index: number) => (
                             <Cell key={`cell-${index}`} fill={entry.color} />
                           ))}
                         </Pie>
-                        <RechartsTooltip />
+                        <RechartsTooltip formatter={(v: number, n: string) => [`${v}%`, n]} contentStyle={{ borderRadius: 8 }} />
                         <Legend
-                          verticalAlign="bottom"
-                          height={36}
+                          verticalAlign="bottom" height={36}
                           formatter={(value, entry: any) => `${value} (${entry.payload.value}%)`}
-                          wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
+                          wrapperStyle={{ fontSize: 12 }}
                         />
                       </PieChart>
                     </ResponsiveContainer>
                   ) : (
-                    <Box sx={{ textAlign: 'center', py: 4 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Aucune donnée disponible pour la période sélectionnée
-                      </Typography>
+                    <Box sx={{ textAlign: 'center', py: 6 }}>
+                      <Typography variant="body2" color="text.secondary">Aucune donnée disponible</Typography>
                     </Box>
                   )}
                 </CardContent>
@@ -1096,75 +1161,66 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
             </Grid>
           </Grid>
 
-          {/* Performance Tables */}
-          <Grid container spacing={3}>
-            {/* Branch Performance - Only for management and branch managers */}
+          {/* ── Branch & Manager performance ─────────────────── */}
+          <Grid container spacing={2.5} sx={{ mb: 3 }}>
+            {/* Branch Table */}
             {(canViewAllBranches || canViewOwnBranch) && (
-              <Grid item xs={12} md={visibleManagers.length > 0 ? 8 : 12}>
-                <Card>
+              <Grid item xs={12} md={visibleManagers.length > 0 ? 7 : 12}>
+                <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)' }}>
                   <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                      <BranchIcon sx={{ mr: 1 }} />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <BranchIcon sx={{ color: '#1565c0', fontSize: 20 }} />
                       Performance par Agence
                     </Typography>
                     <TableContainer>
-                      <Table>
+                      <Table size="small">
                         <TableHead>
-                          <TableRow>
+                          <TableRow sx={{ '& th': { fontWeight: 600, bgcolor: '#f8fafc', fontSize: 12, py: 1 } }}>
                             <TableCell>Agence</TableCell>
-                            <TableCell>Directeur</TableCell>
                             <TableCell align="right">Demandes</TableCell>
                             <TableCell align="right">Approuvées</TableCell>
                             <TableCell align="right">Volume (M XOF)</TableCell>
-                            <TableCell align="right">Performance</TableCell>
-                            <TableCell align="center">Action</TableCell>
+                            <TableCell align="right">Score</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {visibleBranches.map((branch) => (
-                            <TableRow key={branch.branch}>
-                              <TableCell>
-                                <Chip 
-                                  label={branch.branch} 
-                                  variant="outlined" 
-                                  size="small"
-                                />
-                              </TableCell>
-                              <TableCell>{branch.manager}</TableCell>
-                              <TableCell align="right">{branch.applications}</TableCell>
-                              <TableCell align="right">
-                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                                  {branch.approved}
-                                  <Chip 
-                                    label={`${((branch.approved / branch.applications) * 100).toFixed(0)}%`}
-                                    size="small" 
-                                    color="success"
-                                    sx={{ ml: 1 }}
-                                  />
-                                </Box>
-                              </TableCell>
-                              <TableCell align="right">
-                                {(branch.volume / 1000000).toFixed(1)}M
-                              </TableCell>
-                              <TableCell align="right">
-                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                                  <LinearProgress
-                                    variant="determinate"
-                                    value={branch.performance}
-                                    sx={{ width: 60, mr: 1, height: 6, borderRadius: 3 }}
-                                  />
-                                  {branch.performance}%
-                                </Box>
-                              </TableCell>
-                              <TableCell align="center">
-                                <Tooltip title="Voir détails">
-                                  <IconButton size="small">
-                                    <ViewIcon />
-                                  </IconButton>
-                                </Tooltip>
+                          {visibleBranches.map((branch) => {
+                            const pct = branch.applications > 0 ? (branch.approved / branch.applications) * 100 : 0;
+                            const borderColor = branch.performance >= 70 ? '#16a34a' : branch.performance >= 40 ? '#d97706' : '#dc2626';
+                            return (
+                              <TableRow key={branch.branch} sx={{ '& td': { fontSize: 13 }, borderLeft: `3px solid ${borderColor}` }}>
+                                <TableCell sx={{ fontWeight: 500 }}>
+                                  <Chip label={branch.branch} size="small" variant="outlined" sx={{ fontWeight: 600 }} />
+                                </TableCell>
+                                <TableCell align="right">{branch.applications}</TableCell>
+                                <TableCell align="right">
+                                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                                    {branch.approved}
+                                    <Chip label={`${pct.toFixed(0)}%`} size="small" color={pct >= 70 ? 'success' : pct >= 50 ? 'warning' : 'error'} sx={{ fontSize: 10 }} />
+                                  </Box>
+                                </TableCell>
+                                <TableCell align="right">{(branch.volume / 1000000).toFixed(1)}M</TableCell>
+                                <TableCell align="right">
+                                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                                    <LinearProgress variant="determinate" value={branch.performance}
+                                      sx={{ width: 50, height: 5, borderRadius: 3 }}
+                                      color={branch.performance >= 70 ? 'success' : branch.performance >= 40 ? 'warning' : 'error'}
+                                    />
+                                    <Typography variant="caption" sx={{ fontWeight: 600, minWidth: 30, textAlign: 'right' }}>
+                                      {branch.performance}%
+                                    </Typography>
+                                  </Box>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                          {visibleBranches.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={5} align="center" sx={{ py: 3, color: 'text.secondary', fontSize: 13 }}>
+                                Aucune donnée d'agence disponible
                               </TableCell>
                             </TableRow>
-                          ))}
+                          )}
                         </TableBody>
                       </Table>
                     </TableContainer>
@@ -1173,47 +1229,52 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
               </Grid>
             )}
 
-            {/* Account Manager Performance */}
+            {/* Manager Ranking */}
             {visibleManagers.length > 0 && (
-              <Grid item xs={12} md={canViewAllBranches || canViewOwnBranch ? 4 : 12}>
-                <Card>
+              <Grid item xs={12} md={canViewAllBranches || canViewOwnBranch ? 5 : 12}>
+                <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)', height: '100%' }}>
                   <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                      <PersonIcon sx={{ mr: 1 }} />
-                      Performance Chargés d'Affaires
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <PersonIcon sx={{ color: '#7c3aed', fontSize: 20 }} />
+                      Classement Chargés d'Affaires
                     </Typography>
-                    <List>
-                      {visibleManagers.map((manager, index) => (
+                    <List disablePadding>
+                      {visibleManagers
+                        .sort((a, b) => (b.performance || 0) - (a.performance || 0))
+                        .map((manager, index) => (
                         <React.Fragment key={manager.name}>
-                          <ListItem>
-                            <Avatar sx={{ mr: 2, bgcolor: 'primary.main' }}>
-                              {manager.name.split(' ').map((n: string) => n[0]).join('')}
-                            </Avatar>
-                            <ListItemText
-                              primary={manager.name}
-                              secondary={
-                                <Box>
-                                  <Typography variant="caption" display="block">
-                                    {manager.branch} • {manager.clients || 0} clients
+                          <ListItem sx={{ px: 0, py: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%' }}>
+                              {/* Rank */}
+                              <Typography variant="body2" sx={{ fontWeight: 700, color: index === 0 ? '#d97706' : 'text.secondary', minWidth: 18, fontSize: 13 }}>
+                                #{index + 1}
+                              </Typography>
+                              <Avatar sx={{ bgcolor: index === 0 ? '#fef3c7' : '#f3f4f6', color: index === 0 ? '#d97706' : '#6b7280', width: 36, height: 36, fontSize: 13, fontWeight: 700 }}>
+                                {manager.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                              </Avatar>
+                              <Box sx={{ flex: 1, minWidth: 0 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {manager.name}
                                   </Typography>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
-                                    <LinearProgress
-                                      variant="determinate"
-                                      value={manager.performance || 0}
-                                      sx={{ flexGrow: 1, mr: 1, height: 4, borderRadius: 2 }}
-                                    />
-                                    <Typography variant="caption">
-                                      {manager.performance || 0}%
-                                    </Typography>
-                                  </Box>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {manager.approved || 0}/{manager.applications || 0} approuvées • {((manager.volume || 0) / 1000000).toFixed(1)}M XOF
+                                  {index === 0 && <Chip label="Top" size="small" sx={{ bgcolor: '#fef3c7', color: '#92400e', fontWeight: 700, fontSize: 9, height: 18 }} />}
+                                </Box>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                  {manager.branch} · {manager.clients || 0} clients · {((manager.volume || 0) / 1000000).toFixed(1)}M XOF
+                                </Typography>
+                                <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5, gap: 0.8 }}>
+                                  <LinearProgress variant="determinate" value={manager.performance || 0}
+                                    sx={{ flex: 1, height: 4, borderRadius: 2 }}
+                                    color={(manager.performance || 0) >= 70 ? 'success' : (manager.performance || 0) >= 40 ? 'warning' : 'error'}
+                                  />
+                                  <Typography variant="caption" sx={{ fontWeight: 600, minWidth: 30 }}>
+                                    {manager.performance || 0}%
                                   </Typography>
                                 </Box>
-                              }
-                            />
+                              </Box>
+                            </Box>
                           </ListItem>
-                          {index < visibleManagers.length - 1 && <Divider />}
+                          {index < visibleManagers.length - 1 && <Divider sx={{ opacity: 0.5 }} />}
                         </React.Fragment>
                       ))}
                     </List>
@@ -1223,378 +1284,243 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
             )}
           </Grid>
 
-          {/* Performance Tracking Section */}
-          <Box sx={{ mt: 6 }}>
-            <Box sx={{ mb: 3, display: 'flex', alignItems: 'center' }}>
-              <TimeIcon sx={{ mr: 1, color: 'primary.main' }} />
-              <Typography variant="h5" component="h2" sx={{ fontWeight: 600 }}>
-                Performance des Processus Crédit
+          {/* ── Process Analytics Section ────────────────────── */}
+          <Box sx={{ mt: 1 }}>
+            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <TimeIcon sx={{ color: '#1565c0', fontSize: 20 }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1e293b' }}>
+                Analyse des Processus Crédit
               </Typography>
             </Box>
-            
-            <Grid container spacing={3}>
-              {/* Performance Overview Cards */}
+
+            <Grid container spacing={2.5}>
+              {/* Avg processing time */}
               <Grid item xs={12} md={4}>
-                <Card>
-                  <CardContent sx={{ textAlign: 'center' }}>
-                    <Avatar sx={{ width: 60, height: 60, mx: 'auto', mb: 2, bgcolor: 'primary.main' }}>
-                      <TimeIcon sx={{ fontSize: 28 }} />
+                <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)', textAlign: 'center' }}>
+                  <CardContent sx={{ py: 2.5 }}>
+                    <Avatar sx={{ width: 50, height: 50, mx: 'auto', mb: 1.5, bgcolor: '#eff6ff' }}>
+                      <TimeIcon sx={{ color: '#1565c0', fontSize: 24 }} />
                     </Avatar>
-                    <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 1 }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#1565c0' }}>
                       {(() => {
-                        const filteredWorkflows = getFilteredWorkflows();
-                        const completedFiltered = filteredWorkflows.filter(wf => {
-                          const decision = wf.finalDecision || wf.status;
-                          return (decision === 'approved' || decision === 'rejected') && wf.totalDuration;
+                        const completedFiltered = getFilteredWorkflows().filter(wf => {
+                          const d = wf.finalDecision || wf.status;
+                          return (d === 'approved' || d === 'rejected') && wf.totalDuration;
                         });
-                        return completedFiltered.length > 0 
-                          ? formatDuration(
-                              completedFiltered.reduce((sum, wf) => sum + wf.totalDuration!, 0) / completedFiltered.length
-                            )
-                          : '6h 15min';
+                        return completedFiltered.length > 0
+                          ? formatDuration(completedFiltered.reduce((s, wf) => s + wf.totalDuration!, 0) / completedFiltered.length)
+                          : '—';
                       })()}
                     </Typography>
-                    <Typography variant="h6" color="text.secondary">
-                      Temps Moyen Global
-                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Temps moyen de traitement</Typography>
                   </CardContent>
                 </Card>
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <Card>
-                  <CardContent sx={{ textAlign: 'center' }}>
-                    <Avatar sx={{ width: 60, height: 60, mx: 'auto', mb: 2, bgcolor: 'success.main' }}>
-                      <AssessmentIcon sx={{ fontSize: 28 }} />
+                <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)', textAlign: 'center' }}>
+                  <CardContent sx={{ py: 2.5 }}>
+                    <Avatar sx={{ width: 50, height: 50, mx: 'auto', mb: 1.5, bgcolor: '#f0fdf4' }}>
+                      <AssessmentIcon sx={{ color: '#16a34a', fontSize: 24 }} />
                     </Avatar>
-                    <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 1 }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#16a34a' }}>
                       {getFilteredWorkflows().filter(wf => {
-                        const decision = wf.finalDecision || wf.status;
-                        return decision === 'approved' || decision === 'rejected';
+                        const d = wf.finalDecision || wf.status;
+                        return d === 'approved' || d === 'rejected';
                       }).length}
                     </Typography>
-                    <Typography variant="h6" color="text.secondary">
-                      Demandes Traitées
-                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Demandes traitées</Typography>
                   </CardContent>
                 </Card>
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <Card>
-                  <CardContent sx={{ textAlign: 'center' }}>
-                    <Avatar sx={{ width: 60, height: 60, mx: 'auto', mb: 2, bgcolor: 'info.main' }}>
-                      <PendingIcon sx={{ fontSize: 28 }} />
+                <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)', textAlign: 'center' }}>
+                  <CardContent sx={{ py: 2.5 }}>
+                    <Avatar sx={{ width: 50, height: 50, mx: 'auto', mb: 1.5, bgcolor: '#fef3c7' }}>
+                      <PendingIcon sx={{ color: '#d97706', fontSize: 24 }} />
                     </Avatar>
-                    <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 1 }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#d97706' }}>
                       {getFilteredWorkflows().filter(wf => wf.status === 'in_progress').length}
                     </Typography>
-                    <Typography variant="h6" color="text.secondary">
-                      En Cours
-                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>En cours de traitement</Typography>
                   </CardContent>
                 </Card>
               </Grid>
 
-              {/* Performance by Branch */}
+              {/* Branch processing time bar chart */}
               <Grid item xs={12} lg={8}>
-                <Card>
+                <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)' }}>
                   <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
-                      Performance par Agence
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                      Temps de Traitement par Agence (heures)
                     </Typography>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={calculateRealPerformanceMetrics()}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="branch" />
-                        <YAxis label={{ value: 'Heures', angle: -90, position: 'insideLeft' }} />
-                        <RechartsTooltip 
-                          formatter={(value: number) => [`${value.toFixed(1)}h`, 'Temps Moyen']}
+                    <ResponsiveContainer width="100%" height={280}>
+                      <BarChart data={calculateRealPerformanceMetrics()} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis dataKey="branch" tick={{ fontSize: 12 }} />
+                        <YAxis tick={{ fontSize: 12 }} label={{ value: 'Heures', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }} />
+                        <RechartsTooltip
+                          formatter={(value: number) => [`${value.toFixed(1)}h`, 'Temps moyen']}
+                          contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}
                         />
-                        <Bar dataKey="avgProcessingTime" fill="#1976d2" />
+                        <Bar dataKey="avgProcessingTime" radius={[4, 4, 0, 0]}>
+                          {calculateRealPerformanceMetrics().map((_: any, index: number) => (
+                            <Cell key={`cell-${index}`} fill={['#1565c0', '#7c3aed', '#16a34a', '#d97706', '#dc2626'][index % 5]} />
+                          ))}
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
                 </Card>
               </Grid>
 
-              {/* Processing Trend */}
+              {/* Processing trend area chart */}
               <Grid item xs={12} lg={4}>
-                <Card>
+                <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)', height: '100%' }}>
                   <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
                       Évolution des Délais
                     </Typography>
                     {processingTrendData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height={300}>
-                        <LineChart data={processingTrendData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="month" />
-                          <YAxis />
+                      <ResponsiveContainer width="100%" height={280}>
+                        <AreaChart data={processingTrendData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                          <defs>
+                            <linearGradient id="gradTrend" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#1565c0" stopOpacity={0.25} />
+                              <stop offset="95%" stopColor="#1565c0" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                          <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                          <YAxis tick={{ fontSize: 12 }} />
                           <RechartsTooltip
-                            formatter={(value: number) => [`${value.toFixed(1)}h`, 'Temps Moyen']}
+                            formatter={(value: number) => [`${value.toFixed(1)}h`, 'Temps moyen']}
+                            contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}
                           />
-                          <Line
-                            type="monotone"
-                            dataKey="avgTime"
-                            stroke="#1976d2"
-                            strokeWidth={3}
-                            dot={{ fill: '#1976d2', strokeWidth: 2, r: 6 }}
-                          />
-                        </LineChart>
+                          <Area type="monotone" dataKey="avgTime" stroke="#1565c0" strokeWidth={2.5} fill="url(#gradTrend)" dot={{ fill: '#1565c0', r: 4 }} />
+                        </AreaChart>
                       </ResponsiveContainer>
                     ) : (
-                      <Box sx={{ textAlign: 'center', py: 4 }}>
-                        <Typography variant="body2" color="text.secondary">
-                          Aucune donnée de traitement disponible
-                        </Typography>
+                      <Box sx={{ textAlign: 'center', py: 6 }}>
+                        <Typography variant="body2" color="text.secondary">Aucune donnée de traitement disponible</Typography>
                       </Box>
                     )}
                   </CardContent>
                 </Card>
               </Grid>
 
-              {/* Overall Approval Workflow Performance */}
+              {/* Step-by-step approval performance */}
               <Grid item xs={12}>
-                <Card>
+                <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)' }}>
                   <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
                       Performance Globale du Processus d'Approbation
                     </Typography>
-                    
+
                     {(() => {
-                      const filteredWorkflows = getFilteredWorkflows();
-                      const completedWorkflows = filteredWorkflows.filter(wf => {
-                        const decision = wf.finalDecision || wf.status;
-                        return (decision === 'approved' || decision === 'rejected') && wf.totalDuration;
+                      const fwf = getFilteredWorkflows();
+                      const cwf = fwf.filter(wf => {
+                        const d = wf.finalDecision || wf.status;
+                        return (d === 'approved' || d === 'rejected') && wf.totalDuration;
                       });
-                      
-                      if (completedWorkflows.length === 0) {
+
+                      if (cwf.length === 0) {
                         return (
-                          <Typography color="text.secondary">
-                            Aucune donnée de workflow disponible. Les métriques seront affichées après le traitement des premières demandes.
-                          </Typography>
+                          <Box sx={{ textAlign: 'center', py: 4 }}>
+                            <Typography color="text.secondary" variant="body2">
+                              Aucune donnée disponible. Les métriques s'afficheront après le traitement des premières demandes.
+                            </Typography>
+                          </Box>
                         );
                       }
 
-                      // Calculate average duration for each step across all workflows
-                      const stepAverages: { [stepName: string]: { total: number, count: number, avg: number } } = {};
-                      
-                      completedWorkflows.forEach(workflow => {
+                      const stepAverages: { [s: string]: { total: number; count: number; avg: number } } = {};
+                      cwf.forEach(workflow => {
                         if (workflow.steps && Array.isArray(workflow.steps)) {
                           workflow.steps.forEach(step => {
                             if (step && step.duration && typeof step.duration === 'number') {
-                              // Convert step ID to display name using getStepDisplayInfo
                               const stepId = (step.stepId || step.stepName) as any;
                               const stepInfo = getStepDisplayInfo(stepId);
                               const stepName = stepInfo?.stepName || step.stepName || stepId || 'unknown_step';
-
-                              if (!stepAverages[stepName]) {
-                                stepAverages[stepName] = { total: 0, count: 0, avg: 0 };
-                              }
+                              if (!stepAverages[stepName]) stepAverages[stepName] = { total: 0, count: 0, avg: 0 };
                               stepAverages[stepName].total += step.duration;
                               stepAverages[stepName].count++;
                             }
                           });
                         }
                       });
+                      Object.keys(stepAverages).forEach(s => { stepAverages[s].avg = stepAverages[s].total / stepAverages[s].count; });
 
-                      // Calculate averages
-                      Object.keys(stepAverages).forEach(stepName => {
-                        stepAverages[stepName].avg = stepAverages[stepName].total / stepAverages[stepName].count;
-                      });
-
-                      // Define colors for each step
-                      const stepColors: { [key: string]: string } = {
-                        'Demande Soumise': '#4caf50',
-                        'Vérification Documents': '#2196f3', 
-                        'Analyse Crédit': '#ff9800',
-                        'Évaluation Risques': '#f44336',
-                        'Examen Directeur Agence': '#9c27b0',
-                        'Examen Comité Crédit': '#673ab7',
-                        'Décision Finale': '#3f51b5',
-                        'Préparation Contrat': '#009688',
-                        'Déblocage Fonds': '#4caf50'
+                      const stepColors: { [k: string]: string } = {
+                        'Demande Soumise': '#4caf50', 'Vérification Documents': '#2196f3',
+                        'Analyse Crédit': '#ff9800', 'Évaluation Risques': '#f44336',
+                        'Examen Directeur Agence': '#9c27b0', 'Examen Comité Crédit': '#673ab7',
+                        'Décision Finale': '#3f51b5', 'Préparation Contrat': '#009688', 'Déblocage Fonds': '#4caf50'
                       };
-
-                      // Prepare data for stacked bar chart - one entry per step for overall view
+                      const stepOrder = ['Demande Soumise','Vérification Documents','Analyse Crédit','Évaluation Risques','Examen Directeur Agence','Examen Comité Crédit','Décision Finale','Préparation Contrat','Déblocage'];
                       const chartData = Object.keys(stepAverages).map(stepName => ({
                         stepName,
-                        avgDuration: stepAverages[stepName].avg / 3600000, // Keep milliseconds to hours for compatibility
-                        avgWorkdays: Math.round((stepAverages[stepName].avg / (9 * 3600000)) * 10) / 10, // Convert working time milliseconds to working days (9h per day)
+                        avgWorkdays: Math.round((stepAverages[stepName].avg / (9 * 3600000)) * 10) / 10,
                         count: stepAverages[stepName].count,
                         color: stepColors[stepName] || '#1976d2'
-                      })).sort((a, b) => {
-                        // Sort by typical workflow order
-                        const order = [
-                          'Demande Soumise',
-                          'Vérification Documents', 
-                          'Analyse Crédit',
-                          'Évaluation Risques',
-                          'Examen Directeur Agence',
-                          'Examen Comité Crédit',
-                          'Décision Finale',
-                          'Préparation Contrat',
-                          'Déblocage'
-                        ];
-                        return order.indexOf(a.stepName || '') - order.indexOf(b.stepName || '');
-                      });
+                      })).sort((a, b) => stepOrder.indexOf(a.stepName || '') - stepOrder.indexOf(b.stepName || ''));
+
+                      const bottlenecks = chartData
+                        .filter(s => s.stepName && s.avgWorkdays > (FIXED_WORKFLOW_STEPS[s.stepName as keyof typeof FIXED_WORKFLOW_STEPS]?.expectedDuration || 1))
+                        .sort((a, b) => b.avgWorkdays - a.avgWorkdays)
+                        .slice(0, 3);
 
                       return (
                         <Box>
-                          <Grid container spacing={2} sx={{ mb: 3 }}>
-                            <Grid item xs={12} sm={6} md={3}>
-                              <Card variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
-                                <Typography variant="h4" color="primary" sx={{ fontWeight: 'bold' }}>
-                                  {completedWorkflows.length}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                  Workflows Terminés
-                                </Typography>
-                              </Card>
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={3}>
-                              <Card variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
-                                <Typography variant="h4" color="success.main" sx={{ fontWeight: 'bold' }}>
-                                  {completedWorkflows.filter(wf => wf.finalDecision === 'approved').length}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                  Approuvées
-                                </Typography>
-                              </Card>
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={3}>
-                              <Card variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
-                                <Typography variant="h4" color="error.main" sx={{ fontWeight: 'bold' }}>
-                                  {completedWorkflows.filter(wf => wf.finalDecision === 'rejected').length}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                  Refusées
-                                </Typography>
-                              </Card>
-                            </Grid>
-                            <Grid item xs={12} sm={6} md={3}>
-                              <Card variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
-                                <Typography variant="h4" color="warning.main" sx={{ fontWeight: 'bold' }}>
-                                  {filteredWorkflows.filter(wf => wf.status === 'in_progress').length}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                  En Cours
-                                </Typography>
-                              </Card>
-                            </Grid>
-                          </Grid>
-
-                          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-                            Durée Moyenne par Étape d'Approbation
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1.5, color: '#475569' }}>
+                            Durée moyenne par étape (jours ouvrés)
                           </Typography>
-                          
-                          <ResponsiveContainer width="100%" height={350}>
-                            <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis 
-                                dataKey="stepName" 
-                                angle={-45} 
-                                textAnchor="end" 
-                                height={100}
-                                fontSize={12}
+                          <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 70 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                              <XAxis dataKey="stepName" angle={-40} textAnchor="end" height={90} tick={{ fontSize: 11 }} />
+                              <YAxis tick={{ fontSize: 11 }} label={{ value: 'Jours', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }} />
+                              <RechartsTooltip
+                                formatter={(value: number) => [`${formatDuration(value * 9 * 3600000)}`, 'Durée moyenne']}
+                                labelFormatter={(label) => `Étape : ${label}`}
+                                contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}
                               />
-                              <YAxis 
-                                label={{ value: 'Durée (jours)', angle: -90, position: 'insideLeft' }}
-                              />
-                              <RechartsTooltip 
-                                formatter={(value: number, name: string, props: any) => [
-                                  `${formatDuration(value * 9 * 3600000)}`, // 9 working hours per day
-                                  'Durée moyenne'
-                                ]}
-                                labelFormatter={(label) => `Étape: ${label}`}
-                                contentStyle={{ 
-                                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                                  border: '1px solid #ccc',
-                                  borderRadius: '4px'
-                                }}
-                              />
-                              <Legend
-                                content={() => (
-                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', mt: 2, gap: 1 }}>
-                                    {chartData.map((entry, index) => (
-                                      <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                        <Box 
-                                          sx={{ 
-                                            width: 12, 
-                                            height: 12, 
-                                            backgroundColor: entry.color,
-                                            borderRadius: '2px'
-                                          }} 
-                                        />
-                                        <Typography variant="caption" sx={{ fontSize: '10px' }}>
-                                          {entry.stepName}
-                                        </Typography>
-                                      </Box>
-                                    ))}
-                                  </Box>
-                                )}
-                              />
-                              <Bar 
-                                dataKey="avgWorkdays" 
-                                radius={[4, 4, 0, 0]}
-                              >
-                                {chartData.map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={entry.color} />
-                                ))}
+                              <Bar dataKey="avgWorkdays" radius={[4, 4, 0, 0]}>
+                                {chartData.map((entry, i) => <Cell key={`cell-${i}`} fill={entry.color} />)}
                               </Bar>
                             </BarChart>
                           </ResponsiveContainer>
 
-                          {/* Bottleneck Identification */}
-                          <Box sx={{ mt: 4 }}>
-                            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-                              Identification des Goulets d'Étranglement
+                          {/* Bottlenecks */}
+                          <Box sx={{ mt: 3 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 600, mb: 1.5, color: '#475569' }}>
+                              Goulets d'étranglement identifiés
                             </Typography>
                             <Grid container spacing={2}>
-                              {chartData
-                                .filter(step => step.stepName && step.avgWorkdays > (FIXED_WORKFLOW_STEPS[step.stepName as keyof typeof FIXED_WORKFLOW_STEPS]?.expectedDuration || 1))
-                                .sort((a, b) => b.avgWorkdays - a.avgWorkdays)
-                                .slice(0, 3)
-                                .map((step, index) => {
-                                  const expectedDuration = step.stepName ? (FIXED_WORKFLOW_STEPS[step.stepName as keyof typeof FIXED_WORKFLOW_STEPS]?.expectedDuration || 1) : 1;
-                                  const overrun = step.avgWorkdays - expectedDuration;
-                                  const overrunPercent = Math.round((overrun / expectedDuration) * 100);
-                                  
-                                  return (
-                                    <Grid item xs={12} md={4} key={step.stepName}>
-                                      <Card 
-                                        variant="outlined" 
-                                        sx={{ 
-                                          p: 2, 
-                                          borderColor: index === 0 ? 'error.main' : index === 1 ? 'warning.main' : 'info.main',
-                                          borderWidth: 2
-                                        }}
-                                      >
-                                        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                                          {step.stepName}
-                                        </Typography>
-                                        <Typography variant="h5" color="error" sx={{ fontWeight: 'bold', mb: 1 }}>
-                                          +{overrunPercent}%
-                                        </Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                          {formatDuration(step.avgWorkdays * 9 * 3600000)} (attendu: {expectedDuration}j)
-                                        </Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                          {step.count} demandes analysées
-                                        </Typography>
-                                      </Card>
-                                    </Grid>
-                                  );
-                                })}
-                              {chartData.filter(step => step.stepName && step.avgWorkdays > (FIXED_WORKFLOW_STEPS[step.stepName as keyof typeof FIXED_WORKFLOW_STEPS]?.expectedDuration || 1)).length === 0 && (
+                              {bottlenecks.length > 0 ? bottlenecks.map((step, index) => {
+                                const expected = step.stepName ? (FIXED_WORKFLOW_STEPS[step.stepName as keyof typeof FIXED_WORKFLOW_STEPS]?.expectedDuration || 1) : 1;
+                                const overrunPct = Math.round(((step.avgWorkdays - expected) / expected) * 100);
+                                const borderColors = ['#dc2626', '#d97706', '#2563eb'];
+                                return (
+                                  <Grid item xs={12} md={4} key={step.stepName}>
+                                    <Card variant="outlined" sx={{ p: 2, borderColor: borderColors[index], borderWidth: 2, borderRadius: 2 }}>
+                                      <Typography variant="caption" sx={{ fontWeight: 700, color: borderColors[index], textTransform: 'uppercase', fontSize: 10 }}>
+                                        {index === 0 ? 'Critique' : index === 1 ? 'Modéré' : 'Mineur'}
+                                      </Typography>
+                                      <Typography variant="body2" sx={{ fontWeight: 600, mt: 0.5 }}>{step.stepName}</Typography>
+                                      <Typography variant="h5" sx={{ fontWeight: 700, color: borderColors[index], mt: 0.5 }}>+{overrunPct}%</Typography>
+                                      <Typography variant="caption" color="text.secondary" display="block">
+                                        {formatDuration(step.avgWorkdays * 9 * 3600000)} · attendu {expected}j · {step.count} dossiers
+                                      </Typography>
+                                    </Card>
+                                  </Grid>
+                                );
+                              }) : (
                                 <Grid item xs={12}>
-                                  <Card variant="outlined" sx={{ p: 2, textAlign: 'center', bgcolor: 'success.light', color: 'success.dark' }}>
-                                    <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                                      ✅ Aucun goulet d'étranglement détecté
-                                    </Typography>
-                                    <Typography variant="body2">
-                                      Toutes les étapes respectent les délais attendus
+                                  <Card variant="outlined" sx={{ p: 2, textAlign: 'center', bgcolor: '#f0fdf4', borderColor: '#16a34a', borderRadius: 2 }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#166534' }}>
+                                      Aucun goulet d'étranglement — toutes les étapes respectent les délais
                                     </Typography>
                                   </Card>
                                 </Grid>
@@ -1608,64 +1534,51 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                 </Card>
               </Grid>
 
-              {/* Detailed Step Analysis */}
+              {/* Detailed step analysis per branch */}
               <Grid item xs={12}>
-                <Card>
+                <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)' }}>
                   <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
-                      Performance des Étapes d'Approbation par Agence
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                      Performance des Étapes par Agence
                     </Typography>
-                    
                     <TableContainer>
-                      <Table>
+                      <Table size="small">
                         <TableHead>
-                          <TableRow>
-                            <TableCell sx={{ fontWeight: 600 }}>Agence</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>Vérification Docs</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>Analyse Crédit</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>Évaluation Risques</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>Examen Directeur</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>Comité Crédit</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>
-                              <Tooltip title="Durée totale moyenne du dossier depuis sa création jusqu'à la décision finale. Chaque étape montre le temps réellement écoulé depuis la fin de l'étape précédente (temps passé dans chaque service)." arrow placement="top">
-                                <span style={{ cursor: 'help', borderBottom: '1px dotted' }}>Total Moyen ⓘ</span>
+                          <TableRow sx={{ '& th': { fontWeight: 600, bgcolor: '#f8fafc', fontSize: 12, py: 1.2 } }}>
+                            <TableCell>Agence</TableCell>
+                            <TableCell>Vérification Docs</TableCell>
+                            <TableCell>Analyse Crédit</TableCell>
+                            <TableCell>Évaluation Risques</TableCell>
+                            <TableCell>Examen Directeur</TableCell>
+                            <TableCell>Comité Crédit</TableCell>
+                            <TableCell>
+                              <Tooltip title="Durée totale moyenne du dossier depuis création jusqu'à décision finale." arrow placement="top">
+                                <span style={{ cursor: 'help', borderBottom: '1px dotted #94a3b8' }}>Total Moyen ⓘ</span>
                               </Tooltip>
                             </TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
                           {calculateStepPerformanceMetrics().map((branch) => (
-                            <TableRow key={branch.branch}>
-                              <TableCell sx={{ fontWeight: 500 }}>{branch.branch}</TableCell>
+                            <TableRow key={branch.branch} sx={{ '& td': { fontSize: 12 } }}>
+                              <TableCell sx={{ fontWeight: 600 }}>{branch.branch}</TableCell>
+                              <TableCell>{branch.avgStepTimes['Vérification Documents'] > 0 ? formatDuration(branch.avgStepTimes['Vérification Documents']) : '< 1min'}</TableCell>
+                              <TableCell>{branch.avgStepTimes['Analyse Crédit'] > 0 ? formatDuration(branch.avgStepTimes['Analyse Crédit']) : '< 1min'}</TableCell>
+                              <TableCell>{branch.avgStepTimes['Évaluation Risques'] > 0 ? formatDuration(branch.avgStepTimes['Évaluation Risques']) : '< 1min'}</TableCell>
+                              <TableCell>{branch.avgStepTimes['Examen Directeur Agence'] > 0 ? formatDuration(branch.avgStepTimes['Examen Directeur Agence']) : '< 1min'}</TableCell>
+                              <TableCell>{branch.avgStepTimes['Examen Comité Crédit'] > 0 ? formatDuration(branch.avgStepTimes['Examen Comité Crédit']) : '< 1min'}</TableCell>
                               <TableCell>
-                                {branch.avgStepTimes['Vérification Documents'] && branch.avgStepTimes['Vérification Documents'] > 0 ? 
-                                  formatDuration(branch.avgStepTimes['Vérification Documents']) : '< 1min'}
-                              </TableCell>
-                              <TableCell>
-                                {branch.avgStepTimes['Analyse Crédit'] && branch.avgStepTimes['Analyse Crédit'] > 0 ? 
-                                  formatDuration(branch.avgStepTimes['Analyse Crédit']) : '< 1min'}
-                              </TableCell>
-                              <TableCell>
-                                {branch.avgStepTimes['Évaluation Risques'] && branch.avgStepTimes['Évaluation Risques'] > 0 ? 
-                                  formatDuration(branch.avgStepTimes['Évaluation Risques']) : '< 1min'}
-                              </TableCell>
-                              <TableCell>
-                                {branch.avgStepTimes['Examen Directeur Agence'] && branch.avgStepTimes['Examen Directeur Agence'] > 0 ? 
-                                  formatDuration(branch.avgStepTimes['Examen Directeur Agence']) : '< 1min'}
-                              </TableCell>
-                              <TableCell>
-                                {branch.avgStepTimes['Examen Comité Crédit'] && branch.avgStepTimes['Examen Comité Crédit'] > 0 ? 
-                                  formatDuration(branch.avgStepTimes['Examen Comité Crédit']) : '< 1min'}
-                              </TableCell>
-                              <TableCell>
-                                <Chip 
-                                  label={formatDuration(branch.avgProcessingTime)}
-                                  color={getPerformanceColor(branch.avgProcessingTime)}
-                                  size="small"
-                                />
+                                <Chip label={formatDuration(branch.avgProcessingTime)} color={getPerformanceColor(branch.avgProcessingTime)} size="small" sx={{ fontWeight: 600, fontSize: 11 }} />
                               </TableCell>
                             </TableRow>
                           ))}
+                          {calculateStepPerformanceMetrics().length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={7} align="center" sx={{ py: 3, color: 'text.secondary', fontSize: 13 }}>
+                                Aucune donnée de performance disponible
+                              </TableCell>
+                            </TableRow>
+                          )}
                         </TableBody>
                       </Table>
                     </TableContainer>

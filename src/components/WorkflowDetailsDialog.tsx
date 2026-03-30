@@ -2359,12 +2359,28 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                 </Box>
               );
             }
+            if (ext === 'pdf') {
+              // Chrome blocks blob: URLs in <iframe> for PDFs — use <embed> instead
+              return (
+                <embed
+                  src={previewBlobUrl}
+                  type="application/pdf"
+                  style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+                />
+              );
+            }
+            // Office docs (docx, xlsx, etc.) can't be previewed in-browser
             return (
-              <iframe
-                src={previewBlobUrl}
-                title={previewDoc?.filename}
-                style={{ width: '100%', height: '100%', border: 'none' }}
-              />
+              <Box sx={{ textAlign: 'center', p: 4, maxWidth: 400 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  L'aperçu n'est pas disponible pour les fichiers <strong>.{ext}</strong>.<br />
+                  Téléchargez le document pour l'ouvrir avec l'application appropriée.
+                </Typography>
+                <Button variant="outlined" size="small" onClick={() => downloadDoc(previewDoc)}
+                  sx={{ borderRadius: '10px', textTransform: 'none', fontSize: '13px' }}>
+                  Télécharger le fichier
+                </Button>
+              </Box>
             );
           })()}
 
