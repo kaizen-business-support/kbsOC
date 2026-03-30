@@ -224,23 +224,23 @@ router.get('/history', async (req: Request, res: Response) => {
         },
         assignee: { select: { id: true, name: true, department: true, jobTitle: true } }
       },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: { createdAt: 'desc' },
       take: 30
     });
 
     const data = steps.map(s => ({
       stepId: s.id,
-      applicationId: s.application.id,
-      applicationNumber: s.application.applicationNumber,
-      clientName: s.application.client.companyName,
-      amount: Number(s.application.amount),
-      currency: s.application.currency,
+      applicationId: (s as any).application.id,
+      applicationNumber: (s as any).application.applicationNumber,
+      clientName: (s as any).application.client.companyName,
+      amount: Number((s as any).application.amount),
+      currency: (s as any).application.currency,
       status: s.status,
-      appStatus: s.application.status,
-      assignedTo: s.assignee,
-      accountManager: s.application.creator.name,
-      branch: s.application.creator.department,
-      assignedAt: s.updatedAt,
+      appStatus: (s as any).application.status,
+      assignedTo: (s as any).assignee,
+      accountManager: (s as any).application.creator.name,
+      branch: (s as any).application.creator.department,
+      assignedAt: s.createdAt,
       deadline: s.deadline,
       comments: s.comments
     }));
