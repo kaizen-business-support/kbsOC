@@ -134,22 +134,27 @@ router.get('/dashboard', async (req: Request, res: Response) => {
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       );
 
+      // Noms d'étapes de création qui ne se mesurent pas comme durée de traitement
+      const CREATION_STEP_NAMES = new Set(['Application Créée', 'application_created', 'Demande Soumise']);
+
       const steps = sortedSteps.map((step, index) => {
         let duration: number | undefined = undefined;
 
-        // Skip "Application Créée" step for duration calculations - this is just submission
-        if (step.completedAt && step.stepName !== 'Application Créée') {
-          if (step.stepName === 'Vérification Documents') {
-            // First measured step: working time from application creation to docs verification
-            const workingTime = calculateWorkingTime(new Date(app.createdAt), step.completedAt);
-            duration = workingTime.totalWorkingMinutes * 60 * 1000; // Convert to milliseconds for compatibility
+        if (step.completedAt && !CREATION_STEP_NAMES.has(step.stepName)) {
+          // Cherche la dernière étape complétée précédant celle-ci (peu importe son index)
+          const previousCompleted = sortedSteps
+            .slice(0, index)
+            .filter(s => s.completedAt)
+            .pop();
+
+          if (previousCompleted && previousCompleted.completedAt) {
+            // Durée = temps ouvré entre la fin de l'étape précédente et la fin de celle-ci
+            const workingTime = calculateWorkingTime(previousCompleted.completedAt, step.completedAt);
+            duration = workingTime.totalWorkingMinutes * 60 * 1000;
           } else {
-            // Subsequent steps: working time from previous step completion to current step completion
-            const previousStep = sortedSteps[index - 1];
-            if (previousStep && previousStep.completedAt) {
-              const workingTime = calculateWorkingTime(previousStep.completedAt, step.completedAt);
-              duration = workingTime.totalWorkingMinutes * 60 * 1000; // Convert to milliseconds for compatibility
-            }
+            // Première étape mesurable : durée depuis la création du dossier
+            const workingTime = calculateWorkingTime(new Date(app.createdAt), step.completedAt);
+            duration = workingTime.totalWorkingMinutes * 60 * 1000;
           }
         }
 
@@ -162,17 +167,17 @@ router.get('/dashboard', async (req: Request, res: Response) => {
         };
       });
 
-      // Calculate total duration for completed applications using working time
-      // Total duration = working time from application start to last completed step
+      // Durée totale = temps ouvré depuis création jusqu'à la dernière étape complétée
+      // Calculé pour APPROVED, REJECTED et DISBURSED
       let totalDuration: number | undefined = undefined;
-      if (app.status === 'APPROVED' || app.status === 'REJECTED') {
+      if (['APPROVED', 'REJECTED', 'DISBURSED'].includes(app.status)) {
         const lastCompletedStep = steps
           .filter(s => s.completedAt)
           .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime())[0];
-        
+
         if (lastCompletedStep) {
           const totalWorkingTime = calculateWorkingTime(new Date(app.createdAt), new Date(lastCompletedStep.completedAt!));
-          totalDuration = totalWorkingTime.totalWorkingMinutes * 60 * 1000; // Convert to milliseconds for compatibility
+          totalDuration = totalWorkingTime.totalWorkingMinutes * 60 * 1000;
         }
       }
 
@@ -183,7 +188,7 @@ router.get('/dashboard', async (req: Request, res: Response) => {
         branch: app.client.creator.department || 'Non spécifié',
         createdByName: app.creator.name,
         status: app.status.toLowerCase(),
-        finalDecision: app.status === 'APPROVED' ? 'approved' : 
+        finalDecision: (app.status === 'APPROVED' || app.status === 'DISBURSED') ? 'approved' :
                       app.status === 'REJECTED' ? 'rejected' : undefined,
         requestedAmount: Number(app.amount),
         totalStartedAt: app.createdAt.toISOString(),

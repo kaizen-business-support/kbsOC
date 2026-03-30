@@ -1268,7 +1268,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                               <Typography variant="body2" sx={{ fontWeight: 700, color: index === 0 ? '#d97706' : 'text.secondary', minWidth: 18, fontSize: 13 }}>
                                 #{index + 1}
                               </Typography>
-                              <Avatar sx={{ bgcolor: index === 0 ? '#fef3c7' : '#f3f4f6', color: index === 0 ? '#d97706' : '#6b7280', width: 36, height: 36, fontSize: 13, fontWeight: 700 }}>
+                              <Avatar sx={{ bgcolor: index === 0 ? '#fef3c7' : 'transparent', color: index === 0 ? '#d97706' : '#475569', border: index === 0 ? 'none' : '1.5px solid #cbd5e1', width: 36, height: 36, fontSize: 13, fontWeight: 700 }}>
                                 {manager.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
                               </Avatar>
                               <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -1354,7 +1354,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                   <CardContent sx={{ py: 2.5 }}>
                     <PendingIcon sx={{ color: '#d97706', fontSize: 36, mb: 1 }} />
                     <Typography variant="h5" sx={{ fontWeight: 700, color: '#d97706' }}>
-                      {getFilteredWorkflows().filter(wf => wf.status === 'in_progress').length}
+                      {getFilteredWorkflows().filter(wf => !['approved','rejected','disbursed'].includes(wf.status)).length}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>En cours de traitement</Typography>
                   </CardContent>
@@ -1406,9 +1406,10 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                           </defs>
                           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                           <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                          <YAxis tick={{ fontSize: 12 }} />
+                          <YAxis tick={{ fontSize: 12 }} label={{ value: 'Heures', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }} />
                           <RechartsTooltip
-                            formatter={(value: number) => [`${value.toFixed(1)}h`, 'Temps moyen']}
+                            formatter={(value: number) => [`${value.toFixed(1)}h`, 'Durée moyenne']}
+                            labelFormatter={(label) => `Mois : ${label}`}
                             contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}
                           />
                           <Area type="monotone" dataKey="avgTime" stroke="#1565c0" strokeWidth={2.5} fill="url(#gradTrend)" dot={{ fill: '#1565c0', r: 4 }} />
