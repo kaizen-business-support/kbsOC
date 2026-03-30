@@ -21,6 +21,7 @@ import {
   TableRow,
   Paper,
   Link,
+  Button,
 } from '@mui/material';
 import {
   Description as DocumentIcon,
@@ -243,43 +244,55 @@ const bceaoNorms = [
 ];
 
 // PDF Preview Component
-const PDFPreview: React.FC<{ pdfUrl: string; isOpen: boolean; sector: string }> = ({ pdfUrl, isOpen, sector }) => {
-  const [loadError, setLoadError] = useState(false);
-
+const PDFPreview: React.FC<{ pdfUrl: string; isOpen: boolean; sector: string; officialLink?: string }> = ({ pdfUrl, isOpen, sector, officialLink }) => {
   if (!isOpen) return null;
+
+  const fallback = (
+    <Box sx={{ textAlign: 'center', p: 4 }}>
+      <PdfIcon sx={{ fontSize: 52, color: 'grey.400', mb: 2 }} />
+      <Typography variant="body2" fontWeight={600} gutterBottom>
+        Prévisualisation non disponible
+      </Typography>
+      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+        Le document n'est pas hébergé localement.
+      </Typography>
+      {officialLink && (
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<PdfIcon />}
+          href={officialLink}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Consulter la source officielle
+        </Button>
+      )}
+    </Box>
+  );
 
   return (
     <Box sx={{ mt: 2, mb: 2, mx: 2, border: '1px solid #e0e0e0', borderRadius: 1, overflow: 'hidden' }}>
       <Box sx={{ p: 2, bgcolor: 'grey.100', borderBottom: '1px solid #e0e0e0' }}>
         <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <PdfIcon color="primary" />
-          Prévisualisation PDF - {sector}
+          Prévisualisation PDF — {sector}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          Document de référence sectorielle • Cliquez sur "Télécharger PDF" pour ouvrir dans un nouvel onglet
+          Document de référence sectorielle
         </Typography>
       </Box>
       <Box sx={{ height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#f5f5f5' }}>
-        {loadError ? (
-          <Box sx={{ textAlign: 'center', p: 3 }}>
-            <PdfIcon sx={{ fontSize: 48, color: 'grey.400', mb: 2 }} />
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Impossible de charger la prévisualisation PDF
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Utilisez le bouton "Télécharger PDF" pour accéder au document
-            </Typography>
-          </Box>
-        ) : (
-          <embed
-            src={`${pdfUrl}#toolbar=0&navpanes=0&view=FitH`}
-            type="application/pdf"
-            width="100%"
-            height="100%"
-            style={{ border: 'none', display: 'block' }}
-            onError={() => setLoadError(true)}
-          />
-        )}
+        {/* <object> affiche son contenu enfant si le PDF ne se charge pas (404) */}
+        <object
+          data={`${pdfUrl}#toolbar=0&navpanes=0&view=FitH`}
+          type="application/pdf"
+          width="100%"
+          height="100%"
+          style={{ border: 'none', display: 'block' }}
+        >
+          {fallback}
+        </object>
       </Box>
     </Box>
   );
@@ -1539,10 +1552,11 @@ export const DocumentationPage: React.FC<DocumentationPageProps> = ({ onNavigate
                         {expandedSectors[ref.sector] && ref.downloadLink && (
                           <TableRow>
                             <TableCell colSpan={7} sx={{ p: 0, border: 'none' }}>
-                              <PDFPreview 
-                                pdfUrl={ref.downloadLink} 
+                              <PDFPreview
+                                pdfUrl={ref.downloadLink}
                                 isOpen={expandedSectors[ref.sector]}
                                 sector={ref.sector}
+                                officialLink={ref.link}
                               />
                             </TableCell>
                           </TableRow>
