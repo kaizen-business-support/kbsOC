@@ -134,95 +134,73 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   };
 
   // Load workflow data from backend API with filters
-  // Charge les données en vérifiant d'abord le cache (validé par filtres actifs)
-  const loadWorkflowData = async (
-    _timeRange = timeRange,
-    _branch = selectedBranch,
-    _manager = selectedManager,
-    _startDate = startDate,
-    _endDate = endDate
+  // Appel API direct — toujours frais, pas de cache sur les filtres
+  const loadWorkflowData = React.useCallback(async (
+    tr: string,
+    br: string,
+    mgr: string,
+    sd: string,
+    ed: string
   ) => {
-    // Vérification du cache : valide seulement si même filtres actifs
-    try {
-      const cached = sessionStorage.getItem(CACHE_KEY);
-      if (cached) {
-        const { data, ts, filters: cf } = JSON.parse(cached);
-        if (
-          Date.now() - ts < CACHE_TTL &&
-          data?.length > 0 &&
-          cf?.timeRange === _timeRange &&
-          cf?.branch === _branch &&
-          cf?.manager === _manager &&
-          cf?.startDate === _startDate &&
-          cf?.endDate === _endDate
-        ) {
-          setWorkflowTimestamps(data);
-          setLastUpdated(new Date(ts));
-          return;
-        }
-      }
-    } catch (_) {}
-
     setIsLoading(true);
     setApiError(null);
-
-    const cacheKey = { timeRange: _timeRange, branch: _branch, manager: _manager, startDate: _startDate, endDate: _endDate };
-
     try {
       const apiFilters = {
-        branch: _branch !== 'all' ? _branch : undefined,
-        manager: _manager !== 'all' ? _manager : undefined,
-        timeRange: _timeRange !== '' ? _timeRange : undefined,
-        startDate: _startDate || undefined,
-        endDate: _endDate || undefined
+        branch:    br  !== 'all' ? br  : undefined,
+        manager:   mgr !== 'all' ? mgr : undefined,
+        timeRange: tr  !== ''    ? tr  : undefined,
+        startDate: sd  || undefined,
+        endDate:   ed  || undefined,
       };
 
-      const analyticsResponse = await ApiService.getAnalyticsDashboard(apiFilters);
+      const resp = await ApiService.getAnalyticsDashboard(apiFilters);
 
-      if (analyticsResponse.success && analyticsResponse.data) {
-        const workflows = analyticsResponse.data.workflows || analyticsResponse.data;
-        setWorkflowTimestamps(Array.isArray(workflows) ? workflows : []);
-        setLastUpdated(new Date());
-        try {
-          sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data: workflows, ts: Date.now(), filters: cacheKey }));
-        } catch (_) {}
-      } else {
-        // Fallback : endpoint legacy sans filtres temporels
-        const workflowResponse = await ApiService.getWorkflows();
-        if (workflowResponse.success && workflowResponse.data && workflowResponse.data.length > 0) {
-          setWorkflowTimestamps(workflowResponse.data);
-          setLastUpdated(new Date());
-          try {
-            sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data: workflowResponse.data, ts: Date.now(), filters: cacheKey }));
-          } catch (_) {}
-        } else {
-          setWorkflowTimestamps([]);
-          setApiError('Aucune donnée disponible depuis l\'API');
+      // Accepte { data: [...] } (tableau déjà extrait) ou { data: { workflows: [...] } }
+      let workflows: any[] = [];
+      if (resp.success) {
+        if (Array.isArray(resp.data)) {
+          workflows = resp.data;
+        } else if (resp.data?.workflows && Array.isArray(resp.data.workflows)) {
+          workflows = resp.data.workflows;
         }
       }
+
+      setWorkflowTimestamps(workflows);
+      setLastUpdated(new Date());
+
+      // Cache léger uniquement pour le rechargement rapide (même filtres)
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({
+          data: workflows, ts: Date.now(),
+          filters: { tr, br, mgr, sd, ed }
+        }));
+      } catch (_) {}
     } catch (error: any) {
-      console.error('Error loading analytics data:', error);
-      setApiError(`Connexion au backend: ${error.message}`);
+      console.error('Analytics load error:', error);
+      setApiError(`Erreur de chargement : ${error.message}`);
       setWorkflowTimestamps([]);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []); // pas de dépendances — les valeurs sont passées explicitement
 
   // Rechargement à chaque changement de filtre (y compris le montage initial)
   React.useEffect(() => {
-    if (isTimeframeValid()) {
+    const valid = timeRange === 'custom' ? !!(startDate && endDate) : timeRange !== '';
+    if (valid) {
       loadWorkflowData(timeRange, selectedBranch, selectedManager, startDate, endDate);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranch, selectedManager, timeRange, startDate, endDate]);
 
-  // Auto-refresh every 60 seconds
+  // Auto-refresh every 60 seconds — capture les filtres courants via closure
   React.useEffect(() => {
-    if (!isTimeframeValid()) return;
+    const valid = timeRange === 'custom' ? !!(startDate && endDate) : timeRange !== '';
+    if (!valid) return;
+    const tr = timeRange, br = selectedBranch, mgr = selectedManager, sd = startDate, ed = endDate;
     const interval = setInterval(() => {
       try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {}
-      loadWorkflowData();
+      loadWorkflowData(tr, br, mgr, sd, ed);
       loadFilterOptions();
     }, REFRESH_INTERVAL * 1000);
     return () => clearInterval(interval);
@@ -843,7 +821,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
             )}
             <Tooltip title="Actualiser maintenant">
               <IconButton size="small" disabled={isLoading}
-                onClick={() => { try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {} loadWorkflowData(); loadFilterOptions(); }}
+                onClick={() => { try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {} loadWorkflowData(timeRange, selectedBranch, selectedManager, startDate, endDate); loadFilterOptions(); }}
                 sx={{ color: '#fff', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 1.5, p: 0.6 }}
               >
                 {isLoading ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <RefreshIcon sx={{ fontSize: 16 }} />}
