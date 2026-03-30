@@ -248,11 +248,6 @@ const PDFPreview: React.FC<{ pdfUrl: string; isOpen: boolean; sector: string }> 
 
   if (!isOpen) return null;
 
-  const handleIframeError = () => {
-    setLoadError(true);
-    console.warn(`Failed to load PDF preview for ${sector}`);
-  };
-
   return (
     <Box sx={{ mt: 2, mb: 2, mx: 2, border: '1px solid #e0e0e0', borderRadius: 1, overflow: 'hidden' }}>
       <Box sx={{ p: 2, bgcolor: 'grey.100', borderBottom: '1px solid #e0e0e0' }}>
@@ -264,26 +259,25 @@ const PDFPreview: React.FC<{ pdfUrl: string; isOpen: boolean; sector: string }> 
           Document de référence sectorielle • Cliquez sur "Télécharger PDF" pour ouvrir dans un nouvel onglet
         </Typography>
       </Box>
-      <Box sx={{ height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <Box sx={{ height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#f5f5f5' }}>
         {loadError ? (
           <Box sx={{ textAlign: 'center', p: 3 }}>
             <PdfIcon sx={{ fontSize: 48, color: 'grey.400', mb: 2 }} />
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="text.secondary" gutterBottom>
               Impossible de charger la prévisualisation PDF
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Utilisez le lien "Télécharger PDF" ci-dessus pour accéder au document
+              Utilisez le bouton "Télécharger PDF" pour accéder au document
             </Typography>
           </Box>
         ) : (
-          <iframe
-            src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+          <embed
+            src={`${pdfUrl}#toolbar=0&navpanes=0&view=FitH`}
+            type="application/pdf"
             width="100%"
             height="100%"
-            style={{ border: 'none' }}
-            title={`PDF Preview - ${sector}`}
-            onError={handleIframeError}
-            onLoad={() => setLoadError(false)}
+            style={{ border: 'none', display: 'block' }}
+            onError={() => setLoadError(true)}
           />
         )}
       </Box>

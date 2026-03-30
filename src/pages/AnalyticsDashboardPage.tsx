@@ -77,9 +77,11 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   const CACHE_KEY = 'analytics_dashboard_cache';
   const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-  // Reset manager selection when branch changes
+  // Reset manager selection when branch changes + reload managers for that branch
   React.useEffect(() => {
     setSelectedManager('all');
+    loadFilterOptions(selectedBranch !== 'all' ? selectedBranch : undefined);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranch]);
 
   // Load filter options on component mount
@@ -89,27 +91,32 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   }, []);
 
   // Load filter options from API
-  const loadFilterOptions = async () => {
+  const loadFilterOptions = async (branchFilter?: string) => {
     try {
-      // Load branches
+      // Load branches (toujours toutes)
       const branchesResponse = await ApiService.getBranchesPerformance();
       if (branchesResponse.success && branchesResponse.data) {
-        const branches = branchesResponse.data.map((b: any) => b.branch);
+        const seen = new Set<string>();
+        const branches = branchesResponse.data
+          .map((b: any) => b.branch as string)
+          .filter((br: string) => br && !seen.has(br) && seen.add(br));
         setAvailableBranches(branches);
       }
 
-      // Load managers  
-      const managersResponse = await ApiService.getManagersPerformance();
+      // Load managers filtrés par agence si sélectionnée
+      const managersResponse = await ApiService.getManagersPerformance(branchFilter);
       if (managersResponse.success && managersResponse.data) {
-        const managers = managersResponse.data.map((m: any) => ({
-          name: m.name, 
-          branch: m.branch,
-          clients: m.clients,
-          applications: m.applications,
-          approved: m.approved,
-          volume: m.volume,
-          performance: m.performance
-        }));
+        const managers = managersResponse.data
+          .filter((m: any) => !branchFilter || m.branch === branchFilter)
+          .map((m: any) => ({
+            name: m.name,
+            branch: m.branch,
+            clients: m.clients,
+            applications: m.applications,
+            approved: m.approved,
+            volume: m.volume,
+            performance: m.performance
+          }));
         setAvailableManagers(managers);
       }
     } catch (error) {
@@ -197,10 +204,10 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reload data when filters change - now triggers real API call with filters
+  // Reload data when filters change — invalider le cache d'abord
   React.useEffect(() => {
     if (isTimeframeValid()) {
-      console.log('Filters changed - reloading data from backend with new filters');
+      try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {}
       loadWorkflowData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -705,8 +712,8 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   const totalRejected = filteredWorkflows.filter(wf => 
     getWorkflowDecision(wf) === 'rejected'
   ).length;
-  const totalPending = filteredWorkflows.filter(wf => 
-    getWorkflowDecision(wf) === 'pending'
+  const totalPending = filteredWorkflows.filter(wf =>
+    !['approved', 'rejected', 'disbursed'].includes(getWorkflowDecision(wf))
   ).length;
   const totalVolume = filteredWorkflows.reduce((sum, wf) => sum + wf.requestedAmount, 0);
   
