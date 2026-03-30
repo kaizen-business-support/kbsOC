@@ -1066,14 +1066,28 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
           });
         }
       } else {
-        // Note: Role creation is not implemented in the API yet
-        // For now, just show a message
-        setNotification({
-          open: true,
-          message: 'La création de nouveaux rôles n\'est pas encore disponible',
-          severity: 'warning'
+        const response = await ApiService.createRole({
+          role: roleForm.name,
+          label: roleForm.label,
+          description: roleForm.description,
+          permissions: roleForm.permissions
         });
-        closeRoleDialog();
+
+        if (response.success) {
+          setNotification({
+            open: true,
+            message: 'Rôle créé avec succès',
+            severity: 'success'
+          });
+          await loadRoles();
+          closeRoleDialog();
+        } else {
+          setNotification({
+            open: true,
+            message: response.error || 'Erreur lors de la création du rôle',
+            severity: 'error'
+          });
+        }
       }
     } catch (error) {
       console.error('Error saving role:', error);

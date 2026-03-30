@@ -790,6 +790,27 @@ export class ApiService {
     }
   }
 
+  static async createRole(roleData: {
+    role: string;
+    label: string;
+    description: string;
+    permissions: string[];
+  }): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.post('/roles', roleData);
+      return {
+        success: true,
+        data: response.data.role,
+        message: response.data.message
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Erreur lors de la création du rôle'
+      };
+    }
+  }
+
   static async updateRolePermissions(role: string, roleData: {
     label: string;
     description: string;
