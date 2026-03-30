@@ -750,181 +750,159 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   return (
     <Box sx={{ bgcolor: '#f0f2f5', minHeight: '100vh' }}>
 
-      {/* ── Hero Header ─────────────────────────────────────────── */}
+      {/* ── Hero Header (non-sticky pour éviter le conflit avec l'AppBar du layout) ── */}
       <Box sx={{
         background: 'linear-gradient(135deg, #0f2557 0%, #1565c0 100%)',
-        px: 4, pt: 3, pb: 0,
-        position: 'sticky', top: 0, zIndex: 1100,
+        px: { xs: 2, md: 4 }, pt: 2.5, pb: 2.5,
       }}>
-        {/* Title row */}
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
           <Box>
             <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700, letterSpacing: 0.3 }}>
               Tableau de Bord Analytique
             </Typography>
-            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mt: 0.3 }}>
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.65)', mt: 0.3 }}>
               {canViewAllBranches && 'Vue direction — performance globale du portefeuille crédit'}
               {canViewOwnBranch && `Agence ${userState.currentUser?.department} — performance locale`}
               {canViewOwnPerformance && 'Votre performance individuelle'}
             </Typography>
           </Box>
 
-          {/* Refresh controls */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 0.5 }}>
-            {/* Live indicator */}
+          {/* Live indicator + refresh */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
               <Box sx={{
                 width: 8, height: 8, borderRadius: '50%',
                 bgcolor: isLoading ? '#ffd740' : '#69f0ae',
-                boxShadow: isLoading ? '0 0 0 2px rgba(255,215,64,0.4)' : '0 0 0 2px rgba(105,240,174,0.4)',
-                animation: 'pulse 2s infinite',
-                '@keyframes pulse': {
-                  '0%': { boxShadow: isLoading ? '0 0 0 0 rgba(255,215,64,0.7)' : '0 0 0 0 rgba(105,240,174,0.7)' },
-                  '70%': { boxShadow: isLoading ? '0 0 0 6px rgba(255,215,64,0)' : '0 0 0 6px rgba(105,240,174,0)' },
-                  '100%': { boxShadow: '0 0 0 0 transparent' },
+                animation: 'kbsPulse 2s infinite',
+                '@keyframes kbsPulse': {
+                  '0%,100%': { opacity: 1 }, '50%': { opacity: 0.4 },
                 },
               }} />
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)', fontSize: 11 }}>
                 {isLoading ? 'Actualisation...' : `LIVE — ↻ ${refreshCountdown}s`}
               </Typography>
             </Box>
-
             {lastUpdated && (
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 10 }}>
-                Dernière màj {lastUpdated.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', fontSize: 10 }}>
+                Màj {lastUpdated.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
               </Typography>
             )}
-
             <Tooltip title="Actualiser maintenant">
-              <IconButton
-                size="small"
-                disabled={isLoading}
+              <IconButton size="small" disabled={isLoading}
                 onClick={() => { loadWorkflowData(); loadFilterOptions(); }}
-                sx={{ color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 1.5, p: 0.6 }}
+                sx={{ color: '#fff', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 1.5, p: 0.6 }}
               >
                 {isLoading ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <RefreshIcon sx={{ fontSize: 16 }} />}
               </IconButton>
             </Tooltip>
           </Box>
         </Box>
+      </Box>
 
-        {/* Error banner */}
+      {/* ── Barre de filtres — sticky sous l'AppBar du layout ── */}
+      <Box sx={{
+        position: 'sticky',
+        top: { xs: 56, sm: 64 },   /* hauteur de l'AppBar du layout */
+        zIndex: 1050,
+        bgcolor: '#fff',
+        borderBottom: '1px solid #e2e8f0',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
+        px: { xs: 2, md: 4 },
+        py: 1.5,
+      }}>
+        {/* Erreur API */}
         {apiError && (
-          <Box sx={{ mb: 1.5, px: 2, py: 1, bgcolor: 'rgba(244,67,54,0.18)', borderRadius: 1, border: '1px solid rgba(244,67,54,0.4)' }}>
-            <Typography variant="caption" sx={{ color: '#ffcdd2' }}>
+          <Box sx={{ mb: 1, px: 2, py: 0.75, bgcolor: '#fef2f2', borderRadius: 1, border: '1px solid #fca5a5' }}>
+            <Typography variant="caption" sx={{ color: '#dc2626' }}>
               Erreur de connexion : {apiError}
             </Typography>
           </Box>
         )}
 
-        {/* ── Filter bar ── */}
-        <Box sx={{ bgcolor: 'rgba(255,255,255,0.08)', borderRadius: '8px 8px 0 0', px: 2, py: 1.5 }}>
-          <Grid container spacing={1.5} alignItems="center">
-            <Grid item xs={12} sm={3}>
+        {/* Filtres sur une seule ligne */}
+        <Grid container spacing={1.5} alignItems="center">
+          <Grid item xs={12} sm={6} md={3}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Période</InputLabel>
+              <Select value={timeRange} label="Période" onChange={(e) => handleTimeRangeChange(e.target.value)}>
+                <MenuItem value="1month">Dernier mois</MenuItem>
+                <MenuItem value="3months">3 derniers mois</MenuItem>
+                <MenuItem value="6months">6 derniers mois</MenuItem>
+                <MenuItem value="1year">Dernière année</MenuItem>
+                <MenuItem value="custom">Période personnalisée</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+
+          {canViewAllBranches && (
+            <Grid item xs={12} sm={6} md={3}>
               <FormControl fullWidth size="small">
-                <InputLabel sx={{ color: 'rgba(255,255,255,0.7)', '&.Mui-focused': { color: '#90caf9' } }}>Période</InputLabel>
-                <Select
-                  value={timeRange}
-                  label="Période"
-                  onChange={(e) => handleTimeRangeChange(e.target.value)}
-                  sx={{
-                    color: '#fff',
-                    '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
-                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.6)' },
-                    '.MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
-                  }}
-                >
-                  <MenuItem value="1month">Dernier mois</MenuItem>
-                  <MenuItem value="3months">3 derniers mois</MenuItem>
-                  <MenuItem value="6months">6 derniers mois</MenuItem>
-                  <MenuItem value="1year">Dernière année</MenuItem>
-                  <MenuItem value="custom">Période personnalisée</MenuItem>
+                <InputLabel>Agence</InputLabel>
+                <Select value={selectedBranch} label="Agence" onChange={(e) => setSelectedBranch(e.target.value)}>
+                  <MenuItem value="all">Toutes les agences</MenuItem>
+                  {availableBranches.map(b => <MenuItem key={b} value={b}>{b}</MenuItem>)}
                 </Select>
               </FormControl>
             </Grid>
+          )}
 
-            {canViewAllBranches && (
-              <Grid item xs={12} sm={3}>
-                <FormControl fullWidth size="small">
-                  <InputLabel sx={{ color: 'rgba(255,255,255,0.7)', '&.Mui-focused': { color: '#90caf9' } }}>Agence</InputLabel>
-                  <Select
-                    value={selectedBranch}
-                    label="Agence"
-                    onChange={(e) => setSelectedBranch(e.target.value)}
-                    sx={{
-                      color: '#fff',
-                      '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
-                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.6)' },
-                      '.MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
-                    }}
-                  >
-                    <MenuItem value="all">Toutes les agences</MenuItem>
-                    {availableBranches.map(b => <MenuItem key={b} value={b}>{b}</MenuItem>)}
-                  </Select>
-                </FormControl>
-              </Grid>
-            )}
+          {(canViewAllBranches || canViewOwnBranch) && (
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Chargé d'Affaires</InputLabel>
+                <Select value={selectedManager} label="Chargé d'Affaires" onChange={(e) => setSelectedManager(e.target.value)}>
+                  <MenuItem value="all">Tous les chargés</MenuItem>
+                  {availableManagers
+                    .filter(m => canViewAllBranches || (canViewOwnBranch && m.branch === userState.currentUser?.department))
+                    .map(m => <MenuItem key={m.name} value={m.name}>{m.name}</MenuItem>)}
+                </Select>
+              </FormControl>
+            </Grid>
+          )}
 
-            {(canViewAllBranches || canViewOwnBranch) && (
-              <Grid item xs={12} sm={3}>
-                <FormControl fullWidth size="small">
-                  <InputLabel sx={{ color: 'rgba(255,255,255,0.7)', '&.Mui-focused': { color: '#90caf9' } }}>Chargé d'Affaires</InputLabel>
-                  <Select
-                    value={selectedManager}
-                    label="Chargé d'Affaires"
-                    onChange={(e) => setSelectedManager(e.target.value)}
-                    sx={{
-                      color: '#fff',
-                      '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
-                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.6)' },
-                      '.MuiSvgIcon-root': { color: 'rgba(255,255,255,0.7)' },
-                    }}
-                  >
-                    <MenuItem value="all">Tous les chargés</MenuItem>
-                    {availableManagers
-                      .filter(m => canViewAllBranches || (canViewOwnBranch && m.branch === userState.currentUser?.department))
-                      .map(m => <MenuItem key={m.name} value={m.name}>{m.name}</MenuItem>)}
-                  </Select>
-                </FormControl>
-              </Grid>
-            )}
-
-            {/* Custom date range inline */}
-            <Collapse in={showCustomRange} sx={{ width: '100%' }}>
-              <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
-                <Grid item xs={12} sm={4}>
-                  <TextField type="date" label={t('dashboard.timeframe.startDate')} value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)} size="small" fullWidth
-                    error={startDate !== '' && !isValidDate(startDate)}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ input: { color: '#fff' }, label: { color: 'rgba(255,255,255,0.7)' }, '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' } }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={4}>
-                  <TextField type="date" label={t('dashboard.timeframe.endDate')} value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)} size="small" fullWidth
-                    inputProps={{ min: startDate || undefined }}
-                    error={endDate !== '' && (!isValidDate(endDate) || (startDate !== '' && endDate < startDate))}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ input: { color: '#fff' }, label: { color: 'rgba(255,255,255,0.7)' }, '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' } }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={4}>
-                  <Button variant="contained" onClick={applyCustomRange} fullWidth size="small"
-                    disabled={!startDate || !endDate || !isValidDate(startDate) || !isValidDate(endDate) || endDate < startDate}
-                    sx={{ bgcolor: '#1976d2', height: 40 }}
-                  >
-                    {t('dashboard.timeframe.applyRange')}
-                  </Button>
-                </Grid>
-              </Grid>
-            </Collapse>
+          <Grid item xs={12} sm={6} md={3}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.3 }}>
+              {workflowTimestamps.length > 0
+                ? `${workflowTimestamps.length} workflow${workflowTimestamps.length > 1 ? 's' : ''} chargé${workflowTimestamps.length > 1 ? 's' : ''}`
+                : 'Aucune donnée'}
+            </Typography>
           </Grid>
-        </Box>
+        </Grid>
+
+        {/* Plage personnalisée — en dessous des filtres, hors Grid pour éviter le chevauchement */}
+        <Collapse in={showCustomRange}>
+          <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid #f1f5f9' }}>
+            <Grid container spacing={1.5} alignItems="center">
+              <Grid item xs={12} sm={4}>
+                <TextField type="date" label={t('dashboard.timeframe.startDate')} value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)} size="small" fullWidth
+                  error={startDate !== '' && !isValidDate(startDate)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField type="date" label={t('dashboard.timeframe.endDate')} value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)} size="small" fullWidth
+                  inputProps={{ min: startDate || undefined }}
+                  error={endDate !== '' && (!isValidDate(endDate) || (startDate !== '' && endDate < startDate))}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <Button variant="contained" onClick={applyCustomRange} fullWidth size="small"
+                  disabled={!startDate || !endDate || !isValidDate(startDate) || !isValidDate(endDate) || endDate < startDate}
+                  sx={{ height: 40 }}
+                >
+                  {t('dashboard.timeframe.applyRange')}
+                </Button>
+              </Grid>
+            </Grid>
+          </Box>
+        </Collapse>
       </Box>
 
-      {/* ── Main scrollable content ───────────────────────────── */}
-      <Box sx={{ px: 3, py: 3 }}>
+      {/* ── Contenu principal ───────────────────────────────────── */}
+      <Box sx={{ px: { xs: 2, md: 3 }, py: 3 }}>
 
         {/* No timeframe selected */}
         {!timeRange && (
