@@ -395,6 +395,49 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   };
 
   // Utility function to format duration using workday calculations
+  // ── Normalisation des noms d'étapes ─────────────────────────────────────
+  // Couvre les deux formats : stepIds (credit_analysis) ET labels verbeux (Analyse Crédit)
+  const normalizeStepName = (raw: string): string => {
+    const map: Record<string, string> = {
+      'application_created': 'Demande Soumise',
+      'Application Créée': 'Demande Soumise',
+      'Demande Soumise': 'Demande Soumise',
+      'Vérification Documents': 'Vérification Documents',
+      'credit_analysis': 'Analyse Crédit',
+      'Analyse Crédit': 'Analyse Crédit',
+      'Analyse Crédit & Évaluation Risques': 'Analyse Crédit',
+      'Évaluation Risques': 'Évaluation Risques',
+      'branch_manager_review': 'Examen Directeur Agence',
+      'Examen Directeur Agence': 'Examen Directeur Agence',
+      'credit_committee_review': 'Examen Comité Crédit',
+      'Examen Comité Crédit': 'Examen Comité Crédit',
+      'management_review': 'Examen Direction Générale',
+      'Examen Direction Générale': 'Examen Direction Générale',
+      'final_decision': 'Décision Finale',
+      'Décision Finale': 'Décision Finale',
+      'contract_preparation': 'Préparation Contrat',
+      'Préparation Contrat': 'Préparation Contrat',
+      'disbursement': 'Déblocage',
+      'Déblocage': 'Déblocage',
+      'Déblocage Fonds': 'Déblocage',
+    };
+    return map[raw] || raw;
+  };
+
+  // Durées attendues par étape canonique (jours ouvrés)
+  const STEP_EXPECTED_DAYS: Record<string, number> = {
+    'Demande Soumise': 0,
+    'Vérification Documents': 1,
+    'Analyse Crédit': 3,
+    'Évaluation Risques': 1,
+    'Examen Directeur Agence': 2,
+    'Examen Comité Crédit': 3,
+    'Examen Direction Générale': 5,
+    'Décision Finale': 1,
+    'Préparation Contrat': 1,
+    'Déblocage': 1,
+  };
+
   const formatDuration = (milliseconds: number): string => {
     const config = loadWorkdayConfiguration();
     // Convert to hours
@@ -465,7 +508,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
       // Calculate step durations
       workflow.steps?.forEach(step => {
         if (step && step.duration) {
-          const stepName = step.stepName || step.stepId || 'unknown_step';
+          const stepName = normalizeStepName(step.stepName || (step as any).stepId || 'unknown_step');
           if (!branchData[branch].stepTotals[stepName]) {
             branchData[branch].stepTotals[stepName] = 0;
             branchData[branch].stepCounts[stepName] = 0;
@@ -484,13 +527,12 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
         avgStepTimes[stepName] = branch.stepTotals[stepName] / branch.stepCounts[stepName];
       });
 
-      // Calculate average total duration in milliseconds, then convert to days
+      // Durée totale moyenne en ms
       const totalAvgTimeMs = branch.workflows.reduce((sum: number, wf: any) => sum + wf.totalDuration, 0) / branch.workflows.length;
-      const totalAvgTimeDays = totalAvgTimeMs / (1000 * 60 * 60 * 24); // Convert ms to days
 
       return {
         branch: branch.branch,
-        avgProcessingTime: totalAvgTimeDays,
+        avgProcessingTime: totalAvgTimeMs,
         totalApplications: branch.workflows.length,
         completedApplications: branch.workflows.length,
         avgStepTimes
@@ -542,7 +584,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
       if (workflow.steps && Array.isArray(workflow.steps)) {
         workflow.steps.forEach(step => {
           if (step && step.duration && typeof step.duration === 'number') {
-            const stepName = step.stepName || step.stepId || 'unknown_step';
+            const stepName = normalizeStepName(step.stepName || (step as any).stepId || 'unknown_step');
             if (!stepTimes[stepName]) {
               stepTimes[stepName] = [];
             }
@@ -1411,9 +1453,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                         if (workflow.steps && Array.isArray(workflow.steps)) {
                           workflow.steps.forEach(step => {
                             if (step && step.duration && typeof step.duration === 'number') {
-                              const stepId = (step.stepId || step.stepName) as any;
-                              const stepInfo = getStepDisplayInfo(stepId);
-                              const stepName = stepInfo?.stepName || step.stepName || stepId || 'unknown_step';
+                              const stepName = normalizeStepName(step.stepName || (step as any).stepId || 'unknown_step');
                               if (!stepAverages[stepName]) stepAverages[stepName] = { total: 0, count: 0, avg: 0 };
                               stepAverages[stepName].total += step.duration;
                               stepAverages[stepName].count++;
@@ -1424,21 +1464,31 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                       Object.keys(stepAverages).forEach(s => { stepAverages[s].avg = stepAverages[s].total / stepAverages[s].count; });
 
                       const stepColors: { [k: string]: string } = {
-                        'Demande Soumise': '#4caf50', 'Vérification Documents': '#2196f3',
-                        'Analyse Crédit': '#ff9800', 'Évaluation Risques': '#f44336',
-                        'Examen Directeur Agence': '#9c27b0', 'Examen Comité Crédit': '#673ab7',
-                        'Décision Finale': '#3f51b5', 'Préparation Contrat': '#009688', 'Déblocage Fonds': '#4caf50'
+                        'Demande Soumise': '#4caf50',
+                        'Vérification Documents': '#2196f3',
+                        'Analyse Crédit': '#ff9800',
+                        'Évaluation Risques': '#ef5350',
+                        'Examen Directeur Agence': '#9c27b0',
+                        'Examen Comité Crédit': '#673ab7',
+                        'Examen Direction Générale': '#e91e63',
+                        'Décision Finale': '#3f51b5',
+                        'Préparation Contrat': '#009688',
+                        'Déblocage': '#43a047',
                       };
-                      const stepOrder = ['Demande Soumise','Vérification Documents','Analyse Crédit','Évaluation Risques','Examen Directeur Agence','Examen Comité Crédit','Décision Finale','Préparation Contrat','Déblocage'];
+                      const stepOrder = ['Demande Soumise','Vérification Documents','Analyse Crédit','Évaluation Risques','Examen Directeur Agence','Examen Comité Crédit','Examen Direction Générale','Décision Finale','Préparation Contrat','Déblocage'];
                       const chartData = Object.keys(stepAverages).map(stepName => ({
                         stepName,
                         avgWorkdays: Math.round((stepAverages[stepName].avg / (9 * 3600000)) * 10) / 10,
                         count: stepAverages[stepName].count,
                         color: stepColors[stepName] || '#1976d2'
-                      })).sort((a, b) => stepOrder.indexOf(a.stepName || '') - stepOrder.indexOf(b.stepName || ''));
+                      })).sort((a, b) => {
+                        const ia = stepOrder.indexOf(a.stepName || '');
+                        const ib = stepOrder.indexOf(b.stepName || '');
+                        return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+                      });
 
                       const bottlenecks = chartData
-                        .filter(s => s.stepName && s.avgWorkdays > (FIXED_WORKFLOW_STEPS[s.stepName as keyof typeof FIXED_WORKFLOW_STEPS]?.expectedDuration || 1))
+                        .filter(s => s.stepName && s.avgWorkdays > (STEP_EXPECTED_DAYS[s.stepName] ?? 1))
                         .sort((a, b) => b.avgWorkdays - a.avgWorkdays)
                         .slice(0, 3);
 
@@ -1470,7 +1520,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                             </Typography>
                             <Grid container spacing={2}>
                               {bottlenecks.length > 0 ? bottlenecks.map((step, index) => {
-                                const expected = step.stepName ? (FIXED_WORKFLOW_STEPS[step.stepName as keyof typeof FIXED_WORKFLOW_STEPS]?.expectedDuration || 1) : 1;
+                                const expected = step.stepName ? (STEP_EXPECTED_DAYS[step.stepName] ?? 1) : 1;
                                 const overrunPct = Math.round(((step.avgWorkdays - expected) / expected) * 100);
                                 const borderColors = ['#dc2626', '#d97706', '#2563eb'];
                                 return (
@@ -1517,11 +1567,12 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                         <TableHead>
                           <TableRow sx={{ '& th': { fontWeight: 600, bgcolor: '#f8fafc', fontSize: 12, py: 1.2 } }}>
                             <TableCell>Agence</TableCell>
-                            <TableCell>Vérification Docs</TableCell>
+                            <TableCell>Vérif. Docs</TableCell>
                             <TableCell>Analyse Crédit</TableCell>
-                            <TableCell>Évaluation Risques</TableCell>
-                            <TableCell>Examen Directeur</TableCell>
+                            <TableCell>Éval. Risques</TableCell>
+                            <TableCell>Dir. Agence</TableCell>
                             <TableCell>Comité Crédit</TableCell>
+                            <TableCell>Direction Gén.</TableCell>
                             <TableCell>
                               <Tooltip title="Durée totale moyenne du dossier depuis création jusqu'à décision finale." arrow placement="top">
                                 <span style={{ cursor: 'help', borderBottom: '1px dotted #94a3b8' }}>Total Moyen ⓘ</span>
@@ -1530,22 +1581,27 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {calculateStepPerformanceMetrics().map((branch) => (
-                            <TableRow key={branch.branch} sx={{ '& td': { fontSize: 12 } }}>
-                              <TableCell sx={{ fontWeight: 600 }}>{branch.branch}</TableCell>
-                              <TableCell>{branch.avgStepTimes['Vérification Documents'] > 0 ? formatDuration(branch.avgStepTimes['Vérification Documents']) : '< 1min'}</TableCell>
-                              <TableCell>{branch.avgStepTimes['Analyse Crédit'] > 0 ? formatDuration(branch.avgStepTimes['Analyse Crédit']) : '< 1min'}</TableCell>
-                              <TableCell>{branch.avgStepTimes['Évaluation Risques'] > 0 ? formatDuration(branch.avgStepTimes['Évaluation Risques']) : '< 1min'}</TableCell>
-                              <TableCell>{branch.avgStepTimes['Examen Directeur Agence'] > 0 ? formatDuration(branch.avgStepTimes['Examen Directeur Agence']) : '< 1min'}</TableCell>
-                              <TableCell>{branch.avgStepTimes['Examen Comité Crédit'] > 0 ? formatDuration(branch.avgStepTimes['Examen Comité Crédit']) : '< 1min'}</TableCell>
-                              <TableCell>
-                                <Chip label={formatDuration(branch.avgProcessingTime)} color={getPerformanceColor(branch.avgProcessingTime)} size="small" sx={{ fontWeight: 600, fontSize: 11 }} />
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                          {calculateStepPerformanceMetrics().map((branch) => {
+                            const st = branch.avgStepTimes;
+                            const cell = (key: string) => (st[key] > 0 ? formatDuration(st[key]) : '—');
+                            return (
+                              <TableRow key={branch.branch} sx={{ '& td': { fontSize: 12 } }}>
+                                <TableCell sx={{ fontWeight: 600 }}>{branch.branch}</TableCell>
+                                <TableCell>{cell('Vérification Documents')}</TableCell>
+                                <TableCell>{cell('Analyse Crédit')}</TableCell>
+                                <TableCell>{cell('Évaluation Risques')}</TableCell>
+                                <TableCell>{cell('Examen Directeur Agence')}</TableCell>
+                                <TableCell>{cell('Examen Comité Crédit')}</TableCell>
+                                <TableCell>{cell('Examen Direction Générale')}</TableCell>
+                                <TableCell>
+                                  <Chip label={formatDuration(branch.avgProcessingTime)} color={getPerformanceColor(branch.avgProcessingTime)} size="small" sx={{ fontWeight: 600, fontSize: 11 }} />
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
                           {calculateStepPerformanceMetrics().length === 0 && (
                             <TableRow>
-                              <TableCell colSpan={7} align="center" sx={{ py: 3, color: 'text.secondary', fontSize: 13 }}>
+                              <TableCell colSpan={8} align="center" sx={{ py: 3, color: 'text.secondary', fontSize: 13 }}>
                                 Aucune donnée de performance disponible
                               </TableCell>
                             </TableRow>
