@@ -95,9 +95,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onPageChange(page);
   };
 
-  const canViewAnalytics      = hasPermission('view_analytics') || isRole('management') || isRole('admin') || isRole('branch_manager') || isRole('credit_committee');
+  const canViewAnalytics      = hasPermission('analytics') || isRole('management') || isRole('admin') || isRole('branch_manager') || isRole('credit_committee');
   const canCreateApplications = hasPermission('create_application') || isRole('account_manager') || isRole('admin');
-  const canViewConfiguration  = hasPermission('manage_users') || isRole('admin') || isRole('management');
+  const canViewConfiguration  = hasPermission('user_management') || isRole('admin') || isRole('management');
   const canDispatching        = hasPermission('dispatch_applications') || isRole('analyst_supervisor') || isRole('admin');
 
   const outOfProcessItems = [
