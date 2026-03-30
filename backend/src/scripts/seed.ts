@@ -663,7 +663,7 @@ async function main() {
           }
         },
         submittedAt: daysAgo(7),
-        createdAt: daysAgo(9),
+        createdAt: daysAgo(10),
         createdBy: 'user1'
       }
     }),
@@ -712,7 +712,7 @@ async function main() {
           }
         },
         submittedAt: daysAgo(12),
-        createdAt: daysAgo(14),
+        createdAt: daysAgo(16),
         createdBy: 'user7'
       }
     }),
@@ -760,7 +760,7 @@ async function main() {
           }
         },
         submittedAt: daysAgo(14),
-        createdAt: daysAgo(16),
+        createdAt: daysAgo(18),
         createdBy: 'user8'
       }
     }),
@@ -809,7 +809,7 @@ async function main() {
           }
         },
         submittedAt: daysAgo(18),
-        createdAt: daysAgo(20),
+        createdAt: daysAgo(22),
         createdBy: 'user9'
       }
     }),
@@ -906,7 +906,7 @@ async function main() {
           }
         },
         submittedAt: daysAgo(25),
-        createdAt: daysAgo(27),
+        createdAt: daysAgo(29),
         createdBy: 'user9'
       }
     }),
@@ -954,7 +954,7 @@ async function main() {
           }
         },
         submittedAt: daysAgo(28),
-        createdAt: daysAgo(30),
+        createdAt: daysAgo(32),
         createdBy: 'user8'
       }
     }),
@@ -1003,7 +1003,7 @@ async function main() {
           }
         },
         submittedAt: daysAgo(35),
-        createdAt: daysAgo(37),
+        createdAt: daysAgo(39),
         createdBy: 'user7'
       }
     }),
@@ -1051,7 +1051,7 @@ async function main() {
           }
         },
         submittedAt: daysAgo(42),
-        createdAt: daysAgo(44),
+        createdAt: daysAgo(46),
         createdBy: 'user1'
       }
     }),
@@ -1099,7 +1099,7 @@ async function main() {
           }
         },
         submittedAt: daysAgo(45),
-        createdAt: daysAgo(47),
+        createdAt: daysAgo(49),
         createdBy: 'user7'
       }
     }),
@@ -1196,7 +1196,7 @@ async function main() {
           }
         },
         submittedAt: daysAgo(55),
-        createdAt: daysAgo(57),
+        createdAt: daysAgo(59),
         createdBy: 'user9'
       }
     }),
@@ -1244,7 +1244,7 @@ async function main() {
           }
         },
         submittedAt: daysAgo(60),
-        createdAt: daysAgo(62),
+        createdAt: daysAgo(64),
         createdBy: 'user8'
       }
     })
@@ -1253,6 +1253,13 @@ async function main() {
   console.log('📋 Created credit applications');
 
   // Create workflow steps
+  // ─── RÈGLE INVARIANTE ───────────────────────────────────────────────────────
+  // app.createdAt  DOIT être STRICTEMENT ANTÉRIEUR à tout step.completedAt
+  // → le offset daysAgo(N) de createdAt doit être > au plus grand offset
+  //   daysAgo utilisé dans les ws() de cette application.
+  //   Ex : steps à daysAgo(8) et daysAgo(6) → createdAt: daysAgo(10) minimum.
+  //   Sinon totalDuration = 0 car calculateWorkingTime(T_futur, T_passé) = 0.
+  // ────────────────────────────────────────────────────────────────────────────
   // Logic:
   //   ≤ 10M XOF  → analyst + branch_manager (2 steps)
   //   10M–50M    → analyst + branch_manager + credit_committee (3 steps)
@@ -1562,6 +1569,30 @@ async function main() {
     console.log(`   - ${status}: ${count}`);
   });
   console.log(`💰 Total Volume: ${applications.reduce((sum, app) => sum + Number(app.amount), 0).toLocaleString()} XOF`);
+
+  // ── Validation : app.createdAt doit précéder tous ses step.completedAt ──────
+  const violations: string[] = [];
+  for (const ws of workflowSteps) {
+    if (!ws.completedAt) continue;
+    const app = applications.find(a => a.id === (ws as any).applicationId);
+    if (!app) continue;
+    const appCreated = new Date(app.createdAt as Date).getTime();
+    const stepCompleted = new Date(ws.completedAt as Date).getTime();
+    if (appCreated > stepCompleted) {
+      violations.push(
+        `  ⚠️  ${(ws as any).applicationId} / ${(ws as any).stepName}: ` +
+        `createdAt=${new Date(appCreated).toISOString().slice(0, 10)} ` +
+        `> completedAt=${new Date(stepCompleted).toISOString().slice(0, 10)}`
+      );
+    }
+  }
+  if (violations.length > 0) {
+    console.error('❌ INVARIANT VIOLATED — totalDuration sera 0 pour ces dossiers :');
+    violations.forEach(v => console.error(v));
+    console.error('   → Augmenter le offset daysAgo(N) de createdAt au-delà du plus grand offset des steps.');
+    throw new Error(`${violations.length} violation(s) de l'invariant createdAt < step.completedAt`);
+  }
+  console.log('✔ Invariant createdAt < step.completedAt : OK');
 }
 
 main()
