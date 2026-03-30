@@ -137,7 +137,7 @@ const sectoralReferences = [
     sector: "Commerce",
     source: "BCEAO - Rapport Conditions de Banque UEMOA 2023",
     link: "https://www.bceao.int/fr/publications/rapport-sur-les-conditions-de-banque-dans-luemoa-2023",
-    downloadLink: "https://www.bceao.int/sites/default/files/2025-01/Rapport_annuel_sur_les_conditions_de_banque_2023_version_finale_13-01-2024.pdf",
+    downloadLink: "/docs/BCEAO_Conditions_Banque_UEMOA_2023.pdf",
     liquidite_generale: "1,0 - 1,5",
     autonomie_financiere: "20% - 35%",
     roe: "12% - 20%",
@@ -147,7 +147,7 @@ const sectoralReferences = [
     sector: "Industrie",
     source: "BCEAO - Commission Bancaire UMOA 2023",
     link: "https://www.bceao.int/fr/publications/rapport-annuel-de-la-commission-bancaire-de-lumoa-2023",
-    downloadLink: "https://www.bceao.int/sites/default/files/2024-06/Rapport_annuel_de_la_Commission_Bancaire_2023.pdf",
+    downloadLink: "/docs/BCEAO_Commission_Bancaire_UMOA_2023.pdf",
     liquidite_generale: "1,2 - 1,8",
     autonomie_financiere: "25% - 45%",
     roe: "8% - 15%",
@@ -157,7 +157,7 @@ const sectoralReferences = [
     sector: "Services",
     source: "FMI - Guide de Compilation des ISF 2019",
     link: "https://www.imf.org/en/Data/Statistics/FSI-guide",
-    downloadLink: "https://www.imf.org/external/pubs/ft/fsi/guide/2019/pdf/fsiguide.pdf",
+    downloadLink: "/docs/FMI_Guide_ISF_2019.pdf",
     liquidite_generale: "1,5 - 2,5",
     autonomie_financiere: "30% - 60%",
     roe: "15% - 25%",
@@ -167,7 +167,7 @@ const sectoralReferences = [
     sector: "Agriculture",
     source: "Banque Mondiale - Manuel Enquêtes Entreprises",
     link: "https://www.enterprisesurveys.org/en/data",
-    downloadLink: "https://www.enterprisesurveys.org/content/dam/enterprisesurveys/documents/methodology/Enterprise-Surveys-Manual.pdf",
+    downloadLink: "/docs/WorldBank_Enterprise_Surveys_Manual.pdf",
     liquidite_generale: "1,3 - 2,0",
     autonomie_financiere: "35% - 55%",
     roe: "10% - 18%",
@@ -243,14 +243,11 @@ const bceaoNorms = [
   }
 ];
 
-// PDF Preview Component — utilise Google Docs Viewer pour les PDFs externes
+// PDF Preview Component — PDFs servis en local (public/docs/)
 const PDFPreview: React.FC<{ pdfUrl: string; isOpen: boolean; sector: string; officialLink?: string }> = ({ pdfUrl, isOpen, sector, officialLink }) => {
   const [loadError, setLoadError] = useState(false);
 
   if (!isOpen) return null;
-
-  // Google Docs Viewer supporte les PDFs publics externes sans problème CORS/X-Frame
-  const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(pdfUrl)}&embedded=true`;
 
   return (
     <Box sx={{ mt: 2, mb: 2, mx: 2, border: '1px solid #e0e0e0', borderRadius: 1, overflow: 'hidden' }}>
@@ -259,11 +256,9 @@ const PDFPreview: React.FC<{ pdfUrl: string; isOpen: boolean; sector: string; of
           <PdfIcon color="primary" fontSize="small" />
           Prévisualisation PDF — {sector}
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button size="small" variant="outlined" href={pdfUrl} target="_blank" rel="noopener noreferrer" startIcon={<PdfIcon />} sx={{ fontSize: '0.72rem' }}>
-            Ouvrir PDF
-          </Button>
-        </Box>
+        <Button size="small" variant="outlined" href={pdfUrl} target="_blank" rel="noopener noreferrer" startIcon={<PdfIcon />} sx={{ fontSize: '0.72rem' }}>
+          Télécharger
+        </Button>
       </Box>
       <Box sx={{ height: '520px', bgcolor: '#f5f5f5' }}>
         {loadError ? (
@@ -271,21 +266,21 @@ const PDFPreview: React.FC<{ pdfUrl: string; isOpen: boolean; sector: string; of
             <PdfIcon sx={{ fontSize: 52, color: 'grey.400' }} />
             <Typography variant="body2" color="text.secondary" textAlign="center">
               Impossible de charger la prévisualisation.<br />
-              Utilisez le bouton <strong>"Ouvrir PDF"</strong> ci-dessus.
+              Utilisez le bouton <strong>"Télécharger"</strong> ci-dessus.
             </Typography>
             {officialLink && (
               <Button variant="outlined" size="small" href={officialLink} target="_blank" rel="noopener noreferrer">
-                Page source officielle
+                Source officielle
               </Button>
             )}
           </Box>
         ) : (
-          <iframe
-            src={viewerUrl}
+          <embed
+            src={`${pdfUrl}#toolbar=1&navpanes=0&view=FitH`}
+            type="application/pdf"
             width="100%"
             height="100%"
             style={{ border: 'none', display: 'block' }}
-            title={`PDF — ${sector}`}
             onError={() => setLoadError(true)}
           />
         )}
