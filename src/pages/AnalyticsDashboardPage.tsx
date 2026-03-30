@@ -134,46 +134,68 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   };
 
   // Load workflow data from backend API with filters
-  const loadWorkflowData = async () => {
+  // Charge les données en vérifiant d'abord le cache (validé par filtres actifs)
+  const loadWorkflowData = async (
+    _timeRange = timeRange,
+    _branch = selectedBranch,
+    _manager = selectedManager,
+    _startDate = startDate,
+    _endDate = endDate
+  ) => {
+    // Vérification du cache : valide seulement si même filtres actifs
+    try {
+      const cached = sessionStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const { data, ts, filters: cf } = JSON.parse(cached);
+        if (
+          Date.now() - ts < CACHE_TTL &&
+          data?.length > 0 &&
+          cf?.timeRange === _timeRange &&
+          cf?.branch === _branch &&
+          cf?.manager === _manager &&
+          cf?.startDate === _startDate &&
+          cf?.endDate === _endDate
+        ) {
+          setWorkflowTimestamps(data);
+          setLastUpdated(new Date(ts));
+          return;
+        }
+      }
+    } catch (_) {}
+
     setIsLoading(true);
     setApiError(null);
-    
+
+    const cacheKey = { timeRange: _timeRange, branch: _branch, manager: _manager, startDate: _startDate, endDate: _endDate };
+
     try {
-      // Use new analytics dashboard endpoint with filters
-      const filters = {
-        branch: selectedBranch !== 'all' ? selectedBranch : undefined,
-        manager: selectedManager !== 'all' ? selectedManager : undefined,
-        timeRange: timeRange !== '' ? timeRange : undefined,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined
+      const apiFilters = {
+        branch: _branch !== 'all' ? _branch : undefined,
+        manager: _manager !== 'all' ? _manager : undefined,
+        timeRange: _timeRange !== '' ? _timeRange : undefined,
+        startDate: _startDate || undefined,
+        endDate: _endDate || undefined
       };
 
-      const analyticsResponse = await ApiService.getAnalyticsDashboard(filters);
+      const analyticsResponse = await ApiService.getAnalyticsDashboard(apiFilters);
 
       if (analyticsResponse.success && analyticsResponse.data) {
-        // Backend returns { workflows: [], summary: {} }, extract workflows array
         const workflows = analyticsResponse.data.workflows || analyticsResponse.data;
-        setWorkflowTimestamps(workflows);
+        setWorkflowTimestamps(Array.isArray(workflows) ? workflows : []);
         setLastUpdated(new Date());
-        // Persist to sessionStorage
         try {
-          sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data: workflows, ts: Date.now(), filters: { timeRange, selectedBranch, selectedManager, startDate, endDate } }));
+          sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data: workflows, ts: Date.now(), filters: cacheKey }));
         } catch (_) {}
-        console.log('📊 Analytics Dashboard loaded from new endpoint:', workflows.length, 'workflow records');
       } else {
-        // Try fallback to old workflow endpoint
-        console.log('📊 Trying fallback to workflows endpoint');
+        // Fallback : endpoint legacy sans filtres temporels
         const workflowResponse = await ApiService.getWorkflows();
-
         if (workflowResponse.success && workflowResponse.data && workflowResponse.data.length > 0) {
           setWorkflowTimestamps(workflowResponse.data);
           setLastUpdated(new Date());
           try {
-            sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data: workflowResponse.data, ts: Date.now(), filters: { timeRange, selectedBranch, selectedManager, startDate, endDate } }));
+            sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data: workflowResponse.data, ts: Date.now(), filters: cacheKey }));
           } catch (_) {}
-          console.log('📊 Analytics Dashboard loaded from fallback API:', workflowResponse.data.length, 'workflow records');
         } else {
-          console.warn('API returned no data');
           setWorkflowTimestamps([]);
           setApiError('Aucune donnée disponible depuis l\'API');
         }
@@ -187,28 +209,10 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
     }
   };
 
-  // Load data on component mount - restore from cache if fresh
-  React.useEffect(() => {
-    try {
-      const cached = sessionStorage.getItem(CACHE_KEY);
-      if (cached) {
-        const { data, ts } = JSON.parse(cached);
-        if (Date.now() - ts < CACHE_TTL && data?.length > 0) {
-          setWorkflowTimestamps(data);
-          setLastUpdated(new Date(ts));
-          return; // use cache, skip API call
-        }
-      }
-    } catch (_) {}
-    loadWorkflowData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Reload data when filters change — invalider le cache d'abord
+  // Rechargement à chaque changement de filtre (y compris le montage initial)
   React.useEffect(() => {
     if (isTimeframeValid()) {
-      try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {}
-      loadWorkflowData();
+      loadWorkflowData(timeRange, selectedBranch, selectedManager, startDate, endDate);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranch, selectedManager, timeRange, startDate, endDate]);
@@ -217,6 +221,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   React.useEffect(() => {
     if (!isTimeframeValid()) return;
     const interval = setInterval(() => {
+      try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {}
       loadWorkflowData();
       loadFilterOptions();
     }, REFRESH_INTERVAL * 1000);
@@ -838,7 +843,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
             )}
             <Tooltip title="Actualiser maintenant">
               <IconButton size="small" disabled={isLoading}
-                onClick={() => { loadWorkflowData(); loadFilterOptions(); }}
+                onClick={() => { try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {} loadWorkflowData(); loadFilterOptions(); }}
                 sx={{ color: '#fff', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 1.5, p: 0.6 }}
               >
                 {isLoading ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <RefreshIcon sx={{ fontSize: 16 }} />}
@@ -1560,22 +1565,53 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
               <Grid item xs={12}>
                 <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)' }}>
                   <CardContent>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-                      Performance des Étapes par Agence
-                    </Typography>
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                        Performance des Étapes par Agence
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.5 }}>
+                        Chaque cellule indique la <strong>durée ouvrée moyenne</strong> passée à cette étape pour les dossiers clôturés (approuvés ou rejetés) de l'agence.
+                        «&nbsp;—&nbsp;» signifie que l'étape n'est pas présente dans le workflow de cette agence.
+                        Le <strong>Total Moyen</strong> est le temps ouvré total entre la création du dossier et sa décision finale&nbsp;; le code couleur reflète les seuils configurés (vert&nbsp;≤&nbsp;50&nbsp;%, orange&nbsp;≤&nbsp;80&nbsp;%, rouge&nbsp;&gt;&nbsp;100&nbsp;% de la norme).
+                      </Typography>
+                    </Box>
                     <TableContainer>
                       <Table size="small">
                         <TableHead>
                           <TableRow sx={{ '& th': { fontWeight: 600, bgcolor: '#f8fafc', fontSize: 12, py: 1.2 } }}>
                             <TableCell>Agence</TableCell>
-                            <TableCell>Vérif. Docs</TableCell>
-                            <TableCell>Analyse Crédit</TableCell>
-                            <TableCell>Éval. Risques</TableCell>
-                            <TableCell>Dir. Agence</TableCell>
-                            <TableCell>Comité Crédit</TableCell>
-                            <TableCell>Direction Gén.</TableCell>
                             <TableCell>
-                              <Tooltip title="Durée totale moyenne du dossier depuis création jusqu'à décision finale." arrow placement="top">
+                              <Tooltip title="Durée moyenne de l'étape Vérification des Documents (pièces justificatives, KYC…)" arrow placement="top">
+                                <span style={{ cursor: 'help', borderBottom: '1px dotted #94a3b8' }}>Vérif. Docs</span>
+                              </Tooltip>
+                            </TableCell>
+                            <TableCell>
+                              <Tooltip title="Durée moyenne de l'étape Analyse Crédit (scoring, ratio financiers, capacité de remboursement)" arrow placement="top">
+                                <span style={{ cursor: 'help', borderBottom: '1px dotted #94a3b8' }}>Analyse Crédit</span>
+                              </Tooltip>
+                            </TableCell>
+                            <TableCell>
+                              <Tooltip title="Durée moyenne de l'étape Évaluation des Risques (garanties, secteur, historique)" arrow placement="top">
+                                <span style={{ cursor: 'help', borderBottom: '1px dotted #94a3b8' }}>Éval. Risques</span>
+                              </Tooltip>
+                            </TableCell>
+                            <TableCell>
+                              <Tooltip title="Durée moyenne de l'examen par le Directeur d'Agence (validation intermédiaire)" arrow placement="top">
+                                <span style={{ cursor: 'help', borderBottom: '1px dotted #94a3b8' }}>Dir. Agence</span>
+                              </Tooltip>
+                            </TableCell>
+                            <TableCell>
+                              <Tooltip title="Durée moyenne de l'examen en Comité de Crédit (dossiers dépassant le seuil de délégation)" arrow placement="top">
+                                <span style={{ cursor: 'help', borderBottom: '1px dotted #94a3b8' }}>Comité Crédit</span>
+                              </Tooltip>
+                            </TableCell>
+                            <TableCell>
+                              <Tooltip title="Durée moyenne de l'examen par la Direction Générale (montants très élevés)" arrow placement="top">
+                                <span style={{ cursor: 'help', borderBottom: '1px dotted #94a3b8' }}>Direction Gén.</span>
+                              </Tooltip>
+                            </TableCell>
+                            <TableCell>
+                              <Tooltip title="Temps ouvré total moyen du dossier (création → décision finale). Vert ≤ 50 % de la norme · Orange ≤ 80 % · Rouge > 100 %" arrow placement="top">
                                 <span style={{ cursor: 'help', borderBottom: '1px dotted #94a3b8' }}>Total Moyen ⓘ</span>
                               </Tooltip>
                             </TableCell>
@@ -1586,7 +1622,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                             const st = branch.avgStepTimes;
                             const cell = (key: string) => (st[key] > 0 ? formatDuration(st[key]) : '—');
                             return (
-                              <TableRow key={branch.branch} sx={{ '& td': { fontSize: 12 } }}>
+                              <TableRow key={branch.branch} sx={{ '& td': { fontSize: 12 }, '&:hover': { bgcolor: '#f8fafc' } }}>
                                 <TableCell sx={{ fontWeight: 600 }}>{branch.branch}</TableCell>
                                 <TableCell>{cell('Vérification Documents')}</TableCell>
                                 <TableCell>{cell('Analyse Crédit')}</TableCell>
@@ -1595,7 +1631,14 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                                 <TableCell>{cell('Examen Comité Crédit')}</TableCell>
                                 <TableCell>{cell('Examen Direction Générale')}</TableCell>
                                 <TableCell>
-                                  <Chip label={formatDuration(branch.avgProcessingTime)} color={getPerformanceColor(branch.avgProcessingTime)} size="small" sx={{ fontWeight: 600, fontSize: 11 }} />
+                                  <Tooltip
+                                    title={`${branch.completedApplications} dossier${branch.completedApplications > 1 ? 's' : ''} clôturé${branch.completedApplications > 1 ? 's' : ''}`}
+                                    arrow placement="left"
+                                  >
+                                    <span>
+                                      <Chip label={formatDuration(branch.avgProcessingTime)} color={getPerformanceColor(branch.avgProcessingTime)} size="small" sx={{ fontWeight: 600, fontSize: 11, cursor: 'default' }} />
+                                    </span>
+                                  </Tooltip>
                                 </TableCell>
                               </TableRow>
                             );
