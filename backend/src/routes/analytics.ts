@@ -137,23 +137,34 @@ router.get('/dashboard', async (req: Request, res: Response) => {
       // Noms d'étapes de création qui ne se mesurent pas comme durée de traitement
       const CREATION_STEP_NAMES = new Set(['Application Créée', 'application_created', 'Demande Soumise']);
 
-      const steps = sortedSteps.map((step, index) => {
+      // Trier les étapes complétées par leur completedAt réel (ordre chronologique fiable)
+      // Les étapes seedées ont toutes le même createdAt (date d'insert) mais des completedAt distincts
+      const completedByTime = sortedSteps
+        .filter(s => s.completedAt && !CREATION_STEP_NAMES.has(s.stepName))
+        .sort((a, b) => new Date(a.completedAt!).getTime() - new Date(b.completedAt!).getTime());
+
+      // Point de départ fiable : app.createdAt si antérieur à la 1re étape, sinon la 1re étape elle-même
+      // (fallback nécessaire quand createdAt vaut la date d'insert DB > completedAt des étapes)
+      const appCreatedMs = new Date(app.createdAt).getTime();
+      const firstCompletedMs = completedByTime.length > 0
+        ? new Date(completedByTime[0].completedAt!).getTime()
+        : appCreatedMs;
+      const effectiveStart = new Date(Math.min(appCreatedMs, firstCompletedMs));
+
+      const steps = sortedSteps.map((step) => {
         let duration: number | undefined = undefined;
 
         if (step.completedAt && !CREATION_STEP_NAMES.has(step.stepName)) {
-          // Cherche la dernière étape complétée précédant celle-ci (peu importe son index)
-          const previousCompleted = sortedSteps
-            .slice(0, index)
-            .filter(s => s.completedAt)
-            .pop();
+          const chronoIdx = completedByTime.findIndex(s => s.id === step.id);
 
-          if (previousCompleted && previousCompleted.completedAt) {
+          if (chronoIdx > 0) {
             // Durée = temps ouvré entre la fin de l'étape précédente et la fin de celle-ci
-            const workingTime = calculateWorkingTime(previousCompleted.completedAt, step.completedAt);
+            const prevStep = completedByTime[chronoIdx - 1];
+            const workingTime = calculateWorkingTime(prevStep.completedAt!, step.completedAt);
             duration = workingTime.totalWorkingMinutes * 60 * 1000;
           } else {
-            // Première étape mesurable : durée depuis la création du dossier
-            const workingTime = calculateWorkingTime(new Date(app.createdAt), step.completedAt);
+            // Première étape mesurable : durée depuis le point de départ effectif
+            const workingTime = calculateWorkingTime(effectiveStart, step.completedAt);
             duration = workingTime.totalWorkingMinutes * 60 * 1000;
           }
         }
@@ -167,18 +178,13 @@ router.get('/dashboard', async (req: Request, res: Response) => {
         };
       });
 
-      // Durée totale = temps ouvré depuis création jusqu'à la dernière étape complétée
+      // Durée totale = temps ouvré du point de départ effectif jusqu'à la dernière étape clôturée
       // Calculé pour APPROVED, REJECTED et DISBURSED
       let totalDuration: number | undefined = undefined;
-      if (['APPROVED', 'REJECTED', 'DISBURSED'].includes(app.status)) {
-        const lastCompletedStep = steps
-          .filter(s => s.completedAt)
-          .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime())[0];
-
-        if (lastCompletedStep) {
-          const totalWorkingTime = calculateWorkingTime(new Date(app.createdAt), new Date(lastCompletedStep.completedAt!));
-          totalDuration = totalWorkingTime.totalWorkingMinutes * 60 * 1000;
-        }
+      if (['APPROVED', 'REJECTED', 'DISBURSED'].includes(app.status) && completedByTime.length > 0) {
+        const lastCompleted = completedByTime[completedByTime.length - 1];
+        const totalWorkingTime = calculateWorkingTime(effectiveStart, new Date(lastCompleted.completedAt!));
+        totalDuration = totalWorkingTime.totalWorkingMinutes * 60 * 1000;
       }
 
       return {
