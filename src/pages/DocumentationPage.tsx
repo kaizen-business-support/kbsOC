@@ -137,7 +137,7 @@ const sectoralReferences = [
     sector: "Commerce",
     source: "BCEAO - Rapport Conditions de Banque UEMOA 2023",
     link: "https://www.bceao.int/fr/publications/rapport-sur-les-conditions-de-banque-dans-luemoa-2023",
-    downloadLink: "/optimus/docs/BCEAO_2023_Annual_Report.pdf",
+    downloadLink: "https://www.bceao.int/sites/default/files/2025-01/Rapport_annuel_sur_les_conditions_de_banque_2023_version_finale_13-01-2024.pdf",
     liquidite_generale: "1,0 - 1,5",
     autonomie_financiere: "20% - 35%",
     roe: "12% - 20%",
@@ -147,7 +147,7 @@ const sectoralReferences = [
     sector: "Industrie",
     source: "BCEAO - Commission Bancaire UMOA 2023",
     link: "https://www.bceao.int/fr/publications/rapport-annuel-de-la-commission-bancaire-de-lumoa-2023",
-    downloadLink: "/optimus/docs/BCEAO_Banking_Commission_2023.pdf",
+    downloadLink: "https://www.bceao.int/sites/default/files/2024-06/Rapport_annuel_de_la_Commission_Bancaire_2023.pdf",
     liquidite_generale: "1,2 - 1,8",
     autonomie_financiere: "25% - 45%",
     roe: "8% - 15%",
@@ -155,9 +155,9 @@ const sectoralReferences = [
   },
   {
     sector: "Services",
-    source: "FMI - Indicateurs de Solidité Financière",
+    source: "FMI - Guide de Compilation des ISF 2019",
     link: "https://www.imf.org/en/Data/Statistics/FSI-guide",
-    downloadLink: "/optimus/docs/IMF_FSI_Compilation_Guide_2019.pdf",
+    downloadLink: "https://www.imf.org/external/pubs/ft/fsi/guide/2019/pdf/fsiguide.pdf",
     liquidite_generale: "1,5 - 2,5",
     autonomie_financiere: "30% - 60%",
     roe: "15% - 25%",
@@ -165,9 +165,9 @@ const sectoralReferences = [
   },
   {
     sector: "Agriculture",
-    source: "Banque Mondiale - Enquêtes Entreprises",
+    source: "Banque Mondiale - Manuel Enquêtes Entreprises",
     link: "https://www.enterprisesurveys.org/en/data",
-    downloadLink: "/optimus/docs/World_Bank_Enterprise_Surveys_Manual.pdf",
+    downloadLink: "https://www.enterprisesurveys.org/content/dam/enterprisesurveys/documents/methodology/Enterprise-Surveys-Manual.pdf",
     liquidite_generale: "1,3 - 2,0",
     autonomie_financiere: "35% - 55%",
     roe: "10% - 18%",
@@ -243,56 +243,52 @@ const bceaoNorms = [
   }
 ];
 
-// PDF Preview Component
+// PDF Preview Component — utilise Google Docs Viewer pour les PDFs externes
 const PDFPreview: React.FC<{ pdfUrl: string; isOpen: boolean; sector: string; officialLink?: string }> = ({ pdfUrl, isOpen, sector, officialLink }) => {
+  const [loadError, setLoadError] = useState(false);
+
   if (!isOpen) return null;
 
-  const fallback = (
-    <Box sx={{ textAlign: 'center', p: 4 }}>
-      <PdfIcon sx={{ fontSize: 52, color: 'grey.400', mb: 2 }} />
-      <Typography variant="body2" fontWeight={600} gutterBottom>
-        Prévisualisation non disponible
-      </Typography>
-      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
-        Le document n'est pas hébergé localement.
-      </Typography>
-      {officialLink && (
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={<PdfIcon />}
-          href={officialLink}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Consulter la source officielle
-        </Button>
-      )}
-    </Box>
-  );
+  // Google Docs Viewer supporte les PDFs publics externes sans problème CORS/X-Frame
+  const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(pdfUrl)}&embedded=true`;
 
   return (
     <Box sx={{ mt: 2, mb: 2, mx: 2, border: '1px solid #e0e0e0', borderRadius: 1, overflow: 'hidden' }}>
-      <Box sx={{ p: 2, bgcolor: 'grey.100', borderBottom: '1px solid #e0e0e0' }}>
+      <Box sx={{ p: 1.5, bgcolor: 'grey.100', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <PdfIcon color="primary" />
+          <PdfIcon color="primary" fontSize="small" />
           Prévisualisation PDF — {sector}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
-          Document de référence sectorielle
-        </Typography>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button size="small" variant="outlined" href={pdfUrl} target="_blank" rel="noopener noreferrer" startIcon={<PdfIcon />} sx={{ fontSize: '0.72rem' }}>
+            Ouvrir PDF
+          </Button>
+        </Box>
       </Box>
-      <Box sx={{ height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#f5f5f5' }}>
-        {/* <object> affiche son contenu enfant si le PDF ne se charge pas (404) */}
-        <object
-          data={`${pdfUrl}#toolbar=0&navpanes=0&view=FitH`}
-          type="application/pdf"
-          width="100%"
-          height="100%"
-          style={{ border: 'none', display: 'block' }}
-        >
-          {fallback}
-        </object>
+      <Box sx={{ height: '520px', bgcolor: '#f5f5f5' }}>
+        {loadError ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2, p: 3 }}>
+            <PdfIcon sx={{ fontSize: 52, color: 'grey.400' }} />
+            <Typography variant="body2" color="text.secondary" textAlign="center">
+              Impossible de charger la prévisualisation.<br />
+              Utilisez le bouton <strong>"Ouvrir PDF"</strong> ci-dessus.
+            </Typography>
+            {officialLink && (
+              <Button variant="outlined" size="small" href={officialLink} target="_blank" rel="noopener noreferrer">
+                Page source officielle
+              </Button>
+            )}
+          </Box>
+        ) : (
+          <iframe
+            src={viewerUrl}
+            width="100%"
+            height="100%"
+            style={{ border: 'none', display: 'block' }}
+            title={`PDF — ${sector}`}
+            onError={() => setLoadError(true)}
+          />
+        )}
       </Box>
     </Box>
   );
