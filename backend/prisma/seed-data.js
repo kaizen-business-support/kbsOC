@@ -1,5 +1,4 @@
 const { PrismaClient } = require('@prisma/client');
-const redis = require('redis');
 const prisma = new PrismaClient();
 
 const departments = [
@@ -45,18 +44,6 @@ async function main() {
     } else {
       console.log(`  Déjà existant : ${branch.name}`);
     }
-  }
-
-  // Vider le cache Redis pour forcer le rechargement
-  try {
-    const client = redis.createClient({ url: process.env.REDIS_URL || 'redis://127.0.0.1:6379' });
-    await client.connect();
-    await client.del('cache:departments:active');
-    await client.del('cache:branches:active');
-    await client.quit();
-    console.log('  Cache Redis vidé (departments + branches)');
-  } catch (e) {
-    console.log('  Redis non disponible — cache non vidé (non bloquant)');
   }
 
   console.log('✓ Terminé');
