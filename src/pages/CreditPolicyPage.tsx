@@ -108,6 +108,10 @@ export function CreditPolicyPage() {
   const [selectedPolicy, setSelectedPolicy] = useState<CreditPolicy | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Erreurs inline dans les dialogs (visibles même quand le dialog est ouvert)
+  const [policyDialogError, setPolicyDialogError] = useState<string | null>(null);
+  const [stepDialogError, setStepDialogError] = useState<string | null>(null);
+
   // Dialogs
   const [policyDialogOpen, setPolicyDialogOpen] = useState(false);
   const [stepDialogOpen, setStepDialogOpen] = useState(false);
@@ -168,6 +172,7 @@ export function CreditPolicyPage() {
   const openCreatePolicy = () => {
     setEditingPolicy(null);
     setPolicyForm({ name: '', code: '', description: '', validFrom: '', validTo: '' });
+    setPolicyDialogError(null);
     setPolicyDialogOpen(true);
   };
 
@@ -180,6 +185,7 @@ export function CreditPolicyPage() {
       validFrom: p.validFrom?.slice(0, 10) || '',
       validTo: p.validTo?.slice(0, 10) || '',
     });
+    setPolicyDialogError(null);
     setPolicyDialogOpen(true);
   };
 
@@ -198,9 +204,10 @@ export function CreditPolicyPage() {
     if (res.success) {
       showSnack(editingPolicy ? 'Politique mise à jour' : 'Politique créée et activée');
       setPolicyDialogOpen(false);
+      setPolicyDialogError(null);
       loadPolicies();
     } else {
-      showSnack(res.error || 'Erreur', 'error');
+      setPolicyDialogError(res.error || 'Erreur lors de la sauvegarde. Vérifiez que le serveur est accessible.');
     }
   };
 
@@ -217,12 +224,14 @@ export function CreditPolicyPage() {
     setEditingStep(null);
     const nextOrder = (selectedPolicy.steps?.length ?? 0) + 1;
     setStepForm({ ...EMPTY_STEP, order: nextOrder });
+    setStepDialogError(null);
     setStepDialogOpen(true);
   };
 
   const openEditStep = (step: CreditPolicyStep) => {
     setEditingStep(step);
     setStepForm({ ...step });
+    setStepDialogError(null);
     setStepDialogOpen(true);
   };
 
@@ -234,9 +243,10 @@ export function CreditPolicyPage() {
     if (res.success) {
       showSnack(editingStep ? 'Étape mise à jour' : 'Étape ajoutée');
       setStepDialogOpen(false);
+      setStepDialogError(null);
       loadPolicies();
     } else {
-      showSnack(res.error || 'Erreur', 'error');
+      setStepDialogError(res.error || 'Erreur lors de la sauvegarde. Vérifiez que le serveur est accessible.');
     }
   };
 
@@ -751,10 +761,13 @@ export function CreditPolicyPage() {
                 La création d'une nouvelle politique désactivera automatiquement la politique actuellement active.
               </Alert>
             )}
+            {policyDialogError && (
+              <Alert severity="error" sx={{ mt: 1 }}>{policyDialogError}</Alert>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPolicyDialogOpen(false)}>Annuler</Button>
+          <Button onClick={() => { setPolicyDialogOpen(false); setPolicyDialogError(null); }}>Annuler</Button>
           <Button
             variant="contained"
             onClick={savePolicy}
@@ -920,10 +933,15 @@ export function CreditPolicyPage() {
                 label="Étape active"
               />
             </Grid>
+          {stepDialogError && (
+            <Grid item xs={12}>
+              <Alert severity="error">{stepDialogError}</Alert>
+            </Grid>
+          )}
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setStepDialogOpen(false)}>Annuler</Button>
+          <Button onClick={() => { setStepDialogOpen(false); setStepDialogError(null); }}>Annuler</Button>
           <Button
             variant="contained"
             onClick={saveStep}
