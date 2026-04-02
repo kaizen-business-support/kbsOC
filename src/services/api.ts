@@ -1397,7 +1397,10 @@ export const creditPolicyApi = {
       const res = await api.post('/credit-policies', data);
       return { success: true, data: res.data.data };
     } catch (e: any) {
-      return { success: false, error: e.response?.data?.error || 'Erreur création politique' };
+      const body = e.response?.data;
+      const msg = body?.error || 'Erreur création politique';
+      const detail = body?.detail ? ` — ${body.detail}` : '';
+      return { success: false, error: `${msg}${detail}` };
     }
   },
 

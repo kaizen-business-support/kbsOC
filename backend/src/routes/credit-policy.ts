@@ -97,7 +97,11 @@ router.post('/', async (req: Request, res: Response) => {
     if (error.code === 'P2002') {
       return res.status(409).json({ success: false, error: 'Ce code de politique existe déjà' });
     }
-    res.status(500).json({ success: false, error: 'Erreur lors de la création de la politique' });
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la création de la politique',
+      detail: error?.message ?? String(error),
+    });
   }
 });
 
