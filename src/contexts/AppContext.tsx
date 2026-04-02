@@ -364,7 +364,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       'backup': '/backup',
       'announcements': '/announcements',
       'notifications-config': '/notifications-config',
-      'dispatching': '/dispatching'
+      'dispatching': '/dispatching',
+      'credit-policy': '/credit-policy'
     };
     
     const route = routeMap[page];

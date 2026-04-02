@@ -1381,6 +1381,90 @@ export const dispatchingApi = {
   }
 };
 
+// ─── Politique de Crédit ─────────────────────────────────────────────────────
+export const creditPolicyApi = {
+  async getPolicies(): Promise<any> {
+    try {
+      const res = await api.get('/credit-policies');
+      return { success: true, data: res.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur récupération politiques' };
+    }
+  },
+
+  async createPolicy(data: any): Promise<any> {
+    try {
+      const res = await api.post('/credit-policies', data);
+      return { success: true, data: res.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur création politique' };
+    }
+  },
+
+  async updatePolicy(id: string, data: any): Promise<any> {
+    try {
+      const res = await api.put(`/credit-policies/${id}`, data);
+      return { success: true, data: res.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur mise à jour politique' };
+    }
+  },
+
+  async createStep(policyId: string, data: any): Promise<any> {
+    try {
+      const res = await api.post(`/credit-policies/${policyId}/steps`, data);
+      return { success: true, data: res.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur création étape' };
+    }
+  },
+
+  async updateStep(policyId: string, stepId: string, data: any): Promise<any> {
+    try {
+      const res = await api.put(`/credit-policies/${policyId}/steps/${stepId}`, data);
+      return { success: true, data: res.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur mise à jour étape' };
+    }
+  },
+
+  async deleteStep(policyId: string, stepId: string): Promise<any> {
+    try {
+      await api.delete(`/credit-policies/${policyId}/steps/${stepId}`);
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur suppression étape' };
+    }
+  },
+
+  async preview(creditTypeId: string, amount: number): Promise<any> {
+    try {
+      const res = await api.get('/credit-policies/preview', { params: { creditTypeId, amount } });
+      return { success: true, data: res.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur prévisualisation' };
+    }
+  },
+
+  async getAnalytics(): Promise<any> {
+    try {
+      const res = await api.get('/credit-policies/analytics');
+      return { success: true, data: res.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur analytics' };
+    }
+  },
+
+  async getCreditTypes(): Promise<any> {
+    try {
+      const res = await api.get('/credit-types');
+      return { success: true, data: res.data.data ?? res.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur types crédit' };
+    }
+  },
+};
+
 // Utility function to handle API errors
 export const handleApiError = (error: any): string => {
   if (error.response) {

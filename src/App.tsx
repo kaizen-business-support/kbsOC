@@ -42,6 +42,7 @@ const BackupPage            = lazy(() => import('./pages/BackupPage').then(m => 
 const AnnouncementsAdminPage = lazy(() => import('./pages/AnnouncementsAdminPage'));
 const NotificationsConfigPage = lazy(() => import('./pages/NotificationsConfigPage'));
 const DispatchingPage        = lazy(() => import('./pages/DispatchingPage').then(m => ({ default: m.DispatchingPage })));
+const CreditPolicyPage       = lazy(() => import('./pages/CreditPolicyPage').then(m => ({ default: m.CreditPolicyPage })));
 
 // ── Thin branded progress bar while chunk loads ────────────────────────────
 const PageLoader = () => (
@@ -344,6 +345,10 @@ const AppContent: React.FC = () => {
               <Route
                 path="/dispatching"
                 element={<DispatchingPage />}
+              />
+              <Route
+                path="/credit-policy"
+                element={<CreditPolicyPage />}
               />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

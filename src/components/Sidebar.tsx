@@ -37,6 +37,7 @@ import {
   CampaignOutlined as CampaignIcon,
   NotificationsNone as NotificationsActiveIcon,
   CallSplit as DispatchIcon,
+  PolicyOutlined as PolicyIcon,
   ExpandLess,
   ExpandMore,
 } from '@mui/icons-material';
@@ -116,6 +117,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const configItems = canViewConfiguration ? [
     { id: 'user-management'   as PageType, label: t('navigation.userManagement'),   icon: UserManagementIcon },
+    { id: 'credit-policy'     as PageType, label: 'Politique de Crédit',            icon: PolicyIcon },
     { id: 'credit-types'      as PageType, label: 'Types de Crédit',                icon: BusinessIcon },
     { id: 'approval-limits'   as PageType, label: "Limites d'Approbation",          icon: LimitsIcon },
     { id: 'bank-holidays-admin' as PageType, label: 'Jours Fériés',                 icon: HolidayIcon },
