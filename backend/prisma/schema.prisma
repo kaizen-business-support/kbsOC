@@ -83,31 +83,36 @@ model Client {
 }
 
 model CreditApplication {
-  id                String             @id @default(cuid())
-  applicationNumber String             @unique @map("application_number")
-  clientId          String             @map("client_id")
-  amount            Decimal            @db.Decimal(15, 2)
-  currency          String             @default("XOF")
-  purpose           String
-  durationMonths    Int?               @map("duration_months")
-  creditTypeId      String?            @map("credit_type_id")
-  proposedRate      Decimal?           @map("proposed_rate") @db.Decimal(5, 2)
-  collateralType    String?            @map("collateral_type")
-  collateralValue   Decimal?           @map("collateral_value") @db.Decimal(15, 2)
-  repaymentSchedule RepaymentSchedule? @map("repayment_schedule")
-  status            ApplicationStatus  @default(DRAFT)
-  score             Json?
-  analysisResults   Json?              @map("analysis_results")
-  submittedAt       DateTime?          @map("submitted_at")
-  createdBy         String             @map("created_by")
-  createdAt         DateTime           @default(now()) @map("created_at")
-  updatedAt         DateTime           @updatedAt @map("updated_at")
-  auditLogs         AuditLog[]
-  client            Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  creator           User               @relation("UserCreatedApplications", fields: [createdBy], references: [id])
-  creditType        CreditType?        @relation(fields: [creditTypeId], references: [id])
-  documents         Document[]
-  workflowSteps     WorkflowStep[]
+  id                   String             @id @default(cuid())
+  applicationNumber    String             @unique @map("application_number")
+  clientId             String             @map("client_id")
+  amount               Decimal            @db.Decimal(15, 2)
+  currency             String             @default("XOF")
+  purpose              String
+  durationMonths       Int?               @map("duration_months")
+  creditTypeId         String?            @map("credit_type_id")
+  proposedRate         Decimal?           @map("proposed_rate") @db.Decimal(5, 2)
+  collateralType       String?            @map("collateral_type")
+  collateralValue      Decimal?           @map("collateral_value") @db.Decimal(15, 2)
+  repaymentSchedule    RepaymentSchedule? @map("repayment_schedule")
+  status               ApplicationStatus  @default(DRAFT)
+  score                Json?
+  analysisResults      Json?              @map("analysis_results")
+  submittedAt          DateTime?          @map("submitted_at")
+  // Politique de crédit appliquée à ce dossier
+  policyId             String?            @map("policy_id")
+  policy               CreditPolicy?      @relation(fields: [policyId], references: [id])
+  // Durée totale de traitement (calculée à la clôture : APPROVED/REJECTED)
+  totalDurationMinutes Int?               @map("total_duration_minutes")
+  createdBy            String             @map("created_by")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+  auditLogs            AuditLog[]
+  client               Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  creator              User               @relation("UserCreatedApplications", fields: [createdBy], references: [id])
+  creditType           CreditType?        @relation(fields: [creditTypeId], references: [id])
+  documents            Document[]
+  workflowSteps        WorkflowStep[]
 
   @@index([status])
   @@index([clientId])
@@ -149,19 +154,29 @@ model Document {
 }
 
 model WorkflowStep {
-  id            String            @id @default(cuid())
-  applicationId String            @map("application_id")
-  stepName      String            @map("step_name")
-  role          UserRole
-  assigneeId    String?           @map("assignee_id")
-  status        StepStatus        @default(PENDING)
-  deadline      DateTime?
-  comments      String?
-  decision      String?
-  completedAt   DateTime?         @map("completed_at")
-  createdAt     DateTime          @default(now()) @map("created_at")
-  application   CreditApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  assignee      User?             @relation("UserAssignedSteps", fields: [assigneeId], references: [id])
+  id              String            @id @default(cuid())
+  applicationId   String            @map("application_id")
+  stepName        String            @map("step_name")
+  role            UserRole
+  assigneeId      String?           @map("assignee_id")
+  status          StepStatus        @default(PENDING)
+  deadline        DateTime?
+  comments        String?
+  decision        String?
+  completedAt     DateTime?         @map("completed_at")
+  // Lien vers l'étape de politique qui a généré cette instance
+  policyStepId    String?           @map("policy_step_id")
+  policyStep      CreditPolicyStep? @relation(fields: [policyStepId], references: [id])
+  // Tracking du temps de traitement
+  startedAt       DateTime?         @map("started_at")       // Quand l'utilisateur a commencé
+  durationMinutes Int?              @map("duration_minutes") // Durée effective en minutes
+  // Alertes SLA
+  isOverdue       Boolean           @default(false) @map("is_overdue")
+  overdueAt       DateTime?         @map("overdue_at")       // Quand le délai max a été dépassé
+  notifiedAt      DateTime?         @map("notified_at")      // Quand la notif a été envoyée
+  createdAt       DateTime          @default(now()) @map("created_at")
+  application     CreditApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  assignee        User?             @relation("UserAssignedSteps", fields: [assigneeId], references: [id])
 
   @@index([applicationId])
   @@index([status])
@@ -258,6 +273,84 @@ model CreditTypeWorkflowStep {
 
   @@unique([creditTypeId, order])
   @@map("credit_type_workflow_steps")
+}
+
+// ─── Politique de Crédit ─────────────────────────────────────────────────────
+
+/**
+ * CreditPolicy — conteneur principal de la politique de crédit.
+ *
+ * Une politique regroupe toutes les étapes du circuit de traitement
+ * (dispatch, analyse, approbation, comité) avec les profils responsables,
+ * les délais et les plafonds de validation.
+ *
+ * Elle remplace la combinaison CreditTypeWorkflowStep + ApprovalLimit + WorkflowStepConfig.
+ */
+model CreditPolicy {
+  id          String             @id @default(cuid())
+  name        String             // "Politique Générale de Crédit 2024"
+  code        String             @unique // "POL-2024-001"
+  description String?
+  isActive    Boolean            @default(true) @map("is_active")
+  version     Int                @default(1)
+  validFrom   DateTime           @default(now()) @map("valid_from")
+  validTo     DateTime?          @map("valid_to")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  steps        CreditPolicyStep[]
+  applications CreditApplication[]
+
+  @@map("credit_policies")
+}
+
+/**
+ * CreditPolicyStep — une étape dans la politique de crédit.
+ *
+ * Chaque étape définit :
+ *   - stepType    : le rôle fonctionnel de l'étape (DISPATCH / ANALYSIS / APPROVAL / COMMITTEE)
+ *   - assignedRole: le profil (UserRole) responsable de cette étape
+ *   - conditions  : plages de montant pour activer l'étape (null = toujours actif)
+ *   - limites     : plafonds que ce profil peut approuver (pour APPROVAL/COMMITTEE)
+ *   - délais      : SLA attendu et maximum (en heures) → base des alertes
+ *   - creditTypeIds : types de crédit auxquels s'applique cette étape (vide = tous)
+ */
+model CreditPolicyStep {
+  id          String          @id @default(cuid())
+  policyId    String          @map("policy_id")
+  policy      CreditPolicy    @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  stepName    String          @map("step_name")   // slug: "dispatch", "credit_analysis", "supervisor_approval"
+  stepLabel   String          @map("step_label")  // libellé affiché: "Dispatching", "Analyse Crédit", …
+  order       Int
+  stepType    PolicyStepType  @map("step_type")
+
+  // Profil responsable de cette étape
+  assignedRole UserRole        @map("assigned_role")
+
+  // Condition d'activation (montant du dossier) — null = toujours actif
+  conditionMinAmount Decimal?  @map("condition_min_amount") @db.Decimal(15, 2)
+  conditionMaxAmount Decimal?  @map("condition_max_amount") @db.Decimal(15, 2)
+
+  // Plafonds de validation de ce profil (pour étapes APPROVAL / COMMITTEE)
+  approvalMinAmount  Decimal?  @map("approval_min_amount") @db.Decimal(15, 2)
+  approvalMaxAmount  Decimal?  @map("approval_max_amount") @db.Decimal(15, 2)
+
+  // SLA en heures
+  expectedDurationHours Int    @default(24) @map("expected_duration_hours")
+  maxDurationHours      Int    @default(72) @map("max_duration_hours")
+
+  isRequired    Boolean        @default(true) @map("is_required")
+  isActive      Boolean        @default(true) @map("is_active")
+  description   String?
+
+  // Types de crédit auxquels s'applique cette étape (tableau vide = tous)
+  creditTypeIds String[]       @default([]) @map("credit_type_ids")
+
+  workflowSteps WorkflowStep[]
+
+  @@unique([policyId, order])
+  @@map("credit_policy_steps")
 }
 
 model Department {
@@ -398,6 +491,15 @@ enum StepType {
   @@map("step_type")
 }
 
+enum PolicyStepType {
+  DISPATCH   @map("dispatch")   // Dispatching : qui route le dossier vers la prochaine étape
+  ANALYSIS   @map("analysis")   // Analyse : traitement sans décision d'approbation formelle
+  APPROVAL   @map("approval")   // Approbation : décision formelle (approuver / rejeter)
+  COMMITTEE  @map("committee")  // Comité : décision collégiale (plusieurs valideurs)
+
+  @@map("policy_step_type")
+}
+
 model BackupNotifyEmail {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -484,6 +586,8 @@ enum NotifEvent {
   STEP_REJECTED
   APPLICATION_APPROVED
   APPLICATION_REJECTED
+  STEP_OVERDUE           // Délai maximum dépassé sur une étape
+  STEP_PENDING_REMINDER  // Rappel : action en attente depuis un certain temps
 
   @@map("notif_event")
 }

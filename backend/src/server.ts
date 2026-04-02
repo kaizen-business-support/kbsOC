@@ -31,6 +31,7 @@ import notificationRoutes from './routes/notifications';
 import auditLogRoutes from './routes/audit-logs';
 import documentRoutes from './routes/documents';
 import dispatchingRoutes from './routes/dispatching';
+import creditPolicyRoutes from './routes/credit-policy';
 import { startScheduler } from './services/schedulerService';
 
 // Import middleware
@@ -194,7 +195,8 @@ app.use('/api/notification-rules', authenticate, notificationRuleRoutes);
 app.use('/api/notifications', authenticate, notificationRoutes);
 app.use('/api/audit-logs',   authenticate, auditLogRoutes);
 app.use('/api/documents',    authenticate, documentRoutes);
-app.use('/api/dispatching',  authenticate, dispatchingRoutes);
+app.use('/api/dispatching',    authenticate, dispatchingRoutes);
+app.use('/api/credit-policies', authenticate, creditPolicyRoutes);
 
 // ─── Root endpoint ────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {

@@ -5,16 +5,15 @@
  * Toute la logique d'approbation est dérivée de la base de données —
  * aucune règle n'est codée en dur dans ce fichier ni ailleurs.
  *
- * Principe (Option C) :
- *  - Le type de crédit définit les étapes possibles, dans l'ordre.
- *  - Chaque étape peut avoir une condition sur le montant (conditionMinAmount / conditionMaxAmount).
- *  - Si une étape n'a pas de condition → elle est toujours obligatoire.
- *  - Si une condition est présente → l'étape est incluse seulement si le montant la satisfait.
- *  - Les limites d'approbation (ApprovalLimit) fournissent les tranches de référence
- *    que l'administrateur peut utiliser pour paramétrer ces conditions depuis l'UI.
+ * Principe :
+ *  - Si le dossier est lié à une CreditPolicy active → les étapes viennent de CreditPolicyStep.
+ *  - Sinon (rétrocompatibilité) → les étapes viennent de CreditTypeWorkflowStep.
+ *  - Chaque étape peut avoir une condition sur le montant (conditionMinAmount/Max).
+ *  - Les limites d'approbation sont portées par CreditPolicyStep (approvalMin/Max),
+ *    ou par ApprovalLimit pour l'ancien circuit.
  */
 
-import { UserRole } from '@prisma/client';
+import { UserRole, PolicyStepType } from '@prisma/client';
 import { prisma } from '../prismaClient';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -24,10 +23,16 @@ export interface WorkflowStepPlan {
   stepName: string;
   stepLabel: string;
   role: UserRole;
+  stepType?: PolicyStepType;
   durationDays: number;
-  isConditional: boolean;         // true si l'étape avait une condition montant
+  expectedDurationHours?: number;
+  maxDurationHours?: number;
+  isConditional: boolean;
   conditionMinAmount: number | null;
   conditionMaxAmount: number | null;
+  approvalMinAmount: number | null;
+  approvalMaxAmount: number | null;
+  policyStepId: string | null;
 }
 
 export interface WorkflowPlan {
@@ -35,69 +40,211 @@ export interface WorkflowPlan {
   creditTypeName: string;
   creditTypeCode: string;
   amount: number;
-  steps: WorkflowStepPlan[];      // Étapes filtrées et ordonnées pour ce dossier
-  allSteps: WorkflowStepPlan[];   // Toutes les étapes configurées (pour affichage UI)
+  policyId: string | null;
+  policyName: string | null;
+  steps: WorkflowStepPlan[];
+  allSteps: WorkflowStepPlan[];
   estimatedDurationDays: number;
+}
+
+export interface StepProcessingStats {
+  stepName: string;
+  stepLabel: string;
+  role: UserRole;
+  durationMinutes: number | null;
+  isOverdue: boolean;
+  completedAt: Date | null;
+  assigneeName: string | null;
+}
+
+export interface ApplicationProcessingStats {
+  applicationId: string;
+  applicationNumber: string;
+  totalDurationMinutes: number | null;
+  averageStepDurationMinutes: number | null;
+  steps: StepProcessingStats[];
+  bottleneck: StepProcessingStats | null; // étape la plus longue
+}
+
+// ─── Recherche de la politique active ────────────────────────────────────────
+
+/**
+ * Retourne la politique de crédit active applicable à un type de crédit.
+ * Prend la politique active la plus récente dont validFrom <= maintenant
+ * et validTo est null ou dans le futur.
+ */
+export async function getActivePolicyForCreditType(
+  creditTypeId: string
+): Promise<{ id: string; name: string; code: string } | null> {
+  const now = new Date();
+
+  // Chercher une politique active qui couvre ce type de crédit
+  // (une étape de cette politique doit référencer ce creditTypeId, ou être sans restriction)
+  const policy = await prisma.creditPolicy.findFirst({
+    where: {
+      isActive: true,
+      validFrom: { lte: now },
+      OR: [{ validTo: null }, { validTo: { gte: now } }],
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, name: true, code: true },
+  });
+
+  return policy;
+}
+
+// ─── Construction du plan depuis une CreditPolicy ────────────────────────────
+
+async function buildPlanFromPolicy(
+  policyId: string,
+  creditTypeId: string,
+  amount: number
+): Promise<WorkflowStepPlan[]> {
+  const steps = await prisma.creditPolicyStep.findMany({
+    where: {
+      policyId,
+      isActive: true,
+    },
+    orderBy: { order: 'asc' },
+  });
+
+  return steps
+    .filter(s => {
+      // Filtrer par type de crédit si renseigné
+      if (s.creditTypeIds.length > 0 && !s.creditTypeIds.includes(creditTypeId)) {
+        return false;
+      }
+      // Filtrer par condition de montant
+      if (s.conditionMinAmount !== null && amount < Number(s.conditionMinAmount)) return false;
+      if (s.conditionMaxAmount !== null && amount > Number(s.conditionMaxAmount)) return false;
+      return true;
+    })
+    .map(s => ({
+      order: s.order,
+      stepName: s.stepName,
+      stepLabel: s.stepLabel,
+      role: s.assignedRole,
+      stepType: s.stepType,
+      durationDays: Math.ceil(s.expectedDurationHours / 24),
+      expectedDurationHours: s.expectedDurationHours,
+      maxDurationHours: s.maxDurationHours,
+      isConditional: s.conditionMinAmount !== null || s.conditionMaxAmount !== null,
+      conditionMinAmount: s.conditionMinAmount ? Number(s.conditionMinAmount) : null,
+      conditionMaxAmount: s.conditionMaxAmount ? Number(s.conditionMaxAmount) : null,
+      approvalMinAmount: s.approvalMinAmount ? Number(s.approvalMinAmount) : null,
+      approvalMaxAmount: s.approvalMaxAmount ? Number(s.approvalMaxAmount) : null,
+      policyStepId: s.id,
+    }));
+}
+
+// ─── Construction du plan (rétrocompatibilité) ────────────────────────────────
+
+async function buildPlanFromCreditType(
+  creditTypeId: string,
+  amount: number
+): Promise<WorkflowStepPlan[]> {
+  const steps = await prisma.creditTypeWorkflowStep.findMany({
+    where: { creditTypeId },
+    orderBy: { order: 'asc' },
+  });
+
+  return steps
+    .filter(s => {
+      if (s.conditionMinAmount !== null && amount < Number(s.conditionMinAmount)) return false;
+      if (s.conditionMaxAmount !== null && amount > Number(s.conditionMaxAmount)) return false;
+      return true;
+    })
+    .map(s => ({
+      order: s.order,
+      stepName: s.stepName,
+      stepLabel: s.stepLabel,
+      role: s.role,
+      stepType: undefined,
+      durationDays: s.durationDays,
+      expectedDurationHours: s.durationDays * 24,
+      maxDurationHours: s.durationDays * 24 * 2,
+      isConditional: s.conditionMinAmount !== null || s.conditionMaxAmount !== null,
+      conditionMinAmount: s.conditionMinAmount ? Number(s.conditionMinAmount) : null,
+      conditionMaxAmount: s.conditionMaxAmount ? Number(s.conditionMaxAmount) : null,
+      approvalMinAmount: null,
+      approvalMaxAmount: null,
+      policyStepId: null,
+    }));
 }
 
 // ─── Fonction principale ──────────────────────────────────────────────────────
 
 /**
  * Construit le plan de workflow dynamique pour une demande de crédit.
- *
- * @param creditTypeId  ID du type de crédit
- * @param amount        Montant de la demande (en XOF)
- * @returns             WorkflowPlan avec les étapes applicables
+ * Utilise la CreditPolicy active si disponible, sinon retombe sur CreditTypeWorkflowStep.
  */
 export async function buildWorkflowPlan(
   creditTypeId: string,
   amount: number
 ): Promise<WorkflowPlan> {
-  // 1. Charger le type de crédit avec toutes ses étapes configurées
   const creditType = await prisma.creditType.findUnique({
     where: { id: creditTypeId },
-    include: {
-      workflowSteps: {
-        orderBy: { order: 'asc' },
-      },
-    },
+    select: { id: true, name: true, code: true },
   });
 
   if (!creditType) {
     throw new Error(`Type de crédit introuvable : ${creditTypeId}`);
   }
 
-  // 2. Construire la liste complète (pour affichage dans l'UI)
-  const allSteps: WorkflowStepPlan[] = creditType.workflowSteps.map(s => ({
-    order: s.order,
-    stepName: s.stepName,
-    stepLabel: s.stepLabel,
-    role: s.role,
-    durationDays: s.durationDays,
-    isConditional: s.conditionMinAmount !== null || s.conditionMaxAmount !== null,
-    conditionMinAmount: s.conditionMinAmount ? Number(s.conditionMinAmount) : null,
-    conditionMaxAmount: s.conditionMaxAmount ? Number(s.conditionMaxAmount) : null,
-  }));
+  // Chercher une politique active
+  const policy = await getActivePolicyForCreditType(creditTypeId);
 
-  // 3. Filtrer les étapes applicables selon le montant
-  const steps: WorkflowStepPlan[] = allSteps.filter(step => {
-    // Pas de condition → toujours obligatoire
-    if (!step.isConditional) return true;
+  let steps: WorkflowStepPlan[];
+  let allSteps: WorkflowStepPlan[];
 
-    // Vérifier conditionMinAmount
-    if (step.conditionMinAmount !== null && amount < step.conditionMinAmount) {
-      return false;
-    }
+  if (policy) {
+    // Toutes les étapes de la politique (pour affichage UI)
+    const rawAll = await prisma.creditPolicyStep.findMany({
+      where: { policyId: policy.id, isActive: true },
+      orderBy: { order: 'asc' },
+    });
+    allSteps = rawAll.map(s => ({
+      order: s.order,
+      stepName: s.stepName,
+      stepLabel: s.stepLabel,
+      role: s.assignedRole,
+      stepType: s.stepType,
+      durationDays: Math.ceil(s.expectedDurationHours / 24),
+      expectedDurationHours: s.expectedDurationHours,
+      maxDurationHours: s.maxDurationHours,
+      isConditional: s.conditionMinAmount !== null || s.conditionMaxAmount !== null,
+      conditionMinAmount: s.conditionMinAmount ? Number(s.conditionMinAmount) : null,
+      conditionMaxAmount: s.conditionMaxAmount ? Number(s.conditionMaxAmount) : null,
+      approvalMinAmount: s.approvalMinAmount ? Number(s.approvalMinAmount) : null,
+      approvalMaxAmount: s.approvalMaxAmount ? Number(s.approvalMaxAmount) : null,
+      policyStepId: s.id,
+    }));
+    steps = await buildPlanFromPolicy(policy.id, creditTypeId, amount);
+  } else {
+    // Rétrocompatibilité : CreditTypeWorkflowStep
+    const rawAll = await prisma.creditTypeWorkflowStep.findMany({
+      where: { creditTypeId },
+      orderBy: { order: 'asc' },
+    });
+    allSteps = rawAll.map(s => ({
+      order: s.order,
+      stepName: s.stepName,
+      stepLabel: s.stepLabel,
+      role: s.role,
+      stepType: undefined,
+      durationDays: s.durationDays,
+      expectedDurationHours: s.durationDays * 24,
+      maxDurationHours: s.durationDays * 24 * 2,
+      isConditional: s.conditionMinAmount !== null || s.conditionMaxAmount !== null,
+      conditionMinAmount: s.conditionMinAmount ? Number(s.conditionMinAmount) : null,
+      conditionMaxAmount: s.conditionMaxAmount ? Number(s.conditionMaxAmount) : null,
+      approvalMinAmount: null,
+      approvalMaxAmount: null,
+      policyStepId: null,
+    }));
+    steps = await buildPlanFromCreditType(creditTypeId, amount);
+  }
 
-    // Vérifier conditionMaxAmount
-    if (step.conditionMaxAmount !== null && amount > step.conditionMaxAmount) {
-      return false;
-    }
-
-    return true;
-  });
-
-  // 4. Calculer la durée estimée totale
   const estimatedDurationDays = steps.reduce((sum, s) => sum + s.durationDays, 0);
 
   return {
@@ -105,6 +252,8 @@ export async function buildWorkflowPlan(
     creditTypeName: creditType.name,
     creditTypeCode: creditType.code,
     amount,
+    policyId: policy?.id ?? null,
+    policyName: policy?.name ?? null,
     steps,
     allSteps,
     estimatedDurationDays,
@@ -116,10 +265,7 @@ export async function buildWorkflowPlan(
 /**
  * Crée les WorkflowStep en base pour une application donnée,
  * en se basant sur le plan dynamique.
- *
- * @param applicationId   ID de la demande
- * @param creditTypeId    ID du type de crédit
- * @param amount          Montant de la demande
+ * Stocke le policyId sur l'application et le policyStepId sur chaque étape.
  */
 export async function createWorkflowStepsForApplication(
   applicationId: string,
@@ -128,8 +274,7 @@ export async function createWorkflowStepsForApplication(
 ): Promise<void> {
   const plan = await buildWorkflowPlan(creditTypeId, amount);
 
-  // Supprimer les étapes existantes non-commencées avant de recréer
-  // (utile si le type ou le montant change avant soumission)
+  // Supprimer les étapes non-commencées avant de recréer
   await prisma.workflowStep.deleteMany({
     where: {
       applicationId,
@@ -137,6 +282,14 @@ export async function createWorkflowStepsForApplication(
       assigneeId: null,
     },
   });
+
+  // Lier l'application à la politique si trouvée
+  if (plan.policyId) {
+    await prisma.creditApplication.update({
+      where: { id: applicationId },
+      data: { policyId: plan.policyId },
+    });
+  }
 
   // Créer l'étape "création du dossier" si elle n'existe pas encore
   const hasCreationStep = await prisma.workflowStep.findFirst({
@@ -150,23 +303,25 @@ export async function createWorkflowStepsForApplication(
         stepName: 'application_created',
         role: 'ACCOUNT_MANAGER',
         status: 'COMPLETED',
+        completedAt: new Date(),
         deadline: new Date(),
         comments: 'Dossier créé',
       },
     });
   }
 
-  // Créer les étapes du plan (en commençant par credit_analysis en PENDING)
+  // Créer les étapes du plan en PENDING
   for (const step of plan.steps) {
-    // L'étape analyste est créée en PENDING, les suivantes aussi
-    // Elles seront activées une par une lors des approbations
     await prisma.workflowStep.create({
       data: {
         applicationId,
         stepName: step.stepName,
         role: step.role as UserRole,
         status: 'PENDING',
-        deadline: new Date(Date.now() + step.durationDays * 24 * 60 * 60 * 1000),
+        deadline: new Date(
+          Date.now() + (step.expectedDurationHours ?? step.durationDays * 24) * 60 * 60 * 1000
+        ),
+        policyStepId: step.policyStepId ?? undefined,
         comments: null,
         assigneeId: null,
       },
@@ -174,16 +329,147 @@ export async function createWorkflowStepsForApplication(
   }
 }
 
-// ─── Détermination de l'étape suivante ────────────────────────────────────────
+// ─── Démarrage d'une étape (tracking du temps) ────────────────────────────────
 
 /**
- * Après approbation d'une étape, retourne l'étape suivante applicable.
- * Interroge la base — aucune logique hard-codée.
- *
- * @param applicationId   ID de la demande
- * @param completedStep   Nom de l'étape qui vient d'être complétée
- * @returns               Étape suivante (WorkflowStepPlan) ou null si c'est la dernière
+ * Marque une étape comme "en cours" (IN_REVIEW) et enregistre startedAt.
+ * À appeler dès qu'un utilisateur ouvre un dossier pour le traiter.
  */
+export async function startWorkflowStep(
+  stepId: string,
+  userId: string
+): Promise<void> {
+  const step = await prisma.workflowStep.findUnique({ where: { id: stepId } });
+  if (!step || step.status !== 'PENDING') return;
+
+  await prisma.workflowStep.update({
+    where: { id: stepId },
+    data: {
+      status: 'IN_REVIEW',
+      startedAt: new Date(),
+      assigneeId: userId,
+    },
+  });
+}
+
+// ─── Calcul de la durée à la complétion ──────────────────────────────────────
+
+/**
+ * Calcule et stocke la durée effective de traitement lors de la complétion d'une étape.
+ * Retourne la durée en minutes.
+ */
+export async function finalizeStepDuration(stepId: string): Promise<number | null> {
+  const step = await prisma.workflowStep.findUnique({ where: { id: stepId } });
+  if (!step) return null;
+
+  const start = step.startedAt ?? step.createdAt;
+  const end = new Date();
+  const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+
+  await prisma.workflowStep.update({
+    where: { id: stepId },
+    data: {
+      completedAt: end,
+      durationMinutes,
+    },
+  });
+
+  return durationMinutes;
+}
+
+/**
+ * Calcule et stocke la durée totale du dossier (somme des étapes complétées).
+ * À appeler lors de l'approbation ou du rejet final.
+ */
+export async function finalizeApplicationDuration(applicationId: string): Promise<void> {
+  const steps = await prisma.workflowStep.findMany({
+    where: { applicationId, completedAt: { not: null } },
+  });
+
+  const total = steps.reduce((sum, s) => {
+    if (s.durationMinutes) return sum + s.durationMinutes;
+    // Fallback : calculer depuis createdAt si durationMinutes absent
+    if (s.completedAt) {
+      const start = s.startedAt ?? s.createdAt;
+      return sum + Math.round((s.completedAt.getTime() - start.getTime()) / 60000);
+    }
+    return sum;
+  }, 0);
+
+  await prisma.creditApplication.update({
+    where: { id: applicationId },
+    data: { totalDurationMinutes: total },
+  });
+}
+
+// ─── Statistiques de traitement d'un dossier ─────────────────────────────────
+
+/**
+ * Retourne les statistiques de traitement d'un dossier :
+ * durée par étape, moyenne, total, et identification du goulot d'étranglement.
+ */
+export async function getApplicationProcessingStats(
+  applicationId: string
+): Promise<ApplicationProcessingStats> {
+  const application = await prisma.creditApplication.findUnique({
+    where: { id: applicationId },
+    select: {
+      applicationNumber: true,
+      totalDurationMinutes: true,
+      workflowSteps: {
+        include: { assignee: { select: { name: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+  });
+
+  if (!application) throw new Error(`Dossier introuvable : ${applicationId}`);
+
+  const steps: StepProcessingStats[] = application.workflowSteps.map(s => {
+    let duration: number | null = s.durationMinutes;
+    if (!duration && s.completedAt) {
+      const start = s.startedAt ?? s.createdAt;
+      duration = Math.round((s.completedAt.getTime() - start.getTime()) / 60000);
+    }
+    return {
+      stepName: s.stepName,
+      stepLabel: s.stepName,
+      role: s.role,
+      durationMinutes: duration,
+      isOverdue: s.isOverdue,
+      completedAt: s.completedAt,
+      assigneeName: s.assignee?.name ?? null,
+    };
+  });
+
+  const completedSteps = steps.filter(s => s.durationMinutes !== null);
+  const totalMinutes = application.totalDurationMinutes
+    ?? completedSteps.reduce((sum, s) => sum + (s.durationMinutes ?? 0), 0);
+
+  const averageStepDurationMinutes =
+    completedSteps.length > 0
+      ? Math.round(totalMinutes / completedSteps.length)
+      : null;
+
+  const bottleneck =
+    completedSteps.length > 0
+      ? completedSteps.reduce((max, s) =>
+          (s.durationMinutes ?? 0) > (max.durationMinutes ?? 0) ? s : max
+        )
+      : null;
+
+  return {
+    applicationId,
+    applicationNumber: application.applicationNumber,
+    totalDurationMinutes: totalMinutes || null,
+    averageStepDurationMinutes,
+    steps,
+    bottleneck,
+  };
+}
+
+// ─── Détermination de l'étape suivante ────────────────────────────────────────
+
 export async function getNextWorkflowStep(
   applicationId: string,
   completedStepName: string
@@ -200,26 +486,20 @@ export async function getNextWorkflowStep(
     Number(application.amount)
   );
 
-  // Trouver l'index de l'étape complétée dans le plan
   const currentIndex = plan.steps.findIndex(s => s.stepName === completedStepName);
 
   if (currentIndex === -1 || currentIndex >= plan.steps.length - 1) {
-    return null; // Dernière étape ou non trouvée
+    return null;
   }
 
   return plan.steps[currentIndex + 1];
 }
 
-// ─── Vérification que l'approbateur a le droit d'approuver ───────────────────
+// ─── Vérification du droit d'approbation ─────────────────────────────────────
 
 /**
  * Vérifie que l'utilisateur a le rôle requis ET que le montant
- * est dans sa limite d'approbation autorisée.
- *
- * @param userId        ID de l'utilisateur qui approuve
- * @param applicationId ID de la demande
- * @param stepName      Nom de l'étape à approuver
- * @returns             { allowed: boolean, reason?: string }
+ * est dans sa limite d'approbation (CreditPolicyStep si politique, ApprovalLimit sinon).
  */
 export async function canApproveStep(
   userId: string,
@@ -228,15 +508,19 @@ export async function canApproveStep(
 ): Promise<{ allowed: boolean; reason?: string }> {
   const [user, application, step] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { role: true, name: true } }),
-    prisma.creditApplication.findUnique({ where: { id: applicationId }, select: { amount: true } }),
-    prisma.workflowStep.findFirst({ where: { applicationId, stepName, status: { in: ['PENDING', 'IN_REVIEW'] } } }),
+    prisma.creditApplication.findUnique({
+      where: { id: applicationId },
+      select: { amount: true, policyId: true },
+    }),
+    prisma.workflowStep.findFirst({
+      where: { applicationId, stepName, status: { in: ['PENDING', 'IN_REVIEW'] } },
+    }),
   ]);
 
   if (!user) return { allowed: false, reason: 'Utilisateur introuvable' };
   if (!application) return { allowed: false, reason: 'Demande introuvable' };
   if (!step) return { allowed: false, reason: 'Étape introuvable ou déjà traitée' };
 
-  // Vérifier que le rôle de l'utilisateur correspond à l'étape
   if (step.role !== user.role) {
     return {
       allowed: false,
@@ -244,21 +528,40 @@ export async function canApproveStep(
     };
   }
 
-  // Vérifier que le montant est dans la limite d'approbation du rôle
-  const limit = await prisma.approvalLimit.findUnique({
-    where: { role: user.role as UserRole },
-  });
+  const amount = Number(application.amount);
 
-  if (limit) {
-    const amount = Number(application.amount);
-    const min = Number(limit.minAmount);
-    const max = Number(limit.maxAmount);
+  // Vérifier les limites selon la source (politique ou ancien circuit)
+  if (step.policyStepId) {
+    const policyStep = await prisma.creditPolicyStep.findUnique({
+      where: { id: step.policyStepId },
+      select: { approvalMinAmount: true, approvalMaxAmount: true, stepType: true },
+    });
 
-    if (amount < min || amount > max) {
-      return {
-        allowed: false,
-        reason: `Montant ${amount.toLocaleString()} XOF hors limite autorisée pour ce rôle (${min.toLocaleString()} – ${max.toLocaleString()} XOF)`,
-      };
+    if (policyStep?.approvalMinAmount != null && policyStep?.approvalMaxAmount != null) {
+      const min = Number(policyStep.approvalMinAmount);
+      const max = Number(policyStep.approvalMaxAmount);
+      if (amount < min || amount > max) {
+        return {
+          allowed: false,
+          reason: `Montant ${amount.toLocaleString()} XOF hors plafond autorisé pour ce profil (${min.toLocaleString()} – ${max.toLocaleString()} XOF)`,
+        };
+      }
+    }
+  } else {
+    // Rétrocompatibilité : ApprovalLimit
+    const limit = await prisma.approvalLimit.findUnique({
+      where: { role: user.role as UserRole },
+    });
+
+    if (limit) {
+      const min = Number(limit.minAmount);
+      const max = Number(limit.maxAmount);
+      if (amount < min || amount > max) {
+        return {
+          allowed: false,
+          reason: `Montant ${amount.toLocaleString()} XOF hors limite autorisée pour ce rôle (${min.toLocaleString()} – ${max.toLocaleString()} XOF)`,
+        };
+      }
     }
   }
 

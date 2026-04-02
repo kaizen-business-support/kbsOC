@@ -1,7 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
 import { triggerNotification } from '../services/notificationService';
-import { getNextWorkflowStep, canApproveStep } from '../services/workflowService';
+import {
+  getNextWorkflowStep,
+  canApproveStep,
+  startWorkflowStep,
+  finalizeStepDuration,
+  finalizeApplicationDuration,
+} from '../services/workflowService';
 
 const router = Router();
 
@@ -148,6 +154,22 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/workflows/:applicationId/start-step/:stepId
+// Marque une étape comme "en cours" (IN_REVIEW) et enregistre startedAt
+// À appeler dès qu'un profil ouvre le dossier pour traitement
+router.post('/:applicationId/start-step/:stepId', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ success: false, error: 'userId requis' });
+
+    await startWorkflowStep(req.params.stepId, userId);
+    res.json({ success: true, message: 'Étape démarrée' });
+  } catch (error) {
+    console.error('Start step error:', error);
+    res.status(500).json({ success: false, error: 'Erreur démarrage étape' });
+  }
+});
+
 // POST /api/workflows/:applicationId/approve - Submit approval/rejection decision
 router.post('/:applicationId/approve', async (req: Request, res: Response) => {
   try {
@@ -219,13 +241,20 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       });
     }
 
-    // Mettre à jour l'étape courante
+    // Démarrer l'étape si elle est encore en PENDING (enregistre startedAt)
+    if (currentStep.status === 'PENDING') {
+      await startWorkflowStep(currentStep.id, userId);
+    }
+
+    // Calculer la durée de traitement et mettre à jour l'étape
+    const durationMinutes = await finalizeStepDuration(currentStep.id);
+
     await prisma.workflowStep.update({
       where: { id: currentStep.id },
       data: {
         status: decision,
-        completedAt: new Date(),
         assigneeId: userId,
+        durationMinutes: durationMinutes ?? undefined,
         comments: comments || `Décision: ${decision === 'APPROVED' ? 'Approuvé' : 'Rejeté'} par ${user.name}`
       }
     });
@@ -235,6 +264,8 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
         where: { id: applicationId },
         data: { status: 'REJECTED' }
       });
+      // Calculer et stocker la durée totale du dossier
+      await finalizeApplicationDuration(applicationId);
       triggerNotification('STEP_REJECTED', applicationId);
       triggerNotification('APPLICATION_REJECTED', applicationId);
       return res.json({ success: true, message: 'Demande rejetée', status: 'REJECTED' });
@@ -250,7 +281,11 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
           stepName: nextStep.stepName,
           role: nextStep.role,
           status: 'PENDING',
-          deadline: new Date(Date.now() + nextStep.durationDays * 24 * 60 * 60 * 1000),
+          deadline: new Date(
+            Date.now() +
+              (nextStep.expectedDurationHours ?? nextStep.durationDays * 24) * 60 * 60 * 1000
+          ),
+          policyStepId: nextStep.policyStepId ?? undefined,
         }
       });
 
@@ -269,6 +304,9 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       where: { id: applicationId },
       data: { status: 'APPROVED' }
     });
+
+    // Calculer et stocker la durée totale du dossier
+    await finalizeApplicationDuration(applicationId);
 
     triggerNotification('APPLICATION_APPROVED', applicationId);
 
