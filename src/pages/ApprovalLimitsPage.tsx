@@ -395,8 +395,8 @@ export const ApprovalLimitsPage: React.FC<Props> = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth size="small" label="Montant minimum (XOF)" type="number"
-                value={form.minAmount}
-                onChange={e => setForm(f => ({ ...f, minAmount: Number(e.target.value) }))}
+                value={form.minAmount || ''}
+                onChange={e => setForm(f => ({ ...f, minAmount: e.target.value === '' ? 0 : parseFloat(e.target.value) }))}
                 helperText="Montant à partir duquel ce rôle intervient"
                 inputProps={{ min: 0 }}
               />
@@ -406,8 +406,8 @@ export const ApprovalLimitsPage: React.FC<Props> = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth size="small" label="Montant maximum (XOF)" type="number"
-                value={form.maxAmount}
-                onChange={e => setForm(f => ({ ...f, maxAmount: Number(e.target.value) }))}
+                value={form.maxAmount || ''}
+                onChange={e => setForm(f => ({ ...f, maxAmount: e.target.value === '' ? 0 : parseFloat(e.target.value) }))}
                 helperText="Montant jusqu'auquel ce rôle peut approuver"
                 inputProps={{ min: 1 }}
               />
@@ -425,9 +425,9 @@ export const ApprovalLimitsPage: React.FC<Props> = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth size="small" label="Durée attendue (minutes)" type="number"
-                value={form.reviewDuration}
-                onChange={e => setForm(f => ({ ...f, reviewDuration: Number(e.target.value) }))}
-                helperText={`≈ ${fmtHours(form.reviewDuration)} — durée normale d'examen`}
+                value={form.reviewDuration || ''}
+                onChange={e => setForm(f => ({ ...f, reviewDuration: e.target.value === '' ? 480 : parseInt(e.target.value, 10) }))}
+                helperText={form.reviewDuration ? `≈ ${fmtHours(form.reviewDuration)} — durée normale d'examen` : ' '}
                 inputProps={{ min: 30, step: 60 }}
               />
             </Grid>
@@ -436,9 +436,9 @@ export const ApprovalLimitsPage: React.FC<Props> = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth size="small" label="Durée maximale (minutes)" type="number"
-                value={form.maxReviewDuration ?? ''}
-                onChange={e => setForm(f => ({ ...f, maxReviewDuration: e.target.value ? Number(e.target.value) : 0 }))}
-                helperText={form.maxReviewDuration ? `≈ ${fmtHours(form.maxReviewDuration)} — au-delà : alerte retard` : 'Laisser 0 = pas de max'}
+                value={form.maxReviewDuration || ''}
+                onChange={e => setForm(f => ({ ...f, maxReviewDuration: e.target.value === '' ? 0 : parseInt(e.target.value, 10) }))}
+                helperText={form.maxReviewDuration ? `≈ ${fmtHours(form.maxReviewDuration)} — au-delà : alerte retard` : 'Laisser vide = pas de maximum'}
                 inputProps={{ min: 0, step: 60 }}
               />
             </Grid>
@@ -447,8 +447,8 @@ export const ApprovalLimitsPage: React.FC<Props> = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth size="small" label="Niveau hiérarchique" type="number"
-                value={form.order}
-                onChange={e => setForm(f => ({ ...f, order: Number(e.target.value) }))}
+                value={form.order || ''}
+                onChange={e => setForm(f => ({ ...f, order: e.target.value === '' ? 1 : parseInt(e.target.value, 10) }))}
                 helperText="1 = premier niveau d'approbation"
                 inputProps={{ min: 1 }}
               />

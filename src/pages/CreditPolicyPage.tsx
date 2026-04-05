@@ -197,7 +197,14 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
 
   const openEditStep = (step: CreditPolicyStep) => {
     setEditingStep(step);
-    setStepForm({ ...step });
+    setStepForm({
+      ...step,
+      order:                Number(step.order),
+      conditionMinAmount:   step.conditionMinAmount !== null ? Number(step.conditionMinAmount) : null,
+      conditionMaxAmount:   step.conditionMaxAmount !== null ? Number(step.conditionMaxAmount) : null,
+      expectedDurationHours: Number(step.expectedDurationHours),
+      maxDurationHours:     Number(step.maxDurationHours),
+    });
     setStepDialogError(null);
     setStepDialogOpen(true);
   };
@@ -579,22 +586,31 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
           <Grid container spacing={2} sx={{ pt: 1 }}>
 
             {/* ── Identification ──────────────────────────────────── */}
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={8}>
               <TextField
-                label="Libellé affiché *" fullWidth size="small" required
-                placeholder="Validation Superviseur"
+                label="Libellé de l'étape *" fullWidth size="small" required
+                placeholder="Ex : Validation Superviseur"
                 value={stepForm.stepLabel}
-                onChange={e => setStepForm(f => ({ ...f, stepLabel: e.target.value }))}
-                helperText="Nom visible par les utilisateurs"
+                onChange={e => {
+                  const label = e.target.value;
+                  const slug = label
+                    .toLowerCase()
+                    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^a-z0-9\s]/g, '')
+                    .trim()
+                    .replace(/\s+/g, '_');
+                  setStepForm(f => ({ ...f, stepLabel: label, stepName: slug }));
+                }}
+                helperText="Nom affiché aux utilisateurs dans le workflow"
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={4}>
               <TextField
-                label="Identifiant (slug) *" fullWidth size="small" required
-                placeholder="supervisor_approval"
+                label="Identifiant généré" fullWidth size="small"
                 value={stepForm.stepName}
-                onChange={e => setStepForm(f => ({ ...f, stepName: e.target.value.toLowerCase().replace(/\s+/g, '_') }))}
-                helperText="Identifiant technique (sans espaces)"
+                InputProps={{ readOnly: true }}
+                sx={{ '& .MuiInputBase-input': { bgcolor: 'grey.50', color: 'text.secondary', fontSize: 12 } }}
+                helperText="Auto-généré depuis le libellé"
               />
             </Grid>
             <Grid item xs={12} sm={4}>
@@ -629,8 +645,8 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
             <Grid item xs={12} sm={3}>
               <TextField
                 label="Ordre" type="number" fullWidth size="small"
-                value={stepForm.order}
-                onChange={e => setStepForm(f => ({ ...f, order: Number(e.target.value) }))}
+                value={stepForm.order || ''}
+                onChange={e => setStepForm(f => ({ ...f, order: e.target.value === '' ? 1 : parseInt(e.target.value, 10) }))}
                 inputProps={{ min: 1 }}
                 helperText="Position dans le flux"
               />
@@ -651,16 +667,24 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
               <TextField
                 label="Montant minimum du crédit (XOF)" type="number" fullWidth size="small"
                 value={stepForm.conditionMinAmount ?? ''}
-                onChange={e => setStepForm(f => ({ ...f, conditionMinAmount: e.target.value ? Number(e.target.value) : null }))}
-                placeholder="Ex : 5 000 000"
+                onChange={e => setStepForm(f => ({
+                  ...f,
+                  conditionMinAmount: e.target.value === '' ? null : parseFloat(e.target.value),
+                }))}
+                inputProps={{ min: 0 }}
+                placeholder="Ex : 5000000"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
                 label="Montant maximum du crédit (XOF)" type="number" fullWidth size="small"
                 value={stepForm.conditionMaxAmount ?? ''}
-                onChange={e => setStepForm(f => ({ ...f, conditionMaxAmount: e.target.value ? Number(e.target.value) : null }))}
-                placeholder="Ex : 50 000 000"
+                onChange={e => setStepForm(f => ({
+                  ...f,
+                  conditionMaxAmount: e.target.value === '' ? null : parseFloat(e.target.value),
+                }))}
+                inputProps={{ min: 0 }}
+                placeholder="Ex : 50000000"
               />
             </Grid>
 
@@ -675,19 +699,25 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
             <Grid item xs={12} sm={6}>
               <TextField
                 label="Durée attendue (heures)" type="number" fullWidth size="small"
-                value={stepForm.expectedDurationHours}
-                onChange={e => setStepForm(f => ({ ...f, expectedDurationHours: Number(e.target.value) }))}
+                value={stepForm.expectedDurationHours || ''}
+                onChange={e => setStepForm(f => ({
+                  ...f,
+                  expectedDurationHours: e.target.value === '' ? 1 : parseInt(e.target.value, 10),
+                }))}
                 inputProps={{ min: 1 }}
-                helperText={`≈ ${fmtHours(stepForm.expectedDurationHours)}`}
+                helperText={stepForm.expectedDurationHours ? `≈ ${fmtHours(stepForm.expectedDurationHours)}` : ' '}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
                 label="Délai maximum (heures)" type="number" fullWidth size="small"
-                value={stepForm.maxDurationHours}
-                onChange={e => setStepForm(f => ({ ...f, maxDurationHours: Number(e.target.value) }))}
+                value={stepForm.maxDurationHours || ''}
+                onChange={e => setStepForm(f => ({
+                  ...f,
+                  maxDurationHours: e.target.value === '' ? 1 : parseInt(e.target.value, 10),
+                }))}
                 inputProps={{ min: 1 }}
-                helperText={`≈ ${fmtHours(stepForm.maxDurationHours)} — au-delà : alerte envoyée`}
+                helperText={stepForm.maxDurationHours ? `≈ ${fmtHours(stepForm.maxDurationHours)} — alerte au-delà` : ' '}
               />
             </Grid>
 
