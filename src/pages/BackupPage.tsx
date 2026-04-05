@@ -112,13 +112,23 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onNavigate }) => {
     headers: { Authorization: `Bearer ${tokenManager.getAccessToken()}` }
   });
 
+  const parseApiError = (err: any, fallback = 'Erreur inattendue'): string => {
+    if (!err.response) return 'Serveur inaccessible — le backend ne répond pas. Vérifiez qu\'il est démarré.';
+    const status = err.response.status;
+    if (status === 502 || status === 503 || status === 504)
+      return `Service temporairement indisponible (${status}) — le serveur est peut-être en cours de redémarrage.`;
+    const data = err.response.data;
+    if (data && typeof data === 'object') return data.error || data.message || fallback;
+    return fallback;
+  };
+
   const fetchBackups = useCallback(async () => {
     setLoading(true);
     try {
       const res = await axios.get(`${API_BASE}/backup/list`, authHeader());
       setBackups(res.data.backups);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur de chargement des sauvegardes');
+      setError(parseApiError(err, 'Erreur de chargement des sauvegardes'));
     } finally {
       setLoading(false);
     }
@@ -168,7 +178,7 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onNavigate }) => {
       fetchBackups();
       fetchLogs();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur lors de la création');
+      setError(parseApiError(err, 'Erreur lors de la création'));
     } finally {
       setCreating(false);
     }
@@ -196,7 +206,7 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onNavigate }) => {
       if (err.response?.status === 428) {
         setError('Code 2FA requis. Entrez votre code.');
       } else {
-        setError(err.response?.data?.error || 'Erreur de restauration');
+        setError(parseApiError(err, 'Erreur de restauration'));
       }
     } finally {
       setRestoring(false);
@@ -211,7 +221,7 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onNavigate }) => {
       setDeleteDialog({ open: false, filename: '' });
       fetchBackups();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur lors de la suppression');
+      setError(parseApiError(err, 'Erreur lors de la suppression'));
     } finally {
       setDeleting(false);
     }
@@ -254,7 +264,7 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onNavigate }) => {
       await fetchNotifyEmails();
       cancelEditEmail();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur lors de l\'enregistrement');
+      setError(parseApiError(err, 'Erreur lors de l\'enregistrement'));
     } finally {
       setEmailSaving(false);
     }
@@ -270,7 +280,7 @@ export const BackupPage: React.FC<BackupPageProps> = ({ onNavigate }) => {
       await axios.delete(`${API_BASE}/backup/notify-emails/${id}`, authHeader());
       fetchNotifyEmails();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur lors de la suppression');
+      setError(parseApiError(err, 'Erreur lors de la suppression'));
     }
   };
 
