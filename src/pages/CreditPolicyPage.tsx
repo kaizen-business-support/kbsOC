@@ -17,7 +17,7 @@ import {
   Visibility as PreviewIcon,
 } from '@mui/icons-material';
 import { useUser } from '../contexts/UserContext';
-import { creditPolicyApi } from '../services/api';
+import { creditPolicyApi, ApiService } from '../services/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -122,6 +122,7 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
   const [previewResult, setPreviewResult] = useState<any>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [creditTypes, setCreditTypes] = useState<{ id: string; name: string }[]>([]);
+  const [approvalLimits, setApprovalLimits] = useState<any[]>([]);
 
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'info' });
 
@@ -146,7 +147,12 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
     if (res.success && res.data) setCreditTypes(res.data);
   }, []);
 
-  useEffect(() => { loadPolicies(); loadCreditTypes(); }, [loadPolicies, loadCreditTypes]);
+  const loadApprovalLimits = useCallback(async () => {
+    const res = await ApiService.getApprovalLimits();
+    if (res.success && res.data) setApprovalLimits(res.data);
+  }, []);
+
+  useEffect(() => { loadPolicies(); loadCreditTypes(); loadApprovalLimits(); }, [loadPolicies, loadCreditTypes, loadApprovalLimits]);
 
   // ── Gestion des politiques ──────────────────────────────────────────────────
 
@@ -432,7 +438,7 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
               <Typography variant="h6">Simuler le circuit de traitement</Typography>
             </Box>
             <Alert severity="info" sx={{ mb: 3 }}>
-              Saisissez un type de crédit et un montant pour visualiser quelles étapes s'appliqueront selon la politique active.
+              Saisissez un type de crédit et un montant pour visualiser le circuit complet — étapes actives, étapes hors condition, et approbateur compétent.
             </Alert>
             <Grid container spacing={2} alignItems="flex-end">
               <Grid item xs={12} sm={5}>
@@ -465,57 +471,130 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
               </Grid>
             </Grid>
 
-            {previewResult && (
-              <Box mt={4}>
-                <Divider sx={{ mb: 2 }} />
-                <Box display="flex" gap={2} mb={2} flexWrap="wrap">
-                  <Chip label={`Politique : ${previewResult.policyName ?? 'Ancien circuit'}`} color="primary" />
-                  <Chip label={`${previewResult.steps?.length} étapes applicables`} />
-                  <Chip label={`~${previewResult.estimatedDurationDays}j estimés`} variant="outlined" />
+            {previewResult && (() => {
+              const amount = Number(previewAmount);
+              // Étapes actives pour ce montant (IDs)
+              const activeStepIds = new Set((previewResult.steps ?? []).map((s: any) => s.stepName));
+              // Circuit complet = allSteps, ou steps si allSteps absent (rétrocompat)
+              const fullSteps: any[] = previewResult.allSteps ?? previewResult.steps ?? [];
+              // Approbateur compétent pour ce montant
+              const approver = approvalLimits
+                .filter((l: any) => l.isActive !== false)
+                .sort((a: any, b: any) => a.order - b.order)
+                .find((l: any) => amount >= Number(l.minAmount) && amount <= Number(l.maxAmount));
+
+              return (
+                <Box mt={4}>
+                  <Divider sx={{ mb: 2 }} />
+
+                  {/* Résumé */}
+                  <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
+                    <Chip
+                      label={previewResult.policyName ? `Politique : ${previewResult.policyName}` : 'Circuit par type de crédit (pas de politique active)'}
+                      color={previewResult.policyName ? 'primary' : 'warning'}
+                    />
+                    <Chip label={`${previewResult.steps?.length ?? 0} étape(s) active(s) pour ce montant`} color="success" variant="outlined" />
+                    <Chip label={`~${previewResult.estimatedDurationDays}j estimés`} variant="outlined" />
+                  </Box>
+
+                  {/* Approbateur pour ce montant */}
+                  {approvalLimits.length > 0 && (
+                    <Box mb={2} p={1.5} sx={{ bgcolor: approver ? 'success.50' : 'warning.50', borderRadius: 2, border: '1px solid', borderColor: approver ? 'success.200' : 'warning.200' }}>
+                      <Typography variant="caption" fontWeight={700} color={approver ? 'success.dark' : 'warning.dark'} sx={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Approbateur compétent pour {Number(previewAmount).toLocaleString('fr-FR')} XOF
+                      </Typography>
+                      {approver ? (
+                        <Typography variant="body2" mt={0.5}>
+                          <strong>{approver.displayName}</strong>
+                          {' '}— plafond autorisé : {Number(approver.minAmount).toLocaleString('fr-FR')} – {Number(approver.maxAmount).toLocaleString('fr-FR')} XOF
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" mt={0.5} color="warning.dark">
+                          Aucun approbateur configuré pour ce montant dans les Limites d'Approbation.
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
+
+                  {/* Circuit complet */}
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                      <TableHead sx={{ bgcolor: 'grey.50' }}>
+                        <TableRow>
+                          <TableCell align="center" width={40}>#</TableCell>
+                          <TableCell>Étape</TableCell>
+                          <TableCell align="center">Type</TableCell>
+                          <TableCell>Responsable</TableCell>
+                          <TableCell align="center">Durée</TableCell>
+                          <TableCell>Condition</TableCell>
+                          <TableCell align="center">Statut</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {fullSteps.map((s: any, i: number) => {
+                          const isActive = activeStepIds.has(s.stepName);
+                          const typeInfo = STEP_TYPES.find(t => t.value === s.stepType);
+                          const roleInfo = ROLES.find(r => r.value === s.role);
+                          return (
+                            <TableRow key={i} sx={{ opacity: isActive ? 1 : 0.45, bgcolor: isActive ? 'inherit' : 'grey.50' }}>
+                              <TableCell align="center">
+                                <Typography variant="caption" fontWeight={700} color={isActive ? 'text.primary' : 'text.disabled'}>
+                                  {s.order ?? i + 1}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={600}>{s.stepLabel}</Typography>
+                              </TableCell>
+                              <TableCell align="center">
+                                {s.stepType
+                                  ? <Chip label={typeInfo?.label ?? s.stepType} size="small"
+                                      sx={{ bgcolor: (typeInfo?.color ?? '#999') + '22', color: typeInfo?.color ?? '#999', opacity: isActive ? 1 : 0.6 }} />
+                                  : <Typography variant="caption" color="text.disabled">—</Typography>}
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color={isActive ? 'text.primary' : 'text.disabled'}>
+                                  {roleInfo?.label ?? s.role}
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="center">
+                                <Typography variant="caption" color={isActive ? 'text.primary' : 'text.disabled'}>
+                                  {fmtHours(s.expectedDurationHours ?? (s.durationDays ?? 1) * 24)}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                {s.isConditional ? (
+                                  <Tooltip title={
+                                    [
+                                      s.conditionMinAmount != null ? `Min : ${Number(s.conditionMinAmount).toLocaleString('fr-FR')} XOF` : null,
+                                      s.conditionMaxAmount != null ? `Max : ${Number(s.conditionMaxAmount).toLocaleString('fr-FR')} XOF` : null,
+                                    ].filter(Boolean).join(' / ') || 'Condition'
+                                  }>
+                                    <Chip
+                                      label={[
+                                        s.conditionMinAmount != null ? `≥ ${fmt(s.conditionMinAmount)}` : null,
+                                        s.conditionMaxAmount != null ? `≤ ${fmt(s.conditionMaxAmount)}` : null,
+                                      ].filter(Boolean).join(' ')}
+                                      size="small" color="warning" variant="outlined"
+                                    />
+                                  </Tooltip>
+                                ) : (
+                                  <Chip label="Toujours active" size="small" color="success" variant="outlined" />
+                                )}
+                              </TableCell>
+                              <TableCell align="center">
+                                {isActive
+                                  ? <Chip label="S'applique" size="small" color="success" />
+                                  : <Chip label="Hors condition" size="small" variant="outlined" />}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
                 </Box>
-                <TableContainer component={Paper} variant="outlined">
-                  <Table size="small">
-                    <TableHead sx={{ bgcolor: 'grey.50' }}>
-                      <TableRow>
-                        <TableCell>#</TableCell>
-                        <TableCell>Étape</TableCell>
-                        <TableCell>Type</TableCell>
-                        <TableCell>Profil</TableCell>
-                        <TableCell>Durée estimée</TableCell>
-                        <TableCell>Conditionnel</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {previewResult.steps?.map((s: any, i: number) => {
-                        const typeInfo = STEP_TYPES.find(t => t.value === s.stepType);
-                        const roleInfo = ROLES.find(r => r.value === s.role);
-                        return (
-                          <TableRow key={i}>
-                            <TableCell>{s.order ?? i + 1}</TableCell>
-                            <TableCell>
-                              <Typography variant="body2" fontWeight={600}>{s.stepLabel}</Typography>
-                            </TableCell>
-                            <TableCell>
-                              {s.stepType ? (
-                                <Chip label={typeInfo?.label ?? s.stepType} size="small"
-                                  sx={{ bgcolor: (typeInfo?.color ?? '#999') + '22', color: typeInfo?.color ?? '#999' }} />
-                              ) : '—'}
-                            </TableCell>
-                            <TableCell>{roleInfo?.label ?? s.role}</TableCell>
-                            <TableCell>{fmtHours(s.expectedDurationHours ?? s.durationDays * 24)}</TableCell>
-                            <TableCell>
-                              {s.isConditional
-                                ? <Chip label="Conditionnel" size="small" color="warning" variant="outlined" />
-                                : <Chip label="Toujours" size="small" color="success" variant="outlined" />}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Box>
-            )}
+              );
+            })()}
           </CardContent>
         </Card>
       )}
