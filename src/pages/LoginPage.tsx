@@ -220,7 +220,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
   const completeLogin = (accessToken: string, refreshToken: string, user: any) => {
     tokenManager.setTokens(accessToken, refreshToken);
-    const roleMapping: Record<string, string> = { ADMIN: 'admin', MANAGEMENT: 'management', BRANCH_MANAGER: 'branch_manager', ACCOUNT_MANAGER: 'account_manager', CREDIT_ANALYST: 'credit_analyst', CREDIT_COMMITTEE: 'credit_committee' };
+    const roleMapping: Record<string, string> = { ADMIN: 'admin', MANAGEMENT: 'management', BRANCH_MANAGER: 'branch_manager', ACCOUNT_MANAGER: 'account_manager', CREDIT_ANALYST: 'credit_analyst', ANALYST_SUPERVISOR: 'analyst_supervisor', CREDIT_COMMITTEE: 'credit_committee' };
     if (dispatch) dispatch({ type: 'LOGIN_SUCCESS', payload: { id: user.id, email: user.email, name: user.name, role: roleMapping[user.role] || 'account_manager', department: user.department, jobTitle: user.jobTitle, permissions: user.permissions, lastLogin: new Date(user.lastLogin || Date.now()), isActive: true, twoFactorEnabled: user.twoFactorEnabled } });
     onLogin();
   };

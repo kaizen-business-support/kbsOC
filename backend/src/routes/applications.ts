@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
 import { triggerNotification } from '../services/notificationService';
+import { createWorkflowStepsForApplication } from '../services/workflowService';
 
 const router = Router();
 
@@ -225,10 +226,7 @@ router.post('/', async (req: Request, res: Response) => {
       }
     });
 
-    // Create workflow steps
-    const now = new Date();
-
-    // Step 1: Application created (always completed)
+    // Étape "dossier créé" — toujours complétée immédiatement par le créateur
     await prisma.workflowStep.create({
       data: {
         applicationId: application.id,
@@ -236,58 +234,18 @@ router.post('/', async (req: Request, res: Response) => {
         role: 'ACCOUNT_MANAGER',
         assigneeId: createdBy,
         status: 'COMPLETED',
-        completedAt: now,
-        comments: 'Demande de crédit soumise'
-      }
+        completedAt: new Date(),
+        comments: 'Demande de crédit soumise',
+      },
     });
 
-    // Step 2+: Use credit type workflow if configured, otherwise fallback
+    // Construction dynamique du circuit via la politique active (ou fallback CreditTypeWorkflowStep)
     if (application.creditTypeId) {
-      const creditTypeSteps = await prisma.creditTypeWorkflowStep.findMany({
-        where: { creditTypeId: application.creditTypeId },
-        orderBy: { order: 'asc' }
-      });
-
-      if (creditTypeSteps.length > 0) {
-        // Create first step as PENDING
-        const firstStep = creditTypeSteps[0];
-        await prisma.workflowStep.create({
-          data: {
-            applicationId: application.id,
-            stepName: firstStep.stepName,
-            role: firstStep.role as any,
-            assigneeId: firstStep.role === 'CREDIT_ANALYST' ? (assignedAnalystId || null) : null,
-            status: 'PENDING',
-            deadline: new Date(now.getTime() + firstStep.durationDays * 24 * 60 * 60 * 1000)
-          }
-        });
-      } else {
-        // Credit type exists but no workflow configured → fallback
-        if (assignedAnalystId) {
-          await prisma.workflowStep.create({
-            data: {
-              applicationId: application.id,
-              stepName: 'credit_analysis',
-              role: 'CREDIT_ANALYST',
-              assigneeId: assignedAnalystId,
-              status: 'PENDING'
-            }
-          });
-        }
-      }
-    } else {
-      // No credit type → legacy fallback
-      if (assignedAnalystId) {
-        await prisma.workflowStep.create({
-          data: {
-            applicationId: application.id,
-            stepName: 'credit_analysis',
-            role: 'CREDIT_ANALYST',
-            assigneeId: assignedAnalystId,
-            status: 'PENDING'
-          }
-        });
-      }
+      await createWorkflowStepsForApplication(
+        application.id,
+        application.creditTypeId,
+        Number(amount)
+      );
     }
 
     // Trigger notification (non-blocking)
