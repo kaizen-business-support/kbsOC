@@ -530,38 +530,20 @@ export async function canApproveStep(
 
   const amount = Number(application.amount);
 
-  // Vérifier les limites selon la source (politique ou ancien circuit)
-  if (step.policyStepId) {
-    const policyStep = await prisma.creditPolicyStep.findUnique({
-      where: { id: step.policyStepId },
-      select: { approvalMinAmount: true, approvalMaxAmount: true, stepType: true },
-    });
+  // Vérifier les limites d'approbation depuis ApprovalLimit (source unique de vérité,
+  // qu'il y ait une politique active ou non)
+  const limit = await prisma.approvalLimit.findUnique({
+    where: { role: user.role as UserRole },
+  });
 
-    if (policyStep?.approvalMinAmount != null && policyStep?.approvalMaxAmount != null) {
-      const min = Number(policyStep.approvalMinAmount);
-      const max = Number(policyStep.approvalMaxAmount);
-      if (amount < min || amount > max) {
-        return {
-          allowed: false,
-          reason: `Montant ${amount.toLocaleString()} XOF hors plafond autorisé pour ce profil (${min.toLocaleString()} – ${max.toLocaleString()} XOF)`,
-        };
-      }
-    }
-  } else {
-    // Rétrocompatibilité : ApprovalLimit
-    const limit = await prisma.approvalLimit.findUnique({
-      where: { role: user.role as UserRole },
-    });
-
-    if (limit) {
-      const min = Number(limit.minAmount);
-      const max = Number(limit.maxAmount);
-      if (amount < min || amount > max) {
-        return {
-          allowed: false,
-          reason: `Montant ${amount.toLocaleString()} XOF hors limite autorisée pour ce rôle (${min.toLocaleString()} – ${max.toLocaleString()} XOF)`,
-        };
-      }
+  if (limit) {
+    const min = Number(limit.minAmount);
+    const max = Number(limit.maxAmount);
+    if (amount < min || amount > max) {
+      return {
+        allowed: false,
+        reason: `Montant ${amount.toLocaleString()} XOF hors limite autorisée pour ce rôle (${min.toLocaleString()} – ${max.toLocaleString()} XOF)`,
+      };
     }
   }
 

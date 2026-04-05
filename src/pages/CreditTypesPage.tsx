@@ -98,10 +98,12 @@ interface NewStepFormData {
 }
 
 const ROLES = [
-  { value: 'CREDIT_ANALYST', label: 'Analyste de Crédit' },
-  { value: 'BRANCH_MANAGER', label: 'Directeur d\'Agence' },
-  { value: 'CREDIT_COMMITTEE', label: 'Comité de Crédit' },
-  { value: 'MANAGEMENT', label: 'Direction Générale' },
+  { value: 'ACCOUNT_MANAGER',    label: 'Chargé de Compte' },
+  { value: 'CREDIT_ANALYST',     label: 'Analyste Crédit' },
+  { value: 'ANALYST_SUPERVISOR', label: 'Superviseur Analyste' },
+  { value: 'BRANCH_MANAGER',     label: 'Directeur d\'Agence' },
+  { value: 'CREDIT_COMMITTEE',   label: 'Comité de Crédit' },
+  { value: 'MANAGEMENT',         label: 'Direction Générale' },
 ];
 
 const emptyFormData: CreditTypeFormData = {
@@ -763,6 +765,10 @@ export const CreditTypesPage: React.FC = () => {
           {/* Tab 1: Workflow Configuration */}
           {activeTab === 1 && selectedCreditType && (
             <Box sx={{ mt: 1 }}>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                Ces étapes sont utilisées uniquement si <strong>aucune Politique de Crédit active</strong> n'est configurée.
+                Dès qu'une politique est active, c'est elle qui définit le circuit — ces étapes sont ignorées.
+              </Alert>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 Configurez les étapes du workflow pour ce type de crédit. L'étape "Demande créée" est toujours incluse automatiquement.
               </Typography>
