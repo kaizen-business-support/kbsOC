@@ -119,15 +119,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const configItems = canViewConfiguration ? [
-    { id: 'user-management'   as PageType, label: t('navigation.userManagement'),   icon: UserManagementIcon },
-    { id: 'credit-types'      as PageType, label: 'Types de Crédit',                icon: BusinessIcon },
-    { id: 'bank-holidays-admin' as PageType, label: 'Jours Fériés',                 icon: HolidayIcon },
-    { id: 'backup'            as PageType, label: 'Sauvegarde',                     icon: BackupIcon },
-    { id: 'announcements'     as PageType, label: "Notes d'information",            icon: CampaignIcon },
-    { id: 'notifications-config' as PageType, label: 'Notifications',              icon: NotificationsActiveIcon },
+    { id: 'user-management'      as PageType, label: t('navigation.userManagement'), icon: UserManagementIcon },
+    { id: 'bank-holidays-admin'  as PageType, label: 'Jours Fériés',                icon: HolidayIcon },
+    { id: 'backup'               as PageType, label: 'Sauvegarde',                  icon: BackupIcon },
+    { id: 'announcements'        as PageType, label: "Notes d'information",         icon: CampaignIcon },
+    { id: 'notifications-config' as PageType, label: 'Notifications',               icon: NotificationsActiveIcon },
   ] : [];
 
-  const isPolicyActive = currentPage === 'credit-policy' || currentPage === 'credit-policy-treatment' || currentPage === 'approval-limits';
+  const isPolicyActive = currentPage === 'credit-types' || currentPage === 'credit-policy' || currentPage === 'approval-limits';
 
   // ── Shared item styles ──────────────────────────────────────────────────────
 
@@ -487,16 +486,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     </ListItemButton>
                     <Collapse in={policyExpanded} timeout="auto" unmountOnExit>
                       <List disablePadding sx={{ px: 0.5 }}>
-                        <SubNavItem id="credit-policy" label="Étapes de crédit" icon={StepsIcon} />
-                        <SubNavItem id="credit-policy-treatment" label="Traitement" icon={TreatmentIcon} />
+                        <SubNavItem id="credit-types"   label="Types de crédit"        icon={BusinessIcon} />
+                        <SubNavItem id="credit-policy"  label="Traitement"             icon={TreatmentIcon} />
                         <SubNavItem id="approval-limits" label="Limites d'approbation" icon={LimitsIcon} />
                       </List>
                     </Collapse>
                   </>
                 ) : (
                   <>
-                    <SubNavItem id="credit-policy" label="Étapes de crédit" icon={StepsIcon} />
-                    <SubNavItem id="credit-policy-treatment" label="Traitement" icon={TreatmentIcon} />
+                    <SubNavItem id="credit-types"   label="Types de crédit"        icon={BusinessIcon} />
+                    <SubNavItem id="credit-policy"  label="Traitement"             icon={TreatmentIcon} />
                     <SubNavItem id="approval-limits" label="Limites d'approbation" icon={LimitsIcon} />
                   </>
                 )}

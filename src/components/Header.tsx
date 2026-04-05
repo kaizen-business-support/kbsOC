@@ -64,14 +64,13 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
     'user-management': t('navigation.userManagement'),
     'approval-limits': 'Limites d\'Approbation',
     'credit-simulation': 'Simulateur de Crédit',
-    'credit-types': 'Types de Crédit',
+    'credit-types': 'Politique de Crédit',
     profile: 'Mon Profil',
     backup: 'Sauvegarde & Restauration',
     announcements: 'Notes d\'information',
     'notifications-config': 'Configuration Notifications',
     dispatching: 'Dispatching des Demandes',
-    'credit-policy': 'Politique de Crédit — Étapes',
-    'credit-policy-treatment': 'Politique de Crédit — Traitement',
+    'credit-policy': 'Politique de Crédit',
   };
 
   const handleUserMenuClick = (event: React.MouseEvent<HTMLElement>) => {

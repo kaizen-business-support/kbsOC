@@ -34,15 +34,13 @@ const WorkflowPage          = lazy(() => import('./pages/WorkflowPage').then(m =
 const AnalyticsDashboardPage = lazy(() => import('./pages/AnalyticsDashboardPage').then(m => ({ default: m.AnalyticsDashboardPage })));
 const BankHolidaysAdminPage  = lazy(() => import('./pages/BankHolidaysAdminPage').then(m => ({ default: m.BankHolidaysAdminPage })));
 const UserManagementPage    = lazy(() => import('./pages/UserManagementPage').then(m => ({ default: m.UserManagementPage })));
-const ApprovalLimitsPage    = lazy(() => import('./pages/ApprovalLimitsPage').then(m => ({ default: m.ApprovalLimitsPage })));
 const CreditSimulationPage  = lazy(() => import('./pages/CreditSimulationPage').then(m => ({ default: m.CreditSimulationPage })));
-const CreditTypesPage       = lazy(() => import('./pages/CreditTypesPage').then(m => ({ default: m.CreditTypesPage })));
 const ProfilePage           = lazy(() => import('./pages/ProfilePage').then(m => ({ default: m.ProfilePage })));
 const BackupPage            = lazy(() => import('./pages/BackupPage').then(m => ({ default: m.BackupPage })));
 const AnnouncementsAdminPage = lazy(() => import('./pages/AnnouncementsAdminPage'));
 const NotificationsConfigPage = lazy(() => import('./pages/NotificationsConfigPage'));
 const DispatchingPage        = lazy(() => import('./pages/DispatchingPage').then(m => ({ default: m.DispatchingPage })));
-const CreditPolicyPage       = lazy(() => import('./pages/CreditPolicyPage').then(m => ({ default: m.CreditPolicyPage })));
+const CreditManagementPage   = lazy(() => import('./pages/CreditManagementPage').then(m => ({ default: m.CreditManagementPage })));
 
 // ── Thin branded progress bar while chunk loads ────────────────────────────
 const PageLoader = () => (
@@ -314,17 +312,13 @@ const AppContent: React.FC = () => {
                 path="/user-management" 
                 element={<UserManagementPage onNavigate={handlePageChange} />} 
               />
-              <Route 
-                path="/approval-limits" 
-                element={<ApprovalLimitsPage onNavigate={handlePageChange} />} 
+              <Route
+                path="/credit-types"
+                element={<CreditManagementPage initialTab={0} onNavigate={handlePageChange} />}
               />
               <Route
                 path="/credit-simulation"
                 element={<CreditSimulationPage onNavigate={handlePageChange} />}
-              />
-              <Route
-                path="/credit-types"
-                element={<CreditTypesPage />}
               />
               <Route
                 path="/profile"
@@ -348,11 +342,11 @@ const AppContent: React.FC = () => {
               />
               <Route
                 path="/credit-policy"
-                element={<CreditPolicyPage initialTab={0} />}
+                element={<CreditManagementPage initialTab={1} onNavigate={handlePageChange} />}
               />
               <Route
-                path="/credit-policy-treatment"
-                element={<CreditPolicyPage initialTab={1} />}
+                path="/approval-limits"
+                element={<CreditManagementPage initialTab={2} onNavigate={handlePageChange} />}
               />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

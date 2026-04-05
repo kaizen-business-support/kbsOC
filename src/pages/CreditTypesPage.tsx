@@ -25,23 +25,25 @@ import {
   CircularProgress,
   Tabs,
   Tab,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Tooltip
+  Checkbox,
+  Tooltip,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   Business as BusinessIcon,
-  ArrowUpward,
-  ArrowDownward,
-  AccountTree as WorkflowIcon
+  AccountTree as WorkflowIcon,
 } from '@mui/icons-material';
 import { useUser } from '../contexts/UserContext';
-import { ApiService } from '../services/api';
+import { ApiService, creditPolicyApi } from '../services/api';
+
+const STEP_TYPES: Record<string, { label: string; color: string }> = {
+  DISPATCH:  { label: 'Dispatch',    color: '#2196f3' },
+  ANALYSIS:  { label: 'Analyse',     color: '#ff9800' },
+  APPROVAL:  { label: 'Approbation', color: '#4caf50' },
+  COMMITTEE: { label: 'Comité',      color: '#9c27b0' },
+};
 
 interface CreditType {
   id: string;
@@ -145,13 +147,11 @@ export const CreditTypesPage: React.FC = () => {
   // Dialog tabs
   const [activeTab, setActiveTab] = useState(0);
 
-  // Workflow steps state
-  const [workflowSteps, setWorkflowSteps] = useState<WorkflowStepConfig[]>([]);
-  const [workflowLoading, setWorkflowLoading] = useState(false);
-  const [workflowError, setWorkflowError] = useState<string | null>(null);
-  const [showAddStepForm, setShowAddStepForm] = useState(false);
-  const [newStepForm, setNewStepForm] = useState<NewStepFormData>(emptyStepForm);
-  const [addStepError, setAddStepError] = useState<string | null>(null);
+  // Politique de crédit — checklist du workflow
+  const [activePolicyId, setActivePolicyId] = useState<string | null>(null);
+  const [activePolicySteps, setActivePolicySteps] = useState<any[]>([]);
+  const [policyStepsLoading, setPolicyStepsLoading] = useState(false);
+  const [stepsToggling, setStepsToggling] = useState<Set<string>>(new Set());
 
   // Check if user has write access (only ADMIN can write, MANAGEMENT can only read)
   const hasWriteAccess = userState.currentUser?.role === 'admin';
@@ -180,29 +180,59 @@ export const CreditTypesPage: React.FC = () => {
     }
   };
 
-  const loadWorkflowSteps = async (creditTypeId: string) => {
-    setWorkflowLoading(true);
-    setWorkflowError(null);
-    try {
-      const response = await ApiService.getCreditTypeWorkflowSteps(creditTypeId);
-      if (response.success) {
-        setWorkflowSteps(response.data || []);
+  const loadActivePolicySteps = async () => {
+    setPolicyStepsLoading(true);
+    const res = await creditPolicyApi.getPolicies();
+    if (res.success && res.data) {
+      const active = (res.data as any[]).find((p: any) => p.isActive);
+      if (active) {
+        setActivePolicyId(active.id);
+        setActivePolicySteps(active.steps ?? []);
       } else {
-        setWorkflowError('Erreur lors du chargement des étapes');
+        setActivePolicyId(null);
+        setActivePolicySteps([]);
       }
-    } catch (err: any) {
-      setWorkflowError(err.message || 'Erreur lors du chargement des étapes');
-    } finally {
-      setWorkflowLoading(false);
     }
+    setPolicyStepsLoading(false);
+  };
+
+  const handleTogglePolicyStep = async (step: any, checked: boolean) => {
+    if (!selectedCreditType || !activePolicyId) return;
+    setStepsToggling(prev => new Set(prev).add(step.id));
+
+    let newCreditTypeIds: string[];
+    if (checked) {
+      // Ajouter ce type de crédit — si déjà vide (= tous), rester vide
+      newCreditTypeIds = step.creditTypeIds.length === 0
+        ? []
+        : [...step.creditTypeIds, selectedCreditType.id];
+    } else {
+      // Retirer ce type de crédit
+      if (step.creditTypeIds.length === 0) {
+        // Étape s'appliquait à tous → exclure ce type explicitement
+        newCreditTypeIds = creditTypes
+          .filter(ct => ct.id !== selectedCreditType.id)
+          .map(ct => ct.id);
+      } else {
+        newCreditTypeIds = step.creditTypeIds.filter((id: string) => id !== selectedCreditType.id);
+      }
+    }
+
+    const res = await creditPolicyApi.updateStep(activePolicyId, step.id, { creditTypeIds: newCreditTypeIds });
+    if (res.success) {
+      setActivePolicySteps(prev =>
+        prev.map(s => s.id === step.id ? { ...s, creditTypeIds: newCreditTypeIds } : s)
+      );
+    } else {
+      setError('Erreur lors de la mise à jour des étapes applicables');
+    }
+    setStepsToggling(prev => { const n = new Set(prev); n.delete(step.id); return n; });
   };
 
   const handleOpenDialog = (creditType?: CreditType) => {
     setActiveTab(0);
-    setShowAddStepForm(false);
-    setNewStepForm(emptyStepForm);
-    setAddStepError(null);
-    setWorkflowSteps([]);
+    setActivePolicySteps([]);
+    setActivePolicyId(null);
 
     if (creditType) {
       setEditMode(true);
@@ -219,10 +249,6 @@ export const CreditTypesPage: React.FC = () => {
         requiresCollateral: creditType.requiresCollateral,
         isActive: creditType.isActive
       });
-      // Pre-load workflow steps from the credit type data
-      if (creditType.workflowSteps) {
-        setWorkflowSteps(creditType.workflowSteps);
-      }
     } else {
       setEditMode(false);
       setSelectedCreditType(null);
@@ -234,9 +260,8 @@ export const CreditTypesPage: React.FC = () => {
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
-    // Load workflow steps when switching to the workflow tab for an existing credit type
-    if (newValue === 1 && selectedCreditType && workflowSteps.length === 0) {
-      loadWorkflowSteps(selectedCreditType.id);
+    if (newValue === 1 && selectedCreditType && activePolicySteps.length === 0) {
+      loadActivePolicySteps();
     }
   };
 
@@ -247,9 +272,8 @@ export const CreditTypesPage: React.FC = () => {
     setFormData(emptyFormData);
     setFormErrors({});
     setActiveTab(0);
-    setWorkflowSteps([]);
-    setShowAddStepForm(false);
-    setNewStepForm(emptyStepForm);
+    setActivePolicySteps([]);
+    setActivePolicyId(null);
   };
 
   const validateForm = (): boolean => {
@@ -385,88 +409,6 @@ export const CreditTypesPage: React.FC = () => {
     }
   };
 
-  // ── Workflow Step Handlers ──────────────────────────────────────────────────
-
-  const handleAddStep = async () => {
-    if (!selectedCreditType) return;
-    setAddStepError(null);
-
-    if (!newStepForm.stepName.trim() || !newStepForm.stepLabel.trim() || !newStepForm.role) {
-      setAddStepError('Le nom technique, le libellé et le rôle sont obligatoires');
-      return;
-    }
-
-    try {
-      const nextOrder = workflowSteps.length > 0 ? Math.max(...workflowSteps.map(s => s.order)) + 1 : 1;
-      const response = await ApiService.createCreditTypeWorkflowStep(selectedCreditType.id, {
-        stepName: newStepForm.stepName.trim(),
-        stepLabel: newStepForm.stepLabel.trim(),
-        role: newStepForm.role,
-        order: nextOrder,
-        durationDays: parseInt(newStepForm.durationDays) || 3,
-        description: newStepForm.description.trim() || undefined,
-        conditionMinAmount: newStepForm.conditionMinAmount ? parseFloat(newStepForm.conditionMinAmount) : null,
-        conditionMaxAmount: newStepForm.conditionMaxAmount ? parseFloat(newStepForm.conditionMaxAmount) : null,
-      });
-
-      if (response.success) {
-        setWorkflowSteps(prev => [...prev, response.data]);
-        setNewStepForm(emptyStepForm);
-        setShowAddStepForm(false);
-      } else {
-        setAddStepError(response.error || 'Erreur lors de l\'ajout de l\'étape');
-      }
-    } catch (err: any) {
-      setAddStepError(err.message || 'Erreur lors de l\'ajout de l\'étape');
-    }
-  };
-
-  const handleDeleteStep = async (stepId: string) => {
-    if (!selectedCreditType) return;
-    try {
-      const response = await ApiService.deleteCreditTypeWorkflowStep(selectedCreditType.id, stepId);
-      if (response.success) {
-        // Reload fresh order from server
-        await loadWorkflowSteps(selectedCreditType.id);
-      }
-    } catch (err: any) {
-      setWorkflowError(err.message || 'Erreur lors de la suppression');
-    }
-  };
-
-  const handleMoveStep = async (stepId: string, direction: 'up' | 'down') => {
-    if (!selectedCreditType) return;
-
-    const sortedSteps = [...workflowSteps].sort((a, b) => a.order - b.order);
-    const idx = sortedSteps.findIndex(s => s.id === stepId);
-    if (idx < 0) return;
-    if (direction === 'up' && idx === 0) return;
-    if (direction === 'down' && idx === sortedSteps.length - 1) return;
-
-    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-    const updatedSteps = [...sortedSteps];
-    const tempOrder = updatedSteps[idx].order;
-    updatedSteps[idx] = { ...updatedSteps[idx], order: updatedSteps[swapIdx].order };
-    updatedSteps[swapIdx] = { ...updatedSteps[swapIdx], order: tempOrder };
-
-    // Optimistic update
-    setWorkflowSteps(updatedSteps);
-
-    try {
-      await ApiService.reorderCreditTypeWorkflowSteps(
-        selectedCreditType.id,
-        updatedSteps.map(s => ({ id: s.id, order: s.order }))
-      );
-    } catch (err: any) {
-      // Revert on error
-      setWorkflowError(err.message || 'Erreur lors du réordonnancement');
-      await loadWorkflowSteps(selectedCreditType.id);
-    }
-  };
-
-  const getRoleLabel = (role: string) => {
-    return ROLES.find(r => r.value === role)?.label || role;
-  };
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -762,244 +704,88 @@ export const CreditTypesPage: React.FC = () => {
             </Grid>
           )}
 
-          {/* Tab 1: Workflow Configuration */}
+          {/* Tab 1: Workflow — Checklist de la politique de crédit */}
           {activeTab === 1 && selectedCreditType && (
             <Box sx={{ mt: 1 }}>
-              <Alert severity="warning" sx={{ mb: 2 }}>
-                Ces étapes sont utilisées uniquement si <strong>aucune Politique de Crédit active</strong> n'est configurée.
-                Dès qu'une politique est active, c'est elle qui définit le circuit — ces étapes sont ignorées.
-              </Alert>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Configurez les étapes du workflow pour ce type de crédit. L'étape "Demande créée" est toujours incluse automatiquement.
+                Sélectionnez les étapes de traitement applicables à ce type de crédit parmi celles
+                définies dans la <strong>Politique de Crédit active</strong>. Une étape décochée
+                ne s'appliquera pas aux demandes de ce type de crédit.
               </Typography>
 
-              {workflowError && (
-                <Alert severity="error" sx={{ mb: 2 }} onClose={() => setWorkflowError(null)}>
-                  {workflowError}
-                </Alert>
-              )}
-
-              {workflowLoading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              {policyStepsLoading ? (
+                <Box display="flex" justifyContent="center" py={4}>
                   <CircularProgress size={24} />
                 </Box>
+              ) : activePolicySteps.length === 0 ? (
+                <Alert severity="info">
+                  Aucune politique de crédit active avec des étapes configurées.
+                  Définissez d'abord les étapes dans l'onglet <strong>Traitement</strong>.
+                </Alert>
               ) : (
                 <>
-                  <TableContainer component={Paper} variant="outlined" sx={{ mb: 2, overflowX: 'auto' }}>
+                  <TableContainer component={Paper} variant="outlined">
                     <Table size="small">
-                      <TableHead>
+                      <TableHead sx={{ bgcolor: 'grey.50' }}>
                         <TableRow>
-                          <TableCell><strong>Ordre</strong></TableCell>
-                          <TableCell><strong>Nom de l'étape</strong></TableCell>
-                          <TableCell><strong>Rôle</strong></TableCell>
-                          <TableCell><strong>Durée (jours)</strong></TableCell>
-                          {hasWriteAccess && <TableCell align="center"><strong>Actions</strong></TableCell>}
+                          <TableCell padding="checkbox" />
+                          <TableCell align="center" width={40}>#</TableCell>
+                          <TableCell>Étape de traitement</TableCell>
+                          <TableCell align="center">Type</TableCell>
+                          <TableCell>Responsable</TableCell>
+                          <TableCell align="center">SLA</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {workflowSteps.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={hasWriteAccess ? 5 : 4} align="center">
-                              <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-                                Aucune étape configurée — le workflow par défaut (basé sur les montants) sera utilisé.
-                              </Typography>
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          [...workflowSteps]
-                            .sort((a, b) => a.order - b.order)
-                            .map((step, idx, arr) => (
-                              <TableRow key={step.id} hover>
-                                <TableCell>
-                                  <Chip label={step.order} size="small" color="default" />
-                                </TableCell>
-                                <TableCell>
-                                  <Typography variant="body2" fontWeight={600}>{step.stepLabel}</Typography>
-                                  <Typography variant="caption" color="text.secondary">{step.stepName}</Typography>
-                                </TableCell>
-                                <TableCell>
-                                  <Chip label={getRoleLabel(step.role)} size="small" color="primary" variant="outlined" />
-                                </TableCell>
-                                <TableCell>
-                                  {step.durationDays} j
-                                  {(step.conditionMinAmount || step.conditionMaxAmount) && (
-                                    <Typography variant="caption" color="warning.main" display="block">
-                                      {step.conditionMinAmount ? `≥ ${Number(step.conditionMinAmount).toLocaleString('fr-FR')}` : ''}
-                                      {step.conditionMinAmount && step.conditionMaxAmount ? ' · ' : ''}
-                                      {step.conditionMaxAmount ? `≤ ${Number(step.conditionMaxAmount).toLocaleString('fr-FR')}` : ''}
-                                      {' XOF'}
-                                    </Typography>
-                                  )}
-                                </TableCell>
-                                {hasWriteAccess && (
-                                  <TableCell align="center">
-                                    <Tooltip title="Monter">
-                                      <span>
-                                        <IconButton
-                                          size="small"
-                                          onClick={() => handleMoveStep(step.id, 'up')}
-                                          disabled={idx === 0}
-                                        >
-                                          <ArrowUpward fontSize="small" />
-                                        </IconButton>
-                                      </span>
-                                    </Tooltip>
-                                    <Tooltip title="Descendre">
-                                      <span>
-                                        <IconButton
-                                          size="small"
-                                          onClick={() => handleMoveStep(step.id, 'down')}
-                                          disabled={idx === arr.length - 1}
-                                        >
-                                          <ArrowDownward fontSize="small" />
-                                        </IconButton>
-                                      </span>
-                                    </Tooltip>
-                                    <Tooltip title="Supprimer">
-                                      <IconButton
-                                        size="small"
-                                        color="error"
-                                        onClick={() => handleDeleteStep(step.id)}
-                                      >
-                                        <DeleteIcon fontSize="small" />
-                                      </IconButton>
-                                    </Tooltip>
-                                  </TableCell>
-                                )}
-                              </TableRow>
-                            ))
-                        )}
+                        {[...activePolicySteps].sort((a, b) => a.order - b.order).map((step) => {
+                          const isApplicable = step.creditTypeIds.length === 0
+                            || step.creditTypeIds.includes(selectedCreditType.id);
+                          const isToggling = stepsToggling.has(step.id);
+                          const typeInfo = STEP_TYPES[step.stepType];
+                          const roleInfo = ROLES.find(r => r.value === step.assignedRole);
+                          return (
+                            <TableRow key={step.id} hover sx={{ opacity: isApplicable ? 1 : 0.45 }}>
+                              <TableCell padding="checkbox">
+                                {isToggling
+                                  ? <CircularProgress size={18} sx={{ m: '9px' }} />
+                                  : (
+                                    <Checkbox
+                                      checked={isApplicable}
+                                      disabled={!hasWriteAccess}
+                                      onChange={e => handleTogglePolicyStep(step, e.target.checked)}
+                                      size="small"
+                                    />
+                                  )
+                                }
+                              </TableCell>
+                              <TableCell align="center">
+                                <Typography variant="caption" fontWeight={700}>{step.order}</Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={600}>{step.stepLabel}</Typography>
+                                <Typography variant="caption" color="text.secondary">{step.stepName}</Typography>
+                              </TableCell>
+                              <TableCell align="center">
+                                {typeInfo
+                                  ? <Chip label={typeInfo.label} size="small"
+                                      sx={{ bgcolor: typeInfo.color + '22', color: typeInfo.color, fontWeight: 600, fontSize: 11 }} />
+                                  : <Typography variant="caption" color="text.disabled">—</Typography>
+                                }
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2">{roleInfo?.label ?? step.assignedRole}</Typography>
+                              </TableCell>
+                              <TableCell align="center">
+                                <Typography variant="caption" color="text.secondary">
+                                  {Math.ceil(step.expectedDurationHours / 24)}j
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </TableContainer>
-
-                  {/* Add Step Form */}
-                  {hasWriteAccess && (
-                    <>
-                      {!showAddStepForm ? (
-                        <Button
-                          variant="outlined"
-                          startIcon={<AddIcon />}
-                          onClick={() => setShowAddStepForm(true)}
-                          size="small"
-                        >
-                          Ajouter une étape
-                        </Button>
-                      ) : (
-                        <Paper variant="outlined" sx={{ p: 2 }}>
-                          <Typography variant="subtitle2" sx={{ mb: 2 }}>Nouvelle étape</Typography>
-                          {addStepError && (
-                            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setAddStepError(null)}>
-                              {addStepError}
-                            </Alert>
-                          )}
-                          <Grid container spacing={2}>
-                            <Grid item xs={12} md={6}>
-                              <TextField
-                                fullWidth
-                                size="small"
-                                label="Libellé de l'étape"
-                                value={newStepForm.stepLabel}
-                                onChange={(e) => setNewStepForm(prev => ({ ...prev, stepLabel: e.target.value }))}
-                                required
-                              />
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                              <TextField
-                                fullWidth
-                                size="small"
-                                label="Nom technique (snake_case)"
-                                value={newStepForm.stepName}
-                                onChange={(e) => setNewStepForm(prev => ({ ...prev, stepName: e.target.value.replace(/\s+/g, '_').toLowerCase() }))}
-                                required
-                                helperText="Ex: credit_analysis"
-                              />
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                              <FormControl fullWidth size="small" required>
-                                <InputLabel>Rôle</InputLabel>
-                                <Select
-                                  value={newStepForm.role}
-                                  label="Rôle"
-                                  onChange={(e) => setNewStepForm(prev => ({ ...prev, role: e.target.value }))}
-                                >
-                                  {ROLES.map(r => (
-                                    <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>
-                                  ))}
-                                </Select>
-                              </FormControl>
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                              <TextField
-                                fullWidth
-                                size="small"
-                                label="Durée (jours)"
-                                type="number"
-                                value={newStepForm.durationDays}
-                                onChange={(e) => setNewStepForm(prev => ({ ...prev, durationDays: e.target.value }))}
-                                inputProps={{ min: 1 }}
-                              />
-                            </Grid>
-                            <Grid item xs={12}>
-                              <TextField
-                                fullWidth
-                                size="small"
-                                label="Description (optionnel)"
-                                value={newStepForm.description}
-                                onChange={(e) => setNewStepForm(prev => ({ ...prev, description: e.target.value }))}
-                              />
-                            </Grid>
-                            <Grid item xs={12}>
-                              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-                                Condition sur le montant (optionnel) — laisser vide pour une étape toujours obligatoire
-                              </Typography>
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                              <TextField
-                                fullWidth
-                                size="small"
-                                label="Montant minimum (XOF)"
-                                type="number"
-                                value={newStepForm.conditionMinAmount}
-                                onChange={(e) => setNewStepForm(prev => ({ ...prev, conditionMinAmount: e.target.value }))}
-                                helperText="Étape active si montant ≥ cette valeur"
-                                inputProps={{ min: 0 }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                              <TextField
-                                fullWidth
-                                size="small"
-                                label="Montant maximum (XOF)"
-                                type="number"
-                                value={newStepForm.conditionMaxAmount}
-                                onChange={(e) => setNewStepForm(prev => ({ ...prev, conditionMaxAmount: e.target.value }))}
-                                helperText="Étape active si montant ≤ cette valeur"
-                                inputProps={{ min: 0 }}
-                              />
-                            </Grid>
-                            <Grid item xs={12}>
-                              <Box sx={{ display: 'flex', gap: 1 }}>
-                                <Button variant="contained" size="small" onClick={handleAddStep}>
-                                  Ajouter
-                                </Button>
-                                <Button
-                                  size="small"
-                                  onClick={() => {
-                                    setShowAddStepForm(false);
-                                    setNewStepForm(emptyStepForm);
-                                    setAddStepError(null);
-                                  }}
-                                >
-                                  Annuler
-                                </Button>
-                              </Box>
-                            </Grid>
-                          </Grid>
-                        </Paper>
-                      )}
-                    </>
-                  )}
                 </>
               )}
             </Box>
