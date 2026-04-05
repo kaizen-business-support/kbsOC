@@ -1187,8 +1187,8 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                       <BranchIcon sx={{ color: '#1565c0', fontSize: 20 }} />
                       Performance par Agence
                     </Typography>
-                    <TableContainer>
-                      <Table size="small">
+                    <TableContainer sx={{ overflowX: 'auto' }}>
+                      <Table size="small" sx={{ minWidth: 400 }}>
                         <TableHead>
                           <TableRow sx={{ '& th': { fontWeight: 600, bgcolor: '#f8fafc', fontSize: 12, py: 1 } }}>
                             <TableCell>Agence</TableCell>
@@ -1566,8 +1566,8 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                         Le <strong>Total Moyen</strong> est le temps ouvré total entre la création du dossier et sa décision finale&nbsp;; le code couleur reflète les seuils configurés (vert&nbsp;≤&nbsp;50&nbsp;%, orange&nbsp;≤&nbsp;80&nbsp;%, rouge&nbsp;&gt;&nbsp;100&nbsp;% de la norme).
                       </Typography>
                     </Box>
-                    <TableContainer>
-                      <Table size="small">
+                    <TableContainer sx={{ overflowX: 'auto' }}>
+                      <Table size="small" sx={{ minWidth: 560 }}>
                         <TableHead>
                           <TableRow sx={{ '& th': { fontWeight: 600, bgcolor: '#f8fafc', fontSize: 12, py: 1.2 } }}>
                             <TableCell>Agence</TableCell>
@@ -1691,7 +1691,8 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                   </Grid>
                 </Grid>
                 <Card variant="outlined">
-                  <Table size="small">
+                  <TableContainer sx={{ overflowX: 'auto' }}>
+                  <Table size="small" sx={{ minWidth: 420 }}>
                     <TableHead sx={{ bgcolor: 'grey.50' }}>
                       <TableRow>
                         <TableCell>Étape</TableCell>
@@ -1742,6 +1743,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                       )}
                     </TableBody>
                   </Table>
+                  </TableContainer>
                 </Card>
               </>
             )}
