@@ -70,7 +70,8 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
     announcements: 'Notes d\'information',
     'notifications-config': 'Configuration Notifications',
     dispatching: 'Dispatching des Demandes',
-    'credit-policy': 'Politique de Crédit',
+    'credit-policy': 'Politique de Crédit — Étapes',
+    'credit-policy-treatment': 'Politique de Crédit — Traitement',
   };
 
   const handleUserMenuClick = (event: React.MouseEvent<HTMLElement>) => {

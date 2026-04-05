@@ -15,9 +15,6 @@ import {
   CheckCircle as ActiveIcon,
   Cancel as InactiveIcon,
   Visibility as PreviewIcon,
-  BarChart as AnalyticsIcon,
-  ArrowUpward as UpIcon,
-  ArrowDownward as DownIcon,
 } from '@mui/icons-material';
 import { useUser } from '../contexts/UserContext';
 import { creditPolicyApi } from '../services/api';
@@ -99,11 +96,11 @@ const fmtHours = (h: number) =>
 
 // ─── Page principale ──────────────────────────────────────────────────────────
 
-export function CreditPolicyPage() {
+export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
   const { isRole } = useUser();
   const isAdmin = isRole('admin') || isRole('management');
 
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState(initialTab);
   const [policies, setPolicies] = useState<CreditPolicy[]>([]);
   const [selectedPolicy, setSelectedPolicy] = useState<CreditPolicy | null>(null);
   const [loading, setLoading] = useState(false);
@@ -130,10 +127,6 @@ export function CreditPolicyPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [creditTypes, setCreditTypes] = useState<{ id: string; name: string }[]>([]);
 
-  // Analytics
-  const [analytics, setAnalytics] = useState<any>(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
-
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'info' });
 
   const showSnack = (message: string, severity: 'success' | 'error' | 'info' = 'success') =>
@@ -157,24 +150,9 @@ export function CreditPolicyPage() {
     if (res.success && res.data) setCreditTypes(res.data);
   }, []);
 
-  const loadAnalytics = useCallback(async () => {
-    setAnalyticsLoading(true);
-    const res = await creditPolicyApi.getAnalytics();
-    if (res.success) setAnalytics(res.data);
-    setAnalyticsLoading(false);
-  }, []);
-
   useEffect(() => { loadPolicies(); loadCreditTypes(); }, [loadPolicies, loadCreditTypes]);
-  useEffect(() => { if (tab === 3) loadAnalytics(); }, [tab, loadAnalytics]);
 
   // ── Gestion des politiques ──────────────────────────────────────────────────
-
-  const openCreatePolicy = () => {
-    setEditingPolicy(null);
-    setPolicyForm({ name: '', code: '', description: '', validFrom: '', validTo: '' });
-    setPolicyDialogError(null);
-    setPolicyDialogOpen(true);
-  };
 
   const openEditPolicy = (p: CreditPolicy) => {
     setEditingPolicy(p);
@@ -198,23 +176,16 @@ export function CreditPolicyPage() {
       validFrom: policyForm.validFrom || undefined,
       validTo: policyForm.validTo || null,
     };
-    const res = editingPolicy
-      ? await creditPolicyApi.updatePolicy(editingPolicy.id, payload)
-      : await creditPolicyApi.createPolicy(payload);
+    if (!editingPolicy) return;
+    const res = await creditPolicyApi.updatePolicy(editingPolicy.id, payload);
     if (res.success) {
-      showSnack(editingPolicy ? 'Politique mise à jour' : 'Politique créée et activée');
+      showSnack('Politique mise à jour');
       setPolicyDialogOpen(false);
       setPolicyDialogError(null);
       loadPolicies();
     } else {
       setPolicyDialogError(res.error || 'Erreur lors de la sauvegarde. Vérifiez que le serveur est accessible.');
     }
-  };
-
-  const togglePolicyActive = async (p: CreditPolicy) => {
-    const res = await creditPolicyApi.updatePolicy(p.id, { isActive: !p.isActive });
-    if (res.success) { showSnack(`Politique ${p.isActive ? 'désactivée' : 'activée'}`); loadPolicies(); }
-    else showSnack(res.error || 'Erreur', 'error');
   };
 
   // ── Gestion des étapes ──────────────────────────────────────────────────────
@@ -290,118 +261,28 @@ export function CreditPolicyPage() {
         <Box flex={1}>
           <Typography variant="h5" fontWeight={700}>Politique de Crédit</Typography>
           <Typography variant="body2" color="text.secondary">
-            Définissez le circuit de traitement, les profils valideurs et les plafonds d'approbation
+            {selectedPolicy
+              ? <>{selectedPolicy.name} — <em>v{selectedPolicy.version}</em></>
+              : 'Circuit de traitement, profils valideurs et approbations par montant'}
           </Typography>
         </Box>
+        {selectedPolicy && (
+          <Tooltip title="Modifier la politique">
+            <IconButton size="small" onClick={() => openEditPolicy(selectedPolicy)}>
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
         <Chip label="Admin" color="primary" size="small" />
       </Box>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
-        <Tab label="Politiques" />
-        <Tab label={`Étapes${selectedPolicy ? ` — ${selectedPolicy.name}` : ''}`} disabled={!selectedPolicy} />
-        <Tab label="Prévisualisation" />
-        <Tab label="Analytiques" />
+        <Tab label="Étapes de crédit" disabled={!selectedPolicy} />
+        <Tab label="Traitement" />
       </Tabs>
 
-      {/* ── Tab 0 : Liste des politiques ────────────────────────────────────── */}
-      {tab === 0 && (
-        <Card>
-          <CardContent>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-              <Typography variant="h6">Politiques configurées</Typography>
-              <Box display="flex" gap={1}>
-                <Button startIcon={<RefreshIcon />} onClick={loadPolicies} disabled={loading} size="small">
-                  Actualiser
-                </Button>
-                <Button startIcon={<AddIcon />} onClick={openCreatePolicy} variant="contained" size="small">
-                  Nouvelle politique
-                </Button>
-              </Box>
-            </Box>
-            {loading ? (
-              <Box display="flex" justifyContent="center" p={4}><CircularProgress /></Box>
-            ) : policies.length === 0 ? (
-              <Alert severity="info">
-                Aucune politique configurée. Créez la première politique de crédit.
-              </Alert>
-            ) : (
-              <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
-                  <TableHead sx={{ bgcolor: 'grey.50' }}>
-                    <TableRow>
-                      <TableCell>Politique</TableCell>
-                      <TableCell>Code</TableCell>
-                      <TableCell align="center">Version</TableCell>
-                      <TableCell align="center">Étapes</TableCell>
-                      <TableCell align="center">Dossiers</TableCell>
-                      <TableCell>Validité</TableCell>
-                      <TableCell align="center">Statut</TableCell>
-                      <TableCell align="right">Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {policies.map(p => (
-                      <TableRow
-                        key={p.id}
-                        hover
-                        selected={selectedPolicy?.id === p.id}
-                        sx={{ cursor: 'pointer' }}
-                        onClick={() => { setSelectedPolicy(p); setTab(1); }}
-                      >
-                        <TableCell>
-                          <Box>
-                            <Typography variant="body2" fontWeight={600}>{p.name}</Typography>
-                            {p.description && (
-                              <Typography variant="caption" color="text.secondary">{p.description}</Typography>
-                            )}
-                          </Box>
-                        </TableCell>
-                        <TableCell><code style={{ fontSize: 12 }}>{p.code}</code></TableCell>
-                        <TableCell align="center">
-                          <Chip label={`v${p.version}`} size="small" variant="outlined" />
-                        </TableCell>
-                        <TableCell align="center">{p._count?.steps ?? p.steps?.length ?? 0}</TableCell>
-                        <TableCell align="center">{p._count?.applications ?? '—'}</TableCell>
-                        <TableCell>
-                          <Typography variant="caption">
-                            {new Date(p.validFrom).toLocaleDateString('fr-FR')}
-                            {p.validTo ? ` → ${new Date(p.validTo).toLocaleDateString('fr-FR')}` : ' → ∞'}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Chip
-                            icon={p.isActive ? <ActiveIcon /> : <InactiveIcon />}
-                            label={p.isActive ? 'Active' : 'Inactive'}
-                            color={p.isActive ? 'success' : 'default'}
-                            size="small"
-                          />
-                        </TableCell>
-                        <TableCell align="right">
-                          <Tooltip title={p.isActive ? 'Désactiver' : 'Activer'}>
-                            <Switch
-                              size="small"
-                              checked={p.isActive}
-                              onClick={e => { e.stopPropagation(); togglePolicyActive(p); }}
-                            />
-                          </Tooltip>
-                          <Tooltip title="Modifier">
-                            <IconButton size="small" onClick={e => { e.stopPropagation(); openEditPolicy(p); }}>
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Tab 1 : Étapes de la politique sélectionnée ─────────────────────── */}
-      {tab === 1 && selectedPolicy && (
+      {/* ── Tab 0 : Étapes de la politique active ───────────────────────────── */}
+      {tab === 0 && selectedPolicy && (
         <Card>
           <CardContent>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -513,8 +394,8 @@ export function CreditPolicyPage() {
         </Card>
       )}
 
-      {/* ── Tab 2 : Prévisualisation du circuit ─────────────────────────────── */}
-      {tab === 2 && (
+      {/* ── Tab 1 : Traitement — Simuler le circuit ─────────────────────────── */}
+      {tab === 1 && (
         <Card>
           <CardContent>
             <Box display="flex" alignItems="center" gap={1} mb={3}>
@@ -610,113 +491,9 @@ export function CreditPolicyPage() {
         </Card>
       )}
 
-      {/* ── Tab 3 : Analytiques ─────────────────────────────────────────────── */}
-      {tab === 3 && (
-        <Card>
-          <CardContent>
-            <Box display="flex" alignItems="center" gap={1} mb={3}>
-              <AnalyticsIcon color="primary" />
-              <Typography variant="h6">Temps de traitement par étape</Typography>
-              <Box flex={1} />
-              <Button startIcon={<RefreshIcon />} onClick={loadAnalytics} disabled={analyticsLoading} size="small">
-                Actualiser
-              </Button>
-            </Box>
-
-            {analyticsLoading ? (
-              <Box display="flex" justifyContent="center" p={4}><CircularProgress /></Box>
-            ) : !analytics ? (
-              <Alert severity="info">Aucune donnée disponible.</Alert>
-            ) : (
-              <>
-                <Grid container spacing={2} mb={3}>
-                  <Grid item xs={12} sm={4}>
-                    <Card variant="outlined" sx={{ textAlign: 'center', p: 2 }}>
-                      <Typography variant="h4" fontWeight={700} color="primary.main">
-                        {analytics.totalApplications}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">Dossiers analysés</Typography>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <Card variant="outlined" sx={{ textAlign: 'center', p: 2 }}>
-                      <Typography variant="h4" fontWeight={700} color="success.main">
-                        {analytics.averageTotalDurationMinutes !== null
-                          ? `${Math.round(analytics.averageTotalDurationMinutes / 60)}h`
-                          : '—'}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">Durée moyenne totale</Typography>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <Card variant="outlined" sx={{ textAlign: 'center', p: 2 }}>
-                      <Typography variant="h4" fontWeight={700} color="warning.main">
-                        {analytics.stepAverages?.filter((s: any) => s.overdueRate > 0).length ?? 0}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">Étapes avec retards</Typography>
-                    </Card>
-                  </Grid>
-                </Grid>
-
-                <TableContainer component={Paper} variant="outlined">
-                  <Table size="small">
-                    <TableHead sx={{ bgcolor: 'grey.50' }}>
-                      <TableRow>
-                        <TableCell>Étape</TableCell>
-                        <TableCell align="center">Dossiers traités</TableCell>
-                        <TableCell align="center">Durée moyenne</TableCell>
-                        <TableCell align="center">Taux de retard</TableCell>
-                        <TableCell>Indicateur</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {analytics.stepAverages
-                        ?.sort((a: any, b: any) => b.averageDurationMinutes - a.averageDurationMinutes)
-                        .map((s: any) => (
-                          <TableRow key={s.stepName} hover>
-                            <TableCell>
-                              <Typography variant="body2" fontWeight={600}>{s.stepName}</Typography>
-                            </TableCell>
-                            <TableCell align="center">{s.count}</TableCell>
-                            <TableCell align="center">
-                              <Typography variant="body2" fontWeight={600}>
-                                {s.averageDurationMinutes < 60
-                                  ? `${s.averageDurationMinutes} min`
-                                  : `${Math.round(s.averageDurationMinutes / 60)} h`}
-                              </Typography>
-                            </TableCell>
-                            <TableCell align="center">
-                              <Chip
-                                label={`${s.overdueRate}%`}
-                                size="small"
-                                color={s.overdueRate > 30 ? 'error' : s.overdueRate > 10 ? 'warning' : 'success'}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Box
-                                sx={{
-                                  height: 6,
-                                  width: `${Math.min(100, (s.averageDurationMinutes / 480) * 100)}%`,
-                                  minWidth: 4,
-                                  bgcolor: s.overdueRate > 30 ? 'error.main' : s.overdueRate > 10 ? 'warning.main' : 'success.main',
-                                  borderRadius: 3,
-                                }}
-                              />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
       {/* ── Dialog : Politique ──────────────────────────────────────────────── */}
       <Dialog open={policyDialogOpen} onClose={() => setPolicyDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingPolicy ? 'Modifier la politique' : 'Nouvelle politique de crédit'}</DialogTitle>
+        <DialogTitle>Modifier la politique de crédit</DialogTitle>
         <DialogContent dividers>
           <Box display="flex" flexDirection="column" gap={2} pt={1}>
             <TextField
@@ -756,11 +533,6 @@ export function CreditPolicyPage() {
                 />
               </Grid>
             </Grid>
-            {!editingPolicy && (
-              <Alert severity="warning" sx={{ mt: 1 }}>
-                La création d'une nouvelle politique désactivera automatiquement la politique actuellement active.
-              </Alert>
-            )}
             {policyDialogError && (
               <Alert severity="error" sx={{ mt: 1 }}>{policyDialogError}</Alert>
             )}
@@ -773,7 +545,7 @@ export function CreditPolicyPage() {
             onClick={savePolicy}
             disabled={!policyForm.name || !policyForm.code}
           >
-            {editingPolicy ? 'Mettre à jour' : 'Créer et activer'}
+            Mettre à jour
           </Button>
         </DialogActions>
       </Dialog>

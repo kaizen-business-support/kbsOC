@@ -52,7 +52,7 @@ import {
   loadWorkdayConfiguration
 } from '../utils/workdayUtils';
 import { FIXED_WORKFLOW_STEPS, getStepDisplayInfo } from '../utils/workflowConfig';
-import { ApiService } from '../services/api';
+import { ApiService, creditPolicyApi } from '../services/api';
 
 // Props interface for the AnalyticsDashboardPage component
 interface AnalyticsDashboardPageProps {}
@@ -77,6 +77,10 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   const CACHE_KEY = 'analytics_dashboard_cache';
   const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+  // Credit policy analytics
+  const [policyAnalytics, setPolicyAnalytics] = useState<any>(null);
+  const [policyAnalyticsLoading, setPolicyAnalyticsLoading] = useState(false);
+
   // Reset manager selection when branch changes + reload managers for that branch
   React.useEffect(() => {
     setSelectedManager('all');
@@ -88,6 +92,15 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   React.useEffect(() => {
     loadFilterOptions();
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load credit policy analytics on mount
+  React.useEffect(() => {
+    setPolicyAnalyticsLoading(true);
+    creditPolicyApi.getAnalytics().then(res => {
+      if (res.success) setPolicyAnalytics(res.data);
+      setPolicyAnalyticsLoading(false);
+    });
   }, []);
 
   // Load filter options from API
@@ -1635,6 +1648,103 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                 </Card>
               </Grid>
             </Grid>
+          </Box>
+
+          {/* ── Analytiques Politique de Crédit ──────────────────────────────── */}
+          <Box mt={4}>
+            <Typography variant="h6" fontWeight={700} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box component="span" sx={{ width: 4, height: 20, bgcolor: 'primary.main', borderRadius: 2, display: 'inline-block' }} />
+              Temps de traitement par étape (Politique de Crédit)
+            </Typography>
+            {policyAnalyticsLoading ? (
+              <Box display="flex" justifyContent="center" py={4}><CircularProgress size={28} /></Box>
+            ) : !policyAnalytics ? (
+              <Card variant="outlined"><CardContent><Typography color="text.secondary" fontSize={13}>Aucune donnée disponible.</Typography></CardContent></Card>
+            ) : (
+              <>
+                <Grid container spacing={2} mb={2}>
+                  <Grid item xs={12} sm={4}>
+                    <Card variant="outlined" sx={{ textAlign: 'center', p: 2 }}>
+                      <Typography variant="h4" fontWeight={700} color="primary.main">
+                        {policyAnalytics.totalApplications}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">Dossiers analysés</Typography>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Card variant="outlined" sx={{ textAlign: 'center', p: 2 }}>
+                      <Typography variant="h4" fontWeight={700} color="success.main">
+                        {policyAnalytics.averageTotalDurationMinutes !== null
+                          ? `${Math.round(policyAnalytics.averageTotalDurationMinutes / 60)}h`
+                          : '—'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">Durée moyenne totale</Typography>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Card variant="outlined" sx={{ textAlign: 'center', p: 2 }}>
+                      <Typography variant="h4" fontWeight={700} color="warning.main">
+                        {policyAnalytics.stepAverages?.filter((s: any) => s.overdueRate > 0).length ?? 0}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">Étapes avec retards</Typography>
+                    </Card>
+                  </Grid>
+                </Grid>
+                <Card variant="outlined">
+                  <Table size="small">
+                    <TableHead sx={{ bgcolor: 'grey.50' }}>
+                      <TableRow>
+                        <TableCell>Étape</TableCell>
+                        <TableCell align="center">Dossiers traités</TableCell>
+                        <TableCell align="center">Durée moyenne</TableCell>
+                        <TableCell align="center">Taux de retard</TableCell>
+                        <TableCell>Indicateur</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {policyAnalytics.stepAverages
+                        ?.sort((a: any, b: any) => b.averageDurationMinutes - a.averageDurationMinutes)
+                        .map((s: any) => (
+                          <TableRow key={s.stepName} hover>
+                            <TableCell><Typography variant="body2" fontWeight={600}>{s.stepName}</Typography></TableCell>
+                            <TableCell align="center">{s.count}</TableCell>
+                            <TableCell align="center">
+                              <Typography variant="body2" fontWeight={600}>
+                                {s.averageDurationMinutes < 60
+                                  ? `${s.averageDurationMinutes} min`
+                                  : `${Math.round(s.averageDurationMinutes / 60)} h`}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="center">
+                              <Chip
+                                label={`${s.overdueRate}%`}
+                                size="small"
+                                color={s.overdueRate > 30 ? 'error' : s.overdueRate > 10 ? 'warning' : 'success'}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Box sx={{
+                                height: 6,
+                                width: `${Math.min(100, (s.averageDurationMinutes / 480) * 100)}%`,
+                                minWidth: 4,
+                                bgcolor: s.overdueRate > 30 ? 'error.main' : s.overdueRate > 10 ? 'warning.main' : 'success.main',
+                                borderRadius: 3,
+                              }} />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      {(!policyAnalytics.stepAverages || policyAnalytics.stepAverages.length === 0) && (
+                        <TableRow>
+                          <TableCell colSpan={5} align="center" sx={{ py: 3, color: 'text.secondary', fontSize: 13 }}>
+                            Aucune donnée d'étape disponible
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </Card>
+              </>
+            )}
           </Box>
         </>
       )}

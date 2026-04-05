@@ -38,6 +38,8 @@ import {
   NotificationsNone as NotificationsActiveIcon,
   CallSplit as DispatchIcon,
   PolicyOutlined as PolicyIcon,
+  ListAltOutlined as StepsIcon,
+  RouteOutlined as TreatmentIcon,
   ExpandLess,
   ExpandMore,
 } from '@mui/icons-material';
@@ -91,6 +93,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [creditExpanded, setCreditExpanded]     = useState(true);
   const [analysisExpanded, setAnalysisExpanded] = useState(true);
   const [configExpanded, setConfigExpanded]     = useState(true);
+  const [policyExpanded, setPolicyExpanded]     = useState(false);
 
   const handleItemClick = (page: PageType) => {
     onPageChange(page);
@@ -117,14 +120,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const configItems = canViewConfiguration ? [
     { id: 'user-management'   as PageType, label: t('navigation.userManagement'),   icon: UserManagementIcon },
-    { id: 'credit-policy'     as PageType, label: 'Politique de Crédit',            icon: PolicyIcon },
     { id: 'credit-types'      as PageType, label: 'Types de Crédit',                icon: BusinessIcon },
-    { id: 'approval-limits'   as PageType, label: "Limites d'Approbation",          icon: LimitsIcon },
     { id: 'bank-holidays-admin' as PageType, label: 'Jours Fériés',                 icon: HolidayIcon },
     { id: 'backup'            as PageType, label: 'Sauvegarde',                     icon: BackupIcon },
     { id: 'announcements'     as PageType, label: "Notes d'information",            icon: CampaignIcon },
     { id: 'notifications-config' as PageType, label: 'Notifications',              icon: NotificationsActiveIcon },
   ] : [];
+
+  const isPolicyActive = currentPage === 'credit-policy' || currentPage === 'credit-policy-treatment' || currentPage === 'approval-limits';
 
   // ── Shared item styles ──────────────────────────────────────────────────────
 
@@ -164,6 +167,68 @@ export const Sidebar: React.FC<SidebarProps> = ({
       '& .MuiListItemIcon-root': { color: brand.deep },
     },
     '&:active': { transform: 'scale(0.98)', transition: 'transform 0.08s ease' },
+  };
+
+  // ── SubNavItem (sous-menu indenté) ──────────────────────────────────────────
+
+  const SubNavItem: React.FC<{
+    id: PageType;
+    label: string;
+    icon: React.ElementType;
+  }> = ({ id, label, icon: Icon }) => {
+    const isActive = currentPage === id;
+
+    if (!open) {
+      return (
+        <Tooltip title={label} placement="right" arrow>
+          <ListItem disablePadding sx={{ mb: 0.25 }}>
+            <ListItemButton
+              onClick={() => handleItemClick(id)}
+              sx={{
+                justifyContent: 'center',
+                px: 0, py: 0.8,
+                mx: 0.75,
+                borderRadius: '8px',
+                minHeight: 36,
+                bgcolor: isActive ? SB.activeBg : 'transparent',
+                '&:hover': { bgcolor: isActive ? SB.activeBg : SB.itemHover },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 0, justifyContent: 'center' }}>
+                <Icon sx={{ fontSize: 18, color: isActive ? SB.activeText : '#8A99B8' }} />
+              </ListItemIcon>
+            </ListItemButton>
+          </ListItem>
+        </Tooltip>
+      );
+    }
+
+    return (
+      <ListItem disablePadding sx={{ mb: 0.15 }}>
+        <ListItemButton
+          onClick={() => handleItemClick(id)}
+          sx={isActive ? {
+            ...activeItemSx,
+            pl: '28px',
+            py: 0.55,
+            fontSize: '12px',
+          } : {
+            ...inactiveItemSx,
+            pl: '28px',
+            py: 0.55,
+            '& .MuiListItemText-primary': { fontSize: '12px', fontFamily: '"Inter", sans-serif' },
+          }}
+        >
+          <ListItemIcon sx={{ minWidth: 26 }}>
+            <Icon sx={{ fontSize: 16 }} />
+          </ListItemIcon>
+          <ListItemText
+            primary={label}
+            primaryTypographyProps={{ fontSize: '12px', noWrap: true, fontFamily: '"Inter", sans-serif' }}
+          />
+        </ListItemButton>
+      </ListItem>
+    );
   };
 
   // ── NavItem ─────────────────────────────────────────────────────────────────
@@ -387,6 +452,54 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {configItems.map(item => (
                   <NavItem key={item.id} id={item.id} label={item.label} icon={item.icon} />
                 ))}
+
+                {/* ── Politique de Crédit (sous-menu) ─────────────── */}
+                {open ? (
+                  <>
+                    <ListItemButton
+                      onClick={() => setPolicyExpanded(p => !p)}
+                      sx={{
+                        borderRadius: '7px',
+                        mx: 1,
+                        py: 0.7,
+                        pl: '14px',
+                        color: isPolicyActive ? SB.activeText : SB.itemText,
+                        background: isPolicyActive ? SB.activeBg : 'transparent',
+                        borderLeft: `2px solid ${isPolicyActive ? SB.activeBorder : 'transparent'}`,
+                        transition: 'all 0.15s cubic-bezier(0.22,1,0.36,1)',
+                        '& .MuiListItemIcon-root': { color: isPolicyActive ? SB.activeText : '#8A99B8' },
+                        '& .MuiListItemText-primary': { fontFamily: '"Inter", sans-serif', fontWeight: isPolicyActive ? 600 : 400 },
+                        '&:hover': { bgcolor: SB.itemHover },
+                        mb: 0.25,
+                      }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 30 }}>
+                        <PolicyIcon sx={{ fontSize: 19 }} />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary="Politique de Crédit"
+                        primaryTypographyProps={{ fontSize: '13px', noWrap: true, fontFamily: '"Inter", sans-serif' }}
+                      />
+                      {policyExpanded
+                        ? <ExpandLess sx={{ fontSize: 14, color: SB.sectionLabel }} />
+                        : <ExpandMore sx={{ fontSize: 14, color: SB.sectionLabel }} />
+                      }
+                    </ListItemButton>
+                    <Collapse in={policyExpanded} timeout="auto" unmountOnExit>
+                      <List disablePadding sx={{ px: 0.5 }}>
+                        <SubNavItem id="credit-policy" label="Étapes de crédit" icon={StepsIcon} />
+                        <SubNavItem id="credit-policy-treatment" label="Traitement" icon={TreatmentIcon} />
+                        <SubNavItem id="approval-limits" label="Limites d'approbation" icon={LimitsIcon} />
+                      </List>
+                    </Collapse>
+                  </>
+                ) : (
+                  <>
+                    <SubNavItem id="credit-policy" label="Étapes de crédit" icon={StepsIcon} />
+                    <SubNavItem id="credit-policy-treatment" label="Traitement" icon={TreatmentIcon} />
+                    <SubNavItem id="approval-limits" label="Limites d'approbation" icon={LimitsIcon} />
+                  </>
+                )}
               </List>
             </Collapse>
           </>

@@ -348,7 +348,11 @@ const AppContent: React.FC = () => {
               />
               <Route
                 path="/credit-policy"
-                element={<CreditPolicyPage />}
+                element={<CreditPolicyPage initialTab={0} />}
+              />
+              <Route
+                path="/credit-policy-treatment"
+                element={<CreditPolicyPage initialTab={1} />}
               />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
