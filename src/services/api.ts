@@ -612,6 +612,52 @@ export class ApiService {
     }
   }
 
+  static async createApprovalLimit(data: {
+    role: string;
+    displayName: string;
+    minAmount: number;
+    maxAmount: number;
+    currency?: string;
+    reviewDuration?: number;
+    maxReviewDuration?: number;
+    description?: string;
+  }): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.post('/approval-limits', data);
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur lors de la création' };
+    }
+  }
+
+  static async updateApprovalLimit(id: string, data: Partial<{
+    displayName: string;
+    minAmount: number;
+    maxAmount: number;
+    currency: string;
+    reviewDuration: number;
+    maxReviewDuration: number;
+    description: string;
+    isActive: boolean;
+    order: number;
+  }>): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.put(`/approval-limits/${id}`, data);
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur lors de la mise à jour' };
+    }
+  }
+
+  static async deleteApprovalLimit(id: string): Promise<ApiResponse<void>> {
+    try {
+      await api.delete(`/approval-limits/${id}`);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur lors de la suppression' };
+    }
+  }
+
   static async getUser(userId: string): Promise<ApiResponse<any>> {
     try {
       const response = await api.get(`/users/${userId}`);

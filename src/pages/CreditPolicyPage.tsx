@@ -31,8 +31,6 @@ interface CreditPolicyStep {
   assignedRole: string;
   conditionMinAmount: number | null;
   conditionMaxAmount: number | null;
-  approvalMinAmount: number | null;
-  approvalMaxAmount: number | null;
   expectedDurationHours: number;
   maxDurationHours: number;
   isRequired: boolean;
@@ -78,8 +76,6 @@ const EMPTY_STEP: Omit<CreditPolicyStep, 'id' | 'policyId'> = {
   assignedRole: 'CREDIT_ANALYST',
   conditionMinAmount: null,
   conditionMaxAmount: null,
-  approvalMinAmount: null,
-  approvalMaxAmount: null,
   expectedDurationHours: 24,
   maxDurationHours: 72,
   isRequired: true,
@@ -289,13 +285,49 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
               <Box>
                 <Typography variant="h6">Circuit de traitement</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Politique : <strong>{selectedPolicy.name}</strong> — v{selectedPolicy.version}
+                  Chaque étape définit qui intervient, quelle action est réalisée et dans quel délai —
+                  chaque valideur doit compléter son étape pour que le dossier progresse.
                 </Typography>
               </Box>
               <Button startIcon={<AddIcon />} onClick={openAddStep} variant="contained" size="small">
                 Ajouter une étape
               </Button>
             </Box>
+
+            {/* Visualisation du flux */}
+            {steps.length > 0 && (
+              <Box display="flex" alignItems="center" gap={1} flexWrap="wrap" mb={2}
+                sx={{ bgcolor: 'grey.50', borderRadius: 2, p: 1.5 }}>
+                {[...steps].sort((a, b) => a.order - b.order).map((step, i, arr) => {
+                  const ti = STEP_TYPES.find(t => t.value === step.stepType);
+                  return (
+                    <React.Fragment key={step.id}>
+                      <Box sx={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'center',
+                        bgcolor: 'white', border: '1px solid', borderColor: 'divider',
+                        borderRadius: 1.5, px: 1.5, py: 0.75, minWidth: 90,
+                        borderTop: `3px solid ${ti?.color ?? '#999'}`,
+                        opacity: step.isActive ? 1 : 0.45,
+                      }}>
+                        <Typography variant="caption" fontWeight={700} fontSize={10}
+                          sx={{ color: ti?.color ?? '#999', textTransform: 'uppercase' }}>
+                          {ti?.label ?? step.stepType}
+                        </Typography>
+                        <Typography variant="caption" fontWeight={600} fontSize={11} noWrap>
+                          {step.stepLabel}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" fontSize={10}>
+                          {ROLES.find(r => r.value === step.assignedRole)?.label ?? step.assignedRole}
+                        </Typography>
+                      </Box>
+                      {i < arr.length - 1 && (
+                        <Typography variant="caption" color="text.disabled" sx={{ fontSize: 18 }}>→</Typography>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </Box>
+            )}
 
             {steps.length === 0 ? (
               <Alert severity="info">
@@ -306,27 +338,24 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
                 <Table size="small">
                   <TableHead sx={{ bgcolor: 'grey.50' }}>
                     <TableRow>
-                      <TableCell align="center" width={50}>#</TableCell>
+                      <TableCell align="center" width={40}>#</TableCell>
                       <TableCell>Étape</TableCell>
                       <TableCell align="center">Type</TableCell>
-                      <TableCell>Profil responsable</TableCell>
-                      <TableCell>Conditions montant</TableCell>
-                      <TableCell>Plafond approbation</TableCell>
+                      <TableCell>Responsable</TableCell>
+                      <TableCell>Activation par montant</TableCell>
                       <TableCell align="center">SLA</TableCell>
                       <TableCell align="center">Statut</TableCell>
                       <TableCell align="right">Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {[...steps].sort((a, b) => a.order - b.order).map((step, idx) => {
+                    {[...steps].sort((a, b) => a.order - b.order).map((step) => {
                       const typeInfo = STEP_TYPES.find(t => t.value === step.stepType);
                       const roleInfo = ROLES.find(r => r.value === step.assignedRole);
                       return (
-                        <TableRow key={step.id} hover>
+                        <TableRow key={step.id} hover sx={{ opacity: step.isActive ? 1 : 0.55 }}>
                           <TableCell align="center">
-                            <Box display="flex" flexDirection="column" alignItems="center" gap={0.2}>
-                              <Typography variant="caption" fontWeight={700}>{step.order}</Typography>
-                            </Box>
+                            <Typography variant="caption" fontWeight={700}>{step.order}</Typography>
                           </TableCell>
                           <TableCell>
                             <Typography variant="body2" fontWeight={600}>{step.stepLabel}</Typography>
@@ -343,17 +372,10 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
                             <Typography variant="body2">{roleInfo?.label ?? step.assignedRole}</Typography>
                           </TableCell>
                           <TableCell>
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography variant="caption" color={step.conditionMinAmount !== null || step.conditionMaxAmount !== null ? 'warning.dark' : 'text.secondary'}>
                               {step.conditionMinAmount !== null || step.conditionMaxAmount !== null
                                 ? `${fmt(step.conditionMinAmount)} → ${fmt(step.conditionMaxAmount)}`
-                                : 'Toujours actif'}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="caption" color="text.secondary">
-                              {step.approvalMinAmount !== null || step.approvalMaxAmount !== null
-                                ? `${fmt(step.approvalMinAmount)} → ${fmt(step.approvalMaxAmount)}`
-                                : '—'}
+                                : 'Toujours active'}
                             </Typography>
                           </TableCell>
                           <TableCell align="center">
@@ -551,111 +573,104 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
       </Dialog>
 
       {/* ── Dialog : Étape ──────────────────────────────────────────────────── */}
-      <Dialog open={stepDialogOpen} onClose={() => setStepDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={stepDialogOpen} onClose={() => setStepDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editingStep ? 'Modifier l\'étape' : 'Ajouter une étape au circuit'}</DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={2} sx={{ pt: 1 }}>
+
+            {/* ── Identification ──────────────────────────────────── */}
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Identifiant (slug)" fullWidth size="small" required
-                placeholder="supervisor_approval"
-                value={stepForm.stepName}
-                onChange={e => setStepForm(f => ({ ...f, stepName: e.target.value.toLowerCase().replace(/\s+/g, '_') }))}
-                helperText="Identifiant technique sans espaces"
+                label="Libellé affiché *" fullWidth size="small" required
+                placeholder="Validation Superviseur"
+                value={stepForm.stepLabel}
+                onChange={e => setStepForm(f => ({ ...f, stepLabel: e.target.value }))}
+                helperText="Nom visible par les utilisateurs"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Libellé affiché" fullWidth size="small" required
-                placeholder="Validation Superviseur"
-                value={stepForm.stepLabel}
-                onChange={e => setStepForm(f => ({ ...f, stepLabel: e.target.value }))}
+                label="Identifiant (slug) *" fullWidth size="small" required
+                placeholder="supervisor_approval"
+                value={stepForm.stepName}
+                onChange={e => setStepForm(f => ({ ...f, stepName: e.target.value.toLowerCase().replace(/\s+/g, '_') }))}
+                helperText="Identifiant technique (sans espaces)"
               />
             </Grid>
             <Grid item xs={12} sm={4}>
               <TextField
-                select label="Type d'étape" fullWidth size="small" required
+                select label="Type d'étape *" fullWidth size="small" required
                 value={stepForm.stepType}
                 onChange={e => setStepForm(f => ({ ...f, stepType: e.target.value as any }))}
+                helperText="Nature de l'action réalisée"
               >
                 {STEP_TYPES.map(t => (
                   <MenuItem key={t.value} value={t.value}>
                     <Box display="flex" alignItems="center" gap={1}>
                       <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: t.color }} />
-                      {t.label}
+                      <Box>
+                        <Typography variant="body2">{t.label}</Typography>
+                      </Box>
                     </Box>
                   </MenuItem>
                 ))}
               </TextField>
             </Grid>
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={12} sm={5}>
               <TextField
-                select label="Profil responsable" fullWidth size="small" required
+                select label="Rôle responsable *" fullWidth size="small" required
                 value={stepForm.assignedRole}
                 onChange={e => setStepForm(f => ({ ...f, assignedRole: e.target.value }))}
+                helperText="Qui traite cette étape"
               >
                 {ROLES.map(r => <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>)}
               </TextField>
             </Grid>
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={12} sm={3}>
               <TextField
                 label="Ordre" type="number" fullWidth size="small"
                 value={stepForm.order}
                 onChange={e => setStepForm(f => ({ ...f, order: Number(e.target.value) }))}
                 inputProps={{ min: 1 }}
+                helperText="Position dans le flux"
               />
             </Grid>
 
+            {/* ── Condition d'activation ───────────────────────────── */}
             <Grid item xs={12}>
-              <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                CONDITION D'ACTIVATION PAR MONTANT (laisser vide = toujours actif)
+              <Divider>
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                  CONDITION D'ACTIVATION PAR MONTANT (optionnel)
+                </Typography>
+              </Divider>
+              <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
+                Laisser vide = étape toujours active, quel que soit le montant du crédit
               </Typography>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Montant minimum (XOF)" type="number" fullWidth size="small"
+                label="Montant minimum du crédit (XOF)" type="number" fullWidth size="small"
                 value={stepForm.conditionMinAmount ?? ''}
                 onChange={e => setStepForm(f => ({ ...f, conditionMinAmount: e.target.value ? Number(e.target.value) : null }))}
-                placeholder="Ex : 5000000"
+                placeholder="Ex : 5 000 000"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Montant maximum (XOF)" type="number" fullWidth size="small"
+                label="Montant maximum du crédit (XOF)" type="number" fullWidth size="small"
                 value={stepForm.conditionMaxAmount ?? ''}
                 onChange={e => setStepForm(f => ({ ...f, conditionMaxAmount: e.target.value ? Number(e.target.value) : null }))}
-                placeholder="Ex : 50000000"
+                placeholder="Ex : 50 000 000"
               />
             </Grid>
 
-            {(stepForm.stepType === 'APPROVAL' || stepForm.stepType === 'COMMITTEE') && (
-              <>
-                <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                    PLAFOND D'APPROBATION DE CE PROFIL (laisser vide = illimité)
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label="Montant minimum approuvable (XOF)" type="number" fullWidth size="small"
-                    value={stepForm.approvalMinAmount ?? ''}
-                    onChange={e => setStepForm(f => ({ ...f, approvalMinAmount: e.target.value ? Number(e.target.value) : null }))}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label="Montant maximum approuvable (XOF)" type="number" fullWidth size="small"
-                    value={stepForm.approvalMaxAmount ?? ''}
-                    onChange={e => setStepForm(f => ({ ...f, approvalMaxAmount: e.target.value ? Number(e.target.value) : null }))}
-                  />
-                </Grid>
-              </>
-            )}
-
+            {/* ── Délais SLA ───────────────────────────────────────── */}
             <Grid item xs={12}>
-              <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                DÉLAIS (SLA)
-              </Typography>
+              <Divider>
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                  DÉLAIS (SLA)
+                </Typography>
+              </Divider>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
