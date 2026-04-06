@@ -428,20 +428,30 @@ export async function getApplicationProcessingStats(
 
   if (!application) throw new Error(`Dossier introuvable : ${applicationId}`);
 
+  const STEP_NAME_FR: Record<string, string> = {
+    application_created:       'Création du dossier',
+    credit_analysis:           'Analyse crédit',
+    dispatch:                  'Dispatch',
+    approval:                  'Approbation',
+    final_decision:            'Décision finale',
+    documentation:             'Documentation',
+    branch_manager_review:     'Validation Directeur d\'Agence',
+    analyst_supervisor_review: 'Validation Superviseur Analyste',
+    credit_committee_review:   'Passage en Comité de Crédit',
+    management_review:         'Validation Direction Générale',
+    credit_analyst_review:     'Analyse par l\'Analyste Crédit',
+    account_manager_dispatch:  'Dispatch Chargé de Compte',
+  };
+
   const steps: StepProcessingStats[] = application.workflowSteps.map(s => {
-    let duration: number | null = s.durationMinutes;
-    if (!duration && s.completedAt) {
+    let duration: number | null = null;
+    if (s.durationMinutes != null && s.durationMinutes > 0) {
+      duration = s.durationMinutes;
+    } else if (s.completedAt) {
       const start = s.startedAt ?? s.createdAt;
-      duration = Math.round((s.completedAt.getTime() - start.getTime()) / 60000);
+      const computed = Math.round((s.completedAt.getTime() - start.getTime()) / 60000);
+      if (computed > 0) duration = computed;
     }
-    const STEP_NAME_FR: Record<string, string> = {
-      application_created: 'Création du dossier',
-      credit_analysis: 'Analyse crédit',
-      dispatch: 'Dispatch',
-      approval: 'Approbation',
-      final_decision: 'Décision finale',
-      documentation: 'Documentation',
-    };
     return {
       stepName: s.stepName,
       stepLabel: s.policyStep?.stepLabel ?? STEP_NAME_FR[s.stepName] ?? s.stepName,

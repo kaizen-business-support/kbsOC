@@ -166,12 +166,18 @@ router.get('/analytics', async (req: Request, res: Response) => {
 
     // Agrégation par étape
     const STEP_NAME_FR: Record<string, string> = {
-      application_created: 'Création du dossier',
-      credit_analysis: 'Analyse crédit',
-      dispatch: 'Dispatch',
-      approval: 'Approbation',
-      final_decision: 'Décision finale',
-      documentation: 'Documentation',
+      application_created:       'Création du dossier',
+      credit_analysis:           'Analyse crédit',
+      dispatch:                  'Dispatch',
+      approval:                  'Approbation',
+      final_decision:            'Décision finale',
+      documentation:             'Documentation',
+      branch_manager_review:     'Validation Directeur d\'Agence',
+      analyst_supervisor_review: 'Validation Superviseur Analyste',
+      credit_committee_review:   'Passage en Comité de Crédit',
+      management_review:         'Validation Direction Générale',
+      credit_analyst_review:     'Analyse par l\'Analyste Crédit',
+      account_manager_dispatch:  'Dispatch Chargé de Compte',
     };
 
     const stepStats: Record<string, { count: number; totalMinutes: number; overdueCount: number; stepLabel: string }> = {};
@@ -179,11 +185,17 @@ router.get('/analytics', async (req: Request, res: Response) => {
     for (const app of applications) {
       for (const step of app.workflowSteps) {
         if (!step.completedAt) continue;
-        const duration =
-          step.durationMinutes ??
-          Math.round(
-            (step.completedAt.getTime() - (step.startedAt ?? step.createdAt).getTime()) / 60000
-          );
+
+        // Calcul de la durée — ignorer les valeurs négatives (données incohérentes)
+        let duration: number;
+        if (step.durationMinutes != null && step.durationMinutes > 0) {
+          duration = step.durationMinutes;
+        } else {
+          const ref = step.startedAt ?? step.createdAt;
+          const computed = Math.round((step.completedAt.getTime() - ref.getTime()) / 60000);
+          if (computed <= 0) continue; // ignorer si durée nulle ou négative
+          duration = computed;
+        }
 
         if (!stepStats[step.stepName]) {
           const label = (step as any).policyStep?.stepLabel ?? STEP_NAME_FR[step.stepName] ?? step.stepName;
