@@ -263,7 +263,7 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
   const steps = selectedPolicy?.steps ?? [];
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 } }}>
+    <Box sx={{ p: compact ? 0 : { xs: 2, md: 3 } }}>
       {/* Header — masqué en mode compact (rendu dans CreditManagementPage) */}
       {!compact && (
         <>
@@ -294,19 +294,34 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
         </>
       )}
 
-      {/* En mode compact : info politique + bouton modifier en ligne */}
-      {compact && selectedPolicy && (
-        <Box display="flex" alignItems="center" gap={1.5} mb={2}
-          sx={{ bgcolor: 'grey.50', borderRadius: 2, px: 2, py: 1, border: '1px solid', borderColor: 'divider' }}>
-          <PolicyIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-          <Typography variant="body2" fontWeight={600}>{selectedPolicy.name}</Typography>
-          <Typography variant="caption" color="text.secondary">— v{selectedPolicy.version}</Typography>
-          <Box flex={1} />
-          <Tooltip title="Modifier la politique">
-            <IconButton size="small" onClick={() => openEditPolicy(selectedPolicy)}>
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+      {/* En mode compact : toolbar section */}
+      {compact && (
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+          sx={{ mb: 3, pb: 2, borderBottom: 1, borderColor: 'divider' }}
+        >
+          <Box>
+            <Typography variant="subtitle1" fontWeight={700}>Circuit de traitement</Typography>
+            {selectedPolicy && (
+              <Typography variant="caption" color="text.secondary">
+                {selectedPolicy.name} — v{selectedPolicy.version}
+                {selectedPolicy.isActive && (
+                  <Chip label="Active" size="small" color="success"
+                    sx={{ ml: 1, height: 16, fontSize: 10, '& .MuiChip-label': { px: 0.8 } }} />
+                )}
+              </Typography>
+            )}
+          </Box>
+          {selectedPolicy && (
+            <Tooltip title="Modifier la politique">
+              <IconButton size="small" onClick={() => openEditPolicy(selectedPolicy)}
+                sx={{ border: 1, borderColor: 'divider' }}>
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
         </Box>
       )}
 

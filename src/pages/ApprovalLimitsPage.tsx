@@ -198,7 +198,7 @@ export const ApprovalLimitsPage: React.FC<Props> = ({ compact = false }) => {
   const sorted = [...limits].sort((a, b) => (a.order ?? 1) - (b.order ?? 1));
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 } }}>
+    <Box sx={{ p: compact ? 0 : { xs: 2, md: 3 } }}>
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       {!compact ? (
@@ -221,11 +221,28 @@ export const ApprovalLimitsPage: React.FC<Props> = ({ compact = false }) => {
           <Chip label={isAdmin ? 'Admin' : 'Lecture seule'} color={isAdmin ? 'primary' : 'default'} size="small" />
         </Box>
       ) : (
-        <Box display="flex" justifyContent="flex-end" gap={1} mb={2}>
-          <Button startIcon={<RefreshIcon />} onClick={load} disabled={loading} size="small">Actualiser</Button>
-          {isAdmin && (
-            <Button startIcon={<AddIcon />} onClick={openAdd} variant="contained" size="small">Nouvelle limite</Button>
-          )}
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+          sx={{ mb: 3, pb: 2, borderBottom: 1, borderColor: 'divider' }}
+        >
+          <Box>
+            <Typography variant="subtitle1" fontWeight={700}>Limites d'approbation</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {limits.length} niveau{limits.length !== 1 ? 'x' : ''} configuré{limits.length !== 1 ? 's' : ''}
+            </Typography>
+          </Box>
+          <Box display="flex" gap={1}>
+            <Button startIcon={<RefreshIcon />} onClick={load} disabled={loading} size="small" variant="outlined">
+              Actualiser
+            </Button>
+            {isAdmin && (
+              <Button startIcon={<AddIcon />} onClick={openAdd} variant="contained" size="small">
+                Nouvelle limite
+              </Button>
+            )}
+          </Box>
         </Box>
       )}
 

@@ -410,7 +410,7 @@ export const CreditTypesPage: React.FC<{ compact?: boolean }> = ({ compact = fal
 
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 } }}>
+    <Box sx={{ p: compact ? 0 : { xs: 2, md: 3 } }}>
       {!compact && (
         <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -435,11 +435,29 @@ export const CreditTypesPage: React.FC<{ compact?: boolean }> = ({ compact = fal
           )}
         </Box>
       )}
-      {compact && hasWriteAccess && (
-        <Box display="flex" justifyContent="flex-end" mb={2}>
-          <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
-            Nouveau Type
-          </Button>
+      {compact && (
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+          sx={{
+            mb: 3,
+            pb: 2,
+            borderBottom: 1,
+            borderColor: 'divider',
+          }}
+        >
+          <Box>
+            <Typography variant="subtitle1" fontWeight={700}>Types de crédit</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {creditTypes.length} produit{creditTypes.length !== 1 ? 's' : ''} configuré{creditTypes.length !== 1 ? 's' : ''}
+            </Typography>
+          </Box>
+          {hasWriteAccess && (
+            <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
+              Nouveau Type
+            </Button>
+          )}
         </Box>
       )}
 
