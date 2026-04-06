@@ -15,6 +15,7 @@
 
 import { UserRole, PolicyStepType } from '@prisma/client';
 import { prisma } from '../prismaClient';
+import { STEP_NAME_FR } from '../constants/stepNames';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -427,21 +428,6 @@ export async function getApplicationProcessingStats(
   });
 
   if (!application) throw new Error(`Dossier introuvable : ${applicationId}`);
-
-  const STEP_NAME_FR: Record<string, string> = {
-    application_created:       'Création du dossier',
-    credit_analysis:           'Analyse crédit',
-    dispatch:                  'Dispatch',
-    approval:                  'Approbation',
-    final_decision:            'Décision finale',
-    documentation:             'Documentation',
-    branch_manager_review:     'Validation Directeur d\'Agence',
-    analyst_supervisor_review: 'Validation Superviseur Analyste',
-    credit_committee_review:   'Passage en Comité de Crédit',
-    management_review:         'Validation Direction Générale',
-    credit_analyst_review:     'Analyse par l\'Analyste Crédit',
-    account_manager_dispatch:  'Dispatch Chargé de Compte',
-  };
 
   const steps: StepProcessingStats[] = application.workflowSteps.map(s => {
     let duration: number | null = null;

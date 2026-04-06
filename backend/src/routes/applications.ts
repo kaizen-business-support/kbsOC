@@ -246,6 +246,11 @@ router.post('/', async (req: Request, res: Response) => {
         application.creditTypeId,
         Number(amount)
       );
+      // Le dossier passe en UNDER_REVIEW dès que les étapes sont générées
+      await prisma.creditApplication.update({
+        where: { id: application.id },
+        data: { status: 'UNDER_REVIEW' },
+      });
     }
 
     // Trigger notification (non-blocking)

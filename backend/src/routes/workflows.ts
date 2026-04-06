@@ -310,16 +310,16 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
 
     triggerNotification('APPLICATION_APPROVED', applicationId);
 
-    // Create final_decision step
+    // Create final_decision step (rôle système fixe, indépendant de l'approbateur)
     await prisma.workflowStep.create({
       data: {
         applicationId: applicationId,
         stepName: 'final_decision',
-        role: user.role,
+        role: 'ACCOUNT_MANAGER',
         status: 'APPROVED',
         completedAt: new Date(),
         assigneeId: userId,
-        comments: 'Application fully approved - all required approvals obtained'
+        comments: 'Dossier approuvé — toutes les validations requises ont été obtenues',
       }
     });
 

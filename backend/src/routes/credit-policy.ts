@@ -21,6 +21,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../prismaClient';
 import { buildWorkflowPlan, getApplicationProcessingStats } from '../services/workflowService';
+import { STEP_NAME_FR } from '../constants/stepNames';
 
 const router = Router();
 
@@ -165,21 +166,6 @@ router.get('/analytics', async (req: Request, res: Response) => {
     });
 
     // Agrégation par étape
-    const STEP_NAME_FR: Record<string, string> = {
-      application_created:       'Création du dossier',
-      credit_analysis:           'Analyse crédit',
-      dispatch:                  'Dispatch',
-      approval:                  'Approbation',
-      final_decision:            'Décision finale',
-      documentation:             'Documentation',
-      branch_manager_review:     'Validation Directeur d\'Agence',
-      analyst_supervisor_review: 'Validation Superviseur Analyste',
-      credit_committee_review:   'Passage en Comité de Crédit',
-      management_review:         'Validation Direction Générale',
-      credit_analyst_review:     'Analyse par l\'Analyste Crédit',
-      account_manager_dispatch:  'Dispatch Chargé de Compte',
-    };
-
     const stepStats: Record<string, { count: number; totalMinutes: number; overdueCount: number; stepLabel: string }> = {};
 
     for (const app of applications) {
@@ -339,6 +325,14 @@ router.post('/:id/steps', async (req: Request, res: Response) => {
       });
     }
 
+    // Validation cohérence des plages de montant
+    if (conditionMinAmount != null && conditionMaxAmount != null && Number(conditionMinAmount) > Number(conditionMaxAmount)) {
+      return res.status(400).json({ success: false, error: 'conditionMinAmount doit être ≤ conditionMaxAmount' });
+    }
+    if (approvalMinAmount != null && approvalMaxAmount != null && Number(approvalMinAmount) > Number(approvalMaxAmount)) {
+      return res.status(400).json({ success: false, error: 'approvalMinAmount doit être ≤ approvalMaxAmount' });
+    }
+
     // Calculer l'ordre si non fourni
     let stepOrder = order;
     if (!stepOrder) {
@@ -397,6 +391,14 @@ router.put('/:id/steps/:stepId', async (req: Request, res: Response) => {
       expectedDurationHours, maxDurationHours,
       isRequired, isActive, description, creditTypeIds,
     } = req.body;
+
+    // Validation cohérence des plages de montant
+    if (conditionMinAmount != null && conditionMaxAmount != null && Number(conditionMinAmount) > Number(conditionMaxAmount)) {
+      return res.status(400).json({ success: false, error: 'conditionMinAmount doit être ≤ conditionMaxAmount' });
+    }
+    if (approvalMinAmount != null && approvalMaxAmount != null && Number(approvalMinAmount) > Number(approvalMaxAmount)) {
+      return res.status(400).json({ success: false, error: 'approvalMinAmount doit être ≤ approvalMaxAmount' });
+    }
 
     const step = await prisma.creditPolicyStep.update({
       where: { id: req.params.stepId },
