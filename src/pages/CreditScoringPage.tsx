@@ -232,6 +232,10 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
         if (response.success && response.data) {
           const app = response.data;
 
+          // Switch to analyst mode and jump to analysis step
+          setIsAnalystMode(true);
+          setActiveStep(2);
+
           // Pre-populate client information
           if (app.client) {
             setSelectedClient(app.client);
@@ -241,20 +245,27 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
 
           // Pre-populate credit request information
           setAmount(app.amount?.toString() || '');
-          setDuration(app.duration?.toString() || '');
+          setDuration((app.durationMonths ?? app.duration)?.toString() || '');
           setPurpose(app.purpose || '');
-          setCreditType(app.creditType || '');
+          setCreditType(app.creditType?.name || app.creditType || '');
 
           // Load financial data from analysisResults
           if (app.analysisResults?.financialData) {
-            console.log('Loading financial data from application:', app.analysisResults.financialData);
             setFinancialData(app.analysisResults.financialData);
           }
 
-          // Load preliminary analysis if available
+          // Load scores and analysis text if available
           if (app.analysisResults?.preliminaryAnalysis) {
-            console.log('Loading preliminary analysis from application');
-            setOverallAnalysis(app.analysisResults.preliminaryAnalysis);
+            const pa = app.analysisResults.preliminaryAnalysis;
+            if (typeof pa === 'object') {
+              if (pa.overallScore !== undefined) setOverallScore(Number(pa.overallScore));
+              if (pa.financialScore !== undefined) setFinancialScore(Number(pa.financialScore));
+              if (pa.analystScore !== undefined) setAnalystScore(Number(pa.analystScore));
+              if (pa.overallAnalysis) setOverallAnalysis(pa.overallAnalysis);
+              if (pa.recommendations) setRecommendationsText(pa.recommendations);
+            } else if (typeof pa === 'string') {
+              setOverallAnalysis(pa);
+            }
           }
         }
       } catch (error) {
