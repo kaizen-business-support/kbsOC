@@ -215,7 +215,7 @@ router.post('/',
         permissions,
         isActive,
         mustChangePassword: true,
-        passwordExpiresAt: new Date(Date.now() + 30 * 60 * 1000)
+        passwordExpiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000) // 72 heures
       } as any
     });
 
@@ -226,7 +226,7 @@ router.post('/',
       email: newUser.email,
       temporaryPassword,
       loginUrl: frontendUrl,
-      expiresIn: '30 minutes'
+      expiresIn: '72 heures'
     });
     sendEmail(newUser.email, 'Bienvenue sur OptimusCredit — Vos accès', welcomeHtml)
       .catch(err => console.error('Welcome email failed:', err));
@@ -336,7 +336,7 @@ router.post('/:id/reset-password',
       data: {
         passwordHash,
         mustChangePassword: true,
-        passwordExpiresAt: new Date(Date.now() + 30 * 60 * 1000)
+        passwordExpiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000) // 72 heures
       } as any
     });
 
@@ -347,7 +347,7 @@ router.post('/:id/reset-password',
       email: user.email,
       temporaryPassword,
       loginUrl: frontendUrl,
-      expiresIn: '30 minutes'
+      expiresIn: '72 heures'
     });
     sendEmail(user.email, 'Réinitialisation de votre mot de passe — OptimusCredit', resetHtml)
       .catch(err => console.error('Admin reset email failed:', err));
