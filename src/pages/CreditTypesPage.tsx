@@ -130,7 +130,7 @@ const emptyStepForm: NewStepFormData = {
   conditionMaxAmount: '',
 };
 
-export const CreditTypesPage: React.FC = () => {
+export const CreditTypesPage: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   const { state: userState } = useUser();
   const [creditTypes, setCreditTypes] = useState<CreditType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -411,28 +411,37 @@ export const CreditTypesPage: React.FC = () => {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <BusinessIcon sx={{ fontSize: 40, color: 'primary.main' }} />
-          <Box>
-            <Typography variant="h4" sx={{ fontWeight: 600 }}>
-              Types de Crédit
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Gérer les types de crédit et leurs paramètres
-            </Typography>
+      {!compact && (
+        <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <BusinessIcon sx={{ fontSize: 40, color: 'primary.main' }} />
+            <Box>
+              <Typography variant="h4" sx={{ fontWeight: 600 }}>
+                Types de Crédit
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Gérer les types de crédit et leurs paramètres
+              </Typography>
+            </Box>
           </Box>
+          {hasWriteAccess && (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => handleOpenDialog()}
+            >
+              Nouveau Type
+            </Button>
+          )}
         </Box>
-        {hasWriteAccess && (
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenDialog()}
-          >
+      )}
+      {compact && hasWriteAccess && (
+        <Box display="flex" justifyContent="flex-end" mb={2}>
+          <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
             Nouveau Type
           </Button>
-        )}
-      </Box>
+        </Box>
+      )}
 
       {/* Access Info for Management Role */}
       {userState.currentUser?.role === 'management' && (

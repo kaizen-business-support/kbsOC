@@ -82,9 +82,9 @@ const roleInfo = (role: string) => ROLES.find(r => r.value === role) ?? {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-interface Props { onNavigate: (page: any) => void }
+interface Props { onNavigate: (page: any) => void; compact?: boolean }
 
-export const ApprovalLimitsPage: React.FC<Props> = () => {
+export const ApprovalLimitsPage: React.FC<Props> = ({ compact = false }) => {
   const { isRole } = useUser();
   const isAdmin     = isRole('admin');
   const canView     = isRole('admin') || isRole('management');
@@ -201,24 +201,33 @@ export const ApprovalLimitsPage: React.FC<Props> = () => {
     <Box sx={{ p: { xs: 2, md: 3 } }}>
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <Box display="flex" alignItems="center" gap={2} mb={3}>
-        <LimitsIcon sx={{ fontSize: 36, color: 'primary.main' }} />
-        <Box flex={1}>
-          <Typography variant="h5" fontWeight={700}>Approbation par Limite de Crédit</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Définit qui approuve une demande de crédit en fonction du montant demandé
-          </Typography>
-        </Box>
-        <Button startIcon={<RefreshIcon />} onClick={load} disabled={loading} size="small">
-          Actualiser
-        </Button>
-        {isAdmin && (
-          <Button startIcon={<AddIcon />} onClick={openAdd} variant="contained" size="small">
-            Nouvelle limite
+      {!compact ? (
+        <Box display="flex" alignItems="center" gap={2} mb={3}>
+          <LimitsIcon sx={{ fontSize: 36, color: 'primary.main' }} />
+          <Box flex={1}>
+            <Typography variant="h5" fontWeight={700}>Approbation par Limite de Crédit</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Définit qui approuve une demande de crédit en fonction du montant demandé
+            </Typography>
+          </Box>
+          <Button startIcon={<RefreshIcon />} onClick={load} disabled={loading} size="small">
+            Actualiser
           </Button>
+          {isAdmin && (
+            <Button startIcon={<AddIcon />} onClick={openAdd} variant="contained" size="small">
+              Nouvelle limite
+            </Button>
         )}
-        <Chip label={isAdmin ? 'Admin' : 'Lecture seule'} color={isAdmin ? 'primary' : 'default'} size="small" />
-      </Box>
+          <Chip label={isAdmin ? 'Admin' : 'Lecture seule'} color={isAdmin ? 'primary' : 'default'} size="small" />
+        </Box>
+      ) : (
+        <Box display="flex" justifyContent="flex-end" gap={1} mb={2}>
+          <Button startIcon={<RefreshIcon />} onClick={load} disabled={loading} size="small">Actualiser</Button>
+          {isAdmin && (
+            <Button startIcon={<AddIcon />} onClick={openAdd} variant="contained" size="small">Nouvelle limite</Button>
+          )}
+        </Box>
+      )}
 
       {/* ── Visualisation dynamique de la hiérarchie ────────────────────────── */}
       {!loading && sorted.filter(l => l.isActive).length > 0 && (
