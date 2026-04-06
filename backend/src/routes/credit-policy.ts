@@ -156,6 +156,7 @@ router.get('/analytics', async (req: Request, res: Response) => {
             completedAt: true,
             createdAt: true,
             isOverdue: true,
+            policyStep: { select: { stepLabel: true } },
           },
         },
       },
@@ -164,7 +165,16 @@ router.get('/analytics', async (req: Request, res: Response) => {
     });
 
     // Agrégation par étape
-    const stepStats: Record<string, { count: number; totalMinutes: number; overdueCount: number }> = {};
+    const STEP_NAME_FR: Record<string, string> = {
+      application_created: 'Création du dossier',
+      credit_analysis: 'Analyse crédit',
+      dispatch: 'Dispatch',
+      approval: 'Approbation',
+      final_decision: 'Décision finale',
+      documentation: 'Documentation',
+    };
+
+    const stepStats: Record<string, { count: number; totalMinutes: number; overdueCount: number; stepLabel: string }> = {};
 
     for (const app of applications) {
       for (const step of app.workflowSteps) {
@@ -176,7 +186,8 @@ router.get('/analytics', async (req: Request, res: Response) => {
           );
 
         if (!stepStats[step.stepName]) {
-          stepStats[step.stepName] = { count: 0, totalMinutes: 0, overdueCount: 0 };
+          const label = (step as any).policyStep?.stepLabel ?? STEP_NAME_FR[step.stepName] ?? step.stepName;
+          stepStats[step.stepName] = { count: 0, totalMinutes: 0, overdueCount: 0, stepLabel: label };
         }
         stepStats[step.stepName].count++;
         stepStats[step.stepName].totalMinutes += duration;
@@ -186,6 +197,7 @@ router.get('/analytics', async (req: Request, res: Response) => {
 
     const stepAverages = Object.entries(stepStats).map(([stepName, s]) => ({
       stepName,
+      stepLabel: s.stepLabel,
       count: s.count,
       averageDurationMinutes: s.count > 0 ? Math.round(s.totalMinutes / s.count) : 0,
       overdueRate: s.count > 0 ? Math.round((s.overdueCount / s.count) * 100) : 0,
