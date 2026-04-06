@@ -92,7 +92,7 @@ const fmtHours = (h: number) =>
 
 // ─── Page principale ──────────────────────────────────────────────────────────
 
-export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
+export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialTab?: number; compact?: boolean }) {
   const { isRole } = useUser();
   const isAdmin = isRole('admin') || isRole('management');
 
@@ -264,34 +264,54 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
-      {/* Header */}
-      <Box display="flex" alignItems="center" gap={2} mb={3}>
-        <PolicyIcon sx={{ fontSize: 36, color: 'primary.main' }} />
-        <Box flex={1}>
-          <Typography variant="h5" fontWeight={700}>Politique de Crédit</Typography>
-          <Typography variant="body2" color="text.secondary">
-            {selectedPolicy
-              ? <>{selectedPolicy.name} — <em>v{selectedPolicy.version}</em></>
-              : 'Circuit de traitement, profils valideurs et approbations par montant'}
-          </Typography>
-        </Box>
-        {selectedPolicy && (
+      {/* Header — masqué en mode compact (rendu dans CreditManagementPage) */}
+      {!compact && (
+        <>
+          <Box display="flex" alignItems="center" gap={2} mb={3}>
+            <PolicyIcon sx={{ fontSize: 36, color: 'primary.main' }} />
+            <Box flex={1}>
+              <Typography variant="h5" fontWeight={700}>Politique de Crédit</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {selectedPolicy
+                  ? <>{selectedPolicy.name} — <em>v{selectedPolicy.version}</em></>
+                  : 'Circuit de traitement, profils valideurs et approbations par montant'}
+              </Typography>
+            </Box>
+            {selectedPolicy && (
+              <Tooltip title="Modifier la politique">
+                <IconButton size="small" onClick={() => openEditPolicy(selectedPolicy)}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
+            <Chip label="Admin" color="primary" size="small" />
+          </Box>
+
+          <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
+            <Tab label="Étapes de crédit" disabled={!selectedPolicy} />
+            <Tab label="Simulation du circuit" />
+          </Tabs>
+        </>
+      )}
+
+      {/* En mode compact : info politique + bouton modifier en ligne */}
+      {compact && selectedPolicy && (
+        <Box display="flex" alignItems="center" gap={1.5} mb={2}
+          sx={{ bgcolor: 'grey.50', borderRadius: 2, px: 2, py: 1, border: '1px solid', borderColor: 'divider' }}>
+          <PolicyIcon sx={{ fontSize: 18, color: 'primary.main' }} />
+          <Typography variant="body2" fontWeight={600}>{selectedPolicy.name}</Typography>
+          <Typography variant="caption" color="text.secondary">— v{selectedPolicy.version}</Typography>
+          <Box flex={1} />
           <Tooltip title="Modifier la politique">
             <IconButton size="small" onClick={() => openEditPolicy(selectedPolicy)}>
               <EditIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-        )}
-        <Chip label="Admin" color="primary" size="small" />
-      </Box>
+        </Box>
+      )}
 
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
-        <Tab label="Étapes de crédit" disabled={!selectedPolicy} />
-        <Tab label="Traitement" />
-      </Tabs>
-
-      {/* ── Tab 0 : Étapes de la politique active ───────────────────────────── */}
-      {tab === 0 && selectedPolicy && (
+      {/* ── Section Étapes ────────────────────────────────────────────────────── */}
+      {(compact || tab === 0) && selectedPolicy && (
         <Card>
           <CardContent>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -347,8 +367,8 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
                 Aucune étape configurée. Ajoutez les étapes du circuit (dispatch → analyse → approbation…).
               </Alert>
             ) : (
-              <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
+              <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
+                <Table size="small" sx={{ minWidth: 700 }}>
                   <TableHead sx={{ bgcolor: 'grey.50' }}>
                     <TableRow>
                       <TableCell align="center" width={40}>#</TableCell>
@@ -429,8 +449,9 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
         </Card>
       )}
 
-      {/* ── Tab 1 : Traitement — Simuler le circuit ─────────────────────────── */}
-      {tab === 1 && (
+      {/* ── Section Simulation ───────────────────────────────────────────────── */}
+      {compact && <Divider sx={{ my: 3 }} />}
+      {(compact || tab === 1) && (
         <Card>
           <CardContent>
             <Box display="flex" alignItems="center" gap={1} mb={3}>
@@ -517,8 +538,8 @@ export function CreditPolicyPage({ initialTab = 0 }: { initialTab?: number }) {
                   )}
 
                   {/* Circuit complet */}
-                  <TableContainer component={Paper} variant="outlined">
-                    <Table size="small">
+                  <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
+                    <Table size="small" sx={{ minWidth: 600 }}>
                       <TableHead sx={{ bgcolor: 'grey.50' }}>
                         <TableRow>
                           <TableCell align="center" width={40}>#</TableCell>

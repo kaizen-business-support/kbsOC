@@ -272,8 +272,8 @@ export const ApprovalLimitsPage: React.FC<Props> = () => {
         </Alert>
       ) : (
         <Card>
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
+          <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
+            <Table size="small" sx={{ minWidth: 600 }}>
               <TableHead sx={{ bgcolor: 'grey.50' }}>
                 <TableRow>
                   <TableCell align="center" width={50}>Niv.</TableCell>

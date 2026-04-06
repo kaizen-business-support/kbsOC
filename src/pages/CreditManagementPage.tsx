@@ -68,7 +68,7 @@ export function CreditManagementPage({ initialTab = 0, onNavigate }: Props) {
 
       {/* Contenu */}
       {tab === 0 && <CreditTypesPage />}
-      {tab === 1 && <CreditPolicyPage initialTab={0} />}
+      {tab === 1 && <CreditPolicyPage initialTab={0} compact={true} />}
       {tab === 2 && <ApprovalLimitsPage onNavigate={onNavigate ?? (() => {})} />}
     </Box>
   );
