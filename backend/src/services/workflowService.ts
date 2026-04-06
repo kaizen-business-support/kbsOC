@@ -417,7 +417,10 @@ export async function getApplicationProcessingStats(
       applicationNumber: true,
       totalDurationMinutes: true,
       workflowSteps: {
-        include: { assignee: { select: { name: true } } },
+        include: {
+          assignee: { select: { name: true } },
+          policyStep: { select: { stepLabel: true } },
+        },
         orderBy: { createdAt: 'asc' },
       },
     },
@@ -431,9 +434,17 @@ export async function getApplicationProcessingStats(
       const start = s.startedAt ?? s.createdAt;
       duration = Math.round((s.completedAt.getTime() - start.getTime()) / 60000);
     }
+    const STEP_NAME_FR: Record<string, string> = {
+      application_created: 'Création du dossier',
+      credit_analysis: 'Analyse crédit',
+      dispatch: 'Dispatch',
+      approval: 'Approbation',
+      final_decision: 'Décision finale',
+      documentation: 'Documentation',
+    };
     return {
       stepName: s.stepName,
-      stepLabel: s.stepName,
+      stepLabel: s.policyStep?.stepLabel ?? STEP_NAME_FR[s.stepName] ?? s.stepName,
       role: s.role,
       durationMinutes: duration,
       isOverdue: s.isOverdue,

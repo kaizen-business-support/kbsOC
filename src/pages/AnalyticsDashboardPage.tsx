@@ -1707,7 +1707,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
                         ?.sort((a: any, b: any) => b.averageDurationMinutes - a.averageDurationMinutes)
                         .map((s: any) => (
                           <TableRow key={s.stepName} hover>
-                            <TableCell><Typography variant="body2" fontWeight={600}>{s.stepName}</Typography></TableCell>
+                            <TableCell><Typography variant="body2" fontWeight={600}>{s.stepLabel ?? s.stepName}</Typography></TableCell>
                             <TableCell align="center">{s.count}</TableCell>
                             <TableCell align="center">
                               <Typography variant="body2" fontWeight={600}>
