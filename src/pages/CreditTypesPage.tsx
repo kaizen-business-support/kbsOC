@@ -146,11 +146,14 @@ export const CreditTypesPage: React.FC<{ compact?: boolean }> = ({ compact = fal
   // Dialog tabs
   const [activeTab, setActiveTab] = useState(0);
 
-  // Politique de crédit — checklist du workflow
+  // Politique de crédit — workflow tab
   const [activePolicyId, setActivePolicyId] = useState<string | null>(null);
   const [activePolicySteps, setActivePolicySteps] = useState<any[]>([]);
   const [policyStepsLoading, setPolicyStepsLoading] = useState(false);
-  const [stepsToggling, setStepsToggling] = useState<Set<string>>(new Set());
+  // Sélections locales (batch save)
+  const [localSelections, setLocalSelections] = useState<Set<string>>(new Set());
+  const [selectionsDirty, setSelectionsDirty] = useState(false);
+  const [selectionsSaving, setSelectionsSaving] = useState(false);
 
   // Check if user has write access (only ADMIN can write, MANAGEMENT can only read)
   const hasWriteAccess = userState.currentUser?.role === 'admin';
@@ -179,59 +182,93 @@ export const CreditTypesPage: React.FC<{ compact?: boolean }> = ({ compact = fal
     }
   };
 
-  const loadActivePolicySteps = async () => {
+  const initSelections = (steps: any[], creditTypeId: string) => {
+    const selected = new Set<string>(
+      steps
+        .filter((s: any) => s.creditTypeIds.length === 0 || s.creditTypeIds.includes(creditTypeId))
+        .map((s: any) => s.id)
+    );
+    setLocalSelections(selected);
+    setSelectionsDirty(false);
+  };
+
+  const loadActivePolicySteps = async (creditTypeId: string) => {
     setPolicyStepsLoading(true);
     const res = await creditPolicyApi.getPolicies();
     if (res.success && res.data) {
       const active = (res.data as any[]).find((p: any) => p.isActive);
       if (active) {
+        const steps = active.steps ?? [];
         setActivePolicyId(active.id);
-        setActivePolicySteps(active.steps ?? []);
+        setActivePolicySteps(steps);
+        initSelections(steps, creditTypeId);
       } else {
         setActivePolicyId(null);
         setActivePolicySteps([]);
+        setLocalSelections(new Set());
       }
     }
     setPolicyStepsLoading(false);
   };
 
-  const handleTogglePolicyStep = async (step: any, checked: boolean) => {
-    if (!selectedCreditType || !activePolicyId) return;
-    setStepsToggling(prev => new Set(prev).add(step.id));
+  const toggleStep = (stepId: string) => {
+    setLocalSelections(prev => {
+      const next = new Set(prev);
+      if (next.has(stepId)) next.delete(stepId); else next.add(stepId);
+      return next;
+    });
+    setSelectionsDirty(true);
+  };
 
-    let newCreditTypeIds: string[];
-    if (checked) {
-      // Ajouter ce type de crédit — si déjà vide (= tous), rester vide
-      newCreditTypeIds = step.creditTypeIds.length === 0
-        ? []
-        : [...step.creditTypeIds, selectedCreditType.id];
-    } else {
-      // Retirer ce type de crédit
-      if (step.creditTypeIds.length === 0) {
-        // Étape s'appliquait à tous → exclure ce type explicitement
-        newCreditTypeIds = creditTypes
-          .filter(ct => ct.id !== selectedCreditType.id)
-          .map(ct => ct.id);
+  const saveSelections = async () => {
+    if (!activePolicyId || !selectedCreditType) return;
+    setSelectionsSaving(true);
+
+    const updates: Promise<any>[] = [];
+
+    for (const step of activePolicySteps) {
+      const isNowSelected = localSelections.has(step.id);
+      const wasSelected = step.creditTypeIds.length === 0 || step.creditTypeIds.includes(selectedCreditType.id);
+      if (isNowSelected === wasSelected) continue;
+
+      let newCreditTypeIds: string[];
+      if (isNowSelected) {
+        // Ajouter ce type de crédit
+        newCreditTypeIds = [...step.creditTypeIds, selectedCreditType.id];
       } else {
-        newCreditTypeIds = step.creditTypeIds.filter((id: string) => id !== selectedCreditType.id);
+        // Retirer ce type de crédit
+        if (step.creditTypeIds.length === 0) {
+          // Étape "tous" → matérialiser l'exclusion
+          newCreditTypeIds = creditTypes
+            .filter(ct => ct.id !== selectedCreditType.id)
+            .map(ct => ct.id);
+        } else {
+          newCreditTypeIds = step.creditTypeIds.filter((id: string) => id !== selectedCreditType.id);
+        }
       }
+      updates.push(creditPolicyApi.updateStep(activePolicyId, step.id, { creditTypeIds: newCreditTypeIds }));
     }
 
-    const res = await creditPolicyApi.updateStep(activePolicyId, step.id, { creditTypeIds: newCreditTypeIds });
-    if (res.success) {
-      setActivePolicySteps(prev =>
-        prev.map(s => s.id === step.id ? { ...s, creditTypeIds: newCreditTypeIds } : s)
-      );
+    if (updates.length > 0) {
+      const results = await Promise.all(updates);
+      if (results.some((r: any) => !r.success)) {
+        setError('Erreur lors de la sauvegarde du workflow.');
+      } else {
+        setSuccess('Workflow mis à jour avec succès.');
+        await loadActivePolicySteps(selectedCreditType.id);
+      }
     } else {
-      setError('Erreur lors de la mise à jour des étapes applicables');
+      setSelectionsDirty(false);
     }
-    setStepsToggling(prev => { const n = new Set(prev); n.delete(step.id); return n; });
+    setSelectionsSaving(false);
   };
 
   const handleOpenDialog = (creditType?: CreditType) => {
     setActiveTab(0);
     setActivePolicySteps([]);
     setActivePolicyId(null);
+    setLocalSelections(new Set());
+    setSelectionsDirty(false);
 
     if (creditType) {
       setEditMode(true);
@@ -259,8 +296,12 @@ export const CreditTypesPage: React.FC<{ compact?: boolean }> = ({ compact = fal
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
-    if (newValue === 1 && selectedCreditType && activePolicySteps.length === 0) {
-      loadActivePolicySteps();
+    if (newValue === 1 && selectedCreditType) {
+      if (activePolicySteps.length === 0) {
+        loadActivePolicySteps(selectedCreditType.id);
+      } else {
+        initSelections(activePolicySteps, selectedCreditType.id);
+      }
     }
   };
 
@@ -730,18 +771,12 @@ export const CreditTypesPage: React.FC<{ compact?: boolean }> = ({ compact = fal
             </Grid>
           )}
 
-          {/* Tab 1: Workflow — Checklist de la politique de crédit */}
+          {/* Tab 1: Workflow — Parcours de la politique de crédit */}
           {activeTab === 1 && selectedCreditType && (
             <Box sx={{ mt: 1 }}>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Sélectionnez les étapes de traitement applicables à ce type de crédit parmi celles
-                définies dans la <strong>Politique de Crédit active</strong>. Une étape décochée
-                ne s'appliquera pas aux demandes de ce type de crédit.
-              </Typography>
-
               {policyStepsLoading ? (
-                <Box display="flex" justifyContent="center" py={4}>
-                  <CircularProgress size={24} />
+                <Box display="flex" justifyContent="center" py={6}>
+                  <CircularProgress size={28} />
                 </Box>
               ) : activePolicySteps.length === 0 ? (
                 <Alert severity="info">
@@ -750,39 +785,152 @@ export const CreditTypesPage: React.FC<{ compact?: boolean }> = ({ compact = fal
                 </Alert>
               ) : (
                 <>
-                  <TableContainer component={Paper} variant="outlined">
-                    <Table size="small">
+                  {/* ── Description ────────────────────────────────────────── */}
+                  <Alert severity="info" sx={{ mb: 2.5, py: 0.75 }}>
+                    Cochez les étapes du parcours qui s'appliquent à ce type de crédit.
+                    Les sélections sauvegardées sont prioritaires sur le paramètre par défaut.
+                  </Alert>
+
+                  {/* ── Visualisation du flux avec cases à cocher ──────────── */}
+                  <Box
+                    sx={{
+                      display: 'flex', alignItems: 'center', gap: 1,
+                      flexWrap: 'wrap', mb: 3,
+                      bgcolor: 'grey.50', borderRadius: 2, p: 2,
+                      border: '1px solid', borderColor: 'divider',
+                    }}
+                  >
+                    {[...activePolicySteps].sort((a, b) => a.order - b.order).map((step, i, arr) => {
+                      const isSelected = localSelections.has(step.id);
+                      const typeInfo = STEP_TYPES[step.stepType];
+                      const roleInfo = ROLES.find(r => r.value === step.assignedRole);
+                      return (
+                        <React.Fragment key={step.id}>
+                          <Box
+                            onClick={() => hasWriteAccess && toggleStep(step.id)}
+                            sx={{
+                              position: 'relative',
+                              display: 'flex', flexDirection: 'column', alignItems: 'center',
+                              bgcolor: isSelected ? 'white' : 'grey.100',
+                              border: '1px solid',
+                              borderColor: isSelected ? (typeInfo?.color ?? 'divider') : 'grey.300',
+                              borderTop: `3px solid ${isSelected ? (typeInfo?.color ?? '#999') : '#ccc'}`,
+                              borderRadius: 2, px: 1.5, py: 1, minWidth: 100,
+                              opacity: isSelected ? 1 : 0.5,
+                              cursor: hasWriteAccess ? 'pointer' : 'default',
+                              transition: 'all 0.18s',
+                              '&:hover': hasWriteAccess ? { boxShadow: 3, opacity: 1 } : {},
+                            }}
+                          >
+                            {/* Checkbox overlay */}
+                            <Box sx={{ position: 'absolute', top: -10, right: -10 }}>
+                              <Checkbox
+                                checked={isSelected}
+                                size="small"
+                                disabled={!hasWriteAccess}
+                                onClick={e => { e.stopPropagation(); if (hasWriteAccess) toggleStep(step.id); }}
+                                sx={{
+                                  p: 0.3,
+                                  bgcolor: 'white',
+                                  borderRadius: '50%',
+                                  boxShadow: 1,
+                                }}
+                              />
+                            </Box>
+                            <Typography
+                              variant="caption" fontWeight={700} fontSize={10}
+                              sx={{ color: isSelected ? (typeInfo?.color ?? '#999') : 'text.disabled', textTransform: 'uppercase' }}
+                            >
+                              {typeInfo?.label ?? step.stepType}
+                            </Typography>
+                            <Typography variant="caption" fontWeight={600} fontSize={11} noWrap sx={{ maxWidth: 110, textAlign: 'center' }}>
+                              {step.stepLabel}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" fontSize={10} noWrap>
+                              {roleInfo?.label ?? step.assignedRole}
+                            </Typography>
+                            <Typography variant="caption" color="text.disabled" fontSize={10}>
+                              {Math.ceil(step.expectedDurationHours / 24)}j
+                            </Typography>
+                          </Box>
+                          {i < arr.length - 1 && (
+                            <Typography
+                              variant="caption"
+                              sx={{ color: isSelected && localSelections.has(arr[i + 1]?.id) ? 'text.secondary' : 'grey.400', fontSize: 18 }}
+                            >
+                              →
+                            </Typography>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </Box>
+
+                  {/* ── Barre de statut + bouton Sauvegarder ───────────────── */}
+                  <Box
+                    display="flex" alignItems="center" justifyContent="space-between"
+                    sx={{ mb: 2.5, px: 1 }}
+                  >
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Typography variant="caption" color="text.secondary">
+                        <strong>{localSelections.size}</strong> étape{localSelections.size !== 1 ? 's' : ''} sélectionnée{localSelections.size !== 1 ? 's' : ''}
+                        {' '}sur {activePolicySteps.length}
+                      </Typography>
+                      {selectionsDirty && (
+                        <Chip
+                          label="Modifications non sauvegardées"
+                          size="small"
+                          color="warning"
+                          sx={{ fontSize: 11, height: 20 }}
+                        />
+                      )}
+                    </Box>
+                    {hasWriteAccess && (
+                      <Button
+                        variant={selectionsDirty ? 'contained' : 'outlined'}
+                        size="small"
+                        onClick={saveSelections}
+                        disabled={selectionsSaving || !selectionsDirty}
+                        startIcon={selectionsSaving ? <CircularProgress size={14} color="inherit" /> : undefined}
+                      >
+                        {selectionsSaving ? 'Sauvegarde…' : 'Sauvegarder'}
+                      </Button>
+                    )}
+                  </Box>
+
+                  {/* ── Table détaillée ────────────────────────────────────── */}
+                  <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
+                    <Table size="small" sx={{ minWidth: 480 }}>
                       <TableHead sx={{ bgcolor: 'grey.50' }}>
                         <TableRow>
                           <TableCell padding="checkbox" />
-                          <TableCell align="center" width={40}>#</TableCell>
+                          <TableCell align="center" width={36}>#</TableCell>
                           <TableCell>Étape de traitement</TableCell>
                           <TableCell align="center">Type</TableCell>
                           <TableCell>Responsable</TableCell>
                           <TableCell align="center">SLA</TableCell>
+                          <TableCell align="center">Condition montant</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {[...activePolicySteps].sort((a, b) => a.order - b.order).map((step) => {
-                          const isApplicable = step.creditTypeIds.length === 0
-                            || step.creditTypeIds.includes(selectedCreditType.id);
-                          const isToggling = stepsToggling.has(step.id);
+                          const isSelected = localSelections.has(step.id);
                           const typeInfo = STEP_TYPES[step.stepType];
                           const roleInfo = ROLES.find(r => r.value === step.assignedRole);
                           return (
-                            <TableRow key={step.id} hover sx={{ opacity: isApplicable ? 1 : 0.45 }}>
-                              <TableCell padding="checkbox">
-                                {isToggling
-                                  ? <CircularProgress size={18} sx={{ m: '9px' }} />
-                                  : (
-                                    <Checkbox
-                                      checked={isApplicable}
-                                      disabled={!hasWriteAccess}
-                                      onChange={e => handleTogglePolicyStep(step, e.target.checked)}
-                                      size="small"
-                                    />
-                                  )
-                                }
+                            <TableRow
+                              key={step.id}
+                              hover
+                              onClick={() => hasWriteAccess && toggleStep(step.id)}
+                              sx={{ opacity: isSelected ? 1 : 0.45, cursor: hasWriteAccess ? 'pointer' : 'default' }}
+                            >
+                              <TableCell padding="checkbox" onClick={e => e.stopPropagation()}>
+                                <Checkbox
+                                  checked={isSelected}
+                                  disabled={!hasWriteAccess}
+                                  onChange={() => hasWriteAccess && toggleStep(step.id)}
+                                  size="small"
+                                />
                               </TableCell>
                               <TableCell align="center">
                                 <Typography variant="caption" fontWeight={700}>{step.order}</Typography>
@@ -803,7 +951,14 @@ export const CreditTypesPage: React.FC<{ compact?: boolean }> = ({ compact = fal
                               </TableCell>
                               <TableCell align="center">
                                 <Typography variant="caption" color="text.secondary">
-                                  {Math.ceil(step.expectedDurationHours / 24)}j
+                                  {Math.ceil(step.expectedDurationHours / 24)}j / {Math.ceil(step.maxDurationHours / 24)}j max
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="center">
+                                <Typography variant="caption" color={step.conditionMinAmount !== null || step.conditionMaxAmount !== null ? 'warning.dark' : 'text.disabled'}>
+                                  {step.conditionMinAmount !== null || step.conditionMaxAmount !== null
+                                    ? `${step.conditionMinAmount?.toLocaleString('fr-FR') ?? '0'} – ${step.conditionMaxAmount?.toLocaleString('fr-FR') ?? '∞'} XOF`
+                                    : 'Tous montants'}
                                 </Typography>
                               </TableCell>
                             </TableRow>
