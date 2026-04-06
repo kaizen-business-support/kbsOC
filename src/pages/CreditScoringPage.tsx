@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -142,10 +142,20 @@ interface AnalystCriteria {
 export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate }) => {
   const { t } = useTranslation();
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Get applicationId from URL query params
   const searchParams = new URLSearchParams(location.search);
   const applicationId = searchParams.get('applicationId');
+
+  // Redirect if arriving from ClientManagementPage "Analyse" tab via localStorage bridge
+  useEffect(() => {
+    const pendingId = localStorage.getItem('pending_scoring_app');
+    if (pendingId && !applicationId) {
+      localStorage.removeItem('pending_scoring_app');
+      navigate(`/credit-scoring?applicationId=${pendingId}`, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [activeStep, setActiveStep] = useState(applicationId ? 2 : 0); // Start at step 2 (Analyse Crédit) if applicationId present
   const [currentTab, setCurrentTab] = useState(0);
@@ -533,13 +543,32 @@ export const CreditScoringPage: React.FC<CreditScoringPageProps> = ({ onNavigate
     setCurrentTab(newValue);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     // Complete current step before moving to next
     completeCurrentStep(activeStep);
-    
+
+    // Auto-sauvegarde intermédiaire quand l'analyste valide l'étape "Analyse Crédit" (step 2)
+    if (activeStep === 2 && isAnalystMode && applicationId) {
+      try {
+        await ApiService.updateApplication(applicationId, {
+          analystScore,
+          financialScore,
+          overallScore,
+          overallAnalysis,
+          recommendations: recommendationsText,
+          analysisResults: {
+            preliminaryAnalysis: { overallScore, financialScore, analystScore, overallAnalysis, recommendations: recommendationsText },
+            financialData,
+          },
+        });
+      } catch (err) {
+        console.warn('Auto-save intermediaire échoué:', err);
+      }
+    }
+
     const nextStep = activeStep + 1;
     setActiveStep(nextStep);
-    
+
     // Start timing next step if not the last step
     if (nextStep < steps.length) {
       startNextStep(nextStep);

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
+import { createInAppNotification } from '../services/notificationService';
 
 const router = Router();
 
@@ -266,7 +267,7 @@ router.post('/assign', async (req: Request, res: Response) => {
     const [application, analyst] = await Promise.all([
       prisma.creditApplication.findUnique({
         where: { id: applicationId },
-        include: { workflowSteps: true }
+        include: { workflowSteps: true, client: { select: { companyName: true } } }
       }),
       prisma.user.findUnique({ where: { id: analystId } })
     ]);
@@ -318,6 +319,19 @@ router.post('/assign', async (req: Request, res: Response) => {
         data: { status: 'UNDER_REVIEW' }
       });
     }
+
+    // Notifier directement l'analyste assigné
+    const clientName = (application as any).client?.companyName ?? 'Client';
+    await createInAppNotification(analystId, {
+      title: isReassign
+        ? `Dossier ré-affecté — ${application.applicationNumber}`
+        : `Nouveau dossier à analyser — ${application.applicationNumber}`,
+      message: `Le dossier de ${clientName} (${application.applicationNumber}) vous a été ${isReassign ? 'ré-affecté' : 'affecté'} par ${supervisorName}. Veuillez procéder à l'analyse crédit.`,
+      type: 'ACTION_REQUIRED',
+      relatedType: 'application',
+      relatedId: applicationId,
+      actionUrl: `/workflow?applicationId=${applicationId}`,
+    });
 
     res.json({
       success: true,

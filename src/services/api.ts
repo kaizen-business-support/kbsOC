@@ -915,6 +915,7 @@ export class ApiService {
     dateFrom?: string;
     dateTo?: string;
     userId?: string;
+    assignedAnalystId?: string;
   }): Promise<ApiResponse<any>> {
     try {
       const params = new URLSearchParams();
@@ -923,6 +924,7 @@ export class ApiService {
       if (filters?.dateFrom) params.append('dateFrom', filters.dateFrom);
       if (filters?.dateTo) params.append('dateTo', filters.dateTo);
       if (filters?.userId) params.append('userId', filters.userId);
+      if (filters?.assignedAnalystId) params.append('assignedAnalystId', filters.assignedAnalystId);
 
       const response = await api.get(`/applications?${params.toString()}`);
       return {

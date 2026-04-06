@@ -207,7 +207,7 @@ export async function triggerNotification(
                : 'INFO',
           relatedType: 'application',
           relatedId: applicationId,
-          actionUrl: '/workflow',
+          actionUrl: `/workflow?applicationId=${applicationId}`,
         });
 
         // Send external notifications if channel active

@@ -107,6 +107,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ onPageChange
       setUnreadCount(prev => Math.max(0, prev - 1));
     }
     handleClose();
+    // Si la notification est liée à un dossier, le pré-sélectionner dans WorkflowPage
+    if (notif.relatedId) {
+      localStorage.setItem('pending_workflow_app', notif.relatedId);
+    }
     onPageChange('workflow');
   };
 

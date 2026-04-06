@@ -105,6 +105,25 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
     loadData();
   }, []);
 
+  // Ouvrir automatiquement un dossier si la notif a stocké un applicationId
+  useEffect(() => {
+    const pendingAppId = localStorage.getItem('pending_workflow_app');
+    if (!pendingAppId) return;
+    localStorage.removeItem('pending_workflow_app');
+
+    // Attendre que les données soient chargées puis ouvrir le dossier
+    const tryOpen = (retries = 0) => {
+      const wf = workflows.find(w => w.applicationId === pendingAppId);
+      if (wf) {
+        setSelectedWorkflow(wf);
+        setDialogOpen(true);
+      } else if (retries < 10) {
+        setTimeout(() => tryOpen(retries + 1), 300);
+      }
+    };
+    tryOpen();
+  }, [workflows]);
+
   // Reload data when filters change
   useEffect(() => {
     loadData();

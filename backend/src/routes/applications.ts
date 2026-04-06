@@ -8,15 +8,15 @@ const router = Router();
 // GET /api/applications - Get applications with filters
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { status, branch, dateFrom, dateTo, userId } = req.query;
-    
+    const { status, branch, dateFrom, dateTo, userId, assignedAnalystId } = req.query;
+
     // Build filter conditions
     const whereConditions: any = {};
-    
+
     if (status && status !== 'all') {
       whereConditions.status = (status as string).toUpperCase();
     }
-    
+
     if (branch && branch !== 'all') {
       whereConditions.client = {
         creator: {
@@ -24,7 +24,7 @@ router.get('/', async (req: Request, res: Response) => {
         }
       };
     }
-    
+
     if (dateFrom || dateTo) {
       whereConditions.createdAt = {};
       if (dateFrom) {
@@ -34,9 +34,19 @@ router.get('/', async (req: Request, res: Response) => {
         whereConditions.createdAt.lte = new Date(dateTo as string);
       }
     }
-    
+
     if (userId) {
       whereConditions.createdBy = userId as string;
+    }
+
+    if (assignedAnalystId) {
+      whereConditions.workflowSteps = {
+        some: {
+          role: 'CREDIT_ANALYST',
+          assigneeId: assignedAnalystId as string,
+          status: { in: ['PENDING', 'IN_REVIEW'] },
+        }
+      };
     }
 
     const applications = await prisma.creditApplication.findMany({
