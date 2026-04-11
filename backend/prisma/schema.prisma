@@ -14,6 +14,7 @@ model User {
   name                String
   role                UserRole            @default(ACCOUNT_MANAGER)
   department          String?
+  branch              String?
   jobTitle            String?             @map("job_title")
   phone               String?
   permissions         Json?

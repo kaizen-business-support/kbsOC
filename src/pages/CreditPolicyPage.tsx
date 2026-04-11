@@ -15,6 +15,8 @@ import {
   CheckCircle as ActiveIcon,
   Cancel as InactiveIcon,
   Visibility as PreviewIcon,
+  ArrowForward as ArrowForwardIcon,
+  CheckCircleOutline as FinalApproverIcon,
 } from '@mui/icons-material';
 import { useUser } from '../contexts/UserContext';
 import { creditPolicyApi, ApiService } from '../services/api';
@@ -513,11 +515,16 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
               const activeStepIds = new Set((previewResult.steps ?? []).map((s: any) => s.stepName));
               // Circuit complet = allSteps, ou steps si allSteps absent (rétrocompat)
               const fullSteps: any[] = previewResult.allSteps ?? previewResult.steps ?? [];
-              // Approbateur compétent pour ce montant
-              const approver = approvalLimits
+
+              // Chaîne d'approbation : trouver l'approbateur final (celui dont la plage couvre le montant),
+              // puis inclure tous les approbateurs actifs avec order ≤ order de l'approbateur final.
+              const sortedLimits = approvalLimits
                 .filter((l: any) => l.isActive !== false)
-                .sort((a: any, b: any) => a.order - b.order)
-                .find((l: any) => amount >= Number(l.minAmount) && amount <= Number(l.maxAmount));
+                .sort((a: any, b: any) => a.order - b.order);
+              const finalApprover = sortedLimits.find((l: any) => amount >= Number(l.minAmount) && amount <= Number(l.maxAmount));
+              const approvalChain = finalApprover
+                ? sortedLimits.filter((l: any) => l.order <= finalApprover.order)
+                : [];
 
               return (
                 <Box mt={4}>
@@ -533,19 +540,48 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
                     <Chip label={`~${previewResult.estimatedDurationDays}j estimés`} variant="outlined" />
                   </Box>
 
-                  {/* Approbateur pour ce montant */}
+                  {/* Chaîne d'approbation pour ce montant */}
                   {approvalLimits.length > 0 && (
-                    <Box mb={2} p={1.5} sx={{ bgcolor: approver ? 'success.50' : 'warning.50', borderRadius: 2, border: '1px solid', borderColor: approver ? 'success.200' : 'warning.200' }}>
-                      <Typography variant="caption" fontWeight={700} color={approver ? 'success.dark' : 'warning.dark'} sx={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        Approbateur compétent pour {Number(previewAmount).toLocaleString('fr-FR')} XOF
+                    <Box mb={3} p={2} sx={{ bgcolor: finalApprover ? 'primary.50' : 'warning.50', borderRadius: 2, border: '1px solid', borderColor: finalApprover ? 'primary.200' : 'warning.200' }}>
+                      <Typography variant="caption" fontWeight={700} color={finalApprover ? 'primary.dark' : 'warning.dark'} sx={{ textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', mb: 1.5 }}>
+                        Chaîne d'approbation pour {Number(previewAmount).toLocaleString('fr-FR')} XOF
                       </Typography>
-                      {approver ? (
-                        <Typography variant="body2" mt={0.5}>
-                          <strong>{approver.displayName}</strong>
-                          {' '}— plafond autorisé : {Number(approver.minAmount).toLocaleString('fr-FR')} – {Number(approver.maxAmount).toLocaleString('fr-FR')} XOF
-                        </Typography>
+                      {finalApprover ? (
+                        <Box display="flex" alignItems="center" flexWrap="wrap" gap={0.5}>
+                          {approvalChain.map((l: any, idx: number) => {
+                            const isFinal = l.id === finalApprover.id;
+                            return (
+                              <React.Fragment key={l.id}>
+                                <Box
+                                  display="flex" alignItems="center" gap={0.75}
+                                  sx={{
+                                    px: 1.5, py: 0.75, borderRadius: 1.5,
+                                    bgcolor: isFinal ? 'primary.main' : 'white',
+                                    color: isFinal ? 'white' : 'text.primary',
+                                    border: '1px solid',
+                                    borderColor: isFinal ? 'primary.main' : 'grey.300',
+                                    fontWeight: isFinal ? 700 : 400,
+                                  }}
+                                >
+                                  {isFinal && <FinalApproverIcon sx={{ fontSize: 15, color: 'white' }} />}
+                                  <Typography variant="body2" fontWeight={isFinal ? 700 : 500} sx={{ color: 'inherit' }}>
+                                    {l.displayName}
+                                  </Typography>
+                                  {isFinal && (
+                                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)', ml: 0.5 }}>
+                                      (décision finale)
+                                    </Typography>
+                                  )}
+                                </Box>
+                                {idx < approvalChain.length - 1 && (
+                                  <ArrowForwardIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
+                                )}
+                              </React.Fragment>
+                            );
+                          })}
+                        </Box>
                       ) : (
-                        <Typography variant="body2" mt={0.5} color="warning.dark">
+                        <Typography variant="body2" color="warning.dark">
                           Aucun approbateur configuré pour ce montant dans les Limites d'Approbation.
                         </Typography>
                       )}

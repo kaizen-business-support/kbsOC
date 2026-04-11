@@ -30,16 +30,13 @@ import {
   AccountTreeOutlined as WorkflowIcon,
   InsightsOutlined as InsightsIcon,
   ManageAccountsOutlined as UserManagementIcon,
-  GavelOutlined as LimitsIcon,
   RequestQuoteOutlined as CalculateIcon,
-  CreditCardOutlined as BusinessIcon,
   BackupOutlined as BackupIcon,
   CampaignOutlined as CampaignIcon,
   NotificationsNone as NotificationsActiveIcon,
   CallSplit as DispatchIcon,
   PolicyOutlined as PolicyIcon,
   ListAltOutlined as StepsIcon,
-  RouteOutlined as TreatmentIcon,
   ExpandLess,
   ExpandMore,
 } from '@mui/icons-material';
@@ -93,7 +90,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [creditExpanded, setCreditExpanded]     = useState(true);
   const [analysisExpanded, setAnalysisExpanded] = useState(true);
   const [configExpanded, setConfigExpanded]     = useState(true);
-  const [policyExpanded, setPolicyExpanded]     = useState(false);
 
   const handleItemClick = (page: PageType) => {
     onPageChange(page);
@@ -126,7 +122,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'notifications-config' as PageType, label: 'Notifications',               icon: NotificationsActiveIcon },
   ] : [];
 
-  const isPolicyActive = currentPage === 'credit-types' || currentPage === 'credit-policy' || currentPage === 'approval-limits';
 
   // ── Shared item styles ──────────────────────────────────────────────────────
 
@@ -452,53 +447,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <NavItem key={item.id} id={item.id} label={item.label} icon={item.icon} />
                 ))}
 
-                {/* ── Politique de Crédit (sous-menu) ─────────────── */}
-                {open ? (
-                  <>
-                    <ListItemButton
-                      onClick={() => setPolicyExpanded(p => !p)}
-                      sx={{
-                        borderRadius: '7px',
-                        mx: 1,
-                        py: 0.7,
-                        pl: '14px',
-                        color: isPolicyActive ? SB.activeText : SB.itemText,
-                        background: isPolicyActive ? SB.activeBg : 'transparent',
-                        borderLeft: `2px solid ${isPolicyActive ? SB.activeBorder : 'transparent'}`,
-                        transition: 'all 0.15s cubic-bezier(0.22,1,0.36,1)',
-                        '& .MuiListItemIcon-root': { color: isPolicyActive ? SB.activeText : '#8A99B8' },
-                        '& .MuiListItemText-primary': { fontFamily: '"Inter", sans-serif', fontWeight: isPolicyActive ? 600 : 400 },
-                        '&:hover': { bgcolor: SB.itemHover },
-                        mb: 0.25,
-                      }}
-                    >
-                      <ListItemIcon sx={{ minWidth: 30 }}>
-                        <PolicyIcon sx={{ fontSize: 19 }} />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary="Politique de Crédit"
-                        primaryTypographyProps={{ fontSize: '13px', noWrap: true, fontFamily: '"Inter", sans-serif' }}
-                      />
-                      {policyExpanded
-                        ? <ExpandLess sx={{ fontSize: 14, color: SB.sectionLabel }} />
-                        : <ExpandMore sx={{ fontSize: 14, color: SB.sectionLabel }} />
-                      }
-                    </ListItemButton>
-                    <Collapse in={policyExpanded} timeout="auto" unmountOnExit>
-                      <List disablePadding sx={{ px: 0.5 }}>
-                        <SubNavItem id="credit-types"   label="Types de crédit"        icon={BusinessIcon} />
-                        <SubNavItem id="credit-policy"  label="Traitement"             icon={TreatmentIcon} />
-                        <SubNavItem id="approval-limits" label="Limites d'approbation" icon={LimitsIcon} />
-                      </List>
-                    </Collapse>
-                  </>
-                ) : (
-                  <>
-                    <SubNavItem id="credit-types"   label="Types de crédit"        icon={BusinessIcon} />
-                    <SubNavItem id="credit-policy"  label="Traitement"             icon={TreatmentIcon} />
-                    <SubNavItem id="approval-limits" label="Limites d'approbation" icon={LimitsIcon} />
-                  </>
-                )}
+                {/* ── Politique de Crédit (lien direct) ─────────────── */}
+                <NavItem id="credit-policy" label="Politique de Crédit" icon={PolicyIcon} />
               </List>
             </Collapse>
           </>

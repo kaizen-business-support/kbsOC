@@ -1,15 +1,13 @@
 -- Correction définitive des createdAt pour les apps du seed initial
--- À exécuter UNE SEULE FOIS si le seed a déjà été joué (avant le fix)
--- Base de référence : date de seed = date actuelle de createdAt de app1
--- (app1 a createdAt: daysAgo(2) depuis la date de seed → seed_date = app1.createdAt + 2 jours)
+-- Table : credit_applications (@@map Prisma)
+-- Référence : app1 a createdAt = seed_date - 2 jours → seed_date = app1.createdAt + 2 jours
 
--- Calcul automatique de la date de seed à partir de app1
 WITH seed_date AS (
   SELECT "createdAt" + INTERVAL '2 days' AS sd
-  FROM "CreditApplication"
+  FROM credit_applications
   WHERE id = 'app1'
 )
-UPDATE "CreditApplication" AS a
+UPDATE credit_applications AS a
 SET "createdAt" = sd.sd - (
   CASE a.id
     WHEN 'app2'  THEN INTERVAL '5 days'
@@ -32,11 +30,10 @@ FROM seed_date
 WHERE a.id IN ('app2','app3','app4','app5','app6','app7','app8',
                'app9','app10','app11','app12','app13','app14','app15');
 
--- Vérification post-correction : aucune ligne ne doit apparaître
+-- Vérification : doit retourner 0 ligne (aucune violation restante)
 SELECT a.id, a."createdAt", min(ws."completedAt") AS first_step_completed
-FROM "CreditApplication" a
-JOIN "WorkflowStep" ws ON ws."applicationId" = a.id
+FROM credit_applications a
+JOIN workflow_steps ws ON ws."applicationId" = a.id
 WHERE ws."completedAt" IS NOT NULL
 GROUP BY a.id, a."createdAt"
 HAVING a."createdAt" > min(ws."completedAt");
--- Si 0 lignes → tout est correct

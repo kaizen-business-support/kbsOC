@@ -105,6 +105,7 @@ router.get('/',
         name: true,
         role: true,
         department: true,
+        branch: true,
         jobTitle: true,
         isActive: true,
         lastLogin: true,
@@ -143,6 +144,7 @@ router.get('/:id',
         name: true,
         role: true,
         department: true,
+        branch: true,
         jobTitle: true,
         isActive: true,
         lastLogin: true,
@@ -170,7 +172,7 @@ router.get('/:id',
 router.post('/',
   checkUserManagementPermission,
   asyncHandler(async (req: Request, res: Response) => {
-    const { name, email, role, department, jobTitle, isActive = true } = req.body;
+    const { name, email, role, department, branch, jobTitle, isActive = true } = req.body;
 
     // Validate required fields
     if (!name || !email || !role) {
@@ -211,6 +213,7 @@ router.post('/',
         name,
         role,
         department: department || null,
+        branch: branch || null,
         jobTitle: jobTitle || null,
         permissions,
         isActive,
@@ -240,6 +243,7 @@ router.post('/',
         name: newUser.name,
         role: newUser.role,
         department: newUser.department,
+        branch: (newUser as any).branch,
         jobTitle: newUser.jobTitle,
         isActive: newUser.isActive,
         createdAt: newUser.createdAt.toISOString()
@@ -254,7 +258,7 @@ router.put('/:id',
   checkUserManagementPermission,
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { name, role, department, jobTitle, isActive } = req.body;
+    const { name, role, department, branch, jobTitle, isActive } = req.body;
 
     // Check if user exists
     const existingUser = await prisma.user.findUnique({
@@ -270,6 +274,7 @@ router.put('/:id',
     if (name !== undefined) updateData.name = name;
     if (role !== undefined) updateData.role = role;
     if (department !== undefined) updateData.department = department;
+    if (branch !== undefined) updateData.branch = branch;
     if (jobTitle !== undefined) updateData.jobTitle = jobTitle;
     if (isActive !== undefined) updateData.isActive = isActive;
 
@@ -301,6 +306,7 @@ router.put('/:id',
         name: user.name,
         role: user.role,
         department: user.department,
+        branch: (user as any).branch,
         jobTitle: user.jobTitle,
         isActive: user.isActive,
         updatedAt: user.updatedAt.toISOString()

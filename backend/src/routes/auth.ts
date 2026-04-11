@@ -120,6 +120,18 @@ router.post('/login', async (req: Request, res: Response) => {
     });
     const refreshToken = generateRefreshToken(user.id);
 
+    // Log login (manuel — le middleware auditLogger ne s'applique pas ici car req.user absent)
+    prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'LOGIN_USER',
+        entityType: 'user',
+        entityId: user.id,
+        ipAddress: req.ip || null,
+        userAgent: req.get('User-Agent') || null,
+      }
+    }).catch(() => {});
+
     return res.json({
       success: true,
       user: {
@@ -160,6 +172,21 @@ router.post('/logout', authenticate, async (req: Request, res: Response) => {
         // decode failure — still proceed with logout
       }
     }
+    // Log logout
+    const logUserId = (req as any).user?.id;
+    if (logUserId) {
+      prisma.auditLog.create({
+        data: {
+          userId: logUserId,
+          action: 'LOGOUT_USER',
+          entityType: 'user',
+          entityId: logUserId,
+          ipAddress: req.ip || null,
+          userAgent: req.get('User-Agent') || null,
+        }
+      }).catch(() => {});
+    }
+
     return res.json({ success: true, message: 'Déconnexion réussie' });
   } catch (error) {
     console.error('Logout error:', error);

@@ -384,7 +384,8 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
   const ROLE_LABEL_MAP: Record<string, string> = {
     ADMIN: 'Administrateur', MANAGEMENT: 'Directeur Général',
     BRANCH_MANAGER: "Dir. d'Agence", ACCOUNT_MANAGER: "Chargé d'Affaires",
-    CREDIT_ANALYST: 'Analyste Crédit', CREDIT_COMMITTEE: 'Comité de Crédit',
+    CREDIT_ANALYST: 'Analyste Crédit', ANALYST_SUPERVISOR: 'Superviseur Analyste',
+    CREDIT_COMMITTEE: 'Comité de Crédit',
   };
 
   const formatAuditDate = (iso: string) => {
@@ -395,9 +396,31 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
 
   const ACTION_COLOR: Record<string, 'error' | 'warning' | 'success' | 'default'> = {
     CREATE: 'success', UPDATE: 'warning', DELETE: 'error',
+    LOGIN: 'success', LOGOUT: 'default',
+    APPROVE: 'success', REJECT: 'error',
+    ASSIGN: 'warning', REASSIGN: 'warning', START_STEP: 'default',
+    CHANGE_PASSWORD: 'warning', RESET_PASSWORD: 'warning', REQUEST_PASSWORD_RESET: 'default',
+    SETUP: 'success', DISABLE: 'error', VERIFY: 'default',
+    RESTORE: 'warning', ARCHIVE: 'default', ACTIVATE: 'success', DEACTIVATE: 'error',
   };
   const getActionColor = (action: string): 'error' | 'warning' | 'success' | 'default' => {
-    return ACTION_COLOR[action.split('_')[0]] || 'default';
+    const verb = action.split('_')[0];
+    return ACTION_COLOR[verb] ?? 'default';
+  };
+
+  const formatNewValues = (newValues: any): string | null => {
+    if (!newValues || typeof newValues !== 'object') return null;
+    return Object.entries(newValues)
+      .map(([k, v]) => {
+        const label: Record<string, string> = {
+          decision: 'Décision', comments: 'Commentaire',
+          analystId: 'Analyste', applicationId: 'Dossier', isReassign: 'Réaffectation',
+          comment: 'Commentaire', userId: 'Utilisateur',
+        };
+        const display = v === true ? 'Oui' : v === false ? 'Non' : String(v);
+        return `${label[k] ?? k}: ${display}`;
+      })
+      .join(' · ');
   };
 
   const fetchAuditLogs = useCallback(async (page = auditPage, rowsPerPage = auditRowsPerPage, filters = auditFilters) => {
@@ -670,7 +693,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
         role: user.role,
         department: user.department || '',
         jobTitle: user.jobTitle || '',
-        branch: user.branch || 'Siège Social',
+        branch: user.branch || '',
         isActive: user.isActive
       });
     } else {
@@ -681,7 +704,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
         role: '',
         department: '',
         jobTitle: '',
-        branch: 'Siège Social',
+        branch: '',
         isActive: true
       });
     }
@@ -697,7 +720,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
       role: '',
       department: '',
       jobTitle: '',
-      branch: 'Siège Social',
+      branch: '',
       isActive: true
     });
   };
@@ -1514,9 +1537,9 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                       label="Département"
                     >
                       <MenuItem value="">Tous</MenuItem>
-                      {getUniqueOptions('department').map((dept) => (
-                        <MenuItem key={dept} value={dept}>
-                          {dept}
+                      {departments.filter(d => d.isActive).map((dept) => (
+                        <MenuItem key={dept.id} value={dept.name}>
+                          {dept.name}
                         </MenuItem>
                       ))}
                     </Select>
@@ -1533,9 +1556,9 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                       label="Rôle"
                     >
                       <MenuItem value="">Tous</MenuItem>
-                      {getUniqueOptions('role').map((role) => (
-                        <MenuItem key={role} value={role}>
-                          {role}
+                      {availableRoles.map((r) => (
+                        <MenuItem key={r.value} value={r.value}>
+                          {r.label}
                         </MenuItem>
                       ))}
                     </Select>
@@ -1552,9 +1575,9 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                       label="Agence"
                     >
                       <MenuItem value="">Toutes</MenuItem>
-                      {getUniqueOptions('branch').map((branch) => (
-                        <MenuItem key={branch} value={branch}>
-                          {branch}
+                      {branches.filter(b => b.isActive).map((b) => (
+                        <MenuItem key={b.id} value={b.name}>
+                          {b.name}
                         </MenuItem>
                       ))}
                     </Select>
@@ -2171,7 +2194,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                     <Table size="small">
                       <TableHead>
                         <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                          {['Horodatage', 'Utilisateur', 'Rôle', 'Action', 'Entité', 'ID', 'Adresse IP'].map(h => (
+                          {['Horodatage', 'Utilisateur', 'Rôle', 'Action', 'Entité', 'ID', 'Détails', 'Adresse IP'].map(h => (
                             <TableCell key={h} sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', py: 1.5, whiteSpace: 'nowrap' }}>{h}</TableCell>
                           ))}
                         </TableRow>
@@ -2179,7 +2202,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                       <TableBody>
                         {auditLogs.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={7} align="center" sx={{ py: 4, color: '#9ca3af' }}>Aucune entrée trouvée</TableCell>
+                            <TableCell colSpan={8} align="center" sx={{ py: 4, color: '#9ca3af' }}>Aucune entrée trouvée</TableCell>
                           </TableRow>
                         ) : auditLogs.map((log: any) => (
                           <TableRow key={log.id} sx={{ '&:hover': { bgcolor: 'rgba(31,78,121,0.03)' }, borderBottom: '1px solid #f1f5f9', '&:last-child': { borderBottom: 'none' } }}>
@@ -2200,6 +2223,15 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                                 <Typography variant="caption" sx={{ fontFamily: 'monospace', color: '#6b7280', fontSize: '11px' }}>
                                   {log.entityId.length > 12 ? log.entityId.slice(0, 8) + '…' : log.entityId}
                                 </Typography>
+                              ) : '—'}
+                            </TableCell>
+                            <TableCell sx={{ py: 1.25, maxWidth: 220 }}>
+                              {log.newValues ? (
+                                <Tooltip title={formatNewValues(log.newValues) ?? ''} placement="top" arrow>
+                                  <Typography variant="caption" sx={{ color: '#374151', cursor: 'default', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>
+                                    {formatNewValues(log.newValues)}
+                                  </Typography>
+                                </Tooltip>
                               ) : '—'}
                             </TableCell>
                             <TableCell sx={{ py: 1.25, fontSize: '12px', fontFamily: 'monospace', color: '#6b7280' }}>{log.ipAddress || '—'}</TableCell>
@@ -2310,10 +2342,10 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                   label="Agence"
                   disabled={!canEditUserManagement}
                 >
-                  <MenuItem value="Siège Social"><em>Siège Social</em></MenuItem>
-                  {branches.map((branch) => (
-                    <MenuItem key={branch.id} value={branch.code || branch.name}>
-                      {branch.name} {branch.code && `(${branch.code})`}
+                  <MenuItem value=""><em>Non spécifiée</em></MenuItem>
+                  {branches.filter(b => b.isActive).map((b) => (
+                    <MenuItem key={b.id} value={b.name}>
+                      {b.name} {b.code && `(${b.code})`}
                     </MenuItem>
                   ))}
                 </Select>
