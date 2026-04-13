@@ -508,16 +508,27 @@ export async function getNextWorkflowStep(
  * Vérifie que l'utilisateur a le rôle requis ET que le montant
  * est dans sa limite d'approbation (CreditPolicyStep si politique, ApprovalLimit sinon).
  */
+// Rôles à portée globale : peuvent traiter les dossiers de toutes les agences.
+// Tous les autres rôles sont limités à leur propre agence.
+const GLOBAL_SCOPE_ROLES: UserRole[] = ['MANAGEMENT', 'ADMIN', 'CREDIT_COMMITTEE'];
+
 export async function canApproveStep(
   userId: string,
   applicationId: string,
   stepName: string
 ): Promise<{ allowed: boolean; reason?: string }> {
   const [user, application, step] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: { role: true, name: true } }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, name: true, branch: true, department: true },
+    }),
     prisma.creditApplication.findUnique({
       where: { id: applicationId },
-      select: { amount: true, policyId: true },
+      select: {
+        amount: true,
+        policyId: true,
+        creator: { select: { branch: true, department: true, name: true } },
+      },
     }),
     prisma.workflowStep.findFirst({
       where: { applicationId, stepName, status: { in: ['PENDING', 'IN_REVIEW'] } },
@@ -528,6 +539,7 @@ export async function canApproveStep(
   if (!application) return { allowed: false, reason: 'Demande introuvable' };
   if (!step) return { allowed: false, reason: 'Étape introuvable ou déjà traitée' };
 
+  // ── 1. Vérification du rôle ────────────────────────────────────────────────
   if (step.role !== user.role) {
     return {
       allowed: false,
@@ -535,10 +547,26 @@ export async function canApproveStep(
     };
   }
 
+  // ── 2. Vérification de l'agence ────────────────────────────────────────────
+  // Les rôles globaux (DG, Admin, Comité) ont une portée transversale.
+  // Les autres rôles ne peuvent traiter que les dossiers de leur propre agence.
+  if (!GLOBAL_SCOPE_ROLES.includes(user.role as UserRole)) {
+    // Identifiant d'agence de l'approbateur : champ branch en priorité, département en fallback
+    const approverBranch = (user as any).branch || (user as any).department;
+    // Identifiant d'agence du créateur du dossier
+    const creatorBranch  = application.creator?.branch || application.creator?.department;
+
+    if (approverBranch && creatorBranch && approverBranch !== creatorBranch) {
+      return {
+        allowed: false,
+        reason: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez traiter que les dossiers de votre agence ("${approverBranch}").`,
+      };
+    }
+  }
+
+  // ── 3. Vérification du plafond d'approbation ───────────────────────────────
   const amount = Number(application.amount);
 
-  // Vérifier les limites d'approbation depuis ApprovalLimit (source unique de vérité,
-  // qu'il y ait une politique active ou non)
   const limit = await prisma.approvalLimit.findUnique({
     where: { role: user.role as UserRole },
   });

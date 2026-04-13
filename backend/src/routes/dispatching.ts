@@ -279,9 +279,36 @@ router.post('/assign', async (req: Request, res: Response) => {
 
     const supervisorUser = await prisma.user.findUnique({
       where: { id: supervisorId },
-      select: { name: true }
+      select: { name: true, role: true, branch: true, department: true }
     });
     const supervisorName = supervisorUser?.name || 'Responsable Analyste';
+
+    // ── Guard agence : un superviseur ne peut dispatcher que les dossiers de son agence.
+    // Les rôles globaux (Admin, DG) peuvent dispatcher tous les dossiers.
+    const GLOBAL_ROLES = ['MANAGEMENT', 'ADMIN'];
+    if (supervisorUser && !GLOBAL_ROLES.includes(supervisorUser.role ?? '')) {
+      const supervisorBranch = (supervisorUser as any).branch || (supervisorUser as any).department;
+      // Branche du créateur du dossier
+      const appWithCreator = await prisma.creditApplication.findUnique({
+        where: { id: applicationId },
+        select: { creator: { select: { branch: true, department: true } } },
+      });
+      const creatorBranch = appWithCreator?.creator?.branch || appWithCreator?.creator?.department;
+      if (supervisorBranch && creatorBranch && supervisorBranch !== creatorBranch) {
+        return res.status(403).json({
+          success: false,
+          error: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez dispatcher que les dossiers de votre agence ("${supervisorBranch}").`,
+        });
+      }
+      // L'analyste assigné doit aussi appartenir à la même agence
+      const analystBranch = (analyst as any).branch || (analyst as any).department;
+      if (supervisorBranch && analystBranch && analystBranch !== supervisorBranch) {
+        return res.status(403).json({
+          success: false,
+          error: `L'analyste "${analyst.name}" n'appartient pas à votre agence ("${supervisorBranch}").`,
+        });
+      }
+    }
     const dateStr = new Date().toLocaleDateString('fr-FR');
 
     // Chercher un step CREDIT_ANALYST existant (assigné ou non)

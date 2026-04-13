@@ -160,9 +160,37 @@ router.get('/', async (req: Request, res: Response) => {
 router.post('/:applicationId/start-step/:stepId', async (req: Request, res: Response) => {
   try {
     const { userId } = req.body;
+    const { applicationId, stepId } = req.params;
     if (!userId) return res.status(400).json({ success: false, error: 'userId requis' });
 
-    await startWorkflowStep(req.params.stepId, userId);
+    // Vérification : si l'étape est assignée, seul l'assigné peut la démarrer.
+    // Sinon, vérifier que l'utilisateur appartient à la même agence que le créateur du dossier.
+    const [step, user, application] = await Promise.all([
+      prisma.workflowStep.findUnique({ where: { id: stepId } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { role: true, branch: true, department: true } }),
+      prisma.creditApplication.findUnique({
+        where: { id: applicationId },
+        select: { creator: { select: { branch: true, department: true } } },
+      }),
+    ]);
+
+    if (step?.assigneeId && step.assigneeId !== userId) {
+      return res.status(403).json({ success: false, error: 'Cette étape est assignée à un autre analyste.' });
+    }
+
+    const GLOBAL_ROLES = ['MANAGEMENT', 'ADMIN', 'CREDIT_COMMITTEE'];
+    if (user && application && !GLOBAL_ROLES.includes(user.role)) {
+      const userBranch    = (user as any).branch    || (user as any).department;
+      const creatorBranch = application.creator?.branch || application.creator?.department;
+      if (userBranch && creatorBranch && userBranch !== creatorBranch) {
+        return res.status(403).json({
+          success: false,
+          error: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez traiter que les dossiers de votre agence.`,
+        });
+      }
+    }
+
+    await startWorkflowStep(stepId, userId);
     res.json({ success: true, message: 'Étape démarrée' });
   } catch (error) {
     console.error('Start step error:', error);
