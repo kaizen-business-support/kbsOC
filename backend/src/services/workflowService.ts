@@ -16,6 +16,7 @@
 import { UserRole, PolicyStepType } from '@prisma/client';
 import { prisma } from '../prismaClient';
 import { STEP_NAME_FR } from '../constants/stepNames';
+import { resolveDelegation } from './delegationService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -516,7 +517,11 @@ export async function canApproveStep(
   userId: string,
   applicationId: string,
   stepName: string
-): Promise<{ allowed: boolean; reason?: string }> {
+): Promise<{
+  allowed: boolean;
+  reason?: string;
+  delegationContext?: { delegationId: string; delegatorId: string; delegatorName: string } | null;
+}> {
   const [user, application, step] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
@@ -539,21 +544,36 @@ export async function canApproveStep(
   if (!application) return { allowed: false, reason: 'Demande introuvable' };
   if (!step) return { allowed: false, reason: 'Étape introuvable ou déjà traitée' };
 
-  // ── 1. Vérification du rôle ────────────────────────────────────────────────
+  // ── 1. Vérification du rôle (direct ou par délégation) ────────────────────
+  let effectiveRole   = user.role as UserRole;
+  let effectiveBranch = (user as any).branch as string | null;
+  let effectiveDept   = (user as any).department as string | null;
+  let delegationContext: { delegationId: string; delegatorId: string; delegatorName: string } | null = null;
+
   if (step.role !== user.role) {
-    return {
-      allowed: false,
-      reason: `Rôle requis : ${step.role}, rôle actuel : ${user.role}`,
+    // Rôle direct insuffisant — vérifier si une délégation couvre APPROVE_WORKFLOW
+    const delegation = await resolveDelegation(userId, 'APPROVE_WORKFLOW');
+    if (!delegation || delegation.delegatorRole !== step.role) {
+      return {
+        allowed: false,
+        reason: `Rôle requis : ${step.role}, rôle actuel : ${user.role}`,
+      };
+    }
+    // Utiliser le contexte du délégant pour la suite des vérifications
+    effectiveRole   = delegation.delegatorRole;
+    effectiveBranch = delegation.delegatorBranch;
+    effectiveDept   = delegation.delegatorDepartment;
+    delegationContext = {
+      delegationId:  delegation.delegationId,
+      delegatorId:   delegation.delegatorId,
+      delegatorName: delegation.delegatorName,
     };
   }
 
-  // ── 2. Vérification de l'agence ────────────────────────────────────────────
+  // ── 2. Vérification de l'agence (basée sur le délégant si délégation) ─────
   // Les rôles globaux (DG, Admin, Comité) ont une portée transversale.
-  // Les autres rôles ne peuvent traiter que les dossiers de leur propre agence.
-  if (!GLOBAL_SCOPE_ROLES.includes(user.role as UserRole)) {
-    // Identifiant d'agence de l'approbateur : champ branch en priorité, département en fallback
-    const approverBranch = (user as any).branch || (user as any).department;
-    // Identifiant d'agence du créateur du dossier
+  if (!GLOBAL_SCOPE_ROLES.includes(effectiveRole)) {
+    const approverBranch = effectiveBranch || effectiveDept;
     const creatorBranch  = application.creator?.branch || application.creator?.department;
 
     if (approverBranch && creatorBranch && approverBranch !== creatorBranch) {
@@ -568,7 +588,7 @@ export async function canApproveStep(
   const amount = Number(application.amount);
 
   const limit = await prisma.approvalLimit.findUnique({
-    where: { role: user.role as UserRole },
+    where: { role: effectiveRole },
   });
 
   if (limit) {
@@ -582,5 +602,5 @@ export async function canApproveStep(
     }
   }
 
-  return { allowed: true };
+  return { allowed: true, delegationContext };
 }

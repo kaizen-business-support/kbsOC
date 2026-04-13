@@ -1,20 +1,30 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
 import { createInAppNotification } from '../services/notificationService';
+import { resolveDelegation } from '../services/delegationService';
 
 const router = Router();
 
-// ─── Middleware : seuls ANALYST_SUPERVISOR et ADMIN peuvent dispatcher ─────────
-const requireSupervisor = (req: Request, res: Response, next: any) => {
+// ─── Middleware : ANALYST_SUPERVISOR, ADMIN, ou délégué avec DISPATCH_APPLICATION ──
+const requireSupervisorOrDelegate = async (req: Request, res: Response, next: any) => {
   const user = (req as any).user;
-  if (!user || !['ANALYST_SUPERVISOR', 'ADMIN'].includes(user.role)) {
-    return res.status(403).json({ success: false, error: 'Accès réservé au Responsable Analyste' });
+  if (!user) return res.status(403).json({ success: false, error: 'Non authentifié' });
+
+  if (['ANALYST_SUPERVISOR', 'ADMIN'].includes(user.role)) return next();
+
+  // Vérifier si délégué avec droit DISPATCH_APPLICATION
+  const userId = user?.userId || user?.id;
+  const delegation = await resolveDelegation(userId, 'DISPATCH_APPLICATION');
+  if (delegation && ['ANALYST_SUPERVISOR', 'ADMIN'].includes(delegation.delegatorRole)) {
+    (req as any).delegationContext = delegation;
+    return next();
   }
-  next();
+
+  return res.status(403).json({ success: false, error: 'Accès réservé au Responsable Analyste' });
 };
 
 // Appliquer le middleware sur toutes les routes
-router.use(requireSupervisor);
+router.use(requireSupervisorOrDelegate);
 
 // ─── GET /api/dispatching/workload ─────────────────────────────────────────────
 router.get('/workload', async (req: Request, res: Response) => {
@@ -284,28 +294,39 @@ router.post('/assign', async (req: Request, res: Response) => {
     const supervisorName = supervisorUser?.name || 'Responsable Analyste';
 
     // ── Guard agence : un superviseur ne peut dispatcher que les dossiers de son agence.
+    // Si l'acteur est un délégué, utiliser la branche du délégant.
     // Les rôles globaux (Admin, DG) peuvent dispatcher tous les dossiers.
     const GLOBAL_ROLES = ['MANAGEMENT', 'ADMIN'];
-    if (supervisorUser && !GLOBAL_ROLES.includes(supervisorUser.role ?? '')) {
-      const supervisorBranch = (supervisorUser as any).branch || (supervisorUser as any).department;
+    const delegCtx = (req as any).delegationContext as {
+      delegatorBranch: string | null;
+      delegatorDepartment: string | null;
+      delegatorRole: string;
+    } | undefined;
+
+    const effectiveRole   = delegCtx ? delegCtx.delegatorRole : (supervisorUser?.role ?? '');
+    const effectiveBranch = delegCtx
+      ? (delegCtx.delegatorBranch || delegCtx.delegatorDepartment)
+      : ((supervisorUser as any)?.branch || (supervisorUser as any)?.department);
+
+    if (!GLOBAL_ROLES.includes(effectiveRole)) {
       // Branche du créateur du dossier
       const appWithCreator = await prisma.creditApplication.findUnique({
         where: { id: applicationId },
         select: { creator: { select: { branch: true, department: true } } },
       });
       const creatorBranch = appWithCreator?.creator?.branch || appWithCreator?.creator?.department;
-      if (supervisorBranch && creatorBranch && supervisorBranch !== creatorBranch) {
+      if (effectiveBranch && creatorBranch && effectiveBranch !== creatorBranch) {
         return res.status(403).json({
           success: false,
-          error: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez dispatcher que les dossiers de votre agence ("${supervisorBranch}").`,
+          error: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez dispatcher que les dossiers de votre agence ("${effectiveBranch}").`,
         });
       }
       // L'analyste assigné doit aussi appartenir à la même agence
       const analystBranch = (analyst as any).branch || (analyst as any).department;
-      if (supervisorBranch && analystBranch && analystBranch !== supervisorBranch) {
+      if (effectiveBranch && analystBranch && analystBranch !== effectiveBranch) {
         return res.status(403).json({
           success: false,
-          error: `L'analyste "${analyst.name}" n'appartient pas à votre agence ("${supervisorBranch}").`,
+          error: `L'analyste "${analyst.name}" n'appartient pas à votre agence ("${effectiveBranch}").`,
         });
       }
     }

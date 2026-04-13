@@ -8,6 +8,7 @@ import {
   finalizeStepDuration,
   finalizeApplicationDuration,
 } from '../services/workflowService';
+import { resolveDelegation } from '../services/delegationService';
 
 const router = Router();
 
@@ -178,15 +179,35 @@ router.post('/:applicationId/start-step/:stepId', async (req: Request, res: Resp
       return res.status(403).json({ success: false, error: 'Cette étape est assignée à un autre analyste.' });
     }
 
+    // Déterminer le contexte effectif (direct ou par délégation)
     const GLOBAL_ROLES = ['MANAGEMENT', 'ADMIN', 'CREDIT_COMMITTEE'];
-    if (user && application && !GLOBAL_ROLES.includes(user.role)) {
-      const userBranch    = (user as any).branch    || (user as any).department;
-      const creatorBranch = application.creator?.branch || application.creator?.department;
-      if (userBranch && creatorBranch && userBranch !== creatorBranch) {
-        return res.status(403).json({
-          success: false,
-          error: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez traiter que les dossiers de votre agence.`,
-        });
+    if (user && application) {
+      let effectiveBranch = (user as any).branch as string | null;
+      let effectiveDept   = (user as any).department as string | null;
+
+      // Si le rôle ne correspond pas à l'étape, vérifier délégation START_STEP
+      if (step && step.role !== user.role) {
+        const delegation = await resolveDelegation(userId, 'START_STEP');
+        if (!delegation || delegation.delegatorRole !== step.role) {
+          return res.status(403).json({
+            success: false,
+            error: `Cette étape requiert le rôle ${step?.role}.`,
+          });
+        }
+        effectiveBranch = delegation.delegatorBranch;
+        effectiveDept   = delegation.delegatorDepartment;
+      }
+
+      const effectiveRole = step?.role || user.role;
+      if (!GLOBAL_ROLES.includes(effectiveRole)) {
+        const userBranch    = effectiveBranch || effectiveDept;
+        const creatorBranch = application.creator?.branch || application.creator?.department;
+        if (userBranch && creatorBranch && userBranch !== creatorBranch) {
+          return res.status(403).json({
+            success: false,
+            error: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez traiter que les dossiers de votre agence.`,
+          });
+        }
       }
     }
 
