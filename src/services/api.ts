@@ -1345,6 +1345,53 @@ export class ApiService {
       return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
     }
   }
+
+  // ─── Délégations de pouvoir ───────────────────────────────────────────────
+
+  static async getDelegations(params?: { status?: string; delegatorId?: string; delegateId?: string }): Promise<any> {
+    try {
+      const res = await api.get('/delegations', { params });
+      return { success: true, data: res.data.data ?? [] };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur délégations' };
+    }
+  }
+
+  static async getMyDelegations(): Promise<any> {
+    try {
+      const res = await api.get('/delegations/my');
+      return { success: true, data: res.data.data ?? [] };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur mes délégations' };
+    }
+  }
+
+  static async getDelegatableActions(): Promise<any> {
+    try {
+      const res = await api.get('/delegations/delegatable-actions');
+      return { success: true, data: res.data.data ?? [] };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur actions déléguables' };
+    }
+  }
+
+  static async createDelegation(payload: import('../types/delegation').CreateDelegationPayload): Promise<any> {
+    try {
+      const res = await api.post('/delegations', payload);
+      return { success: true, data: res.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur création délégation' };
+    }
+  }
+
+  static async revokeDelegation(id: string): Promise<any> {
+    try {
+      const res = await api.patch(`/delegations/${id}/revoke`);
+      return { success: true, message: res.data.message };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur révocation délégation' };
+    }
+  }
 }
 
 // ─── Auth: password lifecycle & 2FA admin ─────────────────────────────────────
@@ -1512,6 +1559,53 @@ export const creditPolicyApi = {
       return { success: true, data: res.data.data ?? res.data };
     } catch (e: any) {
       return { success: false, error: e.response?.data?.error || 'Erreur types crédit' };
+    }
+  },
+
+  // ─── Délégations de pouvoir ────────────────────────────────────────────────
+
+  async getDelegations(params?: { status?: string; delegatorId?: string; delegateId?: string }): Promise<any> {
+    try {
+      const res = await api.get('/delegations', { params });
+      return { success: true, data: res.data.data ?? [] };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur délégations' };
+    }
+  },
+
+  async getMyDelegations(): Promise<any> {
+    try {
+      const res = await api.get('/delegations/my');
+      return { success: true, data: res.data.data ?? [] };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur mes délégations' };
+    }
+  },
+
+  async getDelegatableActions(): Promise<any> {
+    try {
+      const res = await api.get('/delegations/delegatable-actions');
+      return { success: true, data: res.data.data ?? [] };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur actions déléguables' };
+    }
+  },
+
+  async createDelegation(payload: import('../types/delegation').CreateDelegationPayload): Promise<any> {
+    try {
+      const res = await api.post('/delegations', payload);
+      return { success: true, data: res.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur création délégation' };
+    }
+  },
+
+  async revokeDelegation(id: string): Promise<any> {
+    try {
+      const res = await api.patch(`/delegations/${id}/revoke`);
+      return { success: true, message: res.data.message };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur révocation délégation' };
     }
   },
 };

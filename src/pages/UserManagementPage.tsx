@@ -69,6 +69,10 @@ import api, { ApiService, authPasswordApi } from '../services/api';
 import { DialogHeader } from '../components/ui/DialogHeader';
 import { useUser } from '../contexts/UserContext';
 import { useTranslation } from 'react-i18next';
+import DelegationBadge from '../components/DelegationBadge';
+import DelegationForm from '../components/DelegationForm';
+import { PowerDelegation, DelegatableAction, DELEGATION_ACTION_LABELS } from '../types/delegation';
+import BeachAccessIcon from '@mui/icons-material/BeachAccess';
 
 interface User {
   id: string;
@@ -233,6 +237,12 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
   const [roles, setRoles] = useState<Role[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // ─── Délégations state ────────────────────────────────────────────────────
+  const [delegations, setDelegations] = useState<PowerDelegation[]>([]);
+  const [delegationsLoading, setDelegationsLoading] = useState(false);
+  const [delegationFormOpen, setDelegationFormOpen] = useState(false);
+  const [selectedDelegatorId, setSelectedDelegatorId] = useState('');
 
   // Inline editing — Departments
   const [deptEditingId, setDeptEditingId] = useState<string | null>(null);
@@ -591,6 +601,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     loadDepartments();
     loadRoles();
     loadBranches();
+    loadDelegations();
   }, [canViewUserManagement]);
 
   // Reload data when users change to update counts
@@ -604,7 +615,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
 
   // Audit log: load support data once when admin tab is active
   useEffect(() => {
-    if (activeTab === 5 && canEditUserManagement) {
+    if (activeTab === 6 && canEditUserManagement) {
       api.get('/users').then(r => setAuditUsers(r.data.users || [])).catch(() => {});
       api.get('/audit-logs/actions').then(r => setAuditActions(r.data.actions || [])).catch(() => {});
       fetchAuditLogs(0, auditRowsPerPage, auditFilters);
@@ -613,7 +624,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
 
   // Re-fetch when pagination changes (not filters — those use handleAuditSearch)
   useEffect(() => {
-    if (activeTab === 5) fetchAuditLogs(auditPage, auditRowsPerPage, auditFilters);
+    if (activeTab === 6) fetchAuditLogs(auditPage, auditRowsPerPage, auditFilters);
   }, [auditPage, auditRowsPerPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadUsers = async () => {
@@ -702,6 +713,18 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
         message: 'Erreur lors du chargement des agences',
         severity: 'error'
       });
+    }
+  };
+
+  const loadDelegations = async () => {
+    setDelegationsLoading(true);
+    try {
+      const res = await ApiService.getDelegations();
+      if (res.success) setDelegations(res.data || []);
+    } catch (err) {
+      console.error('Erreur chargement délégations:', err);
+    } finally {
+      setDelegationsLoading(false);
     }
   };
 
@@ -1581,6 +1604,11 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
               icon={<ShieldIcon />}
               iconPosition="start"
             />
+            <Tab
+              label="Délégations"
+              icon={<BeachAccessIcon />}
+              iconPosition="start"
+            />
             {canEditUserManagement && (
               <Tab
                 label="Journal d'activité"
@@ -1771,9 +1799,22 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                             {user.name.charAt(0).toUpperCase()}
                           </Avatar>
                           <Box>
-                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                              {user.name}
-                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                {user.name}
+                              </Typography>
+                              <DelegationBadge
+                                isOnLeave={!!(user as any).isOnLeave}
+                                delegateName={
+                                  delegations.find(d =>
+                                    d.isActive &&
+                                    d.delegatorId === user.id &&
+                                    new Date(d.startDate) <= new Date() &&
+                                    new Date(d.endDate) >= new Date()
+                                  )?.delegate?.name
+                                }
+                              />
+                            </Box>
                             <Typography variant="caption" color="text.secondary">
                               {user.email}
                             </Typography>
@@ -2258,8 +2299,115 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
             </Box>
           )}
 
-          {/* Journal d'activité (admin only, tab 5) */}
-          {activeTab === 5 && canEditUserManagement && (
+          {/* Délégations (tab 5) */}
+          {activeTab === 5 && (
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <BeachAccessIcon sx={{ color: 'warning.main' }} />
+                  <Typography variant="h6" fontWeight={600}>Délégations de pouvoir</Typography>
+                </Box>
+                {canEditUserManagement && (
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => { setSelectedDelegatorId(''); setDelegationFormOpen(true); }}
+                  >
+                    Créer une délégation
+                  </Button>
+                )}
+              </Box>
+
+              {delegationsLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+              ) : delegations.length === 0 ? (
+                <Alert severity="info">Aucune délégation de pouvoir enregistrée.</Alert>
+              ) : (
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                        <TableCell sx={{ fontWeight: 600 }}>Délégant</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Délégué</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Période</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Actions déléguées</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Statut</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Motif</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {delegations.map(d => {
+                        const now = new Date();
+                        const isExpired = new Date(d.endDate) < now;
+                        const isCurrentlyActive = d.isActive && !isExpired && new Date(d.startDate) <= now;
+                        const statusLabel = isCurrentlyActive ? 'Active' : d.revokedAt ? 'Révoquée' : 'Expirée';
+                        const statusColor: 'success' | 'warning' | 'default' = isCurrentlyActive ? 'success' : d.revokedAt ? 'warning' : 'default';
+                        return (
+                          <TableRow key={d.id} hover>
+                            <TableCell>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                {d.delegator.name}
+                                {(d as any).delegator?.isOnLeave && <DelegationBadge isOnLeave size="small" />}
+                              </Box>
+                            </TableCell>
+                            <TableCell>{d.delegate.name}</TableCell>
+                            <TableCell sx={{ fontSize: '0.78rem', color: 'text.secondary' }}>
+                              {new Date(d.startDate).toLocaleDateString('fr-FR')} → {new Date(d.endDate).toLocaleDateString('fr-FR')}
+                            </TableCell>
+                            <TableCell>
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                {(d.permissions as DelegatableAction[]).map(p => (
+                                  <Chip key={p} label={DELEGATION_ACTION_LABELS[p]} size="small" variant="outlined" sx={{ fontSize: '0.68rem' }} />
+                                ))}
+                              </Box>
+                            </TableCell>
+                            <TableCell><Chip label={statusLabel} color={statusColor} size="small" /></TableCell>
+                            <TableCell sx={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <Tooltip title={d.reason || ''}>
+                                <span>{d.reason || '—'}</span>
+                              </Tooltip>
+                            </TableCell>
+                            <TableCell>
+                              {isCurrentlyActive && canEditUserManagement && (
+                                <Button
+                                  size="small"
+                                  color="error"
+                                  onClick={async () => {
+                                    const res = await ApiService.revokeDelegation(d.id);
+                                    if (res.success) {
+                                      setNotification({ open: true, message: 'Délégation révoquée.', severity: 'success' });
+                                      loadDelegations();
+                                    } else {
+                                      setNotification({ open: true, message: res.error || 'Erreur révocation', severity: 'error' });
+                                    }
+                                  }}
+                                >
+                                  Révoquer
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+
+              <DelegationForm
+                open={delegationFormOpen}
+                onClose={() => setDelegationFormOpen(false)}
+                onSuccess={() => { loadDelegations(); loadUsers(); }}
+                delegatorId={selectedDelegatorId}
+                users={users.filter(u => u.isActive)}
+                isAdmin={canEditUserManagement}
+              />
+            </Box>
+          )}
+
+          {/* Journal d'activité (admin only, tab 6) */}
+          {activeTab === 6 && canEditUserManagement && (
             <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
                 <HistoryIcon sx={{ mr: 1, color: 'primary.main' }} />
