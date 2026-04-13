@@ -408,17 +408,145 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     return ACTION_COLOR[verb] ?? 'default';
   };
 
-  const formatNewValues = (newValues: any): string | null => {
+  const ACTION_LABEL: Record<string, string> = {
+    // Authentification
+    LOGIN_USER:                    'Connexion',
+    LOGOUT_USER:                   'Déconnexion',
+    CHANGE_PASSWORD_USER:          'Changement de mot de passe',
+    CHANGE_PASSWORD_AUTH:          'Changement de mot de passe',
+    RESET_PASSWORD_USER:           'Réinitialisation du mot de passe',
+    RESET_PASSWORD_AUTH:           'Réinitialisation du mot de passe',
+    REQUEST_PASSWORD_RESET_AUTH:   'Demande de réinitialisation de mot de passe',
+    SETUP_TWO_FACTOR:              'Activation de la double authentification',
+    DISABLE_TWO_FACTOR:            'Désactivation de la double authentification',
+    VERIFY_TWO_FACTOR:             'Vérification de la double authentification',
+    VERIFY_SETUP_TWO_FACTOR:       'Confirmation de la configuration 2FA',
+    REGENERATE_BACKUP_CODES_TWO_FACTOR: 'Regénération des codes de secours 2FA',
+    // Utilisateurs
+    CREATE_USER:                   'Création d\'un utilisateur',
+    UPDATE_USER:                   'Modification d\'un utilisateur',
+    DELETE_USER:                   'Suppression d\'un utilisateur',
+    // Clients
+    CREATE_CLIENT:                 'Création d\'un client',
+    UPDATE_CLIENT:                 'Modification d\'un client',
+    DELETE_CLIENT:                 'Suppression d\'un client',
+    // Demandes de crédit
+    CREATE_APPLICATION:            'Nouvelle demande de crédit',
+    UPDATE_APPLICATION:            'Modification d\'une demande de crédit',
+    DELETE_APPLICATION:            'Suppression d\'une demande de crédit',
+    // Circuit de traitement
+    APPROVE_WORKFLOW:              'Approbation d\'un dossier',
+    REJECT_WORKFLOW:               'Rejet d\'un dossier',
+    START_STEP_WORKFLOW:           'Prise en charge d\'une étape',
+    CREATE_WORKFLOW:               'Création d\'une étape de circuit',
+    UPDATE_WORKFLOW:               'Mise à jour d\'une étape de circuit',
+    // Dispatching
+    ASSIGN_APPLICATION:            'Affectation d\'un dossier à un analyste',
+    REASSIGN_APPLICATION:          'Réaffectation d\'un dossier',
+    // Politique de crédit
+    CREATE_CREDIT_POLICY:          'Création d\'une politique de crédit',
+    UPDATE_CREDIT_POLICY:          'Modification d\'une politique de crédit',
+    DELETE_CREDIT_POLICY:          'Suppression d\'une politique de crédit',
+    // Limites d'approbation
+    CREATE_APPROVAL_LIMIT:         'Ajout d\'une limite d\'approbation',
+    UPDATE_APPROVAL_LIMIT:         'Modification d\'une limite d\'approbation',
+    DELETE_APPROVAL_LIMIT:         'Suppression d\'une limite d\'approbation',
+    // Types de crédit
+    CREATE_CREDIT_TYPE:            'Création d\'un type de crédit',
+    UPDATE_CREDIT_TYPE:            'Modification d\'un type de crédit',
+    DELETE_CREDIT_TYPE:            'Suppression d\'un type de crédit',
+    // Documents
+    CREATE_DOCUMENT:               'Ajout d\'un document',
+    UPDATE_DOCUMENT:               'Modification d\'un document',
+    DELETE_DOCUMENT:               'Suppression d\'un document',
+    // Configuration
+    CREATE_WORKFLOW_CONFIG:        'Configuration du circuit de traitement',
+    UPDATE_WORKFLOW_CONFIG:        'Modification du circuit de traitement',
+    CREATE_ROLE:                   'Création d\'un rôle',
+    UPDATE_ROLE:                   'Modification d\'un rôle',
+    CREATE_DEPARTMENT:             'Création d\'un département',
+    UPDATE_DEPARTMENT:             'Modification d\'un département',
+    DELETE_DEPARTMENT:             'Suppression d\'un département',
+    CREATE_BRANCH:                 'Création d\'une agence',
+    UPDATE_BRANCH:                 'Modification d\'une agence',
+    DELETE_BRANCH:                 'Suppression d\'une agence',
+    CREATE_BANK_HOLIDAY:           'Ajout d\'un jour férié',
+    UPDATE_BANK_HOLIDAY:           'Modification d\'un jour férié',
+    DELETE_BANK_HOLIDAY:           'Suppression d\'un jour férié',
+    // Annonces
+    CREATE_ANNOUNCEMENT:           'Publication d\'une annonce',
+    UPDATE_ANNOUNCEMENT:           'Modification d\'une annonce',
+    DELETE_ANNOUNCEMENT:           'Suppression d\'une annonce',
+    // Notifications
+    CREATE_NOTIFICATION_CHANNEL:   'Ajout d\'un canal de notification',
+    UPDATE_NOTIFICATION_CHANNEL:   'Modification d\'un canal de notification',
+    DELETE_NOTIFICATION_CHANNEL:   'Suppression d\'un canal de notification',
+    CREATE_NOTIFICATION_TEMPLATE:  'Création d\'un modèle de notification',
+    UPDATE_NOTIFICATION_TEMPLATE:  'Modification d\'un modèle de notification',
+    DELETE_NOTIFICATION_TEMPLATE:  'Suppression d\'un modèle de notification',
+    CREATE_NOTIFICATION_RULE:      'Création d\'une règle de notification',
+    UPDATE_NOTIFICATION_RULE:      'Modification d\'une règle de notification',
+    DELETE_NOTIFICATION_RULE:      'Suppression d\'une règle de notification',
+    // Sauvegarde
+    CREATE_BACKUP:                 'Sauvegarde de la base de données',
+    RESTORE_BACKUP:                'Restauration de la base de données',
+  };
+
+  const formatAction = (action: string): string => ACTION_LABEL[action] ?? action.replace(/_/g, ' ').toLowerCase().replace(/^\w/, c => c.toUpperCase());
+
+  const ENTITY_LABEL: Record<string, string> = {
+    client:                 'Client',
+    application:            'Demande de crédit',
+    workflow:               'Dossier / Circuit',
+    workflow_config:        'Configuration du circuit',
+    user:                   'Utilisateur',
+    role:                   'Rôle',
+    department:             'Département',
+    branch:                 'Agence',
+    approval_limit:         'Limite d\'approbation',
+    credit_type:            'Type de crédit',
+    credit_policy:          'Politique de crédit',
+    backup:                 'Sauvegarde',
+    announcement:           'Annonce',
+    notification_channel:   'Canal de notification',
+    notification_template:  'Modèle de notification',
+    notification_rule:      'Règle de notification',
+    notification:           'Notification',
+    document:               'Document',
+    two_factor:             'Double authentification',
+    session:                'Session',
+    bank_holiday:           'Jour férié',
+    auth:                   'Authentification',
+  };
+
+  const formatEntityType = (entityType: string): string => ENTITY_LABEL[entityType] ?? entityType;
+
+  const formatNewValues = (action: string, newValues: any): string | null => {
     if (!newValues || typeof newValues !== 'object') return null;
-    return Object.entries(newValues)
-      .map(([k, v]) => {
-        const label: Record<string, string> = {
-          decision: 'Décision', comments: 'Commentaire',
-          analystId: 'Analyste', applicationId: 'Dossier', isReassign: 'Réaffectation',
-          comment: 'Commentaire', userId: 'Utilisateur',
-        };
-        const display = v === true ? 'Oui' : v === false ? 'Non' : String(v);
-        return `${label[k] ?? k}: ${display}`;
+    const v = newValues as Record<string, any>;
+
+    // Décision d'approbation/rejet
+    if (v.decision) {
+      const decision = v.decision === 'APPROVED' ? 'Approuvé' : v.decision === 'REJECTED' ? 'Rejeté' : v.decision;
+      return v.comments ? `${decision} — "${v.comments}"` : decision;
+    }
+
+    // Affectation analyste
+    if (v.analystId !== undefined) {
+      const verb = v.isReassign ? 'Réaffecté' : 'Affecté';
+      const target = v.analystId ? `à l'analyste ${String(v.analystId).slice(0, 8)}…` : '';
+      const dossier = v.applicationId ? ` (dossier ${String(v.applicationId).slice(0, 8)}…)` : '';
+      return `${verb} ${target}${dossier}`.trim();
+    }
+
+    // 2FA
+    if (v.userId) return `Utilisateur concerné : ${String(v.userId).slice(0, 8)}…`;
+
+    // Fallback générique lisible
+    return Object.entries(v)
+      .map(([k, val]) => {
+        const display = val === true ? 'Oui' : val === false ? 'Non' : String(val);
+        return display;
       })
       .join(' · ');
   };
@@ -744,8 +872,9 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
         (filters.status === 'active' && user.isActive) ||
         (filters.status === 'inactive' && !user.isActive);
 
-      // Branch filter
-      const branchMatch = !filters.branch || user.branch === filters.branch;
+      // Branch filter — '__none__' cible les utilisateurs sans agence assignée
+      const branchMatch = !filters.branch
+        || (filters.branch === '__none__' ? !user.branch : user.branch === filters.branch);
 
       return searchMatch && departmentMatch && roleMatch && statusMatch && branchMatch;
     });
@@ -1575,6 +1704,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                       label="Agence"
                     >
                       <MenuItem value="">Toutes</MenuItem>
+                      <MenuItem value="__none__">Non assignée</MenuItem>
                       {branches.filter(b => b.isActive).map((b) => (
                         <MenuItem key={b.id} value={b.name}>
                           {b.name}
@@ -1666,7 +1796,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                          {user.branch || 'Siège Social'}
+                          {user.branch || '—'}
                         </Typography>
                       </TableCell>
                       <TableCell>
@@ -2168,8 +2298,12 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                   <InputLabel>Type d'entité</InputLabel>
                   <Select label="Type d'entité" value={auditFilters.entityType} onChange={(e) => handleAuditFilterChange('entityType', e.target.value)}>
                     <MenuItem value="">Tous</MenuItem>
-                    {['client','application','workflow','user','role','backup','announcement','notification_channel'].map(t => (
-                      <MenuItem key={t} value={t}>{t}</MenuItem>
+                    {[
+                      'client','application','workflow','user','role','department','branch',
+                      'credit_policy','credit_type','approval_limit','document',
+                      'backup','announcement','two_factor','bank_holiday',
+                    ].map(t => (
+                      <MenuItem key={t} value={t}>{formatEntityType(t)}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -2215,9 +2349,9 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                               <Chip label={ROLE_LABEL_MAP[log.user?.role] || log.user?.role || '—'} size="small" variant="outlined" sx={{ fontSize: '11px', height: 22 }} />
                             </TableCell>
                             <TableCell sx={{ py: 1.25 }}>
-                              <Chip label={log.action} size="small" color={getActionColor(log.action)} sx={{ fontSize: '11px', height: 22, fontFamily: 'monospace' }} />
+                              <Chip label={formatAction(log.action)} size="small" color={getActionColor(log.action)} sx={{ fontSize: '11px', height: 22 }} />
                             </TableCell>
-                            <TableCell sx={{ py: 1.25, fontSize: '13px', color: '#374151' }}>{log.entityType || '—'}</TableCell>
+                            <TableCell sx={{ py: 1.25, fontSize: '13px', color: '#374151' }}>{formatEntityType(log.entityType) || '—'}</TableCell>
                             <TableCell sx={{ py: 1.25 }}>
                               {log.entityId ? (
                                 <Typography variant="caption" sx={{ fontFamily: 'monospace', color: '#6b7280', fontSize: '11px' }}>
@@ -2227,9 +2361,9 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                             </TableCell>
                             <TableCell sx={{ py: 1.25, maxWidth: 220 }}>
                               {log.newValues ? (
-                                <Tooltip title={formatNewValues(log.newValues) ?? ''} placement="top" arrow>
+                                <Tooltip title={formatNewValues(log.action, log.newValues) ?? ''} placement="top" arrow>
                                   <Typography variant="caption" sx={{ color: '#374151', cursor: 'default', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>
-                                    {formatNewValues(log.newValues)}
+                                    {formatNewValues(log.action, log.newValues)}
                                   </Typography>
                                 </Tooltip>
                               ) : '—'}
