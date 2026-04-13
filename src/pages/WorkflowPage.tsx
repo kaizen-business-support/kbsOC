@@ -55,6 +55,8 @@ import {
 import { WorkflowTimeline } from '../components/WorkflowTimeline';
 import { WorkflowDetailsDialog } from '../components/WorkflowDetailsDialog';
 import { ApiService } from '../services/api';
+import { PowerDelegation } from '../types/delegation';
+import BeachAccessIcon from '@mui/icons-material/BeachAccess';
 
 // Local type definitions
 export type ApplicationStatus =
@@ -117,6 +119,7 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
   const [filterDateTo, setFilterDateTo] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeDelegationReceived, setActiveDelegationReceived] = useState<PowerDelegation | null>(null);
 
   // Load assigned applications for analyst roles
   const loadMyApps = useCallback(async () => {
@@ -134,6 +137,23 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
       setMyAppsLoading(false);
     }
   }, [userState.currentUser?.id, isAnalystRole]);
+
+  // Charger la délégation active reçue
+  useEffect(() => {
+    const currentId = userState.currentUser?.id;
+    if (!currentId) return;
+    ApiService.getMyDelegations().then((res: any) => {
+      if (!res.success) return;
+      const now = new Date();
+      const active = (res.data || []).find((d: PowerDelegation) =>
+        d.delegateId === currentId &&
+        d.isActive &&
+        new Date(d.startDate) <= now &&
+        new Date(d.endDate) >= now
+      );
+      setActiveDelegationReceived(active || null);
+    }).catch(() => {});
+  }, [userState.currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load data on component mount
   useEffect(() => {
@@ -364,6 +384,20 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
       <Typography variant="h4" sx={{ mb: 4, fontWeight: 600 }}>
         Suivi des Workflows de Crédit
       </Typography>
+
+      {/* Bandeau délégation active reçue */}
+      {activeDelegationReceived && (
+        <Alert
+          severity="info"
+          icon={<BeachAccessIcon />}
+          sx={{ mb: 2 }}
+        >
+          Vous agissez au nom de{' '}
+          <strong>{activeDelegationReceived.delegator.name}</strong>
+          {' '}(délégation active jusqu'au{' '}
+          {new Date(activeDelegationReceived.endDate).toLocaleDateString('fr-FR')})
+        </Alert>
+      )}
 
       {/* Error Alert */}
       {error && (
