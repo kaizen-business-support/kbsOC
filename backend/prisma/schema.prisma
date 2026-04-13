@@ -19,6 +19,7 @@ model User {
   phone               String?
   permissions         Json?
   isActive            Boolean             @default(true) @map("is_active")
+  isOnLeave           Boolean             @default(false) @map("is_on_leave")
   azureId             String?             @unique @map("azure_id")
   lastLogin           DateTime?           @map("last_login")
   // 2FA fields
@@ -40,6 +41,10 @@ model User {
   assignedSteps       WorkflowStep[]      @relation("UserAssignedSteps")
   announcements       Announcement[]      @relation("UserCreatedAnnouncements")
   notifications       Notification[]      @relation("UserNotifications")
+  delegationsGiven    PowerDelegation[]   @relation("DelegatorRelation")
+  delegationsReceived PowerDelegation[]   @relation("DelegateRelation")
+  delegationsCreated  PowerDelegation[]   @relation("DelegationCreatedBy")
+  delegationsRevoked  PowerDelegation[]   @relation("DelegationRevokedBy")
 
   @@map("users")
 }
@@ -406,6 +411,32 @@ model BackupLog {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("backup_logs")
+}
+
+model PowerDelegation {
+  id          String    @id @default(cuid())
+  delegatorId String    @map("delegator_id")
+  delegateId  String    @map("delegate_id")
+  startDate   DateTime  @map("start_date")
+  endDate     DateTime  @map("end_date")
+  reason      String?
+  permissions Json      // string[] — ex: ["APPROVE_WORKFLOW","REJECT_WORKFLOW"]
+  isActive    Boolean   @default(true) @map("is_active")
+  createdById String    @map("created_by_id")
+  revokedAt   DateTime? @map("revoked_at")
+  revokedById String?   @map("revoked_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  delegator   User      @relation("DelegatorRelation", fields: [delegatorId], references: [id])
+  delegate    User      @relation("DelegateRelation", fields: [delegateId], references: [id])
+  createdBy   User      @relation("DelegationCreatedBy", fields: [createdById], references: [id])
+  revokedBy   User?     @relation("DelegationRevokedBy", fields: [revokedById], references: [id])
+
+  @@index([delegatorId])
+  @@index([delegateId])
+  @@index([isActive, startDate, endDate])
+  @@map("power_delegations")
 }
 
 enum UserRole {
