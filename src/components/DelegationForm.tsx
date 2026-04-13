@@ -22,8 +22,10 @@ interface DelegationFormProps {
 }
 
 const DelegationForm: React.FC<DelegationFormProps> = ({
-  open, onClose, onSuccess, delegatorId, users, isAdmin = false,
+  open, onClose, onSuccess, delegatorId: delegatorIdProp, users, isAdmin = false,
 }) => {
+  // Quand l'admin crée pour n'importe quel utilisateur, delegatorIdProp peut être vide
+  const [effectiveDelegatorId, setEffectiveDelegatorId] = useState(delegatorIdProp);
   const [delegateId,  setDelegateId]  = useState('');
   const [startDate,   setStartDate]   = useState('');
   const [endDate,     setEndDate]     = useState('');
@@ -33,6 +35,8 @@ const DelegationForm: React.FC<DelegationFormProps> = ({
   const [error,       setError]       = useState<string | null>(null);
 
   const today = new Date().toISOString().split('T')[0];
+  // Le délégant peut être sélectionné par l'admin si non fourni via prop
+  const showDelegatorSelector = isAdmin && !delegatorIdProp;
 
   const togglePermission = (action: DelegatableAction) => {
     setPermissions(prev =>
@@ -41,7 +45,7 @@ const DelegationForm: React.FC<DelegationFormProps> = ({
   };
 
   const handleSubmit = async () => {
-    if (!delegateId || !startDate || !endDate || permissions.length === 0) {
+    if (!effectiveDelegatorId || !delegateId || !startDate || !endDate || permissions.length === 0) {
       setError('Veuillez remplir tous les champs obligatoires et sélectionner au moins une action.');
       return;
     }
@@ -53,7 +57,7 @@ const DelegationForm: React.FC<DelegationFormProps> = ({
     setError(null);
     try {
       const payload: CreateDelegationPayload = {
-        delegatorId,
+        delegatorId: effectiveDelegatorId,
         delegateId,
         startDate: new Date(startDate).toISOString(),
         endDate:   new Date(endDate + 'T23:59:59').toISOString(),
@@ -74,6 +78,7 @@ const DelegationForm: React.FC<DelegationFormProps> = ({
   // Reset form on open
   useEffect(() => {
     if (open) {
+      setEffectiveDelegatorId(delegatorIdProp);
       setDelegateId('');
       setStartDate('');
       setEndDate('');
@@ -83,13 +88,31 @@ const DelegationForm: React.FC<DelegationFormProps> = ({
     }
   }, [open]);
 
-  const availableUsers = users.filter(u => u.id !== delegatorId);
+  const availableUsers = users.filter(u => u.id !== effectiveDelegatorId);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Créer une délégation de pouvoir</DialogTitle>
       <DialogContent dividers>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+        {showDelegatorSelector && (
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel id="delegator-label">Délégant (utilisateur en congé) *</InputLabel>
+            <Select
+              labelId="delegator-label"
+              value={effectiveDelegatorId}
+              onChange={e => setEffectiveDelegatorId(e.target.value)}
+              label="Délégant (utilisateur en congé) *"
+            >
+              {users.map(u => (
+                <MenuItem key={u.id} value={u.id}>
+                  {u.name} — {u.role}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )}
 
         <FormControl fullWidth sx={{ mb: 2 }}>
           <InputLabel id="delegate-label">Délégué *</InputLabel>
