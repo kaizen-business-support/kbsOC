@@ -32,7 +32,9 @@ import auditLogRoutes from './routes/audit-logs';
 import documentRoutes from './routes/documents';
 import dispatchingRoutes from './routes/dispatching';
 import creditPolicyRoutes from './routes/credit-policy';
+import delegationRoutes from './routes/delegations';
 import { startScheduler } from './services/schedulerService';
+import { expireStaleActiveDelegations } from './services/delegationService';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -197,6 +199,7 @@ app.use('/api/audit-logs',   authenticate, auditLogRoutes);
 app.use('/api/documents',    authenticate, documentRoutes);
 app.use('/api/dispatching',    authenticate, dispatchingRoutes);
 app.use('/api/credit-policies', authenticate, creditPolicyRoutes);
+app.use('/api/delegations',    authenticate, delegationRoutes);
 
 // ─── Root endpoint ────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {
@@ -243,6 +246,11 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   if (process.env.DISABLE_SCHEDULER !== 'true') {
     startScheduler();
   }
+
+  // Expirer les délégations en retard au démarrage
+  expireStaleActiveDelegations()
+    .then(n => { if (n > 0) console.log(`[delegation] ${n} délégation(s) expirée(s) au démarrage`); })
+    .catch(err => console.error('[delegation] expiration error:', err));
 });
 
 process.on('unhandledRejection', async (err: Error) => {
