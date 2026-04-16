@@ -1,16 +1,30 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  BCI — Script de mise à jour DEV (Ubuntu 22.04 · mode local)
-#  Usage : bash bci-update.sh [--branch <branche>] [--skip-pull] [--skip-seed]
+#  BCI — Script de mise à jour PRODUCTION (Ubuntu 22.04 · IP locale)
+#  Usage : sudo bash bci-update.sh [OPTIONS]
 #
-#  Ce script met à jour une installation DEV existante sans tout réinstaller :
-#    1. Vérifie Ubuntu 22.04 + dépendances
-#    2. git pull (code source)
-#    3. npm install (backend + frontend)
-#    4. prisma generate + migrate
-#    5. Redémarre les serveurs dev dans tmux
+#  Options :
+#    --branch  <nom>    Branche git à déployer (défaut : branche courante)
+#    --skip-pull        Ne pas faire git pull
+#    --skip-seed        Ne pas relancer les seeds
+#    --skip-backup      Ne pas faire de backup BDD avant la mise à jour
+#
+#  Ce script :
+#    1.  Vérifie Ubuntu 22.04 + dépendances + root
+#    2.  Démarre PostgreSQL, Redis si inactifs
+#    3.  Backup automatique de la base (pré-update)
+#    4.  git pull
+#    5.  npm install (backend + frontend)
+#    6.  prisma generate + migrate deploy
+#    7.  Compilation backend TypeScript (swap sans interruption)
+#    8.  Compilation frontend React    (swap sans interruption)
+#    9.  Crée / met à jour les services systemd (démarrage automatique au boot)
+#    10. Configure nginx sur l'IP locale
+#    11. Redémarre les services + health check
 # =============================================================================
 set -euo pipefail
+
+[[ $EUID -eq 0 ]] || { echo "[ERREUR] Lancez en root : sudo bash bci-update.sh"; exit 1; }
 
 # ─── Couleurs ─────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -22,214 +36,224 @@ warn()    { echo -e "${YELLOW}[⚠]${NC} $*"; }
 die()     { echo -e "${RED}[✗]${NC} $*" >&2; exit 1; }
 section() { echo ""; echo -e "${BLUE}${BOLD}━━━ $* ━━━${NC}"; }
 ok()      { echo -e "  ${GREEN}✓${NC} $1"; }
-fail()    { echo -e "  ${RED}✗${NC} $1"; }
 
 # ─── Arguments ────────────────────────────────────────────────────────────────
 GIT_BRANCH=""
 SKIP_PULL=false
 SKIP_SEED=false
+SKIP_BACKUP=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --branch)    GIT_BRANCH="$2"; shift 2 ;;
-    --skip-pull) SKIP_PULL=true;  shift ;;
-    --skip-seed) SKIP_SEED=true;  shift ;;
+    --branch)      GIT_BRANCH="$2"; shift 2 ;;
+    --skip-pull)   SKIP_PULL=true;  shift ;;
+    --skip-seed)   SKIP_SEED=true;  shift ;;
+    --skip-backup) SKIP_BACKUP=true; shift ;;
     *) warn "Argument inconnu ignoré : $1"; shift ;;
   esac
 done
 
-# ─── Chemins ──────────────────────────────────────────────────────────────────
+# ─── Chemins & constantes ─────────────────────────────────────────────────────
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$APP_DIR/backend"
 BACKEND_ENV="$BACKEND_DIR/.env"
-FRONTEND_ENV="$APP_DIR/.env"
-TMUX_SESSION="optimuscredit"
+APP_NAME="optimuscredit"
+APP_USER="optimuscredit"
+BACKEND_PORT=5007
+FRONTEND_PORT=3006
+MACHINE_IP=$(hostname -I | awk '{print $1}')
 
 # ─── Bannière ─────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BLUE}${BOLD}"
-echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║     BCI — Mise à jour DEV · Ubuntu 22.04             ║"
-echo "  ║     $(date '+%Y-%m-%d %H:%M:%S')                             ║"
-echo "  ╚══════════════════════════════════════════════════════╝"
+echo "  ╔════════════════════════════════════════════════════════════╗"
+echo "  ║   BCI — Mise à jour PRODUCTION · Ubuntu 22.04             ║"
+echo "  ║   IP locale : ${MACHINE_IP}                               "
+echo "  ║   $(date '+%Y-%m-%d %H:%M:%S')                                    ║"
+echo "  ╚════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 echo -e "  Répertoire : ${CYAN}$APP_DIR${NC}"
 echo ""
 
 # =============================================================================
-# 1. VÉRIFICATION UBUNTU 22.04
+# 1. VÉRIFICATION ENVIRONNEMENT
 # =============================================================================
 section "1. Vérification de l'environnement"
 
 [[ -f /etc/os-release ]] && source /etc/os-release || die "/etc/os-release introuvable."
 
-if [[ "${ID:-}" != "ubuntu" ]]; then
-  die "Ce script requiert Ubuntu. OS détecté : ${PRETTY_NAME:-inconnu}"
-fi
+[[ "${ID:-}" == "ubuntu" ]] || die "Ubuntu requis. OS détecté : ${PRETTY_NAME:-inconnu}"
 
-UBUNTU_VER="${VERSION_ID:-0}"
-UBUNTU_MAJOR=$(echo "$UBUNTU_VER" | cut -d. -f1)
-
+UBUNTU_MAJOR=$(echo "${VERSION_ID:-0}" | cut -d. -f1)
 if [[ "$UBUNTU_MAJOR" -eq 22 ]]; then
-  ok "Ubuntu 22.04 LTS (Jammy) détecté"
+  ok "Ubuntu 22.04 LTS (Jammy)"
 elif [[ "$UBUNTU_MAJOR" -ge 22 ]]; then
-  warn "Ubuntu $UBUNTU_VER détecté — compatible mais non testé (22.04 recommandé)"
+  warn "Ubuntu ${VERSION_ID} — compatible (22.04 recommandé)"
 else
-  die "Ubuntu 22.04 requis — version détectée : $UBUNTU_VER"
+  die "Ubuntu 22.04+ requis — version détectée : ${VERSION_ID:-?}"
 fi
 
-# Fichiers .env requis
-[[ -f "$BACKEND_ENV" ]] || die "backend/.env introuvable. Lancez d'abord setup-dev.sh."
-[[ -f "$FRONTEND_ENV" ]] || warn ".env frontend introuvable — continuation quand même."
-
-# Répertoire git
-[[ -d "$APP_DIR/.git" ]] || die "$APP_DIR n'est pas un dépôt git."
-ok "Dépôt git : $APP_DIR"
+[[ -f "$BACKEND_ENV" ]]       || die "backend/.env introuvable. Lancez d'abord install.sh."
+[[ -d "$APP_DIR/.git" ]]      || die "$APP_DIR n'est pas un dépôt git."
+[[ -f "$APP_DIR/package.json" ]] || die "package.json introuvable dans $APP_DIR."
+ok "Structure du projet : OK"
 
 # =============================================================================
-# 2. DÉPENDANCES
+# 2. DÉPENDANCES SYSTÈME
 # =============================================================================
 section "2. Dépendances"
+
+_ensure_pkg() {
+  local cmd="$1" pkg="${2:-$1}"
+  if command -v "$cmd" &>/dev/null; then
+    ok "$cmd : $(${cmd} --version 2>/dev/null | head -1 | awk '{print $NF}' || echo 'OK')"
+  else
+    warn "$cmd absent — installation..."
+    apt-get install -y "$pkg" -qq
+    command -v "$cmd" &>/dev/null && ok "$cmd installé" || die "$cmd installation échouée."
+  fi
+}
 
 # Node.js >= 18
 NODE_MAJOR=$(node -v 2>/dev/null | sed 's/v//' | cut -d. -f1 || echo "0")
 if [[ "$NODE_MAJOR" -ge 18 ]]; then
   ok "Node.js $(node -v)"
 else
-  warn "Node.js absent ou trop ancien (v${NODE_MAJOR}) — installation Node.js 20..."
-  if [[ $EUID -eq 0 ]]; then
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null
-    apt-get install -y nodejs >/dev/null
-  else
-    die "Node.js v${NODE_MAJOR} insuffisant. Lancez en root ou installez Node.js 20 manuellement."
-  fi
+  warn "Node.js v${NODE_MAJOR} insuffisant — installation Node.js 20..."
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null
+  apt-get install -y nodejs -qq
   NODE_MAJOR=$(node -v 2>/dev/null | sed 's/v//' | cut -d. -f1 || echo "0")
-  [[ "$NODE_MAJOR" -ge 18 ]] && ok "Node.js $(node -v) installé" || die "Installation Node.js échouée."
+  [[ "$NODE_MAJOR" -ge 18 ]] && ok "Node.js $(node -v)" || die "Installation Node.js échouée."
 fi
 
-# npm
-command -v npm &>/dev/null && ok "npm $(npm -v)" \
-  || die "npm introuvable. Réinstallez Node.js."
+_ensure_pkg git git
+_ensure_pkg curl curl
+_ensure_pkg nginx nginx
+_ensure_pkg psql postgresql-client
 
-# git
-command -v git &>/dev/null && ok "git $(git --version | awk '{print $3}')" \
-  || die "git introuvable : sudo apt-get install -y git"
+# serve (pour distribuer le build React)
+if ! command -v serve &>/dev/null; then
+  warn "serve absent — installation globale npm..."
+  npm install -g serve -q
+fi
+SERVE_BIN="$(command -v serve)"
+ok "serve : $SERVE_BIN"
 
-# tmux
-if command -v tmux &>/dev/null; then
-  ok "tmux $(tmux -V | awk '{print $2}')"
+# Utilisateur système dédié
+if ! id "$APP_USER" &>/dev/null; then
+  useradd --system --shell /bin/bash \
+          --home-dir "$APP_DIR" --no-create-home \
+          --comment "BCI OptimusCredit Service" "$APP_USER"
+  ok "Utilisateur système '$APP_USER' créé"
 else
-  warn "tmux absent — les serveurs seront lancés en arrière-plan au lieu de tmux."
-  TMUX_MISSING=true
+  ok "Utilisateur '$APP_USER' : existant"
 fi
-TMUX_MISSING="${TMUX_MISSING:-false}"
-
-# PostgreSQL
-if command -v psql &>/dev/null; then
-  ok "psql $(psql --version | awk '{print $3}')"
-else
-  warn "psql absent — les migrations Prisma pourraient échouer si la DB est distante."
-fi
-
-# Redis
-if command -v redis-cli &>/dev/null; then
-  if redis-cli ping &>/dev/null; then
-    ok "Redis : actif"
-  else
-    warn "Redis installé mais inactif — tentative de démarrage..."
-    if [[ $EUID -eq 0 ]]; then
-      systemctl start redis-server 2>/dev/null || true
-    else
-      sudo systemctl start redis-server 2>/dev/null \
-        || warn "Redis inactif — démarrez-le manuellement : sudo systemctl start redis-server"
-    fi
-  fi
-else
-  warn "redis-cli absent — installez Redis si nécessaire."
-fi
+usermod -aG www-data "$APP_USER" 2>/dev/null || true
 
 # =============================================================================
-# 3. SERVICES PRÉ-REQUIS
+# 3. SERVICES PRÉ-REQUIS (PostgreSQL + Redis)
 # =============================================================================
 section "3. Services pré-requis"
 
-# Chargement .env backend
-set +u  # permet les variables non définies lors du source
+# Chargement .env
+set +u
 source "$BACKEND_ENV" 2>/dev/null || true
 set -u
 
 DB_URL="${DATABASE_URL:-}"
-[[ -z "$DB_URL" ]] && die "DATABASE_URL non définie dans $BACKEND_ENV"
+[[ -z "$DB_URL" ]] && die "DATABASE_URL non définie dans $BACKEND_ENV."
 
 DB_HOST=$(echo "$DB_URL" | sed -E 's|postgresql://[^:]+:[^@]+@([^:/]+).*|\1|')
 DB_PORT=$(echo "$DB_URL" | sed -E 's|postgresql://[^:]+:[^@]+@[^:]+:([0-9]+)/.*|\1|' || echo "5432")
-DB_NAME=$(echo "$DB_URL" | sed -E 's|.*/([^?]+).*|\1|')
-DB_USER=$(echo "$DB_URL" | sed -E 's|postgresql://([^:]+):.*|\1|')
-DB_PASS=$(echo "$DB_URL" | sed -E 's|postgresql://[^:]+:([^@]+)@.*|\1|')
+DB_NAME_VAL=$(echo "$DB_URL" | sed -E 's|.*/([^?]+).*|\1|')
+DB_USER_VAL=$(echo "$DB_URL" | sed -E 's|postgresql://([^:]+):.*|\1|')
+DB_PASS_VAL=$(echo "$DB_URL" | sed -E 's|postgresql://[^:]+:([^@]+)@.*|\1|')
 
 # PostgreSQL
-PG_ACTIVE=false
-if systemctl is-active --quiet postgresql 2>/dev/null; then
-  PG_ACTIVE=true
-  ok "PostgreSQL : actif"
-else
+if ! systemctl is-active --quiet postgresql; then
   info "Démarrage de PostgreSQL..."
-  if [[ $EUID -eq 0 ]]; then
-    systemctl start postgresql 2>/dev/null && PG_ACTIVE=true \
-      || warn "Impossible de démarrer PostgreSQL — vérifiez manuellement."
-  else
-    sudo systemctl start postgresql 2>/dev/null && PG_ACTIVE=true \
-      || warn "Impossible de démarrer PostgreSQL — essayez : sudo systemctl start postgresql"
-  fi
-  $PG_ACTIVE && ok "PostgreSQL démarré" || warn "PostgreSQL inactif — les migrations échoueront peut-être."
+  systemctl start postgresql || die "PostgreSQL ne démarre pas. Consultez : journalctl -u postgresql -n 30"
 fi
+systemctl enable postgresql --quiet 2>/dev/null || true
+ok "PostgreSQL : actif + démarrage auto activé"
+
+# Redis
+if ! systemctl is-active --quiet redis-server; then
+  info "Démarrage de Redis..."
+  systemctl start redis-server || warn "Redis ne démarre pas — vérifiez : journalctl -u redis-server -n 20"
+fi
+if [[ -f /etc/redis/redis.conf ]]; then
+  sed -i 's/^bind .*/bind 127.0.0.1 -::1/' /etc/redis/redis.conf
+  systemctl reload redis-server 2>/dev/null || true
+fi
+systemctl enable redis-server --quiet 2>/dev/null || true
+ok "Redis : actif + démarrage auto activé"
 
 # Test connexion DB
-if $PG_ACTIVE && command -v psql &>/dev/null; then
-  DB_CONN=false
-  for i in {1..3}; do
-    if PGPASSWORD="$DB_PASS" psql \
-        -h "$DB_HOST" -p "${DB_PORT:-5432}" \
-        -U "$DB_USER" -d "$DB_NAME" \
-        -c "SELECT 1" &>/dev/null; then
-      DB_CONN=true; break
-    fi
-    sleep 1
-  done
-  $DB_CONN && ok "Connexion DB : OK (${DB_USER}@${DB_HOST}/${DB_NAME})" \
-    || warn "Connexion DB échouée — les migrations Prisma pourraient échouer."
+info "Test connexion base de données..."
+DB_OK=false
+for i in {1..5}; do
+  if PGPASSWORD="$DB_PASS_VAL" psql \
+      -h "$DB_HOST" -p "${DB_PORT:-5432}" \
+      -U "$DB_USER_VAL" -d "$DB_NAME_VAL" \
+      -c "SELECT 1" &>/dev/null; then
+    DB_OK=true; break
+  fi
+  sleep 1
+done
+$DB_OK && ok "Connexion DB : OK (${DB_USER_VAL}@${DB_HOST}/${DB_NAME_VAL})" \
+  || die "Connexion DB impossible après 5 tentatives. Vérifiez PostgreSQL et backend/.env."
+
+# =============================================================================
+# 4. BACKUP PRÉ-UPDATE
+# =============================================================================
+section "4. Sauvegarde automatique pré-mise à jour"
+
+if [[ "$SKIP_BACKUP" == "true" ]]; then
+  warn "--skip-backup activé : sauvegarde ignorée."
+else
+  BACKUP_DIR="$APP_DIR/backups/pre-update"
+  mkdir -p "$BACKUP_DIR"
+  BACKUP_FILE="$BACKUP_DIR/backup_$(date +%Y%m%d_%H%M%S).sql.gz"
+
+  if command -v pg_dump &>/dev/null && \
+     PGPASSWORD="$DB_PASS_VAL" pg_dump \
+       -h "$DB_HOST" -p "${DB_PORT:-5432}" \
+       -U "$DB_USER_VAL" "$DB_NAME_VAL" 2>/dev/null | gzip > "$BACKUP_FILE"; then
+    ok "Backup BDD : $BACKUP_FILE"
+    find "$BACKUP_DIR" -name "*.sql.gz" -mtime +7 -delete 2>/dev/null || true
+  else
+    warn "Backup non effectué — continuation quand même."
+    rm -f "$BACKUP_FILE"
+  fi
 fi
 
 # =============================================================================
-# 4. MISE À JOUR DU CODE
+# 5. MISE À JOUR DU CODE SOURCE
 # =============================================================================
-section "4. Mise à jour du code source"
+section "5. Mise à jour du code source"
 
 cd "$APP_DIR"
 
 if [[ "$SKIP_PULL" == "true" ]]; then
   warn "--skip-pull activé : git pull ignoré."
 else
-  # Sauvegarder les modifications locales si besoin
   STASHED=false
   if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
     warn "Modifications locales détectées — mise en stash..."
     git stash push -m "bci-update auto-stash $(date +%Y%m%d_%H%M%S)" 2>/dev/null \
-      && STASHED=true \
-      || warn "git stash échoué — continuons avec les fichiers modifiés."
+      && STASHED=true || warn "git stash échoué — continuation avec les fichiers locaux."
   fi
 
   CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
   TARGET_BRANCH="${GIT_BRANCH:-$CURRENT_BRANCH}"
-  info "Branche : $TARGET_BRANCH"
+  info "Branche cible : $TARGET_BRANCH"
 
   if git fetch origin "$TARGET_BRANCH" 2>/dev/null; then
     git checkout "$TARGET_BRANCH" 2>/dev/null || true
-    if git pull origin "$TARGET_BRANCH" 2>/dev/null; then
-      ok "Code à jour — commit : $(git rev-parse --short HEAD 2>/dev/null || echo 'N/A')"
-    else
-      warn "git pull échoué — continuation avec le code local."
-    fi
+    git pull origin "$TARGET_BRANCH" 2>/dev/null \
+      && ok "Code à jour — commit : $(git rev-parse --short HEAD 2>/dev/null || echo 'N/A')" \
+      || warn "git pull échoué — continuation avec le code local."
   else
     warn "git fetch échoué (réseau ?) — continuation avec le code local."
   fi
@@ -242,9 +266,9 @@ else
 fi
 
 # =============================================================================
-# 5. DÉPENDANCES NPM
+# 6. DÉPENDANCES NPM
 # =============================================================================
-section "5. Dépendances npm"
+section "6. Dépendances npm"
 
 info "Backend..."
 cd "$BACKEND_DIR"
@@ -257,9 +281,9 @@ npm install --prefer-offline 2>&1 | tail -2
 ok "Frontend : dépendances à jour"
 
 # =============================================================================
-# 6. PRISMA — GÉNÉRATION + MIGRATION
+# 7. PRISMA — MIGRATION
 # =============================================================================
-section "6. Prisma — migration base de données"
+section "7. Prisma — migration base de données"
 
 cd "$BACKEND_DIR"
 export DATABASE_URL="$DB_URL"
@@ -270,164 +294,324 @@ ok "Client Prisma généré"
 
 info "Application des migrations..."
 if npx prisma migrate deploy 2>/dev/null; then
-  ok "Migrations Prisma appliquées (migrate deploy)"
+  ok "Migrations appliquées (migrate deploy)"
 else
   warn "migrate deploy non disponible — db push en fallback..."
   npx prisma db push --accept-data-loss 2>/dev/null \
-    && ok "Schéma Prisma synchronisé (db push)" \
-    || warn "Prisma db push échoué — vérifiez la connexion DB."
+    && ok "Schéma synchronisé (db push)" \
+    || warn "db push échoué — vérifiez la connexion DB."
 fi
 
-# Re-grant post-migration (en cas de nouvelles tables)
-if [[ $EUID -eq 0 ]]; then
-  sudo -u postgres psql -d "$DB_NAME" \
-    -c "GRANT ALL ON ALL TABLES    IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
-  sudo -u postgres psql -d "$DB_NAME" \
-    -c "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER};" 2>/dev/null || true
-  ok "Privilèges DB post-migration accordés"
-else
-  sudo -n postgres psql -d "$DB_NAME" \
-    -c "GRANT ALL ON ALL TABLES IN SCHEMA public TO ${DB_USER};" 2>/dev/null \
-    || info "Re-grant DB ignoré (non-root) — utilisez 'sudo bash bci-update.sh' si des migrations ont créé de nouvelles tables."
-fi
+# Re-grant post-migration
+sudo -u postgres psql -d "$DB_NAME_VAL" \
+  -c "GRANT ALL ON ALL TABLES    IN SCHEMA public TO ${DB_USER_VAL};" 2>/dev/null || true
+sudo -u postgres psql -d "$DB_NAME_VAL" \
+  -c "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER_VAL};" 2>/dev/null || true
+ok "Privilèges DB accordés"
 
-# Seed (uniquement si demandé ou si nouveau déploiement)
+# Seed
 if [[ "$SKIP_SEED" == "false" ]]; then
-  if [[ -f "$BACKEND_DIR/prisma/seed-roles.js" ]]; then
-    node "$BACKEND_DIR/prisma/seed-roles.js" 2>/dev/null \
-      && ok "Seed rôles : OK" \
-      || warn "seed-roles.js : erreur non bloquante"
-  fi
-  if [[ -f "$BACKEND_DIR/prisma/seed-data.js" ]]; then
-    node "$BACKEND_DIR/prisma/seed-data.js" 2>/dev/null \
-      && ok "Seed données : OK" \
-      || warn "seed-data.js : erreur non bloquante"
-  fi
+  for seed_file in seed-roles.js seed-data.js; do
+    if [[ -f "$BACKEND_DIR/prisma/$seed_file" ]]; then
+      node "$BACKEND_DIR/prisma/$seed_file" 2>/dev/null \
+        && ok "Seed $seed_file : OK" \
+        || warn "$seed_file : erreur non bloquante"
+    fi
+  done
 fi
 
-# Vider le cache Redis des listes
+# Vider le cache Redis
 redis-cli DEL cache:departments:active cache:branches:active 2>/dev/null \
-  && ok "Cache Redis invalidé" \
-  || info "redis-cli indisponible — le cache expirera automatiquement."
+  && ok "Cache Redis invalidé" || true
 
 # =============================================================================
-# 7. REDÉMARRAGE DES SERVEURS DEV
+# 8. COMPILATION BACKEND (TypeScript → dist, swap sans interruption)
 # =============================================================================
-section "7. Redémarrage des serveurs DEV"
+section "8. Compilation backend (TypeScript)"
 
-BACKEND_PORT="${PORT:-5007}"
-FRONTEND_PORT=3006
+cd "$BACKEND_DIR"
+rm -rf dist_new
+info "Compilation TypeScript..."
+npx tsc --outDir dist_new 2>&1 | tail -3
+ok "Backend compilé → dist_new/"
 
-# Tuer les processus existants sur les ports
-for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do
-  pid=$(lsof -ti ":$port" 2>/dev/null || fuser "$port/tcp" 2>/dev/null || echo "")
-  if [[ -n "$pid" ]]; then
-    kill "$pid" 2>/dev/null && info "Port $port libéré (PID $pid)" || true
-    sleep 1
+# =============================================================================
+# 9. COMPILATION FRONTEND (React → build, swap sans interruption)
+# =============================================================================
+section "9. Compilation frontend (React)"
+
+cd "$APP_DIR"
+BUILD_TMP="$APP_DIR/build_new"
+rm -rf "$BUILD_TMP"
+
+# Forcer l'URL API vers l'IP locale
+REACT_APP_API_PORT=$(grep -E '^REACT_APP_API_PORT=' .env 2>/dev/null | cut -d= -f2 || echo "$BACKEND_PORT")
+export REACT_APP_API_PORT
+export CI=false   # warnings non bloquants
+
+info "Build React (CI=false)..."
+BUILD_PATH="$BUILD_TMP" npm run build 2>&1 | tail -3
+ok "Frontend compilé → build_new/"
+
+# =============================================================================
+# 10. SERVICES SYSTEMD (création ou mise à jour)
+# =============================================================================
+section "10. Services systemd (démarrage automatique au boot)"
+
+# ── Répertoires runtime ────────────────────────────────────────────────────
+mkdir -p "$BACKEND_DIR/logs" "$BACKEND_DIR/uploads" "$BACKEND_DIR/backups"
+
+# ── Service backend ────────────────────────────────────────────────────────
+cat > /etc/systemd/system/${APP_NAME}-backend.service <<EOF
+[Unit]
+Description=BCI OptimusCredit — API Backend (Node.js)
+After=network.target postgresql.service redis-server.service
+Requires=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=${APP_USER}
+Group=${APP_USER}
+WorkingDirectory=${BACKEND_DIR}
+EnvironmentFile=${BACKEND_DIR}/.env
+
+ExecStart=/usr/bin/node ${BACKEND_DIR}/dist/server.js
+
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=5
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=${APP_NAME}-backend
+
+UMask=007
+ReadWritePaths=${BACKEND_DIR}/logs
+ReadWritePaths=${BACKEND_DIR}/uploads
+ReadWritePaths=${BACKEND_DIR}/backups
+ReadWritePaths=${BACKEND_DIR}/prisma
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+ok "Service ${APP_NAME}-backend : défini"
+
+# ── Service frontend ────────────────────────────────────────────────────────
+cat > /etc/systemd/system/${APP_NAME}-frontend.service <<EOF
+[Unit]
+Description=BCI OptimusCredit — Frontend React (serve)
+After=network.target ${APP_NAME}-backend.service
+
+[Service]
+Type=simple
+User=${APP_USER}
+Group=${APP_USER}
+WorkingDirectory=${APP_DIR}
+
+ExecStart=${SERVE_BIN} -s ${APP_DIR}/build -l ${FRONTEND_PORT} --no-clipboard
+
+Restart=always
+RestartSec=10
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=${APP_NAME}-frontend
+
+UMask=022
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+ok "Service ${APP_NAME}-frontend : défini"
+
+systemctl daemon-reload
+systemctl enable "${APP_NAME}-backend"  --quiet
+systemctl enable "${APP_NAME}-frontend" --quiet
+ok "Démarrage automatique au boot activé pour les deux services"
+
+# =============================================================================
+# 11. NGINX — IP LOCALE
+# =============================================================================
+section "11. nginx — reverse proxy sur IP locale"
+
+cat > /etc/nginx/sites-available/${APP_NAME} <<NGINXEOF
+# BCI OptimusCredit — nginx — généré le $(date '+%Y-%m-%d %H:%M')
+server {
+    listen 80;
+    server_name ${MACHINE_IP} _;
+
+    client_max_body_size 50M;
+    client_body_timeout  120s;
+    server_tokens off;
+
+    add_header X-Frame-Options        "SAMEORIGIN"                      always;
+    add_header X-Content-Type-Options "nosniff"                         always;
+    add_header Referrer-Policy        "strict-origin-when-cross-origin" always;
+
+    # ── API Backend ──────────────────────────────────────────────────────────
+    location /api {
+        proxy_pass            http://127.0.0.1:${BACKEND_PORT};
+        proxy_http_version    1.1;
+        proxy_set_header      Upgrade           \$http_upgrade;
+        proxy_set_header      Connection        "upgrade";
+        proxy_set_header      Host              \$host;
+        proxy_set_header      X-Real-IP         \$remote_addr;
+        proxy_set_header      X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header      X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass    \$http_upgrade;
+        proxy_read_timeout    120s;
+        proxy_connect_timeout 10s;
+    }
+
+    # ── WebSocket ─────────────────────────────────────────────────────────────
+    location /socket.io {
+        proxy_pass         http://127.0.0.1:${BACKEND_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade         \$http_upgrade;
+        proxy_set_header   Connection      "upgrade";
+        proxy_set_header   Host            \$host;
+        proxy_set_header   X-Real-IP       \$remote_addr;
+        proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+
+    # ── Frontend React ────────────────────────────────────────────────────────
+    location / {
+        proxy_pass         http://127.0.0.1:${FRONTEND_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade         \$http_upgrade;
+        proxy_set_header   Connection      "upgrade";
+        proxy_set_header   Host            \$host;
+        proxy_set_header   X-Real-IP       \$remote_addr;
+        proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_cache_bypass \$http_upgrade;
+    }
+
+    location /health {
+        proxy_pass  http://127.0.0.1:${BACKEND_PORT}/api/health;
+        access_log  off;
+    }
+}
+NGINXEOF
+
+ln -sf /etc/nginx/sites-available/${APP_NAME} /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+nginx -t || die "Configuration nginx invalide — vérifiez /etc/nginx/sites-available/${APP_NAME}"
+ok "nginx configuré sur http://${MACHINE_IP}"
+
+# =============================================================================
+# 12. SWAP dist + build → déploiement sans interruption
+# =============================================================================
+section "12. Déploiement (swap)"
+
+# Backend : swap dist
+cd "$BACKEND_DIR"
+[[ -d dist ]] && mv dist dist_old
+mv dist_new dist
+rm -rf dist_old
+ok "Backend : dist swappé"
+
+# Frontend : swap build
+[[ -d "$APP_DIR/build" ]] && mv "$APP_DIR/build" "$APP_DIR/build_old"
+mv "$APP_DIR/build_new" "$APP_DIR/build"
+rm -rf "$APP_DIR/build_old"
+ok "Frontend : build swappé"
+
+# =============================================================================
+# 13. PERMISSIONS
+# =============================================================================
+section "13. Permissions"
+
+chown -R "${APP_USER}:${APP_USER}" "$APP_DIR"
+find "$APP_DIR" -maxdepth 1 -name "*.sh" -exec chmod 755 {} \;
+chmod -R 755 "$BACKEND_DIR/dist"
+chmod -R 755 "$APP_DIR/build"
+chmod 640 "$BACKEND_DIR/.env" 2>/dev/null || true
+for d in "$BACKEND_DIR/logs" "$BACKEND_DIR/uploads" "$BACKEND_DIR/backups"; do
+  chmod 770 "$d" && chmod g+s "$d"
+done
+ok "Permissions appliquées (owner: ${APP_USER})"
+
+# =============================================================================
+# 14. REDÉMARRAGE DES SERVICES
+# =============================================================================
+section "14. Redémarrage des services"
+
+for svc in "${APP_NAME}-backend" "${APP_NAME}-frontend"; do
+  systemctl restart "$svc"
+  sleep 3
+  if systemctl is-active --quiet "$svc"; then
+    ok "$svc : actif"
+  else
+    warn "$svc : pas encore actif — journalctl -u $svc -n 30 --no-pager"
   fi
 done
 
-if [[ "$TMUX_MISSING" == "false" ]] && command -v tmux &>/dev/null; then
-  # Redémarrage dans tmux
-  if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-    info "Session tmux '$TMUX_SESSION' existante — redémarrage des fenêtres..."
-
-    # Fenêtre backend
-    tmux send-keys -t "${TMUX_SESSION}:backend" "" ENTER 2>/dev/null || true
-    tmux send-keys -t "${TMUX_SESSION}:backend" \
-      "cd ${BACKEND_DIR} && DATABASE_URL='${DB_URL}' npm run dev 2>&1 | tee logs/dev.log" ENTER \
-      2>/dev/null || true
-
-    # Fenêtre frontend
-    tmux send-keys -t "${TMUX_SESSION}:frontend" "" ENTER 2>/dev/null || true
-    tmux send-keys -t "${TMUX_SESSION}:frontend" \
-      "cd ${APP_DIR} && npm start 2>&1 | tee /tmp/frontend-dev.log" ENTER \
-      2>/dev/null || true
-
-    ok "Serveurs relancés dans la session tmux '${TMUX_SESSION}'"
-    info "Accédez aux logs : tmux attach -t ${TMUX_SESSION}"
-  else
-    info "Création d'une nouvelle session tmux '${TMUX_SESSION}'..."
-
-    tmux new-session -d -s "$TMUX_SESSION" -n backend
-    tmux send-keys -t "${TMUX_SESSION}:backend" \
-      "cd ${BACKEND_DIR} && DATABASE_URL='${DB_URL}' npm run dev 2>&1 | tee logs/dev.log" ENTER
-
-    tmux new-window -t "$TMUX_SESSION" -n frontend
-    tmux send-keys -t "${TMUX_SESSION}:frontend" \
-      "cd ${APP_DIR} && npm start 2>&1 | tee /tmp/frontend-dev.log" ENTER
-
-    ok "Serveurs démarrés dans la session tmux '${TMUX_SESSION}'"
-    info "Accédez aux logs : tmux attach -t ${TMUX_SESSION}"
-  fi
-else
-  # Fallback sans tmux : démarrage en arrière-plan
-  warn "tmux absent — démarrage des serveurs en arrière-plan."
-
-  mkdir -p "$BACKEND_DIR/logs"
-  cd "$BACKEND_DIR"
-  DATABASE_URL="$DB_URL" nohup npm run dev > logs/dev.log 2>&1 &
-  BACKEND_PID=$!
-  ok "Backend démarré (PID $BACKEND_PID) — logs : $BACKEND_DIR/logs/dev.log"
-
-  cd "$APP_DIR"
-  nohup npm start > /tmp/frontend-dev.log 2>&1 &
-  FRONTEND_PID=$!
-  ok "Frontend démarré (PID $FRONTEND_PID) — logs : /tmp/frontend-dev.log"
-fi
+systemctl enable nginx --quiet
+systemctl reload nginx && ok "nginx rechargé"
 
 # =============================================================================
-# 8. VÉRIFICATION SANTÉ
+# 15. VÉRIFICATION SANTÉ FINALE
 # =============================================================================
-section "8. Vérification santé"
+section "15. Vérification santé"
 
-info "Attente du démarrage (10s)..."
-sleep 10
+info "Attente du démarrage (8s)..."
+sleep 8
 
 HEALTH_BACKEND=$(curl -s -o /dev/null -w "%{http_code}" \
-  "http://127.0.0.1:${BACKEND_PORT}/api/health" --connect-timeout 5 2>/dev/null || echo "000")
-
-MACHINE_IP=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "localhost")
+  "http://127.0.0.1:${BACKEND_PORT}/api/health" --connect-timeout 8 2>/dev/null || echo "000")
+HEALTH_FRONTEND=$(curl -s -o /dev/null -w "%{http_code}" \
+  "http://127.0.0.1:${FRONTEND_PORT}" --connect-timeout 8 2>/dev/null || echo "000")
+HEALTH_NGINX=$(curl -s -o /dev/null -w "%{http_code}" \
+  "http://${MACHINE_IP}/api/health" --connect-timeout 8 2>/dev/null || echo "000")
 
 # =============================================================================
 # RÉSUMÉ FINAL
 # =============================================================================
 echo ""
 echo -e "${GREEN}${BOLD}"
-echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║      BCI — Mise à jour DEV terminée !                ║"
-echo "  ╚══════════════════════════════════════════════════════╝"
+echo "  ╔════════════════════════════════════════════════════════════╗"
+echo "  ║      BCI — Déploiement PRODUCTION terminé !               ║"
+echo "  ╚════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-echo -e "  ${BOLD}Application  :${NC}  ${CYAN}http://${MACHINE_IP}${NC}"
-echo -e "  ${BOLD}Backend API  :${NC}  ${CYAN}http://${MACHINE_IP}:${BACKEND_PORT}/api/health${NC}"
+_status() {
+  [[ "$1" == "200" ]] && echo -e "${GREEN}✓ HTTP $1${NC}" || echo -e "${YELLOW}⏳ HTTP $1${NC}"
+}
+
+echo -e "  ${BOLD}Application   :${NC}  ${CYAN}http://${MACHINE_IP}${NC}"
+echo -e "  ${BOLD}API           :${NC}  ${CYAN}http://${MACHINE_IP}/api/health${NC}"
 echo ""
-echo -e "  ${BOLD}Backend HTTP :${NC}  ${HEALTH_BACKEND} \
-$([ "$HEALTH_BACKEND" == "200" ] && echo -e "${GREEN}✓ en ligne${NC}" || echo -e "${YELLOW}⏳ démarrage en cours…${NC}")"
+echo -e "  ${BOLD}Backend       :${NC}  $(_status "$HEALTH_BACKEND")"
+echo -e "  ${BOLD}Frontend      :${NC}  $(_status "$HEALTH_FRONTEND")"
+echo -e "  ${BOLD}nginx → app   :${NC}  $(_status "$HEALTH_NGINX")"
 echo ""
 echo -e "  ${YELLOW}${BOLD}Commit déployé :${NC} $(cd "$APP_DIR" && git rev-parse --short HEAD 2>/dev/null || echo 'N/A')"
 echo ""
-
-if command -v tmux &>/dev/null && tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-  echo -e "  ${YELLOW}${BOLD}Logs en direct :${NC}"
-  echo "    tmux attach -t ${TMUX_SESSION}          (toutes les fenêtres)"
-  echo "    tmux attach -t ${TMUX_SESSION}:backend   (logs backend)"
-  echo "    tmux attach -t ${TMUX_SESSION}:frontend  (logs frontend)"
-  echo "    Quitter tmux : Ctrl+B puis D"
-else
-  echo -e "  ${YELLOW}${BOLD}Logs :${NC}"
-  echo "    Backend  : tail -f ${BACKEND_DIR}/logs/dev.log"
-  echo "    Frontend : tail -f /tmp/frontend-dev.log"
-fi
-
+echo -e "  ${YELLOW}${BOLD}Services (démarrent automatiquement au boot) :${NC}"
+echo "    systemctl status  ${APP_NAME}-backend"
+echo "    systemctl status  ${APP_NAME}-frontend"
+echo "    systemctl status  postgresql"
+echo "    systemctl status  redis-server"
+echo "    systemctl status  nginx"
 echo ""
-echo -e "  ${YELLOW}${BOLD}Commandes utiles :${NC}"
-echo "    bash bci-update.sh                   # re-mise à jour"
-echo "    bash bci-update.sh --skip-pull       # sans git pull"
-echo "    bash bci-update.sh --skip-seed       # sans re-seed"
-echo "    bash bci-update.sh --branch feature  # branche spécifique"
+echo -e "  ${YELLOW}${BOLD}Logs :${NC}"
+echo "    journalctl -u ${APP_NAME}-backend  -f --no-pager"
+echo "    journalctl -u ${APP_NAME}-frontend -f --no-pager"
+echo ""
+echo -e "  ${YELLOW}${BOLD}Prochaine mise à jour :${NC}"
+echo "    sudo bash bci-update.sh"
+echo "    sudo bash bci-update.sh --branch <branche>"
+echo "    sudo bash bci-update.sh --skip-pull --skip-seed"
 echo ""
 
+# Avertissement si backend non disponible
 if [[ "$HEALTH_BACKEND" != "200" ]]; then
-  warn "Backend pas encore disponible — il démarre peut-être encore. Vérifiez les logs."
+  warn "Backend non disponible — il démarre peut-être encore."
+  warn "Vérifiez : journalctl -u ${APP_NAME}-backend -n 50 --no-pager"
+  exit 1
 fi
