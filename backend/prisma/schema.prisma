@@ -25,6 +25,8 @@ model Company {
   delegations    PowerDelegation[]
   notifications  Notification[]
   announcements  Announcement[]
+  departments    Department[]
+  branches       Branch[]
 
   @@map("companies")
 }
@@ -277,7 +279,7 @@ model WorkflowStepConfig {
 
 model ApprovalLimit {
   id                String   @id @default(cuid())
-  role              UserRole @unique
+  role              UserRole
   displayName       String   @map("display_name")
   minAmount         Decimal  @map("min_amount") @db.Decimal(15, 2)
   maxAmount         Decimal  @map("max_amount") @db.Decimal(15, 2)
@@ -292,14 +294,15 @@ model ApprovalLimit {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
+  @@unique([companyId, role])
   @@index([companyId])
   @@map("approval_limits")
 }
 
 model CreditType {
   id              String              @id @default(cuid())
-  name            String              @unique
-  code            String              @unique
+  name            String
+  code            String
   description     String?
   defaultRate     Decimal             @map("default_rate") @db.Decimal(5, 2)
   minRate         Decimal?            @map("min_rate") @db.Decimal(5, 2)
@@ -315,6 +318,8 @@ model CreditType {
   applications    CreditApplication[]
   workflowSteps   CreditTypeWorkflowStep[]
 
+  @@unique([companyId, name])
+  @@unique([companyId, code])
   @@index([companyId])
   @@map("credit_types")
 }
@@ -352,7 +357,7 @@ model CreditTypeWorkflowStep {
 model CreditPolicy {
   id          String             @id @default(cuid())
   name        String             // "Politique Générale de Crédit 2024"
-  code        String             @unique // "POL-2024-001"
+  code        String             // "POL-2024-001"
   description String?
   isActive    Boolean            @default(true) @map("is_active")
   version     Int                @default(1)
@@ -366,6 +371,7 @@ model CreditPolicy {
   steps        CreditPolicyStep[]
   applications CreditApplication[]
 
+  @@unique([companyId, code])
   @@index([companyId])
   @@map("credit_policies")
 }
@@ -425,9 +431,12 @@ model Department {
   code        String   @unique
   description String?
   isActive    Boolean  @default(true) @map("is_active")
+  companyId   String?  @map("company_id")
+  company     Company? @relation(fields: [companyId], references: [id])
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
+  @@index([companyId])
   @@map("departments")
 }
 
@@ -440,9 +449,12 @@ model Branch {
   country   String?  @default("Sénégal")
   manager   String?
   isActive  Boolean  @default(true) @map("is_active")
+  companyId String?  @map("company_id")
+  company   Company? @relation(fields: [companyId], references: [id])
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([companyId])
   @@map("branches")
 }
 
