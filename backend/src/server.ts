@@ -33,6 +33,8 @@ import documentRoutes from './routes/documents';
 import dispatchingRoutes from './routes/dispatching';
 import creditPolicyRoutes from './routes/credit-policy';
 import delegationRoutes from './routes/delegations';
+import companyRoutes from './routes/companies';
+import platformRoutes from './routes/platform';
 import { startScheduler } from './services/schedulerService';
 import { expireStaleActiveDelegations } from './services/delegationService';
 
@@ -200,6 +202,8 @@ app.use('/api/documents',    authenticate, documentRoutes);
 app.use('/api/dispatching',    authenticate, dispatchingRoutes);
 app.use('/api/credit-policies', authenticate, creditPolicyRoutes);
 app.use('/api/delegations',    authenticate, delegationRoutes);
+app.use('/api/companies', companyRoutes);
+app.use('/api/platform', platformRoutes);
 
 // ─── Root endpoint ────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {
