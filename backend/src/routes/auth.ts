@@ -36,6 +36,21 @@ function generateRefreshToken(userId: string): string {
   );
 }
 
+function generateAccessTokenWithCompany(payload: {
+  userId: string;
+  email: string;
+  role: string;
+  companyId: string;
+  readOnly?: boolean;
+}): string {
+  const jti = uuidv4();
+  return jwt.sign(
+    { ...payload, jti },
+    process.env.JWT_SECRET || 'dev-secret',
+    { expiresIn: '1h' }
+  );
+}
+
 /** Temporary token used between password-check and 2FA/forced-change step (10 min TTL). */
 function generateTempToken(userId: string, type: string = '2fa_pending'): string {
   return jwt.sign(
@@ -110,15 +125,36 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.json({ success: true, requires2FA: true, tempToken });
     }
 
-    // ── Full login ────────────────────────────────────────────────────────────
+    // ── Full login — multi-company flow ─────────────────────────────────────
     await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });
 
-    const accessToken = generateAccessToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role
+    // Fetch user's company memberships
+    const memberships = await (prisma as any).companyMembership.findMany({
+      where: { userId: user.id, isActive: true },
+      include: { company: { select: { id: true, name: true, code: true, logoUrl: true, isActive: true } } },
     });
-    const refreshToken = generateRefreshToken(user.id);
+
+    const companies = memberships
+      .filter((m: any) => m.company.isActive)
+      .map((m: any) => ({
+        id: m.company.id,
+        name: m.company.name,
+        code: m.company.code,
+        logoUrl: m.company.logoUrl,
+        role: m.role,
+      }));
+
+    const userData = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      department: user.department,
+      jobTitle: user.jobTitle,
+      permissions: user.permissions,
+      lastLogin: new Date().toISOString(),
+      isActive: user.isActive
+    };
 
     // Log login (manuel — le middleware auditLogger ne s'applique pas ici car req.user absent)
     prisma.auditLog.create({
@@ -132,21 +168,45 @@ router.post('/login', async (req: Request, res: Response) => {
       }
     }).catch(() => {});
 
+    // If exactly one company: auto-select, return full token
+    if (companies.length === 1) {
+      const accessToken = generateAccessTokenWithCompany({
+        userId: user.id,
+        email: user.email,
+        role: companies[0].role,
+        companyId: companies[0].id,
+      });
+      const refreshToken = generateRefreshToken(user.id);
+      return res.json({
+        success: true,
+        accessToken,
+        refreshToken,
+        user: userData,
+        companies,
+        autoSelected: true,
+      });
+    }
+
+    // If no company: return token without companyId (legacy/admin flow)
+    if (companies.length === 0) {
+      const accessToken = generateAccessToken({ userId: user.id, email: user.email, role: user.role });
+      const refreshToken = generateRefreshToken(user.id);
+      return res.json({ success: true, accessToken, refreshToken, user: userData, companies: [] });
+    }
+
+    // Multiple companies: return partialToken + company list
+    const partialToken = jwt.sign(
+      { userId: user.id, email: user.email, role: user.role, type: 'company_selection' },
+      process.env.JWT_SECRET || 'dev-secret',
+      { expiresIn: '5m' }
+    );
+
     return res.json({
       success: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        department: user.department,
-        jobTitle: user.jobTitle,
-        permissions: user.permissions,
-        lastLogin: new Date().toISOString(),
-        isActive: user.isActive
-      },
-      accessToken,
-      refreshToken
+      requiresCompanySelection: true,
+      partialToken,
+      companies,
+      user: userData,
     });
 
   } catch (error) {
@@ -191,6 +251,118 @@ router.post('/logout', authenticate, async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Logout error:', error);
     return res.status(500).json({ success: false, error: 'Erreur lors de la déconnexion' });
+  }
+});
+
+// ─── POST /api/auth/select-company ───────────────────────────────────────────
+
+router.post('/select-company', async (req: Request, res: Response) => {
+  try {
+    const { companyId, partialToken } = req.body;
+    if (!companyId || !partialToken) {
+      return res.status(400).json({ success: false, error: 'companyId et partialToken requis' });
+    }
+
+    let decoded: any;
+    try {
+      decoded = jwt.verify(partialToken, process.env.JWT_SECRET || 'dev-secret') as any;
+    } catch {
+      return res.status(401).json({ success: false, error: 'Token de sélection invalide ou expiré' });
+    }
+    if (decoded.type !== 'company_selection') {
+      return res.status(401).json({ success: false, error: 'Type de token invalide' });
+    }
+
+    const membership = await (prisma as any).companyMembership.findUnique({
+      where: { userId_companyId: { userId: decoded.userId, companyId } },
+      include: { company: true },
+    });
+    if (!membership || !membership.isActive || !membership.company.isActive) {
+      return res.status(403).json({ success: false, error: 'Accès à cette compagnie non autorisé' });
+    }
+
+    const accessToken = generateAccessTokenWithCompany({
+      userId: decoded.userId,
+      email: decoded.email,
+      role: membership.role,
+      companyId,
+    });
+    const refreshToken = generateRefreshToken(decoded.userId);
+
+    await prisma.user.update({ where: { id: decoded.userId }, data: { lastLogin: new Date() } });
+
+    return res.json({
+      success: true,
+      accessToken,
+      refreshToken,
+      company: { id: membership.company.id, name: membership.company.name, code: membership.company.code, logoUrl: membership.company.logoUrl },
+      role: membership.role,
+    });
+  } catch (error) {
+    console.error('Select company error:', error);
+    return res.status(500).json({ success: false, error: 'Erreur sélection compagnie' });
+  }
+});
+
+// ─── POST /api/auth/switch-company ───────────────────────────────────────────
+
+router.post('/switch-company', authenticate, async (req: Request, res: Response) => {
+  try {
+    const { companyId } = req.body;
+    if (!companyId) return res.status(400).json({ success: false, error: 'companyId requis' });
+
+    const userId = req.user!.id;
+
+    const membership = await (prisma as any).companyMembership.findUnique({
+      where: { userId_companyId: { userId, companyId } },
+      include: { company: true },
+    });
+    if (!membership || !membership.isActive || !membership.company.isActive) {
+      return res.status(403).json({ success: false, error: 'Accès à cette compagnie non autorisé' });
+    }
+
+    // Blacklist the old token
+    const authHeader = req.headers.authorization!;
+    const oldToken = authHeader.substring(7);
+    const oldDecoded = jwt.decode(oldToken) as any;
+    if (oldDecoded?.jti && oldDecoded?.exp) {
+      const ttl = oldDecoded.exp - Math.floor(Date.now() / 1000);
+      if (ttl > 0) await blacklistToken(oldDecoded.jti, ttl);
+    }
+
+    const accessToken = generateAccessTokenWithCompany({
+      userId,
+      email: req.user!.email,
+      role: membership.role,
+      companyId,
+    });
+
+    return res.json({
+      success: true,
+      accessToken,
+      company: { id: membership.company.id, name: membership.company.name, code: membership.company.code, logoUrl: membership.company.logoUrl },
+      role: membership.role,
+    });
+  } catch (error) {
+    console.error('Switch company error:', error);
+    return res.status(500).json({ success: false, error: 'Erreur switch compagnie' });
+  }
+});
+
+// ─── GET /api/auth/companies ──────────────────────────────────────────────────
+
+router.get('/companies', authenticate, async (req: Request, res: Response) => {
+  try {
+    const memberships = await (prisma as any).companyMembership.findMany({
+      where: { userId: req.user!.id, isActive: true },
+      include: { company: { select: { id: true, name: true, code: true, logoUrl: true, isActive: true } } },
+    });
+    const companies = memberships
+      .filter((m: any) => m.company.isActive)
+      .map((m: any) => ({ ...m.company, role: m.role }));
+    return res.json({ success: true, data: companies });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Erreur récupération compagnies' });
   }
 });
 
