@@ -98,7 +98,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // Check for duplicate code
-    const existing = await prisma.creditType.findUnique({
+    const existing = await prisma.creditType.findFirst({
       where: { code }
     });
 
@@ -169,7 +169,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     // Check for duplicate code (if code is being changed)
     if (code && code !== existing.code) {
-      const duplicate = await prisma.creditType.findUnique({
+      const duplicate = await prisma.creditType.findFirst({
         where: { code }
       });
 

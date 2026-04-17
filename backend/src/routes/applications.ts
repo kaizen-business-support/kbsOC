@@ -42,7 +42,7 @@ router.get('/', async (req: Request, res: Response) => {
     if (assignedAnalystId) {
       whereConditions.workflowSteps = {
         some: {
-          role: 'CREDIT_ANALYST',
+          role: 'ANALYSTE_RISQUES',
           assigneeId: assignedAnalystId as string,
           status: { in: ['PENDING', 'IN_REVIEW'] },
         }
@@ -241,7 +241,7 @@ router.post('/', async (req: Request, res: Response) => {
       data: {
         applicationId: application.id,
         stepName: 'application_created',
-        role: 'ACCOUNT_MANAGER',
+        role: 'CHARGE_AFFAIRES',
         assigneeId: createdBy,
         status: 'COMPLETED',
         completedAt: new Date(),
@@ -380,8 +380,8 @@ router.put('/:id', async (req: Request, res: Response) => {
 
       // Define the workflow step order
       const WORKFLOW_STEP_ORDER = [
-        { name: 'application_created', role: 'ACCOUNT_MANAGER' },
-        { name: 'credit_analysis', role: 'CREDIT_ANALYST' }
+        { name: 'application_created', role: 'CHARGE_AFFAIRES' },
+        { name: 'credit_analysis', role: 'ANALYSTE_RISQUES' }
       ];
 
       // Get existing workflow steps
@@ -436,7 +436,7 @@ router.put('/:id', async (req: Request, res: Response) => {
           data: {
             applicationId: application.id,
             stepName: 'credit_analysis',
-            role: 'CREDIT_ANALYST',
+            role: 'ANALYSTE_RISQUES',
             assigneeId: application.createdBy,
             status: 'PENDING'
           }
@@ -462,7 +462,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
         if (!alreadyHasBranchStep) {
           const branchManagerLimit = await prisma.approvalLimit.findFirst({
-            where: { role: 'BRANCH_MANAGER', isActive: true }
+            where: { role: 'RESPONSABLE_ENGAGEMENTS', isActive: true }
           });
 
           if (branchManagerLimit) {
@@ -470,7 +470,7 @@ router.put('/:id', async (req: Request, res: Response) => {
               data: {
                 applicationId: application.id,
                 stepName: 'branch_manager_review',
-                role: 'BRANCH_MANAGER' as any,
+                role: 'RESPONSABLE_ENGAGEMENTS' as any,
                 status: 'PENDING',
                 createdAt: now
               }

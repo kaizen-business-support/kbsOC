@@ -64,7 +64,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 router.get('/role/:role', async (req: Request, res: Response) => {
   try {
     const { role } = req.params;
-    const limit = await prisma.approvalLimit.findUnique({
+    const limit = await prisma.approvalLimit.findFirst({
       where: { role: role as any }
     });
 

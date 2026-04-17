@@ -13,7 +13,10 @@ declare global {
         email: string;
         role: string;
         permissions: string[];
+        companyId?: string;
+        readOnly?: boolean;
       };
+      companyId?: string;  // shortcut for req.user.companyId
     }
   }
 }
@@ -22,6 +25,9 @@ export interface JwtPayload {
   userId: string;
   email: string;
   role: string;
+  jti?: string;
+  companyId?: string;      // present in tokens after company selection
+  readOnly?: boolean;      // present in impersonation tokens
   iat?: number;
   exp?: number;
 }
@@ -57,7 +63,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       });
     }
 
-    const decoded = jwt.verify(token, jwtSecret) as JwtPayload & { jti?: string };
+    const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
 
     // Check token revocation (logout blacklist)
     if (decoded.jti) {
@@ -105,6 +111,14 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       role: user.role,
       permissions: Array.isArray(user.permissions) ? user.permissions as string[] : []
     };
+
+    if (decoded.companyId) {
+      req.user!.companyId = decoded.companyId;
+      req.companyId = decoded.companyId;
+    }
+    if (decoded.readOnly) {
+      req.user!.readOnly = true;
+    }
 
     // Update last login timestamp (optional, for audit purposes)
     if (process.env.UPDATE_LAST_LOGIN === 'true') {
@@ -177,15 +191,48 @@ export const authorize = (requiredPermissions: string[] = [], requiredRoles: str
   };
 };
 
-// Helper function to generate JWT token
-export const generateToken = (payload: Omit<JwtPayload, 'iat' | 'exp'>): string => {
-  const jwtSecret = process.env.JWT_SECRET;
-
-  if (!jwtSecret) {
-    throw new Error('JWT_SECRET environment variable not set');
+export const requireCompany = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.companyId) {
+    return res.status(403).json({
+      error: "Compagnie non sélectionnée. Appelez POST /api/auth/select-company d'abord.",
+      code: 'COMPANY_NOT_SELECTED'
+    });
   }
+  next();
+};
 
-  return jwt.sign(payload, jwtSecret, { expiresIn: '1h' });
+export const requireSuperAdmin = (req: Request, res: Response, next: NextFunction) => {
+  if (req.user?.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({
+      error: 'Accès réservé au Super Administrateur plateforme.',
+      code: 'SUPER_ADMIN_REQUIRED'
+    });
+  }
+  next();
+};
+
+export const blockReadOnly = (req: Request, res: Response, next: NextFunction) => {
+  if (req.user?.readOnly) {
+    return res.status(403).json({
+      error: 'Mode impersonation : modifications interdites.',
+      code: 'READ_ONLY_MODE'
+    });
+  }
+  next();
+};
+
+// Helper function to generate JWT token
+export const generateToken = (payload: {
+  userId: string;
+  email: string;
+  role: string;
+  companyId?: string;
+  readOnly?: boolean;
+}, expiresIn = '1h'): string => {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) throw new Error('JWT_SECRET environment variable not set');
+  const jti = require('crypto').randomUUID();
+  return jwt.sign({ ...payload, jti }, jwtSecret, { expiresIn } as SignOptions);
 };
 
 // Helper function to generate refresh token

@@ -80,11 +80,11 @@ router.get('/', async (req: Request, res: Response) => {
         // L'étape courante est la première non-complétée
         const currentStep = workflow.workflowSteps.find(step => !step.completedAt);
 
-        if (role === 'ACCOUNT_MANAGER') {
+        if (role === 'CHARGE_AFFAIRES') {
           return workflow.createdBy === userId;
         }
 
-        if (role === 'CREDIT_ANALYST') {
+        if (role === 'ANALYSTE_RISQUES') {
           return currentStep?.stepName === 'credit_analysis' &&
                  workflow.status === 'UNDER_REVIEW';
         }
@@ -180,7 +180,7 @@ router.post('/:applicationId/start-step/:stepId', async (req: Request, res: Resp
     }
 
     // Déterminer le contexte effectif (direct ou par délégation)
-    const GLOBAL_ROLES = ['MANAGEMENT', 'ADMIN', 'CREDIT_COMMITTEE'];
+    const GLOBAL_ROLES = ['DIRECTION_GENERALE', 'ADMIN', 'COMITE_CREDIT'];
     if (user && application) {
       let effectiveBranch = (user as any).branch as string | null;
       let effectiveDept   = (user as any).department as string | null;
@@ -364,7 +364,7 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       data: {
         applicationId: applicationId,
         stepName: 'final_decision',
-        role: 'ACCOUNT_MANAGER',
+        role: 'CHARGE_AFFAIRES',
         status: 'APPROVED',
         completedAt: new Date(),
         assigneeId: userId,

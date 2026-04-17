@@ -303,7 +303,7 @@ export async function createWorkflowStepsForApplication(
       data: {
         applicationId,
         stepName: 'application_created',
-        role: 'ACCOUNT_MANAGER',
+        role: 'CHARGE_AFFAIRES',
         status: 'COMPLETED',
         completedAt: new Date(),
         deadline: new Date(),
@@ -511,7 +511,7 @@ export async function getNextWorkflowStep(
  */
 // Rôles à portée globale : peuvent traiter les dossiers de toutes les agences.
 // Tous les autres rôles sont limités à leur propre agence.
-const GLOBAL_SCOPE_ROLES: UserRole[] = ['MANAGEMENT', 'ADMIN', 'CREDIT_COMMITTEE'];
+const GLOBAL_SCOPE_ROLES: UserRole[] = ['DIRECTION_GENERALE', 'ADMIN', 'COMITE_CREDIT'];
 
 export async function canApproveStep(
   userId: string,
@@ -587,7 +587,7 @@ export async function canApproveStep(
   // ── 3. Vérification du plafond d'approbation ───────────────────────────────
   const amount = Number(application.amount);
 
-  const limit = await prisma.approvalLimit.findUnique({
+  const limit = await prisma.approvalLimit.findFirst({
     where: { role: effectiveRole },
   });
 

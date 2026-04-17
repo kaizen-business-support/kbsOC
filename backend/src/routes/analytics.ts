@@ -257,7 +257,7 @@ router.get('/branches', async (req: Request, res: Response) => {
     const branches = await prisma.user.findMany({
       where: {
         department: { not: null },
-        role: 'ACCOUNT_MANAGER'
+        role: 'CHARGE_AFFAIRES'
       },
       select: {
         name: true,
@@ -310,7 +310,7 @@ router.get('/managers', async (req: Request, res: Response) => {
     const { branch } = req.query;
     
     const whereClause: any = {
-      role: 'ACCOUNT_MANAGER'
+      role: 'CHARGE_AFFAIRES'
     };
     
     if (branch && branch !== 'all') {

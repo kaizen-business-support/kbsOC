@@ -46,7 +46,7 @@ const checkUserManagementPermission = async (req: Request, res: Response, next: 
   }
 };
 
-// Middleware allégé : ADMIN, ANALYST_SUPERVISOR, ou permission user_management
+// Middleware allégé : ADMIN, RESPONSABLE_RISQUES, ou permission user_management
 const checkAnalystListPermission = async (req: Request, res: Response, next: express.NextFunction) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -63,7 +63,7 @@ const checkAnalystListPermission = async (req: Request, res: Response, next: exp
     });
     if (!user) return res.status(401).json({ error: 'User not found' });
     const permissions = user.permissions as string[];
-    const allowed = ['ADMIN', 'ANALYST_SUPERVISOR'].includes(user.role)
+    const allowed = ['ADMIN', 'RESPONSABLE_RISQUES'].includes(user.role)
       || permissions.includes('user_management')
       || permissions.includes('assign_analyst');
     if (allowed) {
@@ -82,7 +82,7 @@ router.get('/credit-analysts',
   checkAnalystListPermission,
   asyncHandler(async (req: Request, res: Response) => {
     const analysts = await prisma.user.findMany({
-      where: { role: 'CREDIT_ANALYST', isActive: true },
+      where: { role: 'ANALYSTE_RISQUES', isActive: true },
       select: { id: true, email: true, name: true, role: true, department: true, jobTitle: true }
     });
 

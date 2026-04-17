@@ -5,17 +5,17 @@ import { resolveDelegation } from '../services/delegationService';
 
 const router = Router();
 
-// ─── Middleware : ANALYST_SUPERVISOR, ADMIN, ou délégué avec DISPATCH_APPLICATION ──
+// ─── Middleware : RESPONSABLE_RISQUES, ADMIN, ou délégué avec DISPATCH_APPLICATION ──
 const requireSupervisorOrDelegate = async (req: Request, res: Response, next: any) => {
   const user = (req as any).user;
   if (!user) return res.status(403).json({ success: false, error: 'Non authentifié' });
 
-  if (['ANALYST_SUPERVISOR', 'ADMIN'].includes(user.role)) return next();
+  if (['RESPONSABLE_RISQUES', 'ADMIN'].includes(user.role)) return next();
 
   // Vérifier si délégué avec droit DISPATCH_APPLICATION
   const userId = user?.userId || user?.id;
   const delegation = await resolveDelegation(userId, 'DISPATCH_APPLICATION');
-  if (delegation && ['ANALYST_SUPERVISOR', 'ADMIN'].includes(delegation.delegatorRole)) {
+  if (delegation && ['RESPONSABLE_RISQUES', 'ADMIN'].includes(delegation.delegatorRole)) {
     (req as any).delegationContext = delegation;
     return next();
   }
@@ -30,7 +30,7 @@ router.use(requireSupervisorOrDelegate);
 router.get('/workload', async (req: Request, res: Response) => {
   try {
     const analysts = await prisma.user.findMany({
-      where: { role: 'CREDIT_ANALYST', isActive: true },
+      where: { role: 'ANALYSTE_RISQUES', isActive: true },
       select: {
         id: true,
         name: true,
@@ -107,7 +107,7 @@ router.get('/pending', async (req: Request, res: Response) => {
         status: { in: ['SUBMITTED', 'UNDER_REVIEW'] },
         workflowSteps: {
           none: {
-            role: 'CREDIT_ANALYST',
+            role: 'ANALYSTE_RISQUES',
             status: { in: ['PENDING', 'IN_REVIEW'] },
             assigneeId: { not: null }
           }
@@ -168,7 +168,7 @@ router.get('/suggest/:applicationId', async (req: Request, res: Response) => {
     }
 
     const analysts = await prisma.user.findMany({
-      where: { role: 'CREDIT_ANALYST', isActive: true },
+      where: { role: 'ANALYSTE_RISQUES', isActive: true },
       include: {
         assignedSteps: {
           where: { status: { in: ['PENDING', 'IN_REVIEW'] } }
@@ -223,7 +223,7 @@ router.get('/history', async (req: Request, res: Response) => {
   try {
     const steps = await prisma.workflowStep.findMany({
       where: {
-        role: 'CREDIT_ANALYST',
+        role: 'ANALYSTE_RISQUES',
         assigneeId: { not: null }
       },
       include: {
@@ -283,7 +283,7 @@ router.post('/assign', async (req: Request, res: Response) => {
     ]);
 
     if (!application) return res.status(404).json({ success: false, error: 'Demande non trouvée' });
-    if (!analyst || analyst.role !== 'CREDIT_ANALYST') {
+    if (!analyst || analyst.role !== 'ANALYSTE_RISQUES') {
       return res.status(400).json({ success: false, error: 'Analyste invalide' });
     }
 
@@ -296,7 +296,7 @@ router.post('/assign', async (req: Request, res: Response) => {
     // ── Guard agence : un superviseur ne peut dispatcher que les dossiers de son agence.
     // Si l'acteur est un délégué, utiliser la branche du délégant.
     // Les rôles globaux (Admin, DG) peuvent dispatcher tous les dossiers.
-    const GLOBAL_ROLES = ['MANAGEMENT', 'ADMIN'];
+    const GLOBAL_ROLES = ['DIRECTION_GENERALE', 'ADMIN'];
     const delegCtx = (req as any).delegationContext as {
       delegatorBranch: string | null;
       delegatorDepartment: string | null;
@@ -332,8 +332,8 @@ router.post('/assign', async (req: Request, res: Response) => {
     }
     const dateStr = new Date().toLocaleDateString('fr-FR');
 
-    // Chercher un step CREDIT_ANALYST existant (assigné ou non)
-    const existingStep = application.workflowSteps.find(s => s.role === 'CREDIT_ANALYST');
+    // Chercher un step ANALYSTE_RISQUES existant (assigné ou non)
+    const existingStep = application.workflowSteps.find(s => s.role === 'ANALYSTE_RISQUES');
 
     if (existingStep) {
       await prisma.workflowStep.update({
@@ -352,7 +352,7 @@ router.post('/assign', async (req: Request, res: Response) => {
         data: {
           applicationId,
           stepName: 'credit_analysis',
-          role: 'CREDIT_ANALYST',
+          role: 'ANALYSTE_RISQUES',
           assigneeId: analystId,
           status: 'PENDING',
           deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
