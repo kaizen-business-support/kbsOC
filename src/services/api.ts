@@ -1188,6 +1188,11 @@ export class ApiService {
     return response.data;
   }
 
+  static async put(path: string, body?: any): Promise<any> {
+    const response = await api.put(path, body);
+    return response.data;
+  }
+
   static async patch(path: string, body?: any): Promise<any> {
     const response = await api.patch(path, body);
     return response.data;
