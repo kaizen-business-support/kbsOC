@@ -9,8 +9,11 @@ import {
   finalizeApplicationDuration,
 } from '../services/workflowService';
 import { resolveDelegation } from '../services/delegationService';
+import { authenticate, requireCompany } from '../middleware/auth';
 
 const router = Router();
+router.use(authenticate);
+router.use(requireCompany);
 
 // GET /api/workflows - Get workflow data with filters and role-based filtering
 router.get('/', async (req: Request, res: Response) => {
@@ -18,7 +21,7 @@ router.get('/', async (req: Request, res: Response) => {
     const { status, branch, dateFrom, dateTo, userId, userRole } = req.query;
 
     // Build filter conditions
-    const whereConditions: any = {};
+    const whereConditions: any = { companyId: req.companyId };
 
     if (status && status !== 'all') {
       whereConditions.status = (status as string).toUpperCase();
@@ -394,7 +397,7 @@ router.post('/fix-missing-approval-steps', async (req: Request, res: Response) =
     const { getNextWorkflowStep: getNext } = await import('../services/workflowService');
 
     const applications = await prisma.creditApplication.findMany({
-      where: { status: 'UNDER_REVIEW', creditTypeId: { not: null } },
+      where: { status: 'UNDER_REVIEW', creditTypeId: { not: null }, companyId: req.companyId },
       include: { workflowSteps: { orderBy: { createdAt: 'asc' } } }
     });
 
@@ -447,7 +450,7 @@ router.post('/fix-prematurely-approved', async (req: Request, res: Response) => 
     const { buildWorkflowPlan } = await import('../services/workflowService');
 
     const applications = await prisma.creditApplication.findMany({
-      where: { status: 'APPROVED', creditTypeId: { not: null } },
+      where: { status: 'APPROVED', creditTypeId: { not: null }, companyId: req.companyId },
       include: { workflowSteps: true }
     });
 

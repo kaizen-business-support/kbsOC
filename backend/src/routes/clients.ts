@@ -1,12 +1,16 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
+import { authenticate, requireCompany } from '../middleware/auth';
 
 const router = Router();
+router.use(authenticate);
+router.use(requireCompany);
 
 // GET /api/clients - Get all clients
 router.get('/', async (req: Request, res: Response) => {
   try {
     const clients = await prisma.client.findMany({
+      where: { companyId: req.companyId },
       include: {
         creator: true,
         applications: true

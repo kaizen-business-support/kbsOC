@@ -6,8 +6,11 @@ import { prisma } from '../server';
 import { sendEmail } from '../services/notificationService';
 import { buildWelcomeEmail, buildAdminResetEmail } from '../utils/emailTemplates';
 import { getAppUrl } from '../utils/getAppUrl';
+import { authenticate, requireCompany } from '../middleware/auth';
 
 const router = express.Router();
+router.use(authenticate);
+router.use(requireCompany);
 
 // Permission check using JWT verification + live DB lookup
 const checkUserManagementPermission = async (req: Request, res: Response, next: express.NextFunction) => {
@@ -81,10 +84,17 @@ const checkAnalystListPermission = async (req: Request, res: Response, next: exp
 router.get('/credit-analysts',
   checkAnalystListPermission,
   asyncHandler(async (req: Request, res: Response) => {
-    const analysts = await prisma.user.findMany({
-      where: { role: 'ANALYSTE_RISQUES', isActive: true },
-      select: { id: true, email: true, name: true, role: true, department: true, jobTitle: true }
+    const members = await (prisma.companyMembership as any).findMany({
+      where: { companyId: req.companyId, isActive: true },
+      include: {
+        user: {
+          select: { id: true, email: true, name: true, role: true, department: true, jobTitle: true, isActive: true }
+        }
+      }
     });
+    const analysts = (members as any[])
+      .map((m: any) => m.user)
+      .filter((u: any) => u.role === 'ANALYSTE_RISQUES' && u.isActive);
 
     res.json({
       success: true,
@@ -98,26 +108,30 @@ router.get('/credit-analysts',
 router.get('/',
   checkUserManagementPermission,
   asyncHandler(async (req: Request, res: Response) => {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        department: true,
-        branch: true,
-        jobTitle: true,
-        isActive: true,
-        lastLogin: true,
-        createdAt: true,
-        permissions: true,
-        twoFactorEnabled: true,
-        twoFactorRequired: true
+    const members = await (prisma.companyMembership as any).findMany({
+      where: { companyId: req.companyId, isActive: true },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            department: true,
+            branch: true,
+            isActive: true,
+            jobTitle: true,
+            lastLogin: true,
+            createdAt: true,
+            permissions: true,
+            twoFactorEnabled: true,
+            twoFactorRequired: true
+          }
+        }
       },
-      orderBy: {
-        createdAt: 'desc'
-      }
+      orderBy: { joinedAt: 'desc' }
     });
+    const users = (members as any[]).map((m: any) => ({ ...m.user, membershipRole: m.role }));
 
     res.json({
       success: true,
@@ -221,6 +235,18 @@ router.post('/',
         passwordExpiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000) // 72 heures
       } as any
     });
+
+    // Attach user to the company via CompanyMembership
+    if (req.companyId) {
+      await prisma.companyMembership.create({
+        data: {
+          userId: newUser.id,
+          companyId: req.companyId,
+          role: role as any,
+          isActive: true
+        }
+      });
+    }
 
     // Send welcome email with temporary credentials (non-blocking)
     const frontendUrl = getAppUrl();

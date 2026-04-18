@@ -6,8 +6,11 @@ import {
   revokeDelegation,
 } from '../services/delegationService';
 import { createInAppNotification } from '../services/notificationService';
+import { authenticate, requireCompany } from '../middleware/auth';
 
 const router = Router();
+router.use(authenticate);
+router.use(requireCompany);
 
 // Helper pour extraire l'userId du token JWT (cohérent avec le reste de l'app)
 const getActorId = (req: Request): string =>
@@ -26,6 +29,7 @@ router.get('/my', async (req: Request, res: Response) => {
     const userId = getActorId(req);
     const delegations = await (prisma as any).powerDelegation.findMany({
       where: {
+        companyId: req.companyId,
         OR: [{ delegatorId: userId }, { delegateId: userId }],
       },
       include: {
@@ -52,7 +56,7 @@ router.get('/', async (req: Request, res: Response) => {
   }
   try {
     const { status, delegatorId, delegateId } = req.query as Record<string, string>;
-    const where: any = {};
+    const where: any = { companyId: req.companyId };
     if (status === 'active')   where.isActive = true;
     if (status === 'inactive') where.isActive = false;
     if (delegatorId) where.delegatorId = delegatorId;
@@ -126,6 +130,7 @@ router.post('/', async (req: Request, res: Response) => {
       reason,
       permissions,
       createdById: actorId,
+      companyId: req.companyId,
     });
 
     // Notifier le délégué

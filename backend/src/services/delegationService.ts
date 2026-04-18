@@ -95,12 +95,13 @@ export interface CreateDelegationInput {
   permissions:     DelegatableAction[];
   createdById:     string;
   maxDurationDays?: number;
+  companyId?:      string;
 }
 
 export async function createDelegation(input: CreateDelegationInput) {
   const {
     delegatorId, delegateId, startDate, endDate,
-    reason, permissions, createdById, maxDurationDays,
+    reason, permissions, createdById, maxDurationDays, companyId,
   } = input;
 
   // ── Validation durée ──────────────────────────────────────────────────────
@@ -168,6 +169,7 @@ export async function createDelegation(input: CreateDelegationInput) {
       permissions,
       isActive: true,
       createdById,
+      ...(companyId && { companyId }),
     },
   });
 

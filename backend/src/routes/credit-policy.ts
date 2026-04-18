@@ -22,14 +22,18 @@ import { Router, Request, Response } from 'express';
 import { prisma } from '../prismaClient';
 import { buildWorkflowPlan, getApplicationProcessingStats } from '../services/workflowService';
 import { STEP_NAME_FR } from '../constants/stepNames';
+import { authenticate, requireCompany } from '../middleware/auth';
 
 const router = Router();
+router.use(authenticate);
+router.use(requireCompany);
 
 // ─── GET /api/credit-policies ─────────────────────────────────────────────────
 
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const policies = await prisma.creditPolicy.findMany({
+      where: { companyId: req.companyId },
       include: {
         _count: { select: { steps: true, applications: true } },
         steps: { orderBy: { order: 'asc' } },
@@ -56,7 +60,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Désactiver les autres politiques actives avant d'en créer une nouvelle active
     await prisma.creditPolicy.updateMany({
-      where: { isActive: true },
+      where: { isActive: true, companyId: req.companyId },
       data: { isActive: false },
     });
 
@@ -68,6 +72,7 @@ router.post('/', async (req: Request, res: Response) => {
         isActive: true,
         validFrom: validFrom ? new Date(validFrom) : new Date(),
         validTo: validTo ? new Date(validTo) : null,
+        companyId: req.companyId,
         steps: steps
           ? {
               create: steps.map((s: any, idx: number) => ({
@@ -142,6 +147,7 @@ router.get('/analytics', async (req: Request, res: Response) => {
       where: {
         ...where,
         status: { in: ['APPROVED', 'REJECTED'] },
+        companyId: req.companyId,
       },
       select: {
         id: true,
@@ -251,7 +257,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     // Si on active cette politique, désactiver les autres
     if (isActive === true) {
       await prisma.creditPolicy.updateMany({
-        where: { isActive: true, id: { not: req.params.id } },
+        where: { isActive: true, id: { not: req.params.id }, companyId: req.companyId },
         data: { isActive: false },
       });
     }

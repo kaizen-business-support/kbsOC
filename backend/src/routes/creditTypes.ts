@@ -1,8 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
 import { cacheGet, cacheSet } from '../services/redis';
+import { authenticate, requireCompany } from '../middleware/auth';
 
 const router = Router();
+router.use(authenticate);
+router.use(requireCompany);
 const CACHE_KEY = 'cache:credit-types:active';
 const CACHE_TTL = 300;
 
@@ -10,15 +13,16 @@ const CACHE_TTL = 300;
 router.get('/', async (req: Request, res: Response) => {
   try {
     const { includeInactive } = req.query;
+    const cacheKey = `${CACHE_KEY}:${req.companyId}`;
 
     if (includeInactive !== 'true') {
-      const cached = await cacheGet(CACHE_KEY);
+      const cached = await cacheGet(cacheKey);
       if (cached) {
         return res.json({ success: true, data: JSON.parse(cached) });
       }
     }
 
-    const whereConditions: any = {};
+    const whereConditions: any = { companyId: req.companyId };
     if (includeInactive !== 'true') {
       whereConditions.isActive = true;
     }
@@ -30,7 +34,7 @@ router.get('/', async (req: Request, res: Response) => {
     });
 
     if (includeInactive !== 'true') {
-      await cacheSet(CACHE_KEY, JSON.stringify(creditTypes), CACHE_TTL);
+      await cacheSet(cacheKey, JSON.stringify(creditTypes), CACHE_TTL);
     }
 
     res.json({ success: true, data: creditTypes });
@@ -97,9 +101,9 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Check for duplicate code
+    // Check for duplicate code within the same company
     const existing = await prisma.creditType.findFirst({
-      where: { code }
+      where: { code, companyId: req.companyId }
     });
 
     if (existing) {
@@ -120,7 +124,8 @@ router.post('/', async (req: Request, res: Response) => {
         minDuration,
         maxDuration,
         requiresCollateral: requiresCollateral || false,
-        isActive: isActive !== undefined ? isActive : true
+        isActive: isActive !== undefined ? isActive : true,
+        companyId: req.companyId
       }
     });
 
@@ -170,7 +175,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     // Check for duplicate code (if code is being changed)
     if (code && code !== existing.code) {
       const duplicate = await prisma.creditType.findFirst({
-        where: { code }
+        where: { code, companyId: req.companyId }
       });
 
       if (duplicate) {

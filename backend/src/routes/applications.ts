@@ -2,8 +2,11 @@ import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
 import { triggerNotification } from '../services/notificationService';
 import { createWorkflowStepsForApplication } from '../services/workflowService';
+import { authenticate, requireCompany } from '../middleware/auth';
 
 const router = Router();
+router.use(authenticate);
+router.use(requireCompany);
 
 // GET /api/applications - Get applications with filters
 router.get('/', async (req: Request, res: Response) => {
@@ -11,7 +14,7 @@ router.get('/', async (req: Request, res: Response) => {
     const { status, branch, dateFrom, dateTo, userId, assignedAnalystId } = req.query;
 
     // Build filter conditions
-    const whereConditions: any = {};
+    const whereConditions: any = { companyId: req.companyId };
 
     if (status && status !== 'all') {
       whereConditions.status = (status as string).toUpperCase();
@@ -228,7 +231,8 @@ router.post('/', async (req: Request, res: Response) => {
         status: 'SUBMITTED',
         submittedAt: new Date(),
         createdBy,
-        analysisResults: analysisResults || null
+        analysisResults: analysisResults || null,
+        companyId: req.companyId
       },
       include: {
         client: true,
