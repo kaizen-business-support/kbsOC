@@ -319,11 +319,178 @@ async function main() {
     }
   }
 
-  // ── 6. Résumé ──────────────────────────────────────────────────────────────
+  // ── 6. Mur Chinois + RACI (A/C/I) pour la politique active BCI ─────────────
+
+  // 6a. Mur chinois
+  const chineseWallRules = [
+    { blockedRole: 'ANALYSTE_RISQUES', forbiddenStep: 'mise_en_place_sib',           reason: 'Mur chinois BCEAO — Direction Risques interdite sur opérations SIB' },
+    { blockedRole: 'ANALYSTE_RISQUES', forbiddenStep: 'saisie_garanties',            reason: 'Mur chinois BCEAO — Direction Risques interdite sur opérations SIB' },
+    { blockedRole: 'ANALYSTE_RISQUES', forbiddenStep: 'tirage_fonds',                reason: 'Mur chinois BCEAO — Direction Risques interdite sur décaissement' },
+    { blockedRole: 'ANALYSTE_RISQUES', forbiddenStep: 'back_office_setup',           reason: 'Mur chinois BCEAO — Direction Risques interdite sur opérations BO' },
+    { blockedRole: 'ANALYSTE_RISQUES', forbiddenStep: 'charge_affaires_dispatch',    reason: 'Mur chinois BCEAO — Direction Risques interdite sur Front Office' },
+    { blockedRole: 'ANALYSTE_RISQUES', forbiddenStep: 'verification_completude',     reason: 'Mur chinois BCEAO — Direction Risques interdite sur Engagements' },
+    { blockedRole: 'RESPONSABLE_RISQUES', forbiddenStep: 'mise_en_place_sib',        reason: 'Mur chinois BCEAO — Direction Risques interdite sur opérations SIB' },
+    { blockedRole: 'RESPONSABLE_RISQUES', forbiddenStep: 'saisie_garanties',         reason: 'Mur chinois BCEAO — Direction Risques interdite sur opérations SIB' },
+    { blockedRole: 'RESPONSABLE_RISQUES', forbiddenStep: 'tirage_fonds',             reason: 'Mur chinois BCEAO — Direction Risques interdite sur décaissement' },
+    { blockedRole: 'RESPONSABLE_RISQUES', forbiddenStep: 'back_office_setup',        reason: 'Mur chinois BCEAO — Direction Risques interdite sur opérations BO' },
+    { blockedRole: 'RESPONSABLE_RISQUES', forbiddenStep: 'charge_affaires_dispatch', reason: 'Mur chinois BCEAO — Direction Risques interdite sur Front Office' },
+    { blockedRole: 'RESPONSABLE_RISQUES', forbiddenStep: 'verification_completude',  reason: 'Mur chinois BCEAO — Direction Risques interdite sur Engagements' },
+    { blockedRole: 'RESPONSABLE_ENGAGEMENTS', forbiddenStep: 'contre_analyse',            reason: 'Mur chinois BCEAO — Engagements interdit sur analyse risques' },
+    { blockedRole: 'RESPONSABLE_ENGAGEMENTS', forbiddenStep: 'calcul_ratios_prudentiels', reason: 'Mur chinois BCEAO — Engagements interdit sur analyse risques' },
+    { blockedRole: 'RESPONSABLE_ENGAGEMENTS', forbiddenStep: 'notation_interne',          reason: 'Mur chinois BCEAO — Engagements interdit sur notation interne' },
+    { blockedRole: 'RESPONSABLE_ENGAGEMENTS', forbiddenStep: 'avis_risques',              reason: 'Mur chinois BCEAO — Engagements interdit sur avis risques' },
+  ];
+
+  for (const rule of chineseWallRules) {
+    const existing = await prisma.tenantChineseWallRule.findFirst({
+      where: { companyId: bci.id, blockedRole: rule.blockedRole, forbiddenStep: rule.forbiddenStep },
+    });
+    if (!existing) {
+      await prisma.tenantChineseWallRule.create({ data: { ...rule, companyId: bci.id } });
+    }
+  }
+  console.log(`  ✓ Mur chinois : ${chineseWallRules.length} règles`);
+
+  // 6b. Récupérer la politique active BCI
+  const activePolicy = await prisma.creditPolicy.findFirst({
+    where: { companyId: bci.id, isActive: true },
+    include: { steps: { orderBy: { order: 'asc' } } },
+  });
+
+  if (activePolicy) {
+    // 6c. Ajouter les phases aux étapes existantes
+    const phaseMap = {
+      'charge_affaires_dispatch':  'Montage dossier',
+      'verification_completude':   'Montage dossier',
+      'application_created':       'Montage dossier',
+      'contre_analyse':            'Analyse risques',
+      'calcul_ratios_prudentiels': 'Analyse risques',
+      'notation_interne':          'Analyse risques',
+      'avis_risques':              'Analyse risques',
+      'validation_comite':         'Approbation',
+      'decision_direction':        'Approbation',
+      'mise_en_place_sib':         'Mise en place',
+      'formalisation_garanties':   'Mise en place',
+      'saisie_garanties':          'Mise en place',
+      'tirage_fonds':              'Mise en place',
+      'back_office_setup':         'Mise en place',
+    };
+
+    for (const step of activePolicy.steps) {
+      if (phaseMap[step.stepName] && !step.phase) {
+        await prisma.creditPolicyStep.update({
+          where: { id: step.id },
+          data: { phase: phaseMap[step.stepName] },
+        });
+      }
+    }
+
+    // 6d. Ajouter les étapes manquantes si absentes
+    const stepNames = activePolicy.steps.map(s => s.stepName);
+    const maxOrder = Math.max(...activePolicy.steps.map(s => s.order), 0);
+
+    if (!stepNames.includes('application_created')) {
+      await prisma.creditPolicyStep.create({
+        data: {
+          policyId: activePolicy.id,
+          stepName: 'application_created',
+          stepLabel: 'Création du dossier',
+          phase: 'Montage dossier',
+          order: 0,
+          stepType: 'DISPATCH',
+          assignedRole: 'CHARGE_AFFAIRES',
+          expectedDurationHours: 1,
+          maxDurationHours: 4,
+          isRequired: true,
+        },
+      });
+      console.log('  Créé : étape application_created');
+    }
+
+    if (!stepNames.includes('back_office_setup')) {
+      await prisma.creditPolicyStep.create({
+        data: {
+          policyId: activePolicy.id,
+          stepName: 'back_office_setup',
+          stepLabel: 'Configuration Back Office',
+          phase: 'Mise en place',
+          order: maxOrder + 1,
+          stepType: 'DISPATCH',
+          assignedRole: 'BACK_OFFICE',
+          expectedDurationHours: 4,
+          maxDurationHours: 24,
+          isRequired: true,
+        },
+      });
+      console.log('  Créé : étape back_office_setup');
+    }
+
+    // 6e. Recharger les étapes avec les nouvelles
+    const allSteps = await prisma.creditPolicyStep.findMany({
+      where: { policyId: activePolicy.id, isActive: true },
+    });
+    const stepByName = Object.fromEntries(allSteps.map(s => [s.stepName, s]));
+
+    // 6f. Insérer les rôles A/C/I par étape
+    const raciAssignments = [
+      { step: 'application_created',       role: 'RESPONSABLE_ENGAGEMENTS', code: 'I' },
+      { step: 'application_created',       role: 'RESPONSABLE_RISQUES',     code: 'I' },
+      { step: 'charge_affaires_dispatch',  role: 'RESPONSABLE_ENGAGEMENTS', code: 'I' },
+      { step: 'charge_affaires_dispatch',  role: 'RESPONSABLE_RISQUES',     code: 'I' },
+      { step: 'verification_completude',   role: 'CHARGE_AFFAIRES',         code: 'C' },
+      { step: 'verification_completude',   role: 'RESPONSABLE_RISQUES',     code: 'I' },
+      { step: 'contre_analyse',            role: 'RESPONSABLE_RISQUES',     code: 'A' },
+      { step: 'contre_analyse',            role: 'RESPONSABLE_ENGAGEMENTS', code: 'I' },
+      { step: 'contre_analyse',            role: 'CHARGE_AFFAIRES',         code: 'I' },
+      { step: 'calcul_ratios_prudentiels', role: 'RESPONSABLE_RISQUES',     code: 'A' },
+      { step: 'notation_interne',          role: 'RESPONSABLE_RISQUES',     code: 'A' },
+      { step: 'avis_risques',              role: 'ANALYSTE_RISQUES',        code: 'C' },
+      { step: 'avis_risques',              role: 'RESPONSABLE_ENGAGEMENTS', code: 'I' },
+      { step: 'avis_risques',              role: 'COMITE_CREDIT',           code: 'I' },
+      { step: 'validation_comite',         role: 'RESPONSABLE_RISQUES',     code: 'C' },
+      { step: 'validation_comite',         role: 'RESPONSABLE_ENGAGEMENTS', code: 'C' },
+      { step: 'validation_comite',         role: 'DIRECTION_GENERALE',      code: 'I' },
+      { step: 'decision_direction',        role: 'COMITE_CREDIT',           code: 'C' },
+      { step: 'decision_direction',        role: 'RESPONSABLE_RISQUES',     code: 'I' },
+      { step: 'decision_direction',        role: 'RESPONSABLE_ENGAGEMENTS', code: 'I' },
+      { step: 'mise_en_place_sib',         role: 'BACK_OFFICE',             code: 'R' },
+      { step: 'mise_en_place_sib',         role: 'RESPONSABLE_RISQUES',     code: 'I' },
+      { step: 'mise_en_place_sib',         role: 'CHARGE_AFFAIRES',         code: 'I' },
+      { step: 'formalisation_garanties',   role: 'RESPONSABLE_ENGAGEMENTS', code: 'C' },
+      { step: 'formalisation_garanties',   role: 'CHARGE_AFFAIRES',         code: 'I' },
+      { step: 'saisie_garanties',          role: 'RESPONSABLE_ENGAGEMENTS', code: 'A' },
+      { step: 'saisie_garanties',          role: 'DIRECTION_JURIDIQUE',     code: 'C' },
+      { step: 'tirage_fonds',              role: 'RESPONSABLE_ENGAGEMENTS', code: 'A' },
+      { step: 'tirage_fonds',              role: 'CHARGE_AFFAIRES',         code: 'C' },
+      { step: 'tirage_fonds',              role: 'DIRECTION_GENERALE',      code: 'I' },
+      { step: 'back_office_setup',         role: 'RESPONSABLE_ENGAGEMENTS', code: 'I' },
+    ];
+
+    for (const a of raciAssignments) {
+      const step = stepByName[a.step];
+      if (!step) continue;
+      const existing = await prisma.creditPolicyStepRole.findFirst({
+        where: { policyStepId: step.id, role: a.role },
+      });
+      if (!existing) {
+        await prisma.creditPolicyStepRole.create({
+          data: { policyStepId: step.id, role: a.role, raciCode: a.code },
+        });
+      }
+    }
+    console.log(`  ✓ RACI A/C/I : ${raciAssignments.length} entrées traitées`);
+  } else {
+    console.log('  ⚠ Aucune politique active BCI — RACI A/C/I non peuplé');
+  }
+
+  console.log('✓ Mur chinois BCI + RACI A/C/I');
+
+  // ── 7. Résumé ──────────────────────────────────────────────────────────────
   console.log('\n═══════════════════════════════════════════════════════════');
   console.log(`✓ ${TEST_USERS.length} utilisateurs (upsert)`);
   console.log(`✓ ${createdClients.length} clients`);
   console.log(`✓ Mot de passe commun : ${PASSWORD}`);
+  console.log('✓ Mur Chinois + RACI');
   console.log('\nComptes disponibles :');
   console.log('  superadmin@optimuscredit.sn  SuperAdmin2024!  (SUPER_ADMIN plateforme)');
   for (const u of TEST_USERS) {
