@@ -158,14 +158,25 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         try {
           dispatch({ type: 'SET_LOADING', payload: true });
           const user = await ApiService.getCurrentUser();
-          const roleMapping: Record<string, UserRole> = {
-            'ADMIN': 'admin',
-            'MANAGEMENT': 'management',
-            'BRANCH_MANAGER': 'branch_manager',
-            'ACCOUNT_MANAGER': 'account_manager',
-            'CREDIT_ANALYST': 'credit_analyst',
+          const roleMapping: Record<string, any> = {
+            // New RACI names (from backend)
+            'CHARGE_AFFAIRES':         'account_manager',      // frontend legacy compat
+            'ANALYSTE_RISQUES':        'credit_analyst',
+            'RESPONSABLE_RISQUES':     'analyst_supervisor',
+            'RESPONSABLE_ENGAGEMENTS': 'branch_manager',
+            'COMITE_CREDIT':           'credit_committee',
+            'DIRECTION_GENERALE':      'management',
+            'ADMIN':                   'admin',
+            'SUPER_ADMIN':             'admin',
+            'BACK_OFFICE':             'account_manager',
+            'DIRECTION_JURIDIQUE':     'account_manager',
+            // Old names (backward compat)
+            'ACCOUNT_MANAGER':    'account_manager',
+            'CREDIT_ANALYST':     'credit_analyst',
             'ANALYST_SUPERVISOR': 'analyst_supervisor',
-            'CREDIT_COMMITTEE': 'credit_committee'
+            'BRANCH_MANAGER':     'branch_manager',
+            'CREDIT_COMMITTEE':   'credit_committee',
+            'MANAGEMENT':         'management',
           };
           
           const userWithDefaults: User = {
@@ -212,14 +223,25 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       const response = await ApiService.login({ email, password });
       
       // Convert backend user format to frontend User format with role mapping
-      const roleMapping: Record<string, UserRole> = {
-        'ADMIN': 'admin',
-        'MANAGEMENT': 'management',
-        'BRANCH_MANAGER': 'branch_manager',
-        'ACCOUNT_MANAGER': 'account_manager',
-        'CREDIT_ANALYST': 'credit_analyst',
+      const roleMapping: Record<string, any> = {
+        // New RACI names (from backend)
+        'CHARGE_AFFAIRES':         'account_manager',      // frontend legacy compat
+        'ANALYSTE_RISQUES':        'credit_analyst',
+        'RESPONSABLE_RISQUES':     'analyst_supervisor',
+        'RESPONSABLE_ENGAGEMENTS': 'branch_manager',
+        'COMITE_CREDIT':           'credit_committee',
+        'DIRECTION_GENERALE':      'management',
+        'ADMIN':                   'admin',
+        'SUPER_ADMIN':             'admin',
+        'BACK_OFFICE':             'account_manager',
+        'DIRECTION_JURIDIQUE':     'account_manager',
+        // Old names (backward compat)
+        'ACCOUNT_MANAGER':    'account_manager',
+        'CREDIT_ANALYST':     'credit_analyst',
         'ANALYST_SUPERVISOR': 'analyst_supervisor',
-        'CREDIT_COMMITTEE': 'credit_committee'
+        'BRANCH_MANAGER':     'branch_manager',
+        'CREDIT_COMMITTEE':   'credit_committee',
+        'MANAGEMENT':         'management',
       };
 
       const user: User = {

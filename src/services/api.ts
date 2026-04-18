@@ -23,6 +23,10 @@ export const tokenManager = {
     localStorage.setItem('optimus_refresh_token', refreshToken);
   },
 
+  setAccessToken(accessToken: string): void {
+    localStorage.setItem('optimus_access_token', accessToken);
+  },
+
   clearTokens(): void {
     localStorage.removeItem('optimus_access_token');
     localStorage.removeItem('optimus_refresh_token');
@@ -1170,6 +1174,23 @@ export class ApiService {
         error: error.response?.data?.message || 'Erreur lors de la mise à jour de la durée de l\'étape',
       };
     }
+  }
+
+  // ─── Generic HTTP helpers (used by multi-tenant pages) ───────────────────────
+
+  static async get(path: string): Promise<any> {
+    const response = await api.get(path);
+    return response.data;
+  }
+
+  static async post(path: string, body?: any): Promise<any> {
+    const response = await api.post(path, body);
+    return response.data;
+  }
+
+  static async patch(path: string, body?: any): Promise<any> {
+    const response = await api.patch(path, body);
+    return response.data;
   }
 
   // Health Check
