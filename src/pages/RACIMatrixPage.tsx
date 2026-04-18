@@ -105,7 +105,7 @@ const STEPS: Step[] = [
   },
 ];
 
-const PHASES = [...new Set(STEPS.map(s => s.phase))];
+const PHASES = STEPS.map(s => s.phase).filter((p, i, arr) => arr.indexOf(p) === i);
 
 const RACI_CONFIG: Record<RACICode, { label: string; color: string; bg: string; icon: React.ElementType }> = {
   R: { label: 'Responsible',  color: '#1D4ED8', bg: '#EFF6FF', icon: RIcon },
