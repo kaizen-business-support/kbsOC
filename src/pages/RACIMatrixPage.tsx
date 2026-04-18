@@ -489,9 +489,18 @@ const RACIMatrixPage: React.FC = () => {
         }
       }
 
-      await raciMatrixApi.updateChineseWall(
-        editWallRules.map(({ blockedRole, forbiddenStep, reason }) => ({ blockedRole, forbiddenStep, reason }))
-      );
+      // Only update Chinese Wall if rules actually changed
+      const origWallStr = JSON.stringify([...matrix.chineseWallRules].sort((a, b) =>
+        `${a.blockedRole}:${a.forbiddenStep}`.localeCompare(`${b.blockedRole}:${b.forbiddenStep}`)
+      ));
+      const newWallStr = JSON.stringify([...editWallRules].sort((a, b) =>
+        `${a.blockedRole}:${a.forbiddenStep}`.localeCompare(`${b.blockedRole}:${b.forbiddenStep}`)
+      ));
+      if (origWallStr !== newWallStr) {
+        await raciMatrixApi.updateChineseWall(
+          editWallRules.map(({ blockedRole, forbiddenStep, reason }) => ({ blockedRole, forbiddenStep, reason }))
+        );
+      }
 
       setEditing(false);
       setDirty(false);

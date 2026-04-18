@@ -21,8 +21,15 @@ import { authenticate, requireCompany, authorize } from '../middleware/auth';
 import { UserRole, RaciCode, PolicyStepType } from '@prisma/client';
 
 const router = Router();
-router.use(authenticate);
 router.use(requireCompany);
+
+// ─── Validators ───────────────────────────────────────────────────────────────
+
+const VALID_USER_ROLES = ['CHARGE_AFFAIRES', 'ANALYSTE_RISQUES', 'RESPONSABLE_RISQUES',
+  'RESPONSABLE_ENGAGEMENTS', 'COMITE_CREDIT', 'DIRECTION_GENERALE', 'DIRECTION_JURIDIQUE',
+  'BACK_OFFICE', 'ADMIN', 'SUPER_ADMIN'] as const;
+
+const VALID_RACI_CODES = ['R', 'A', 'C', 'I'] as const;
 
 // ─── GET /api/raci-matrix ──────────────────────────────────────────────────────
 
@@ -110,6 +117,10 @@ router.put('/steps/:stepId', authorize([], ['ADMIN']), async (req: Request, res:
       conditionMinAmount, conditionMaxAmount,
     } = req.body;
 
+    if (assignedRole !== undefined && !VALID_USER_ROLES.includes(assignedRole)) {
+      return res.status(400).json({ success: false, message: `Role invalide : ${assignedRole}` });
+    }
+
     const companyId = req.companyId!;
     const owned = await prisma.creditPolicyStep.findFirst({
       where: { id: stepId, policy: { companyId } },
@@ -148,6 +159,15 @@ router.put('/steps/:stepId/roles', authorize([], ['ADMIN']), async (req: Request
       return res.status(400).json({ success: false, error: 'body doit être un tableau [{ role, raciCode }]' });
     }
 
+    for (const r of roles) {
+      if (!VALID_USER_ROLES.includes(r.role as typeof VALID_USER_ROLES[number])) {
+        return res.status(400).json({ success: false, message: `Role invalide : ${r.role}` });
+      }
+      if (!VALID_RACI_CODES.includes(r.raciCode as typeof VALID_RACI_CODES[number])) {
+        return res.status(400).json({ success: false, message: `Code RACI invalide : ${r.raciCode}` });
+      }
+    }
+
     const companyId = req.companyId!;
     const owned = await prisma.creditPolicyStep.findFirst({
       where: { id: stepId, policy: { companyId } },
@@ -155,17 +175,16 @@ router.put('/steps/:stepId/roles', authorize([], ['ADMIN']), async (req: Request
     });
     if (!owned) return res.status(404).json({ success: false, error: 'Étape introuvable' });
 
-    await prisma.creditPolicyStepRole.deleteMany({ where: { policyStepId: stepId } });
-
-    if (roles.length > 0) {
-      await prisma.creditPolicyStepRole.createMany({
+    await prisma.$transaction([
+      prisma.creditPolicyStepRole.deleteMany({ where: { policyStepId: stepId } }),
+      ...(roles.length > 0 ? [prisma.creditPolicyStepRole.createMany({
         data: roles.map((r) => ({
           policyStepId: stepId,
           role: r.role as UserRole,
           raciCode: r.raciCode as RaciCode,
         })),
-      });
-    }
+      })] : []),
+    ]);
 
     const updated = await prisma.creditPolicyStepRole.findMany({
       where: { policyStepId: stepId },
@@ -187,6 +206,10 @@ router.post('/steps', authorize([], ['ADMIN']), async (req: Request, res: Respon
 
     if (!stepName || !stepLabel || !assignedRole) {
       return res.status(400).json({ success: false, error: 'stepName, stepLabel et assignedRole sont obligatoires' });
+    }
+
+    if (!VALID_USER_ROLES.includes(assignedRole)) {
+      return res.status(400).json({ success: false, message: `Role invalide : ${assignedRole}` });
     }
 
     const policy = await prisma.creditPolicy.findFirst({
@@ -257,18 +280,23 @@ router.put('/chinese-wall', authorize([], ['ADMIN']), async (req: Request, res: 
       return res.status(400).json({ success: false, error: 'body doit être un tableau [{ blockedRole, forbiddenStep, reason? }]' });
     }
 
-    await prisma.tenantChineseWallRule.deleteMany({ where: { companyId } });
+    for (const r of rules) {
+      if (!VALID_USER_ROLES.includes(r.blockedRole as typeof VALID_USER_ROLES[number])) {
+        return res.status(400).json({ success: false, message: `Role invalide : ${r.blockedRole}` });
+      }
+    }
 
-    if (rules.length > 0) {
-      await prisma.tenantChineseWallRule.createMany({
+    await prisma.$transaction([
+      prisma.tenantChineseWallRule.deleteMany({ where: { companyId } }),
+      ...(rules.length > 0 ? [prisma.tenantChineseWallRule.createMany({
         data: rules.map((r) => ({
           companyId,
           blockedRole: r.blockedRole as UserRole,
           forbiddenStep: r.forbiddenStep,
           reason: r.reason ?? null,
         })),
-      });
-    }
+      })] : []),
+    ]);
 
     const updated = await prisma.tenantChineseWallRule.findMany({
       where: { companyId },

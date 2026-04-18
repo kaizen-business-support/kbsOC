@@ -547,20 +547,15 @@ export async function canApproveStep(
 
   // ── 0. Chinese Wall check (BCEAO non-cumul — hard block before any other check) ──
   // Les règles sont stockées par tenant dans TenantChineseWallRule (plus de dict hardcodé).
-  if (application.companyId) {
-    const wallRules = await prisma.tenantChineseWallRule.findMany({
-      where: {
-        companyId: application.companyId,
-        blockedRole: user.role as UserRole,
-        isActive: true,
-      },
-      select: { forbiddenStep: true, reason: true },
-    });
-    const blocked = wallRules.find((r) => r.forbiddenStep === stepName);
-    if (blocked) {
-      return { allowed: false, reason: blocked.reason ?? 'Mur chinois : opération non autorisée pour ce rôle' };
-    }
+  if (!application.companyId) {
+    return { allowed: false, reason: 'Application non liée à un tenant — approbation impossible' };
   }
+  const wallRules = await prisma.tenantChineseWallRule.findMany({
+    where: { companyId: application.companyId, blockedRole: user.role as UserRole, isActive: true },
+    select: { forbiddenStep: true, reason: true },
+  });
+  const blocked = wallRules.find((r) => r.forbiddenStep === stepName);
+  if (blocked) return { allowed: false, reason: blocked.reason ?? 'Mur chinois : opération non autorisée pour ce rôle' };
 
   // ── 1. Vérification du rôle (direct ou par délégation) ────────────────────
   let effectiveRole   = user.role as UserRole;
