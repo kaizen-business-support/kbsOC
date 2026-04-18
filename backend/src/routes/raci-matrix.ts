@@ -17,7 +17,7 @@
 
 import { Router, Request, Response } from 'express';
 import { prisma } from '../prismaClient';
-import { authenticate, requireCompany } from '../middleware/auth';
+import { authenticate, requireCompany, authorize } from '../middleware/auth';
 import { UserRole, RaciCode, PolicyStepType } from '@prisma/client';
 
 const router = Router();
@@ -46,44 +46,49 @@ router.get('/', async (req: Request, res: Response) => {
       orderBy: { order: 'asc' },
     });
 
-    // Pour chaque étape, récupérer les utilisateurs par rôle impliqué
-    const stepsWithUsers = await Promise.all(
-      steps.map(async (step) => {
-        const allRoles = [step.assignedRole, ...step.stepRoles.map((r) => r.role)];
-        const uniqueRoles = [...new Set(allRoles)] as UserRole[];
+    // Collect all unique roles across all steps in one pass
+    const allUniqueRoles = [...new Set(
+      steps.flatMap((s) => [s.assignedRole, ...s.stepRoles.map((r) => r.role)])
+    )] as UserRole[];
 
-        const usersPerRole: Record<string, { id: string; name: string; email: string }[]> = {};
-        await Promise.all(
-          uniqueRoles.map(async (role) => {
-            const memberships = await prisma.companyMembership.findMany({
-              where: { companyId, role, isActive: true },
-              include: { user: { select: { id: true, name: true, email: true } } },
-            });
-            usersPerRole[role] = memberships.map((m) => m.user);
-          })
-        );
+    // Single query for all users across all roles
+    const allMemberships = await prisma.companyMembership.findMany({
+      where: { companyId, role: { in: allUniqueRoles }, isActive: true },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
 
-        return {
-          id: step.id,
-          stepName: step.stepName,
-          stepLabel: step.stepLabel,
-          phase: step.phase,
-          order: step.order,
-          stepType: step.stepType,
-          assignedRole: step.assignedRole,
-          expectedDurationHours: step.expectedDurationHours,
-          maxDurationHours: step.maxDurationHours,
-          conditionMinAmount: step.conditionMinAmount,
-          conditionMaxAmount: step.conditionMaxAmount,
-          isRequired: step.isRequired,
-          roles: step.stepRoles.map((r) => ({ role: r.role, raciCode: r.raciCode })),
-          users: usersPerRole,
-        };
-      })
-    );
+    const membersByRole: Record<string, { id: string; name: string; email: string }[]> = {};
+    for (const m of allMemberships) {
+      if (!membersByRole[m.role]) membersByRole[m.role] = [];
+      membersByRole[m.role].push(m.user);
+    }
+
+    const stepsWithUsers = steps.map((step) => {
+      const rolesForStep = [step.assignedRole, ...step.stepRoles.map((r) => r.role)];
+      const usersPerRole: Record<string, { id: string; name: string; email: string }[]> = {};
+      for (const role of rolesForStep) {
+        usersPerRole[role] = membersByRole[role] ?? [];
+      }
+      return {
+        id: step.id,
+        stepName: step.stepName,
+        stepLabel: step.stepLabel,
+        phase: step.phase,
+        order: step.order,
+        stepType: step.stepType,
+        assignedRole: step.assignedRole,
+        expectedDurationHours: step.expectedDurationHours,
+        maxDurationHours: step.maxDurationHours,
+        conditionMinAmount: step.conditionMinAmount,
+        conditionMaxAmount: step.conditionMaxAmount,
+        isRequired: step.isRequired,
+        roles: step.stepRoles.map((r) => ({ role: r.role, raciCode: r.raciCode })),
+        users: usersPerRole,
+      };
+    });
 
     const chineseWallRules = await prisma.tenantChineseWallRule.findMany({
-      where: { companyId },
+      where: { companyId, isActive: true },
       orderBy: [{ blockedRole: 'asc' }, { forbiddenStep: 'asc' }],
     });
 
@@ -96,7 +101,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 // ─── PUT /api/raci-matrix/steps/:stepId ───────────────────────────────────────
 
-router.put('/steps/:stepId', async (req: Request, res: Response) => {
+router.put('/steps/:stepId', authorize([], ['ADMIN']), async (req: Request, res: Response) => {
   try {
     const { stepId } = req.params;
     const {
@@ -104,6 +109,13 @@ router.put('/steps/:stepId', async (req: Request, res: Response) => {
       expectedDurationHours, maxDurationHours,
       conditionMinAmount, conditionMaxAmount,
     } = req.body;
+
+    const companyId = req.companyId!;
+    const owned = await prisma.creditPolicyStep.findFirst({
+      where: { id: stepId, policy: { companyId } },
+      select: { id: true },
+    });
+    if (!owned) return res.status(404).json({ success: false, error: 'Étape introuvable' });
 
     const step = await prisma.creditPolicyStep.update({
       where: { id: stepId },
@@ -127,7 +139,7 @@ router.put('/steps/:stepId', async (req: Request, res: Response) => {
 
 // ─── PUT /api/raci-matrix/steps/:stepId/roles ─────────────────────────────────
 
-router.put('/steps/:stepId/roles', async (req: Request, res: Response) => {
+router.put('/steps/:stepId/roles', authorize([], ['ADMIN']), async (req: Request, res: Response) => {
   try {
     const { stepId } = req.params;
     const roles: { role: string; raciCode: string }[] = req.body;
@@ -135,6 +147,13 @@ router.put('/steps/:stepId/roles', async (req: Request, res: Response) => {
     if (!Array.isArray(roles)) {
       return res.status(400).json({ success: false, error: 'body doit être un tableau [{ role, raciCode }]' });
     }
+
+    const companyId = req.companyId!;
+    const owned = await prisma.creditPolicyStep.findFirst({
+      where: { id: stepId, policy: { companyId } },
+      select: { id: true },
+    });
+    if (!owned) return res.status(404).json({ success: false, error: 'Étape introuvable' });
 
     await prisma.creditPolicyStepRole.deleteMany({ where: { policyStepId: stepId } });
 
@@ -148,7 +167,10 @@ router.put('/steps/:stepId/roles', async (req: Request, res: Response) => {
       });
     }
 
-    const updated = await prisma.creditPolicyStepRole.findMany({ where: { policyStepId: stepId } });
+    const updated = await prisma.creditPolicyStepRole.findMany({
+      where: { policyStepId: stepId },
+      orderBy: { createdAt: 'asc' },
+    });
     res.json({ success: true, data: updated });
   } catch (error) {
     console.error('[raci-matrix] PUT /steps/:stepId/roles', error);
@@ -158,7 +180,7 @@ router.put('/steps/:stepId/roles', async (req: Request, res: Response) => {
 
 // ─── POST /api/raci-matrix/steps ──────────────────────────────────────────────
 
-router.post('/steps', async (req: Request, res: Response) => {
+router.post('/steps', authorize([], ['ADMIN']), async (req: Request, res: Response) => {
   try {
     const companyId = req.companyId!;
     const { stepName, stepLabel, phase, assignedRole, order, stepType, expectedDurationHours, maxDurationHours } = req.body;
@@ -201,9 +223,16 @@ router.post('/steps', async (req: Request, res: Response) => {
 
 // ─── DELETE /api/raci-matrix/steps/:stepId ────────────────────────────────────
 
-router.delete('/steps/:stepId', async (req: Request, res: Response) => {
+router.delete('/steps/:stepId', authorize([], ['ADMIN']), async (req: Request, res: Response) => {
   try {
     const { stepId } = req.params;
+
+    const companyId = req.companyId!;
+    const owned = await prisma.creditPolicyStep.findFirst({
+      where: { id: stepId, policy: { companyId } },
+      select: { id: true },
+    });
+    if (!owned) return res.status(404).json({ success: false, error: 'Étape introuvable' });
 
     await prisma.creditPolicyStep.update({
       where: { id: stepId },
@@ -219,7 +248,7 @@ router.delete('/steps/:stepId', async (req: Request, res: Response) => {
 
 // ─── PUT /api/raci-matrix/chinese-wall ────────────────────────────────────────
 
-router.put('/chinese-wall', async (req: Request, res: Response) => {
+router.put('/chinese-wall', authorize([], ['ADMIN']), async (req: Request, res: Response) => {
   try {
     const companyId = req.companyId!;
     const rules: { blockedRole: string; forbiddenStep: string; reason?: string }[] = req.body;

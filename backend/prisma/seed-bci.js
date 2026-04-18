@@ -242,7 +242,84 @@ async function main() {
     }
   }
 
-  // ── 5. Résumé ──────────────────────────────────────────────────────────────
+  // ── 5. Types de crédit BCI ─────────────────────────────────────────────────
+  console.log('\n── Types de crédit ──');
+  const creditTypes = [
+    {
+      code: 'CT',
+      name: 'Crédit Court Terme',
+      description: 'Financement de la trésorerie et du fonds de roulement (≤ 1 an)',
+      defaultRate: 9.5, minRate: 7.0, maxRate: 14.0,
+      minDuration: 1, maxDuration: 12, requiresCollateral: false,
+    },
+    {
+      code: 'CMT',
+      name: 'Crédit Moyen Terme',
+      description: 'Financement des investissements à moyen terme (1 à 5 ans)',
+      defaultRate: 10.5, minRate: 8.0, maxRate: 15.0,
+      minDuration: 13, maxDuration: 60, requiresCollateral: true,
+    },
+    {
+      code: 'CLT',
+      name: 'Crédit Long Terme',
+      description: 'Financement des investissements structurants (> 5 ans)',
+      defaultRate: 11.0, minRate: 8.5, maxRate: 15.5,
+      minDuration: 61, maxDuration: 240, requiresCollateral: true,
+    },
+    {
+      code: 'SPOT',
+      name: 'Crédit Spot',
+      description: 'Facilité de caisse ponctuelle — besoins immédiats de trésorerie',
+      defaultRate: 12.0, minRate: 10.0, maxRate: 16.0,
+      minDuration: 1, maxDuration: 3, requiresCollateral: false,
+    },
+    {
+      code: 'DCRV',
+      name: 'Découvert sur compte courant',
+      description: 'Autorisation de découvert renouvelable sur compte courant',
+      defaultRate: 13.0, minRate: 11.0, maxRate: 18.0,
+      minDuration: 1, maxDuration: 12, requiresCollateral: false,
+    },
+    {
+      code: 'LEASING',
+      name: 'Crédit-bail (Leasing)',
+      description: 'Financement d\'équipements par crédit-bail',
+      defaultRate: 10.0, minRate: 8.0, maxRate: 14.0,
+      minDuration: 24, maxDuration: 84, requiresCollateral: false,
+    },
+    {
+      code: 'PME',
+      name: 'Crédit PME',
+      description: 'Produit dédié aux PME/PMI — conditions préférentielles BCEAO',
+      defaultRate: 8.5, minRate: 6.5, maxRate: 12.0,
+      minDuration: 6, maxDuration: 84, requiresCollateral: false,
+    },
+    {
+      code: 'HABITAT',
+      name: 'Crédit Habitat',
+      description: 'Financement immobilier résidentiel et professionnel',
+      defaultRate: 9.0, minRate: 7.5, maxRate: 13.0,
+      minDuration: 60, maxDuration: 240, requiresCollateral: true,
+    },
+  ];
+
+  let ctCreated = 0;
+  for (const ct of creditTypes) {
+    const existing = await prisma.creditType.findFirst({
+      where: { companyId: bci.id, code: ct.code },
+    });
+    if (!existing) {
+      await prisma.creditType.create({
+        data: { ...ct, companyId: bci.id, isActive: true },
+      });
+      ctCreated++;
+      console.log(`  Créé : [${ct.code}] ${ct.name}`);
+    } else {
+      console.log(`  Existant : [${ct.code}] ${ct.name}`);
+    }
+  }
+
+  // ── 6. Résumé ──────────────────────────────────────────────────────────────
   console.log('\n═══════════════════════════════════════════════════════════');
   console.log(`✓ ${TEST_USERS.length} utilisateurs (upsert)`);
   console.log(`✓ ${createdClients.length} clients`);

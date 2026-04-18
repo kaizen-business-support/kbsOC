@@ -110,7 +110,7 @@ Retourne la politique active du tenant avec :
       "phase": "Montage dossier",
       "order": 1,
       "stepType": "DISPATCH",
-      "responsibleRole": "CHARGE_AFFAIRES",
+      "assignedRole": "CHARGE_AFFAIRES",       // = CreditPolicyStep.assignedRole (R)
       "roles": [
         { "role": "RESPONSABLE_ENGAGEMENTS", "raciCode": "I" }
       ],
@@ -156,7 +156,20 @@ Remplace toutes les règles mur chinois du tenant (full replace).
 
 ### Modification de `workflowService.ts`
 
-`canApproveStep(userId, applicationId, stepName)` récupère `companyId` depuis `application.companyId` et remplace le dict hardcodé :
+`canApproveStep(userId, applicationId, stepName)` récupère `companyId` depuis `application.companyId`. La requête qui charge l'application doit inclure `companyId` dans son `select` :
+
+```ts
+const application = await prisma.creditApplication.findUnique({
+  where: { id: applicationId },
+  select: {
+    companyId: true,  // ← ajout nécessaire
+    amount: true,
+    // ... autres champs existants
+  },
+});
+```
+
+Puis le dict hardcodé `CHINESE_WALL_RULES` est remplacé par :
 
 ```ts
 // Avant (hardcodé) :
