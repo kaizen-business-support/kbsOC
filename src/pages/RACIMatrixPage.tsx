@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import axios from 'axios';
 import {
   Box, Typography, Paper, Table, TableBody, TableCell, TableHead, TableRow,
   Tooltip, Divider, ToggleButton, ToggleButtonGroup, Tab, Tabs,
@@ -44,6 +45,10 @@ const PHASE_COLORS: Record<string, string> = {
 };
 
 const POLICY_STEP_TYPES = ['DISPATCH', 'ANALYSIS', 'APPROVAL', 'COMMITTEE'];
+
+const CONCERNED_WALL_ROLES = ALL_ROLES.filter(r =>
+  ['ANALYSTE_RISQUES', 'RESPONSABLE_RISQUES', 'RESPONSABLE_ENGAGEMENTS'].includes(r.key)
+);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -141,9 +146,11 @@ const MatrixTab: React.FC<MatrixTabProps> = ({ steps, editing, onCellChange }) =
 
   const filtered = activePhase === 'all' ? steps : steps.filter(s => (s.phase ?? 'Sans phase') === activePhase);
 
-  const presentRoles = ALL_ROLES.filter(r =>
-    steps.some(s => s.assignedRole === r.key || s.roles.some(sr => sr.role === r.key))
-  );
+  const presentRoles = useMemo(() =>
+    ALL_ROLES.filter(r =>
+      steps.some(s => s.assignedRole === r.key || s.roles.some(sr => sr.role === r.key))
+    ),
+  [steps]);
 
   return (
     <Box>
@@ -257,10 +264,6 @@ const ChineseWallTab: React.FC<ChineseWallTabProps> = ({ rules, steps, editing, 
     }
   };
 
-  const concernedRoles = ALL_ROLES.filter(r =>
-    ['ANALYSTE_RISQUES', 'RESPONSABLE_RISQUES', 'RESPONSABLE_ENGAGEMENTS'].includes(r.key)
-  );
-
   return (
     <Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -283,7 +286,7 @@ const ChineseWallTab: React.FC<ChineseWallTabProps> = ({ rules, steps, editing, 
             </TableRow>
           </TableHead>
           <TableBody>
-            {concernedRoles.map(role => (
+            {CONCERNED_WALL_ROLES.map(role => (
               <TableRow key={role.key} hover>
                 <TableCell>
                   <Box component="span" sx={{ display: 'inline-block', px: 1, py: 0.25, borderRadius: 1, bgcolor: `${role.color}18`, color: role.color, fontWeight: 700, fontSize: 11 }}>{role.short}</Box>
@@ -417,8 +420,11 @@ const RACIMatrixPage: React.FC = () => {
       setMatrix(res.data);
       setEditSteps(res.data.steps);
       setEditWallRules(res.data.chineseWallRules);
-    } catch (e: any) {
-      setError(e?.message ?? 'Erreur lors du chargement');
+    } catch (e: unknown) {
+      const msg = axios.isAxiosError(e)
+        ? (e.response?.data?.message ?? e.message)
+        : e instanceof Error ? e.message : 'Erreur inconnue';
+      setError(msg ?? 'Erreur lors du chargement');
     } finally {
       setLoading(false);
     }
@@ -437,7 +443,7 @@ const RACIMatrixPage: React.FC = () => {
     }
   };
 
-  const handleCellChange = (stepId: string, role: string, code: RaciCode | '') => {
+  const handleCellChange = useCallback((stepId: string, role: string, code: RaciCode | '') => {
     setEditSteps(prev => prev.map(step => {
       if (step.id !== stepId) return step;
 
@@ -456,7 +462,7 @@ const RACIMatrixPage: React.FC = () => {
       return { ...step, roles: [...filtered, { role, raciCode: code }] };
     }));
     setDirty(true);
-  };
+  }, []);
 
   const handleWallRulesChange = (rules: ChineseWallRule[]) => {
     setEditWallRules(rules);
@@ -490,8 +496,11 @@ const RACIMatrixPage: React.FC = () => {
       setEditing(false);
       setDirty(false);
       await load();
-    } catch (e: any) {
-      setError(e?.message ?? 'Erreur lors de la sauvegarde');
+    } catch (e: unknown) {
+      const msg = axios.isAxiosError(e)
+        ? (e.response?.data?.message ?? e.message)
+        : e instanceof Error ? e.message : 'Erreur inconnue';
+      setError(msg ?? 'Erreur lors de la sauvegarde');
     }
   };
 
@@ -500,8 +509,11 @@ const RACIMatrixPage: React.FC = () => {
     try {
       await raciMatrixApi.deleteStep(stepId);
       await load();
-    } catch (e: any) {
-      setError(e?.message ?? 'Erreur lors de la suppression');
+    } catch (e: unknown) {
+      const msg = axios.isAxiosError(e)
+        ? (e.response?.data?.message ?? e.message)
+        : e instanceof Error ? e.message : 'Erreur inconnue';
+      setError(msg ?? 'Erreur lors de la suppression');
     }
   };
 
@@ -509,8 +521,11 @@ const RACIMatrixPage: React.FC = () => {
     try {
       await raciMatrixApi.createStep(step);
       await load();
-    } catch (e: any) {
-      setError(e?.message ?? 'Erreur lors de la création');
+    } catch (e: unknown) {
+      const msg = axios.isAxiosError(e)
+        ? (e.response?.data?.message ?? e.message)
+        : e instanceof Error ? e.message : 'Erreur inconnue';
+      setError(msg ?? 'Erreur lors de la création');
     }
   };
 
