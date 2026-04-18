@@ -302,6 +302,11 @@ else
     || warn "db push échoué — vérifiez la connexion DB."
 fi
 
+info "Migration données multi-tenant..."
+node "$BACKEND_DIR/prisma/migrate-tenant.js" 2>&1 | tail -10 \
+  && ok "Migration multi-tenant : OK" \
+  || warn "migrate-tenant.js : erreur non bloquante (données peut-être déjà migrées)"
+
 # Re-grant post-migration
 sudo -u postgres psql -d "$DB_NAME_VAL" \
   -c "GRANT ALL ON ALL TABLES    IN SCHEMA public TO ${DB_USER_VAL};" 2>/dev/null || true
