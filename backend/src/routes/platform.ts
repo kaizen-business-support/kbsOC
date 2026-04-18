@@ -4,6 +4,30 @@ import { authenticate, requireSuperAdmin } from '../middleware/auth';
 import { blacklistToken } from '../services/redis';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+
+// Logo upload: stored in uploads/logos/<companyCode>.<ext>
+const logoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = path.join(__dirname, '../../uploads/logos');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || '.png';
+    cb(null, `company-${req.params.id}${ext}`);
+  },
+});
+const uploadLogo = multer({
+  storage: logoStorage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(png|jpeg|jpg|webp|svg\+xml)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Format non supporté — PNG, JPG, WEBP ou SVG uniquement'));
+  },
+});
 
 const router = Router();
 
@@ -48,6 +72,21 @@ router.patch('/companies/:id', authenticate, requireSuperAdmin, async (req: Requ
     return res.json({ success: true, data: company });
   } catch (error) {
     return res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// POST /api/platform/companies/:id/logo — upload logo (multipart/form-data, field: logo)
+router.post('/companies/:id/logo', authenticate, requireSuperAdmin, uploadLogo.single('logo'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, error: 'Fichier logo manquant' });
+    const logoUrl = `/uploads/logos/${req.file.filename}`;
+    const company = await prisma.company.update({
+      where: { id: req.params.id },
+      data: { logoUrl },
+    });
+    return res.json({ success: true, data: company });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message || 'Erreur upload' });
   }
 });
 
