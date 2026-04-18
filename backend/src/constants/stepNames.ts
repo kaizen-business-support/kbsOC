@@ -29,19 +29,3 @@ export const STEP_NAME_FR: Record<string, string> = {
   final_approval:                'Approbation finale',
   disbursement:                  'Décaissement',
 };
-
-export const STEP_ROLES: Record<string, string[]> = {
-  charge_affaires_dispatch:      ['CHARGE_AFFAIRES'],
-  verification_completude:       ['RESPONSABLE_ENGAGEMENTS'],
-  contre_analyse:                ['ANALYSTE_RISQUES', 'RESPONSABLE_RISQUES'],
-  calcul_ratios_prudentiels:     ['ANALYSTE_RISQUES', 'RESPONSABLE_RISQUES'],
-  notation_interne:              ['ANALYSTE_RISQUES', 'RESPONSABLE_RISQUES'],
-  avis_risques:                  ['RESPONSABLE_RISQUES'],
-  validation_comite:             ['COMITE_CREDIT'],
-  decision_direction:            ['DIRECTION_GENERALE'],
-  mise_en_place_sib:             ['RESPONSABLE_ENGAGEMENTS', 'BACK_OFFICE'],
-  saisie_garanties:              ['BACK_OFFICE', 'RESPONSABLE_ENGAGEMENTS'],
-  formalisation_garanties:       ['DIRECTION_JURIDIQUE'],
-  tirage_fonds:                  ['RESPONSABLE_ENGAGEMENTS', 'BACK_OFFICE'],
-  back_office_setup:             ['BACK_OFFICE'],
-};

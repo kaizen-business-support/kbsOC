@@ -18,22 +18,6 @@ import { prisma } from '../prismaClient';
 import { STEP_NAME_FR } from '../constants/stepNames';
 import { resolveDelegation } from './delegationService';
 
-// Chinese Wall rules — enforced per BCEAO non-cumul principle
-const CHINESE_WALL_RULES: Record<string, { forbiddenStepNames: string[]; reason: string }> = {
-  ANALYSTE_RISQUES: {
-    forbiddenStepNames: ['mise_en_place_sib', 'saisie_garanties', 'tirage_fonds', 'back_office_setup', 'charge_affaires_dispatch', 'verification_completude'],
-    reason: 'Direction Risques ne peut pas exécuter des opérations SIB ou Engagements',
-  },
-  RESPONSABLE_RISQUES: {
-    forbiddenStepNames: ['mise_en_place_sib', 'saisie_garanties', 'tirage_fonds', 'back_office_setup', 'charge_affaires_dispatch', 'verification_completude'],
-    reason: 'Direction Risques ne peut pas exécuter des opérations SIB ou Engagements',
-  },
-  RESPONSABLE_ENGAGEMENTS: {
-    forbiddenStepNames: ['contre_analyse', 'calcul_ratios_prudentiels', 'notation_interne', 'avis_risques'],
-    reason: 'Direction Engagements ne peut pas émettre un avis Risques',
-  },
-};
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface WorkflowStepPlan {
@@ -546,6 +530,7 @@ export async function canApproveStep(
     prisma.creditApplication.findUnique({
       where: { id: applicationId },
       select: {
+        companyId: true,
         amount: true,
         policyId: true,
         creator: { select: { branch: true, department: true, name: true } },
@@ -561,9 +546,20 @@ export async function canApproveStep(
   if (!step) return { allowed: false, reason: 'Étape introuvable ou déjà traitée' };
 
   // ── 0. Chinese Wall check (BCEAO non-cumul — hard block before any other check) ──
-  const chineseWallRule = CHINESE_WALL_RULES[user.role as string];
-  if (chineseWallRule && chineseWallRule.forbiddenStepNames.includes(stepName)) {
-    return { allowed: false, reason: chineseWallRule.reason };
+  // Les règles sont stockées par tenant dans TenantChineseWallRule (plus de dict hardcodé).
+  if (application.companyId) {
+    const wallRules = await prisma.tenantChineseWallRule.findMany({
+      where: {
+        companyId: application.companyId,
+        blockedRole: user.role as UserRole,
+        isActive: true,
+      },
+      select: { forbiddenStep: true, reason: true },
+    });
+    const blocked = wallRules.find((r) => r.forbiddenStep === stepName);
+    if (blocked) {
+      return { allowed: false, reason: blocked.reason ?? 'Mur chinois : opération non autorisée pour ce rôle' };
+    }
   }
 
   // ── 1. Vérification du rôle (direct ou par délégation) ────────────────────
