@@ -18,6 +18,22 @@ import { prisma } from '../prismaClient';
 import { STEP_NAME_FR } from '../constants/stepNames';
 import { resolveDelegation } from './delegationService';
 
+// Chinese Wall rules — enforced per BCEAO non-cumul principle
+const CHINESE_WALL_RULES: Record<string, { forbiddenStepNames: string[]; reason: string }> = {
+  ANALYSTE_RISQUES: {
+    forbiddenStepNames: ['mise_en_place_sib', 'saisie_garanties', 'tirage_fonds', 'back_office_setup', 'charge_affaires_dispatch', 'verification_completude'],
+    reason: 'Direction Risques ne peut pas exécuter des opérations SIB ou Engagements',
+  },
+  RESPONSABLE_RISQUES: {
+    forbiddenStepNames: ['mise_en_place_sib', 'saisie_garanties', 'tirage_fonds', 'back_office_setup', 'charge_affaires_dispatch', 'verification_completude'],
+    reason: 'Direction Risques ne peut pas exécuter des opérations SIB ou Engagements',
+  },
+  RESPONSABLE_ENGAGEMENTS: {
+    forbiddenStepNames: ['contre_analyse', 'calcul_ratios_prudentiels', 'notation_interne', 'avis_risques'],
+    reason: 'Direction Engagements ne peut pas émettre un avis Risques',
+  },
+};
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface WorkflowStepPlan {
@@ -543,6 +559,12 @@ export async function canApproveStep(
   if (!user) return { allowed: false, reason: 'Utilisateur introuvable' };
   if (!application) return { allowed: false, reason: 'Demande introuvable' };
   if (!step) return { allowed: false, reason: 'Étape introuvable ou déjà traitée' };
+
+  // ── 0. Chinese Wall check (BCEAO non-cumul — hard block before any other check) ──
+  const chineseWallRule = CHINESE_WALL_RULES[user.role as string];
+  if (chineseWallRule && chineseWallRule.forbiddenStepNames.includes(stepName)) {
+    return { allowed: false, reason: chineseWallRule.reason };
+  }
 
   // ── 1. Vérification du rôle (direct ou par délégation) ────────────────────
   let effectiveRole   = user.role as UserRole;
