@@ -281,7 +281,7 @@ export const DispatchingPage: React.FC = () => {
                           badgeContent={idx === 0 ? '★' : undefined}
                           sx={{ '& .MuiBadge-badge': { bgcolor: '#ffd740', color: '#000', fontSize: 9, minWidth: 14, height: 14 } }}
                         >
-                          <Avatar sx={{ width: 28, height: 28, bgcolor: workloadColor(a.workloadScore) + '22', color: workloadColor(a.workloadScore), fontSize: '0.7rem', fontWeight: 700 }}>
+                          <Avatar sx={{ width: 28, height: 28, bgcolor: workloadColor(a.workloadScore), color: '#fff', fontSize: '0.7rem', fontWeight: 700 }}>
                             {a.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                           </Avatar>
                         </Badge>
@@ -292,7 +292,7 @@ export const DispatchingPage: React.FC = () => {
                         <Chip
                           label={`${a.activeCount}`}
                           size="small"
-                          sx={{ bgcolor: workloadColor(a.workloadScore) + '18', color: workloadColor(a.workloadScore), fontWeight: 700, minWidth: 26, height: 20, fontSize: 11 }}
+                          sx={{ bgcolor: workloadColor(a.workloadScore), color: '#fff', fontWeight: 700, minWidth: 26, height: 20, fontSize: 11 }}
                         />
                       </Box>
                       <LinearProgress
@@ -589,7 +589,7 @@ export const DispatchingPage: React.FC = () => {
                 <Typography variant="caption" fontWeight={700} color="#1565c0">Suggestion automatique — charge minimale</Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Avatar sx={{ width: 26, height: 26, bgcolor: workloadColor(dialog.suggestedAnalyst.workloadScore) + '22', color: workloadColor(dialog.suggestedAnalyst.workloadScore), fontSize: '0.7rem', fontWeight: 700 }}>
+                <Avatar sx={{ width: 26, height: 26, bgcolor: workloadColor(dialog.suggestedAnalyst.workloadScore), color: '#fff', fontSize: '0.7rem', fontWeight: 700 }}>
                   {dialog.suggestedAnalyst.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
                 </Avatar>
                 <Box>
@@ -618,7 +618,7 @@ export const DispatchingPage: React.FC = () => {
                   '&:hover': { borderColor: ACCENT, bgcolor: ACCENT + '05' }
                 }}
               >
-                <Avatar sx={{ width: 30, height: 30, bgcolor: workloadColor(a.workloadScore) + '22', color: workloadColor(a.workloadScore), fontSize: '0.75rem', fontWeight: 700 }}>
+                <Avatar sx={{ width: 30, height: 30, bgcolor: workloadColor(a.workloadScore), color: '#fff', fontSize: '0.75rem', fontWeight: 700 }}>
                   {a.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                 </Avatar>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -627,7 +627,7 @@ export const DispatchingPage: React.FC = () => {
                 </Box>
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.25 }}>
                   <Chip label={`${a.activeCount} actif${a.activeCount !== 1 ? 's' : ''}`} size="small"
-                    sx={{ bgcolor: workloadColor(a.workloadScore) + '18', color: workloadColor(a.workloadScore), fontWeight: 700, fontSize: 10, height: 18 }} />
+                    sx={{ bgcolor: workloadColor(a.workloadScore), color: '#fff', fontWeight: 700, fontSize: 10, height: 18 }} />
                   {a.overdueCount > 0 && (
                     <Typography variant="caption" sx={{ color: '#dc2626', fontSize: 10 }}>{a.overdueCount} en retard</Typography>
                   )}

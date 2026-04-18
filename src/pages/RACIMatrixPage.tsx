@@ -188,10 +188,10 @@ const MatrixTab: React.FC<MatrixTabProps> = ({ steps, editing, onCellChange }) =
                     </Box>
                   </Tooltip>
                   {steps.flatMap(s => s.users[r.key] ?? []).length > 0 && (
-                    <AvatarGroup max={3} sx={{ justifyContent: 'center', mt: 0.5, '& .MuiAvatar-root': { width: 20, height: 20, fontSize: 9, border: `1px solid ${r.color}40` } }}>
+                    <AvatarGroup max={3} sx={{ justifyContent: 'center', mt: 0.5, '& .MuiAvatar-root': { width: 20, height: 20, fontSize: 9, border: '2px solid #fff' } }}>
                       {Array.from(new Map(steps.flatMap(s => s.users[r.key] ?? []).map(u => [u.id, u])).values()).map(u => (
                         <Tooltip key={u.id} title={`${u.name} — ${u.email}`} arrow>
-                          <Avatar sx={{ bgcolor: `${r.color}18`, color: r.color, fontWeight: 700 }}>
+                          <Avatar sx={{ bgcolor: r.color, color: '#fff', fontWeight: 700 }}>
                             {getUserInitials(u.name)}
                           </Avatar>
                         </Tooltip>
@@ -289,7 +289,7 @@ const ChineseWallTab: React.FC<ChineseWallTabProps> = ({ rules, steps, editing, 
             {CONCERNED_WALL_ROLES.map(role => (
               <TableRow key={role.key} hover>
                 <TableCell>
-                  <Box component="span" sx={{ display: 'inline-block', px: 1, py: 0.25, borderRadius: 1, bgcolor: `${role.color}18`, color: role.color, fontWeight: 700, fontSize: 11 }}>{role.short}</Box>
+                  <Box component="span" sx={{ display: 'inline-block', px: 1, py: 0.25, borderRadius: 1, bgcolor: role.color, color: '#fff', fontWeight: 700, fontSize: 11 }}>{role.short}</Box>
                   <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>{role.label}</Typography>
                 </TableCell>
                 {steps.map(s => {
