@@ -289,3 +289,43 @@ export interface WorkflowStepConfig {
   isApprovalStep: boolean;
   nextSteps: WorkflowStepId[];
 }
+
+// ─── Multi-tenant types ────────────────────────────────────────────────────────
+
+export interface Company {
+  id: string;
+  name: string;
+  code: string;
+  logoUrl?: string | null;
+  isActive: boolean;
+  createdAt?: string;
+}
+
+export interface CompanyWithRole extends Company {
+  role: UserRole;
+}
+
+export type UserRole =
+  | 'CHARGE_AFFAIRES'
+  | 'ANALYSTE_RISQUES'
+  | 'RESPONSABLE_RISQUES'
+  | 'RESPONSABLE_ENGAGEMENTS'
+  | 'COMITE_CREDIT'
+  | 'DIRECTION_GENERALE'
+  | 'ADMIN'
+  | 'SUPER_ADMIN'
+  | 'BACK_OFFICE'
+  | 'DIRECTION_JURIDIQUE';
+
+export const USER_ROLE_LABELS: Record<UserRole, string> = {
+  CHARGE_AFFAIRES:         'Chargé d\'Affaires',
+  ANALYSTE_RISQUES:        'Analyste Risques',
+  RESPONSABLE_RISQUES:     'Responsable Risques',
+  RESPONSABLE_ENGAGEMENTS: 'Responsable Engagements',
+  COMITE_CREDIT:           'Comité de Crédit',
+  DIRECTION_GENERALE:      'Direction Générale',
+  ADMIN:                   'Administrateur',
+  SUPER_ADMIN:             'Super Administrateur',
+  BACK_OFFICE:             'Back Office',
+  DIRECTION_JURIDIQUE:     'Direction Juridique',
+};

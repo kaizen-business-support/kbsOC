@@ -4,6 +4,7 @@ import { Box, Container, Dialog, DialogTitle, DialogContent, DialogActions, Butt
 import { Lock as LockIcon, Cancel as CancelIcon, Save as SaveIcon } from '@mui/icons-material';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { UserProvider, useUser } from './contexts/UserContext';
+import { CompanyProvider } from './contexts/CompanyContext';
 import { ApiService } from './services/api';
 import { ThemeWrapper } from './components/ThemeWrapper';
 import { MsalWrapper } from './components/MsalWrapper';
@@ -41,6 +42,8 @@ const AnnouncementsAdminPage = lazy(() => import('./pages/AnnouncementsAdminPage
 const NotificationsConfigPage = lazy(() => import('./pages/NotificationsConfigPage'));
 const DispatchingPage        = lazy(() => import('./pages/DispatchingPage').then(m => ({ default: m.DispatchingPage })));
 const CreditManagementPage   = lazy(() => import('./pages/CreditManagementPage').then(m => ({ default: m.CreditManagementPage })));
+const CompanySettingsPage    = lazy(() => import('./pages/CompanySettingsPage'));
+const PlatformAdminPage      = lazy(() => import('./pages/PlatformAdminPage'));
 
 // ── Thin branded progress bar while chunk loads ────────────────────────────
 const PageLoader = () => (
@@ -348,6 +351,14 @@ const AppContent: React.FC = () => {
                 path="/approval-limits"
                 element={<CreditManagementPage initialTab={2} onNavigate={handlePageChange} />}
               />
+              <Route
+                path="/company-settings"
+                element={<CompanySettingsPage />}
+              />
+              <Route
+                path="/platform-admin"
+                element={<PlatformAdminPage />}
+              />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             </PageTransition>
@@ -465,13 +476,15 @@ const AppContent: React.FC = () => {
 function App() {
   return (
     <MsalWrapper>
-      <UserProvider>
-        <AppProvider>
-          <ThemeWrapper>
-            <AppContent />
-          </ThemeWrapper>
-        </AppProvider>
-      </UserProvider>
+      <CompanyProvider>
+        <UserProvider>
+          <AppProvider>
+            <ThemeWrapper>
+              <AppContent />
+            </ThemeWrapper>
+          </AppProvider>
+        </UserProvider>
+      </CompanyProvider>
     </MsalWrapper>
   );
 }

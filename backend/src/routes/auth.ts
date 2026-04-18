@@ -289,7 +289,11 @@ router.post('/select-company', async (req: Request, res: Response) => {
     });
     const refreshToken = generateRefreshToken(decoded.userId);
 
-    await prisma.user.update({ where: { id: decoded.userId }, data: { lastLogin: new Date() } });
+    const userRecord = await prisma.user.update({
+      where: { id: decoded.userId },
+      data: { lastLogin: new Date() },
+      select: { id: true, email: true, name: true, role: true, department: true, jobTitle: true, permissions: true, isActive: true }
+    });
 
     return res.json({
       success: true,
@@ -297,6 +301,17 @@ router.post('/select-company', async (req: Request, res: Response) => {
       refreshToken,
       company: { id: membership.company.id, name: membership.company.name, code: membership.company.code, logoUrl: membership.company.logoUrl },
       role: membership.role,
+      user: {
+        id: userRecord.id,
+        email: userRecord.email,
+        name: userRecord.name,
+        role: membership.role,
+        department: userRecord.department,
+        jobTitle: userRecord.jobTitle,
+        permissions: userRecord.permissions,
+        lastLogin: new Date().toISOString(),
+        isActive: userRecord.isActive,
+      },
     });
   } catch (error) {
     console.error('Select company error:', error);

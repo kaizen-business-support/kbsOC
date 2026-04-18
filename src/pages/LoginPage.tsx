@@ -38,11 +38,15 @@ import {
   VerifiedUserOutlined,
 } from '@mui/icons-material';
 import { useUser } from '../contexts/UserContext';
+import { useCompany } from '../contexts/CompanyContext';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import optimusIcon from '../assets/Optimus_icon.png';
 import { TwoFactorSetup } from '../components/TwoFactorSetup';
-import { tokenManager, authPasswordApi } from '../services/api';
+import CompanySelector from '../components/CompanySelector';
+import { tokenManager, authPasswordApi, ApiService } from '../services/api';
+import { CompanyWithRole } from '../types';
 
 const API_BASE = `${window.location.origin}/api`;
 
@@ -147,6 +151,8 @@ type LoginStep = 'credentials' | '2fa_code' | '2fa_setup' | 'change_password' | 
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const { state, loginWithMicrosoft, clearError, isMsalAvailable, dispatch } = useUser() as any;
+  const companyCtx = useCompany();
+  const navigate = useNavigate();
   const { t } = useTranslation();
 
   const [email, setEmail]       = useState('');
@@ -170,6 +176,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [forgotSent,    setForgotSent]    = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError,   setForgotError]   = useState('');
+
+  // Company selection state
+  const [showCompanySelector, setShowCompanySelector] = useState(false);
+  const [partialToken, setPartialToken] = useState('');
+  const [companyOptions, setCompanyOptions] = useState<CompanyWithRole[]>([]);
 
   const demoUsers = [
     { email: 'admin@bank.sn',          role: 'Administrateur',       color: 'error'     as const },
@@ -199,6 +210,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       if (data.requiresPasswordChange) { setTempToken(data.tempToken); setLoginStep('change_password'); if (dispatch) dispatch({ type: 'SET_LOADING', payload: false }); return; }
       if (data.requiresSetup)          { setTempToken(data.tempToken); setLoginStep('2fa_setup');        if (dispatch) dispatch({ type: 'SET_LOADING', payload: false }); return; }
       if (data.requires2FA)            { setTempToken(data.tempToken); setLoginStep('2fa_code');          if (dispatch) dispatch({ type: 'SET_LOADING', payload: false }); return; }
+      if (data.requiresCompanySelection) {
+        setPartialToken(data.partialToken);
+        setCompanyOptions(data.companies || []);
+        setShowCompanySelector(true);
+        if (dispatch) dispatch({ type: 'SET_LOADING', payload: false });
+        return;
+      }
+      // If autoSelected or single company, store company in context
+      if (data.companies?.length === 1 || data.autoSelected) {
+        companyCtx.setActiveCompany(data.companies[0], data.accessToken);
+        companyCtx.setCompanies(data.companies || []);
+      }
       completeLogin(data.accessToken, data.refreshToken, data.user);
     } catch (error: any) {
       const msg = error.response?.data?.error || error.response?.data?.message || 'Erreur de connexion';
@@ -263,6 +286,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const handleMicrosoftLogin = async () => {
     const success = await loginWithMicrosoft();
     if (success) onLogin();
+  };
+
+  const handleCompanySelect = async (company: CompanyWithRole) => {
+    try {
+      const result = await ApiService.post('/auth/select-company', {
+        companyId: company.id,
+        partialToken,
+      }) as any;
+      if (result.success) {
+        companyCtx.setActiveCompany(result.company, result.accessToken);
+        companyCtx.setCompanies(companyOptions);
+        setShowCompanySelector(false);
+        // Complete login with the final token
+        completeLogin(result.accessToken, result.refreshToken, result.user);
+      }
+    } catch (error: any) {
+      if (dispatch) dispatch({ type: 'LOGIN_FAILURE', payload: error.message || 'Erreur lors de la sélection de compagnie' });
+    }
   };
 
   useEffect(() => { return () => clearError(); }, [clearError]);
@@ -489,6 +530,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             </>
           )}
         </GlassCard>
+      </OverlayBg>
+    );
+  }
+
+  // ── Company selector ─────────────────────────────────────────────────────────
+  if (showCompanySelector) {
+    return (
+      <OverlayBg>
+        <CompanySelector
+          open={showCompanySelector}
+          companies={companyOptions}
+          onSelect={handleCompanySelect}
+        />
       </OverlayBg>
     );
   }
