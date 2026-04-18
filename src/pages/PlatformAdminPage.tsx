@@ -16,7 +16,8 @@ import {
   PersonAdd as PersonAddIcon,
   PersonOff as PersonOffIcon,
 } from '@mui/icons-material';
-import { ApiService, tokenManager } from '../services/api';
+import { ApiService } from '../services/api';
+import axios from 'axios';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,19 +51,23 @@ const ROLE_LABELS: Record<string, string> = {
   DIRECTION_JURIDIQUE: 'Direction Juridique', BACK_OFFICE: 'Back Office', ADMIN: 'Administrateur',
 };
 
-const API_BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:3001/api';
+const API_BASE_URL = `${window.location.origin}/api`;
 
 async function uploadLogoFile(companyId: string, file: File): Promise<void> {
   const form = new FormData();
   form.append('logo', file);
-  const token = tokenManager.getAccessToken();
-  const res = await fetch(`${API_BASE}/platform/companies/${companyId}/logo`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: form,
-  });
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error || 'Upload échoué');
+  const token = localStorage.getItem('optimus_access_token');
+  const res = await axios.post(
+    `${API_BASE_URL}/platform/companies/${companyId}/logo`,
+    form,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    }
+  );
+  if (!res.data?.success) throw new Error(res.data?.error || 'Upload échoué');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -165,7 +170,7 @@ const PlatformAdminPage: React.FC = () => {
   const openEdit = (c: CompanyEntry) => {
     setEditTarget(c);
     setEditName(c.name);
-    const origin = window.location.origin.replace(':5173', ':3001');
+    const origin = window.location.origin;
     setEditLogoPreview(c.logoUrl ? `${origin}${c.logoUrl}` : null);
     setEditFile(null);
   };
@@ -233,7 +238,7 @@ const PlatformAdminPage: React.FC = () => {
 
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
 
-  const origin = window.location.origin.replace(':5173', ':3001');
+  const origin = window.location.origin;
 
   return (
     <Box sx={{ p: 3 }}>
