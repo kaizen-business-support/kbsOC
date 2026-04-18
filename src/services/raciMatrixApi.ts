@@ -57,13 +57,19 @@ export interface NewStep {
   maxDurationHours?: number;
 }
 
+export type UpdateStepPayload = Partial<Pick<RaciStep,
+  'stepLabel' | 'phase' | 'assignedRole' | 'order' |
+  'stepType' | 'expectedDurationHours' | 'maxDurationHours' |
+  'conditionMinAmount' | 'conditionMaxAmount' | 'isRequired'
+>>;
+
 // ─── API calls ────────────────────────────────────────────────────────────────
 
 export const raciMatrixApi = {
   getMatrix: (): Promise<{ success: boolean; data: RaciMatrix }> =>
     ApiService.get('/raci-matrix'),
 
-  updateStep: (stepId: string, data: Partial<RaciStep>): Promise<{ success: boolean; data: RaciStep }> =>
+  updateStep: (stepId: string, data: UpdateStepPayload): Promise<{ success: boolean; data: RaciStep }> =>
     ApiService.put(`/raci-matrix/steps/${stepId}`, data),
 
   updateStepRoles: (stepId: string, roles: RaciStepRole[]): Promise<{ success: boolean; data: RaciStepRole[] }> =>
