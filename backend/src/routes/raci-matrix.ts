@@ -1,0 +1,256 @@
+/**
+ * raci-matrix.ts — Routes de gestion de la Matrice RACI par tenant
+ *
+ * La matrice RACI est une vue/édition de la CreditPolicy active du tenant.
+ * R  = CreditPolicyStep.assignedRole (source de vérité workflow)
+ * A/C/I/co-R = CreditPolicyStepRole (table dédiée)
+ * Mur chinois = TenantChineseWallRule (remplace le dict hardcodé dans workflowService)
+ *
+ * Endpoints :
+ *   GET  /api/raci-matrix                         → matrice complète + utilisateurs + mur chinois
+ *   PUT  /api/raci-matrix/steps/:stepId           → modifier une étape (label, assignedRole, SLA…)
+ *   PUT  /api/raci-matrix/steps/:stepId/roles     → remplacer les rôles A/C/I d'une étape
+ *   POST /api/raci-matrix/steps                   → créer une étape dans la politique active
+ *   DELETE /api/raci-matrix/steps/:stepId         → soft-delete une étape
+ *   PUT  /api/raci-matrix/chinese-wall            → remplacer les règles mur chinois du tenant
+ */
+
+import { Router, Request, Response } from 'express';
+import { prisma } from '../prismaClient';
+import { authenticate, requireCompany } from '../middleware/auth';
+import { UserRole, RaciCode, PolicyStepType } from '@prisma/client';
+
+const router = Router();
+router.use(authenticate);
+router.use(requireCompany);
+
+// ─── GET /api/raci-matrix ──────────────────────────────────────────────────────
+
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const companyId = req.companyId!;
+
+    const policy = await prisma.creditPolicy.findFirst({
+      where: { companyId, isActive: true },
+      select: { id: true, name: true, version: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!policy) {
+      return res.json({ success: true, data: { policy: null, steps: [], chineseWallRules: [] } });
+    }
+
+    const steps = await prisma.creditPolicyStep.findMany({
+      where: { policyId: policy.id, isActive: true },
+      include: { stepRoles: { orderBy: { createdAt: 'asc' } } },
+      orderBy: { order: 'asc' },
+    });
+
+    // Pour chaque étape, récupérer les utilisateurs par rôle impliqué
+    const stepsWithUsers = await Promise.all(
+      steps.map(async (step) => {
+        const allRoles = [step.assignedRole, ...step.stepRoles.map((r) => r.role)];
+        const uniqueRoles = [...new Set(allRoles)] as UserRole[];
+
+        const usersPerRole: Record<string, { id: string; name: string; email: string }[]> = {};
+        await Promise.all(
+          uniqueRoles.map(async (role) => {
+            const memberships = await prisma.companyMembership.findMany({
+              where: { companyId, role, isActive: true },
+              include: { user: { select: { id: true, name: true, email: true } } },
+            });
+            usersPerRole[role] = memberships.map((m) => m.user);
+          })
+        );
+
+        return {
+          id: step.id,
+          stepName: step.stepName,
+          stepLabel: step.stepLabel,
+          phase: step.phase,
+          order: step.order,
+          stepType: step.stepType,
+          assignedRole: step.assignedRole,
+          expectedDurationHours: step.expectedDurationHours,
+          maxDurationHours: step.maxDurationHours,
+          conditionMinAmount: step.conditionMinAmount,
+          conditionMaxAmount: step.conditionMaxAmount,
+          isRequired: step.isRequired,
+          roles: step.stepRoles.map((r) => ({ role: r.role, raciCode: r.raciCode })),
+          users: usersPerRole,
+        };
+      })
+    );
+
+    const chineseWallRules = await prisma.tenantChineseWallRule.findMany({
+      where: { companyId },
+      orderBy: [{ blockedRole: 'asc' }, { forbiddenStep: 'asc' }],
+    });
+
+    res.json({ success: true, data: { policy, steps: stepsWithUsers, chineseWallRules } });
+  } catch (error) {
+    console.error('[raci-matrix] GET /', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// ─── PUT /api/raci-matrix/steps/:stepId ───────────────────────────────────────
+
+router.put('/steps/:stepId', async (req: Request, res: Response) => {
+  try {
+    const { stepId } = req.params;
+    const {
+      stepLabel, phase, assignedRole,
+      expectedDurationHours, maxDurationHours,
+      conditionMinAmount, conditionMaxAmount,
+    } = req.body;
+
+    const step = await prisma.creditPolicyStep.update({
+      where: { id: stepId },
+      data: {
+        ...(stepLabel !== undefined && { stepLabel }),
+        ...(phase !== undefined && { phase }),
+        ...(assignedRole !== undefined && { assignedRole: assignedRole as UserRole }),
+        ...(expectedDurationHours !== undefined && { expectedDurationHours: Number(expectedDurationHours) }),
+        ...(maxDurationHours !== undefined && { maxDurationHours: Number(maxDurationHours) }),
+        ...(conditionMinAmount !== undefined && { conditionMinAmount }),
+        ...(conditionMaxAmount !== undefined && { conditionMaxAmount }),
+      },
+    });
+
+    res.json({ success: true, data: step });
+  } catch (error) {
+    console.error('[raci-matrix] PUT /steps/:stepId', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// ─── PUT /api/raci-matrix/steps/:stepId/roles ─────────────────────────────────
+
+router.put('/steps/:stepId/roles', async (req: Request, res: Response) => {
+  try {
+    const { stepId } = req.params;
+    const roles: { role: string; raciCode: string }[] = req.body;
+
+    if (!Array.isArray(roles)) {
+      return res.status(400).json({ success: false, error: 'body doit être un tableau [{ role, raciCode }]' });
+    }
+
+    await prisma.creditPolicyStepRole.deleteMany({ where: { policyStepId: stepId } });
+
+    if (roles.length > 0) {
+      await prisma.creditPolicyStepRole.createMany({
+        data: roles.map((r) => ({
+          policyStepId: stepId,
+          role: r.role as UserRole,
+          raciCode: r.raciCode as RaciCode,
+        })),
+      });
+    }
+
+    const updated = await prisma.creditPolicyStepRole.findMany({ where: { policyStepId: stepId } });
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('[raci-matrix] PUT /steps/:stepId/roles', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// ─── POST /api/raci-matrix/steps ──────────────────────────────────────────────
+
+router.post('/steps', async (req: Request, res: Response) => {
+  try {
+    const companyId = req.companyId!;
+    const { stepName, stepLabel, phase, assignedRole, order, stepType, expectedDurationHours, maxDurationHours } = req.body;
+
+    if (!stepName || !stepLabel || !assignedRole) {
+      return res.status(400).json({ success: false, error: 'stepName, stepLabel et assignedRole sont obligatoires' });
+    }
+
+    const policy = await prisma.creditPolicy.findFirst({
+      where: { companyId, isActive: true },
+    });
+
+    if (!policy) {
+      return res.status(409).json({
+        success: false,
+        error: 'Aucune politique de crédit active. Créez une politique avant de modifier la matrice RACI.',
+      });
+    }
+
+    const step = await prisma.creditPolicyStep.create({
+      data: {
+        policyId: policy.id,
+        stepName,
+        stepLabel,
+        phase: phase ?? null,
+        order: order ?? 99,
+        stepType: (stepType as PolicyStepType) ?? 'DISPATCH',
+        assignedRole: assignedRole as UserRole,
+        expectedDurationHours: expectedDurationHours ? Number(expectedDurationHours) : 24,
+        maxDurationHours: maxDurationHours ? Number(maxDurationHours) : 72,
+      },
+    });
+
+    res.status(201).json({ success: true, data: step });
+  } catch (error) {
+    console.error('[raci-matrix] POST /steps', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// ─── DELETE /api/raci-matrix/steps/:stepId ────────────────────────────────────
+
+router.delete('/steps/:stepId', async (req: Request, res: Response) => {
+  try {
+    const { stepId } = req.params;
+
+    await prisma.creditPolicyStep.update({
+      where: { id: stepId },
+      data: { isActive: false },
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[raci-matrix] DELETE /steps/:stepId', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// ─── PUT /api/raci-matrix/chinese-wall ────────────────────────────────────────
+
+router.put('/chinese-wall', async (req: Request, res: Response) => {
+  try {
+    const companyId = req.companyId!;
+    const rules: { blockedRole: string; forbiddenStep: string; reason?: string }[] = req.body;
+
+    if (!Array.isArray(rules)) {
+      return res.status(400).json({ success: false, error: 'body doit être un tableau [{ blockedRole, forbiddenStep, reason? }]' });
+    }
+
+    await prisma.tenantChineseWallRule.deleteMany({ where: { companyId } });
+
+    if (rules.length > 0) {
+      await prisma.tenantChineseWallRule.createMany({
+        data: rules.map((r) => ({
+          companyId,
+          blockedRole: r.blockedRole as UserRole,
+          forbiddenStep: r.forbiddenStep,
+          reason: r.reason ?? null,
+        })),
+      });
+    }
+
+    const updated = await prisma.tenantChineseWallRule.findMany({
+      where: { companyId },
+      orderBy: [{ blockedRole: 'asc' }, { forbiddenStep: 'asc' }],
+    });
+
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('[raci-matrix] PUT /chinese-wall', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+export default router;
