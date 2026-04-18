@@ -42,6 +42,7 @@ import {
 } from '@mui/icons-material';
 import { PageType } from '../types';
 import { useUser } from '../contexts/UserContext';
+import { useCompany } from '../contexts/CompanyContext';
 
 export const FULL_WIDTH  = 260;
 export const MINI_WIDTH  = 64;
@@ -86,6 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { t } = useTranslation();
   const { isRole, hasPermission } = useUser();
+  const { activeCompany } = useCompany();
 
   const [creditExpanded, setCreditExpanded]     = useState(true);
   const [analysisExpanded, setAnalysisExpanded] = useState(true);
@@ -95,27 +97,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onPageChange(page);
   };
 
-  const canViewAnalytics      = hasPermission('analytics') || isRole('management') || isRole('admin') || isRole('branch_manager') || isRole('credit_committee');
-  const canCreateApplications = hasPermission('create_application') || isRole('account_manager') || isRole('admin');
-  const canViewConfiguration  = hasPermission('user_management') || isRole('admin') || isRole('management');
-  const canDispatching        = hasPermission('dispatch_applications') || isRole('analyst_supervisor') || isRole('admin');
-  const canViewCompanySettings = isRole('admin') || hasPermission('*');
-  const canViewPlatformAdmin   = hasPermission('*') && isRole('admin'); // SUPER_ADMIN maps to admin with wildcard
+  // ── Permission gates (basées sur les permissions réelles du compte) ──────────
+  const isAdmin              = isRole('admin') || hasPermission('*');
+  const canCreateApplication = hasPermission('create_application');
+  const canDispatching       = hasPermission('dispatch_applications');
+  const canViewAnalytics     = hasPermission('analytics');
+  const canFinancialAnalysis = hasPermission('financial_analysis') || hasPermission('analyze_credit');
+  const canViewReports       = hasPermission('reports') || isAdmin;
+  const canViewConfiguration = hasPermission('user_management') || isAdmin;
+  const canViewPlatformAdmin = isAdmin && hasPermission('*');
+  const canViewCompanySettings = canViewConfiguration;
+  const canViewCreditPolicy  = hasPermission('policy_configuration') || isAdmin;
+  const canViewSimulator     = canCreateApplication || canFinancialAnalysis || isAdmin;
 
-  const outOfProcessItems = [
-    { id: 'data-input'  as PageType, label: t('navigation.dataInput'), icon: DataInputIcon },
-    { id: 'analysis'    as PageType, label: t('navigation.analysis'),  icon: AnalysisIcon,  requiresData: true },
-    { id: 'reports'     as PageType, label: t('navigation.reports'),   icon: ReportsIcon,   requiresData: true },
-  ];
+  // ── Sections ─────────────────────────────────────────────────────────────────
 
+  // Processus crédit — visible par tous les utilisateurs actifs
   const creditProcessItems = [
-    { id: 'clients'            as PageType, label: t('navigation.clients'),   icon: ClientsIcon },
-    ...(canCreateApplications ? [{ id: 'credit-application' as PageType, label: 'Nouvelle Demande', icon: ApplicationIcon }] : []),
-    ...(canDispatching ? [{ id: 'dispatching' as PageType, label: 'Dispatching', icon: DispatchIcon }] : []),
-    { id: 'workflow'           as PageType, label: t('navigation.workflow'),  icon: WorkflowIcon },
-    ...(canViewAnalytics ? [{ id: 'analytics' as PageType, label: t('navigation.analytics'), icon: InsightsIcon }] : []),
+    { id: 'clients'           as PageType, label: t('navigation.clients'),  icon: ClientsIcon },
+    ...(canCreateApplication ? [{ id: 'credit-application' as PageType, label: 'Nouvelle Demande',       icon: ApplicationIcon }] : []),
+    ...(canDispatching       ? [{ id: 'dispatching'         as PageType, label: 'Dispatching',            icon: DispatchIcon    }] : []),
+    { id: 'workflow'          as PageType, label: t('navigation.workflow'), icon: WorkflowIcon },
+    ...(canViewAnalytics     ? [{ id: 'analytics'           as PageType, label: t('navigation.analytics'), icon: InsightsIcon    }] : []),
   ];
 
+  // Analyse hors-processus — uniquement pour les profils d'analyse financière
+  const outOfProcessItems = canFinancialAnalysis ? [
+    { id: 'data-input' as PageType, label: t('navigation.dataInput'), icon: DataInputIcon },
+    { id: 'analysis'   as PageType, label: t('navigation.analysis'),  icon: AnalysisIcon, requiresData: true },
+    ...(canViewReports ? [{ id: 'reports' as PageType, label: t('navigation.reports'), icon: ReportsIcon, requiresData: true }] : []),
+  ] : [];
+
+  // Configuration — admin seulement
   const configItems = canViewConfiguration ? [
     { id: 'user-management'      as PageType, label: t('navigation.userManagement'), icon: UserManagementIcon },
     { id: 'bank-holidays-admin'  as PageType, label: 'Jours Fériés',                icon: HolidayIcon },
@@ -123,8 +136,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'announcements'        as PageType, label: "Notes d'information",         icon: CampaignIcon },
     { id: 'notifications-config' as PageType, label: 'Notifications',               icon: NotificationsActiveIcon },
     ...(canViewCompanySettings ? [{ id: 'company-settings' as PageType, label: 'Paramètres Compagnie', icon: SettingsIcon }] : []),
-    ...(canViewPlatformAdmin   ? [{ id: 'platform-admin'   as PageType, label: 'Admin Plateforme',      icon: PolicyIcon   }] : []),
+    ...(canViewPlatformAdmin   ? [{ id: 'platform-admin'   as PageType, label: 'Admin Plateforme',     icon: PolicyIcon   }] : []),
   ] : [];
+
+  // Logo tenant — URL complète vers le backend
+  const tenantLogoUrl = activeCompany?.logoUrl
+    ? `${window.location.origin}${activeCompany.logoUrl}`
+    : null;
+  const tenantName = activeCompany?.name ?? 'OptimusCredit';
 
 
   // ── Shared item styles ──────────────────────────────────────────────────────
@@ -358,34 +377,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }}>
       <Toolbar />
 
-      {/* Logo */}
+      {/* Logo tenant */}
       <Box sx={{
-        px: open ? 2.5 : 0,
-        py: 1.75,
+        px: open ? 2 : 0,
+        py: 1.5,
         display: 'flex',
         alignItems: 'center',
         justifyContent: open ? 'flex-start' : 'center',
         gap: 1.25,
         borderBottom: `1px solid ${SB.border}`,
         flexShrink: 0,
+        minHeight: 60,
       }}>
-        <img src={optimusIcon} alt="Logo" style={{ width: 32, height: 32, flexShrink: 0 }} />
-        {open && (
-          <Box sx={{ overflow: 'hidden' }}>
-            <Typography sx={{
-              fontSize: '14px', fontWeight: 700, lineHeight: 1.2, whiteSpace: 'nowrap', fontFamily: '"Inter", sans-serif',
-              // brand gradient text for the app name
-              background:          brand.gradient,
-              WebkitBackgroundClip:'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip:      'text',
-            }}>
-              OptimusCredit
-            </Typography>
-            <Typography sx={{ fontSize: '10.5px', color: SB.sectionLabel, lineHeight: 1.2, whiteSpace: 'nowrap', fontFamily: '"Inter", sans-serif' }}>
-              Gestion de Crédit
-            </Typography>
-          </Box>
+        {tenantLogoUrl ? (
+          /* Logo uploadé du tenant */
+          <img
+            src={tenantLogoUrl}
+            alt={tenantName}
+            style={{
+              height: 36,
+              maxWidth: open ? 160 : 36,
+              objectFit: 'contain',
+              flexShrink: 0,
+              borderRadius: 4,
+              transition: 'max-width 0.25s ease',
+            }}
+            onError={e => { e.currentTarget.style.display = 'none'; }}
+          />
+        ) : (
+          /* Fallback OptimusCredit */
+          <>
+            <img src={optimusIcon} alt="Logo" style={{ width: 32, height: 32, flexShrink: 0 }} />
+            {open && (
+              <Box sx={{ overflow: 'hidden' }}>
+                <Typography sx={{
+                  fontSize: '14px', fontWeight: 700, lineHeight: 1.2, whiteSpace: 'nowrap', fontFamily: '"Inter", sans-serif',
+                  background: brand.gradient, WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+                }}>
+                  OptimusCredit
+                </Typography>
+                <Typography sx={{ fontSize: '10.5px', color: SB.sectionLabel, lineHeight: 1.2, whiteSpace: 'nowrap', fontFamily: '"Inter", sans-serif' }}>
+                  Gestion de Crédit
+                </Typography>
+              </Box>
+            )}
+          </>
         )}
       </Box>
 
@@ -410,34 +447,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </List>
         </Collapse>
 
-        {/* Analyse hors-processus */}
-        <SectionHeader
-          label={t('navigation.outOfProcessAnalysis')}
-          expanded={analysisExpanded}
-          onToggle={() => setAnalysisExpanded(p => !p)}
-        />
-        <Collapse in={open ? analysisExpanded : true} timeout="auto" unmountOnExit={false}>
-          <List disablePadding sx={{ px: 0.5 }}>
-            {outOfProcessItems.map(item => (
-              <NavItem
-                key={item.id}
-                id={item.id}
-                label={item.label}
-                icon={item.icon}
-                disabled={item.requiresData && !hasAnalysisData}
-                badge={item.requiresData && hasAnalysisData}
-              />
-            ))}
-          </List>
-        </Collapse>
+        {/* Analyse hors-processus — uniquement pour les profils financiers */}
+        {outOfProcessItems.length > 0 && (
+          <>
+            <SectionHeader
+              label={t('navigation.outOfProcessAnalysis')}
+              expanded={analysisExpanded}
+              onToggle={() => setAnalysisExpanded(p => !p)}
+            />
+            <Collapse in={open ? analysisExpanded : true} timeout="auto" unmountOnExit={false}>
+              <List disablePadding sx={{ px: 0.5 }}>
+                {outOfProcessItems.map(item => (
+                  <NavItem
+                    key={item.id}
+                    id={item.id}
+                    label={item.label}
+                    icon={item.icon}
+                    disabled={item.requiresData && !hasAnalysisData}
+                    badge={item.requiresData && hasAnalysisData}
+                  />
+                ))}
+              </List>
+            </Collapse>
+          </>
+        )}
 
-        {/* Outils */}
-        <StaticLabel label="Outils" />
-        <List disablePadding sx={{ px: 0.5 }}>
-          <NavItem id="credit-simulation" label="Simulateur de Crédit" icon={CalculateIcon} />
-        </List>
+        {/* Outils — uniquement pour les profils concernés */}
+        {canViewSimulator && (
+          <>
+            <StaticLabel label="Outils" />
+            <List disablePadding sx={{ px: 0.5 }}>
+              <NavItem id="credit-simulation" label="Simulateur de Crédit" icon={CalculateIcon} />
+            </List>
+          </>
+        )}
 
-        {/* Configuration (admin) */}
+        {/* Configuration — admin seulement */}
         {configItems.length > 0 && (
           <>
             <SectionHeader
@@ -450,9 +495,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {configItems.map(item => (
                   <NavItem key={item.id} id={item.id} label={item.label} icon={item.icon} />
                 ))}
-
-                {/* ── Politique de Crédit (lien direct) ─────────────── */}
-                <NavItem id="credit-policy" label="Politique de Crédit" icon={PolicyIcon} />
+                {canViewCreditPolicy && (
+                  <NavItem id="credit-policy" label="Politique de Crédit" icon={PolicyIcon} />
+                )}
               </List>
             </Collapse>
           </>
