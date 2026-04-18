@@ -353,19 +353,21 @@ const AppContent: React.FC = () => {
               />
               <Route
                 path="/company-settings"
-                element={
-                  ['admin', 'management'].includes(userState.currentUser?.role ?? '')
-                    ? <CompanySettingsPage />
-                    : <Navigate to="/" replace />
-                }
+                element={(() => {
+                  const r: string = userState.currentUser?.role ?? '';
+                  const p = userState.currentUser?.permissions ?? [];
+                  const allowed = ['admin', 'management', 'ADMIN', 'SUPER_ADMIN'].includes(r) || p.includes('*');
+                  return allowed ? <CompanySettingsPage /> : <Navigate to="/" replace />;
+                })()}
               />
               <Route
                 path="/platform-admin"
-                element={
-                  userState.currentUser?.role === 'admin' && userState.currentUser?.permissions?.includes('*')
-                    ? <PlatformAdminPage />
-                    : <Navigate to="/" replace />
-                }
+                element={(() => {
+                  const r: string = userState.currentUser?.role ?? '';
+                  const p = userState.currentUser?.permissions ?? [];
+                  const allowed = p.includes('*') || r === 'SUPER_ADMIN';
+                  return allowed ? <PlatformAdminPage /> : <Navigate to="/" replace />;
+                })()}
               />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
