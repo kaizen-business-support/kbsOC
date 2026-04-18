@@ -353,11 +353,19 @@ const AppContent: React.FC = () => {
               />
               <Route
                 path="/company-settings"
-                element={<CompanySettingsPage />}
+                element={
+                  ['admin', 'management'].includes(userState.currentUser?.role ?? '')
+                    ? <CompanySettingsPage />
+                    : <Navigate to="/" replace />
+                }
               />
               <Route
                 path="/platform-admin"
-                element={<PlatformAdminPage />}
+                element={
+                  userState.currentUser?.role === 'admin' && userState.currentUser?.permissions?.includes('*')
+                    ? <PlatformAdminPage />
+                    : <Navigate to="/" replace />
+                }
               />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

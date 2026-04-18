@@ -99,6 +99,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canCreateApplications = hasPermission('create_application') || isRole('account_manager') || isRole('admin');
   const canViewConfiguration  = hasPermission('user_management') || isRole('admin') || isRole('management');
   const canDispatching        = hasPermission('dispatch_applications') || isRole('analyst_supervisor') || isRole('admin');
+  const canViewCompanySettings = isRole('admin') || hasPermission('*');
+  const canViewPlatformAdmin   = hasPermission('*') && isRole('admin'); // SUPER_ADMIN maps to admin with wildcard
 
   const outOfProcessItems = [
     { id: 'data-input'  as PageType, label: t('navigation.dataInput'), icon: DataInputIcon },
@@ -120,6 +122,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'backup'               as PageType, label: 'Sauvegarde',                  icon: BackupIcon },
     { id: 'announcements'        as PageType, label: "Notes d'information",         icon: CampaignIcon },
     { id: 'notifications-config' as PageType, label: 'Notifications',               icon: NotificationsActiveIcon },
+    ...(canViewCompanySettings ? [{ id: 'company-settings' as PageType, label: 'Paramètres Compagnie', icon: SettingsIcon }] : []),
+    ...(canViewPlatformAdmin   ? [{ id: 'platform-admin'   as PageType, label: 'Admin Plateforme',      icon: PolicyIcon   }] : []),
   ] : [];
 
 
