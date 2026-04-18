@@ -62,12 +62,14 @@ const STEP_TYPES = [
 ];
 
 const ROLES = [
-  { value: 'ACCOUNT_MANAGER',    label: 'Chargé de Compte' },
-  { value: 'CREDIT_ANALYST',     label: 'Analyste Crédit' },
-  { value: 'ANALYST_SUPERVISOR', label: 'Superviseur Analyste' },
-  { value: 'BRANCH_MANAGER',     label: 'Directeur d\'Agence' },
-  { value: 'CREDIT_COMMITTEE',   label: 'Comité de Crédit' },
-  { value: 'MANAGEMENT',         label: 'Direction' },
+  { value: 'CHARGE_AFFAIRES',         label: "Chargé d'Affaires" },
+  { value: 'ANALYSTE_RISQUES',        label: 'Analyste Risques' },
+  { value: 'RESPONSABLE_RISQUES',     label: 'Responsable Risques' },
+  { value: 'RESPONSABLE_ENGAGEMENTS', label: 'Responsable Engagements' },
+  { value: 'COMITE_CREDIT',           label: 'Comité de Crédit' },
+  { value: 'DIRECTION_GENERALE',      label: 'Direction Générale' },
+  { value: 'DIRECTION_JURIDIQUE',     label: 'Direction Juridique' },
+  { value: 'BACK_OFFICE',             label: 'Back Office' },
 ];
 
 const EMPTY_STEP: Omit<CreditPolicyStep, 'id' | 'policyId'> = {
@@ -75,7 +77,7 @@ const EMPTY_STEP: Omit<CreditPolicyStep, 'id' | 'policyId'> = {
   stepLabel: '',
   order: 1,
   stepType: 'APPROVAL',
-  assignedRole: 'CREDIT_ANALYST',
+  assignedRole: 'CHARGE_AFFAIRES',
   conditionMinAmount: null,
   conditionMaxAmount: null,
   expectedDurationHours: 24,
