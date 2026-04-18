@@ -75,6 +75,67 @@ router.patch('/companies/:id', authenticate, requireSuperAdmin, async (req: Requ
   }
 });
 
+// GET /api/platform/companies/:id/members — liste les membres d'un tenant
+router.get('/companies/:id/members', authenticate, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const memberships = await prisma.companyMembership.findMany({
+      where: { companyId: req.params.id },
+      include: { user: { select: { id: true, email: true, name: true, role: true, isActive: true, jobTitle: true, department: true } } },
+      orderBy: { user: { name: 'asc' } },
+    });
+    return res.json({ success: true, data: memberships });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// POST /api/platform/companies/:id/members — créer un utilisateur et l'ajouter au tenant
+router.post('/companies/:id/members', authenticate, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const { email, name, role, password } = req.body;
+    if (!email || !name || !role || !password) {
+      return res.status(400).json({ success: false, error: 'email, name, role et password sont requis' });
+    }
+    const company = await prisma.company.findUnique({ where: { id: req.params.id } });
+    if (!company) return res.status(404).json({ success: false, error: 'Compagnie introuvable' });
+
+    const bcrypt = require('bcrypt');
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    // Upsert user (peut déjà exister sur un autre tenant)
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: { name, isActive: true },
+      create: { email, name, passwordHash, role, isActive: true, permissions: [] },
+    });
+
+    // Ajouter au tenant
+    const membership = await prisma.companyMembership.upsert({
+      where: { userId_companyId: { userId: user.id, companyId: req.params.id } },
+      update: { role, isActive: true },
+      create: { userId: user.id, companyId: req.params.id, role, isActive: true },
+    });
+
+    return res.status(201).json({ success: true, data: { user, membership } });
+  } catch (error: any) {
+    if (error.code === 'P2002') return res.status(409).json({ success: false, error: 'Email déjà utilisé' });
+    return res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// DELETE /api/platform/companies/:id/members/:userId — retirer un utilisateur du tenant
+router.delete('/companies/:id/members/:userId', authenticate, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    await prisma.companyMembership.update({
+      where: { userId_companyId: { userId: req.params.userId, companyId: req.params.id } },
+      data: { isActive: false },
+    });
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
 // POST /api/platform/companies/:id/logo — upload logo (multipart/form-data, field: logo)
 router.post('/companies/:id/logo', authenticate, requireSuperAdmin, uploadLogo.single('logo'), async (req: Request, res: Response) => {
   try {

@@ -183,13 +183,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [companyOptions, setCompanyOptions] = useState<CompanyWithRole[]>([]);
 
   const demoUsers = [
-    { email: 'admin@bank.sn',          role: 'Administrateur',       color: 'error'     as const },
-    { email: 'direction@bank.sn',       role: 'Directeur Général',    color: 'info'      as const },
-    { email: 'moussa.sarr@bank.sn',    role: 'Directeur d\'Agence',  color: 'success'   as const },
-    { email: 'amadou.diop@bank.sn',    role: 'Chargé d\'Affaires',   color: 'primary'   as const },
-    { email: 'resp.analyste@bank.sn',  role: 'Responsable Analyste', color: 'secondary' as const },
-    { email: 'fatou.ndiaye@bank.sn',   role: 'Analyste Crédit',      color: 'secondary' as const },
-    { email: 'comite@bank.sn',         role: 'Comité de Crédit',     color: 'warning'   as const },
+    { email: 'superadmin@optimuscredit.sn', role: 'Super Admin Plateforme',   color: 'error'     as const, password: 'SuperAdmin2024!' },
+    { email: 'admin@bci.sn',               role: 'Administrateur BCI',        color: 'error'     as const, password: 'Demo2024!' },
+    { email: 'dg@bci.sn',                  role: 'Direction Générale',        color: 'info'      as const, password: 'Demo2024!' },
+    { email: 'comite@bci.sn',              role: 'Comité de Crédit',          color: 'warning'   as const, password: 'Demo2024!' },
+    { email: 'resp.risques@bci.sn',        role: 'Responsable Risques',       color: 'secondary' as const, password: 'Demo2024!' },
+    { email: 'resp.eng@bci.sn',            role: 'Responsable Engagements',   color: 'secondary' as const, password: 'Demo2024!' },
+    { email: 'analyste@bci.sn',            role: 'Analyste Risques',          color: 'primary'   as const, password: 'Demo2024!' },
+    { email: 'ca1@bci.sn',                 role: "Chargé d'Affaires",         color: 'primary'   as const, password: 'Demo2024!' },
+    { email: 'juridique@bci.sn',           role: 'Direction Juridique',       color: 'success'   as const, password: 'Demo2024!' },
+    { email: 'backoffice@bci.sn',          role: 'Back Office',               color: 'default'   as const, password: 'Demo2024!' },
   ];
 
   const features = [
@@ -243,8 +246,35 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
   const completeLogin = (accessToken: string, refreshToken: string, user: any) => {
     tokenManager.setTokens(accessToken, refreshToken);
-    const roleMapping: Record<string, string> = { ADMIN: 'admin', MANAGEMENT: 'management', BRANCH_MANAGER: 'branch_manager', ACCOUNT_MANAGER: 'account_manager', CREDIT_ANALYST: 'credit_analyst', ANALYST_SUPERVISOR: 'analyst_supervisor', CREDIT_COMMITTEE: 'credit_committee' };
-    if (dispatch) dispatch({ type: 'LOGIN_SUCCESS', payload: { id: user.id, email: user.email, name: user.name, role: roleMapping[user.role] || 'account_manager', department: user.department, jobTitle: user.jobTitle, permissions: user.permissions, lastLogin: new Date(user.lastLogin || Date.now()), isActive: true, twoFactorEnabled: user.twoFactorEnabled } });
+    // Mapping nouveaux rôles RACI → UserContext.UserRole (rôles frontend)
+    const roleMapping: Record<string, string> = {
+      // Anciens noms (compat)
+      ADMIN: 'admin', MANAGEMENT: 'management', BRANCH_MANAGER: 'branch_manager',
+      ACCOUNT_MANAGER: 'account_manager', CREDIT_ANALYST: 'credit_analyst',
+      ANALYST_SUPERVISOR: 'analyst_supervisor', CREDIT_COMMITTEE: 'credit_committee',
+      // Nouveaux noms RACI
+      SUPER_ADMIN:             'admin',
+      CHARGE_AFFAIRES:         'account_manager',
+      ANALYSTE_RISQUES:        'credit_analyst',
+      RESPONSABLE_RISQUES:     'analyst_supervisor',
+      RESPONSABLE_ENGAGEMENTS: 'branch_manager',
+      COMITE_CREDIT:           'credit_committee',
+      DIRECTION_GENERALE:      'management',
+      DIRECTION_JURIDIQUE:     'management',
+      BACK_OFFICE:             'account_manager',
+    };
+    if (dispatch) dispatch({
+      type: 'LOGIN_SUCCESS',
+      payload: {
+        id: user.id, email: user.email, name: user.name,
+        role: roleMapping[user.role] || user.role || 'account_manager',
+        department: user.department, jobTitle: user.jobTitle,
+        permissions: user.permissions,
+        lastLogin: new Date(user.lastLogin || Date.now()),
+        isActive: true,
+        twoFactorEnabled: user.twoFactorEnabled,
+      },
+    });
     onLogin();
   };
 
@@ -278,8 +308,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   };
 
   const handleDemoLogin = (demoEmail: string) => {
+    const found = demoUsers.find(u => u.email === demoEmail);
     setEmail(demoEmail);
-    setPassword('demo123');
+    setPassword(found?.password ?? 'Demo2024!');
     setShowDemo(false);
   };
 
@@ -829,7 +860,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
               <Collapse in={showDemo}>
                 <Paper elevation={0} sx={{ p: 1.5, bgcolor: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
                   <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, display: 'block', mb: 1, px: 1 }}>
-                    Mot de passe : <code style={{ background: '#e2e8f0', padding: '1px 6px', borderRadius: 4 }}>demo123</code> pour tous les comptes
+                    Cliquer sur un compte pour le pré-remplir automatiquement
                   </Typography>
                   <List dense disablePadding>
                     {demoUsers.map((user) => (
@@ -853,7 +884,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                           primaryTypographyProps={{ fontSize: '12.5px', color: '#374151', fontWeight: 500 }}
                           secondaryTypographyProps={{ fontSize: '11px', color: '#94a3b8' }}
                         />
-                        <Chip label={user.role} size="small" color={user.color} variant="outlined" sx={{ fontSize: '10px', height: 20 }} />
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.3 }}>
+                          <Chip label={user.role} size="small" color={user.color} variant="outlined" sx={{ fontSize: '10px', height: 20 }} />
+                          <Typography sx={{ fontSize: '10px', color: '#94a3b8', fontFamily: 'monospace' }}>{user.password}</Typography>
+                        </Box>
                       </ListItem>
                     ))}
                   </List>

@@ -1193,6 +1193,11 @@ export class ApiService {
     return response.data;
   }
 
+  static async delete(path: string): Promise<any> {
+    const response = await api.delete(path);
+    return response.data;
+  }
+
   // Health Check
   static async healthCheck(): Promise<ApiResponse<{ status: string; version: string }>> {
     try {
