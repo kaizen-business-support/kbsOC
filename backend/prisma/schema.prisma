@@ -27,6 +27,7 @@ model Company {
   announcements  Announcement[]
   departments    Department[]
   branches       Branch[]
+  chineseWallRules TenantChineseWallRule[]
 
   @@map("companies")
 }
@@ -419,10 +420,42 @@ model CreditPolicyStep {
   // Types de crédit auxquels s'applique cette étape (tableau vide = tous)
   creditTypeIds String[]       @default([]) @map("credit_type_ids")
 
+  // Phase d'affichage dans la matrice RACI (ex: "Montage dossier", "Analyse risques")
+  phase         String?          @map("phase")
+
   workflowSteps WorkflowStep[]
+  stepRoles     CreditPolicyStepRole[]
 
   @@unique([policyId, order])
   @@map("credit_policy_steps")
+}
+
+model CreditPolicyStepRole {
+  id           String           @id @default(cuid())
+  policyStepId String           @map("policy_step_id")
+  policyStep   CreditPolicyStep @relation(fields: [policyStepId], references: [id], onDelete: Cascade)
+  role         UserRole
+  raciCode     RaciCode         @map("raci_code")
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  @@unique([policyStepId, role, raciCode])
+  @@index([policyStepId])
+  @@map("credit_policy_step_roles")
+}
+
+model TenantChineseWallRule {
+  id            String   @id @default(cuid())
+  companyId     String   @map("company_id")
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  blockedRole   UserRole @map("blocked_role")
+  forbiddenStep String   @map("forbidden_step")
+  reason        String?
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([companyId, blockedRole, forbiddenStep])
+  @@index([companyId])
+  @@map("tenant_chinese_wall_rules")
 }
 
 model Department {
@@ -608,6 +641,15 @@ enum PolicyStepType {
   COMMITTEE  @map("committee")  // Comité : décision collégiale (plusieurs valideurs)
 
   @@map("policy_step_type")
+}
+
+enum RaciCode {
+  R @map("r")   // Co-Responsible (exécutant secondaire — étapes à double exécutant)
+  A @map("a")   // Accountable — valide ou signe
+  C @map("c")   // Consulted — consulté avant décision
+  I @map("i")   // Informed — notifié après décision
+
+  @@map("raci_code")
 }
 
 model BackupNotifyEmail {
