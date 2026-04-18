@@ -73,6 +73,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
     'credit-policy':    'Politique de Crédit',
     'company-settings': 'Paramètres Compagnie',
     'platform-admin':   'Administration Plateforme',
+    'raci-matrix':      'Matrice RACI',
   };
 
   const handleUserMenuClick = (event: React.MouseEvent<HTMLElement>) => {

@@ -368,6 +368,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       'credit-policy': '/credit-policy',
       'company-settings': '/company-settings',
       'platform-admin': '/platform-admin',
+      'raci-matrix': '/raci-matrix',
     };
     
     const route = routeMap[page];

@@ -86,7 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   hasAnalysisData,
 }) => {
   const { t } = useTranslation();
-  const { isRole, hasPermission } = useUser();
+  const { isRole, hasPermission, state: userState } = useUser();
   const { activeCompany } = useCompany();
 
   const [creditExpanded, setCreditExpanded]     = useState(true);
@@ -97,18 +97,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onPageChange(page);
   };
 
-  // ── Permission gates (basées sur les permissions réelles du compte) ──────────
-  const isAdmin              = isRole('admin') || hasPermission('*');
+  // ── Permission gates ──────────────────────────────────────────────────────────
+  const perms = userState.currentUser?.permissions ?? [];
+  const isAdmin              = isRole('admin') || perms.includes('*');
   const canCreateApplication = hasPermission('create_application');
   const canDispatching       = hasPermission('dispatch_applications');
   const canViewAnalytics     = hasPermission('analytics');
   const canFinancialAnalysis = hasPermission('financial_analysis') || hasPermission('analyze_credit');
   const canViewReports       = hasPermission('reports') || isAdmin;
   const canViewConfiguration = hasPermission('user_management') || isAdmin;
-  const canViewPlatformAdmin = isAdmin && hasPermission('*');
-  const canViewCompanySettings = canViewConfiguration;
-  const canViewCreditPolicy  = hasPermission('policy_configuration') || isAdmin;
-  const canViewSimulator     = canCreateApplication || canFinancialAnalysis || isAdmin;
+  // manage_platform est vérifié LITTÉRALEMENT (pas via wildcard) pour distinguer SUPER_ADMIN de ADMIN
+  const canViewPlatformAdmin   = perms.includes('manage_platform');
+  const canViewCompanySettings = canViewConfiguration && !canViewPlatformAdmin; // ADMIN tenant seulement
+  const canViewCreditPolicy    = hasPermission('policy_configuration') || isAdmin;
+  const canViewSimulator       = canCreateApplication || canFinancialAnalysis || isAdmin;
 
   // ── Sections ─────────────────────────────────────────────────────────────────
 
@@ -506,6 +508,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Support */}
         <StaticLabel label="Support" />
         <List disablePadding sx={{ px: 0.5 }}>
+          <NavItem id="raci-matrix"   label="Matrice RACI"                   icon={StepsIcon}          />
           <NavItem id="documentation" label={t('navigation.documentation')} icon={DocumentationIcon} />
           <NavItem id="settings"      label={t('navigation.settings')}       icon={SettingsIcon}       />
         </List>

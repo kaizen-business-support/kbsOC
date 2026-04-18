@@ -44,6 +44,7 @@ const DispatchingPage        = lazy(() => import('./pages/DispatchingPage').then
 const CreditManagementPage   = lazy(() => import('./pages/CreditManagementPage').then(m => ({ default: m.CreditManagementPage })));
 const CompanySettingsPage    = lazy(() => import('./pages/CompanySettingsPage'));
 const PlatformAdminPage      = lazy(() => import('./pages/PlatformAdminPage'));
+const RACIMatrixPage         = lazy(() => import('./pages/RACIMatrixPage'));
 
 // ── Thin branded progress bar while chunk loads ────────────────────────────
 const PageLoader = () => (
@@ -354,21 +355,21 @@ const AppContent: React.FC = () => {
               <Route
                 path="/company-settings"
                 element={(() => {
-                  const r: string = userState.currentUser?.role ?? '';
                   const p = userState.currentUser?.permissions ?? [];
-                  const allowed = ['admin', 'management', 'ADMIN', 'SUPER_ADMIN'].includes(r) || p.includes('*');
+                  // ADMIN tenant : a user_management mais PAS manage_platform
+                  const allowed = p.includes('user_management') || (p.includes('*') && !p.includes('manage_platform'));
                   return allowed ? <CompanySettingsPage /> : <Navigate to="/" replace />;
                 })()}
               />
               <Route
                 path="/platform-admin"
                 element={(() => {
-                  const r: string = userState.currentUser?.role ?? '';
-                  const p = userState.currentUser?.permissions ?? [];
-                  const allowed = p.includes('*') || r === 'SUPER_ADMIN';
+                  // SUPER_ADMIN uniquement : vérifié LITTÉRALEMENT
+                  const allowed = (userState.currentUser?.permissions ?? []).includes('manage_platform');
                   return allowed ? <PlatformAdminPage /> : <Navigate to="/" replace />;
                 })()}
               />
+              <Route path="/raci-matrix" element={<RACIMatrixPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             </PageTransition>
