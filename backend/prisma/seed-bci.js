@@ -480,7 +480,35 @@ async function main() {
     }
     console.log(`  ✓ RACI A/C/I : ${raciAssignments.length} entrées traitées`);
   } else {
-    console.log('  ⚠ Aucune politique active BCI — RACI A/C/I non peuplé');
+    // Créer la politique BCI par défaut avec toutes les étapes
+    console.log('  ↳ Création de la politique BCI par défaut...');
+    const defaultSteps = [
+      { stepName: 'application_created',       stepLabel: 'Création du dossier',              order: 0,  stepType: 'DISPATCH',  assignedRole: 'CHARGE_AFFAIRES',         phase: 'Montage dossier',  expectedDurationHours: 24,  maxDurationHours: 72  },
+      { stepName: 'charge_affaires_dispatch',  stepLabel: 'Traitement par le CA',              order: 1,  stepType: 'DISPATCH',  assignedRole: 'CHARGE_AFFAIRES',         phase: 'Montage dossier',  expectedDurationHours: 48,  maxDurationHours: 120 },
+      { stepName: 'verification_completude',   stepLabel: 'Vérification de la complétude',    order: 2,  stepType: 'ANALYSIS',  assignedRole: 'CHARGE_AFFAIRES',         phase: 'Montage dossier',  expectedDurationHours: 24,  maxDurationHours: 48  },
+      { stepName: 'contre_analyse',            stepLabel: 'Contre-analyse',                   order: 3,  stepType: 'ANALYSIS',  assignedRole: 'ANALYSTE_RISQUES',        phase: 'Analyse risques',  expectedDurationHours: 48,  maxDurationHours: 120 },
+      { stepName: 'calcul_ratios_prudentiels', stepLabel: 'Calcul des ratios prudentiels',    order: 4,  stepType: 'ANALYSIS',  assignedRole: 'ANALYSTE_RISQUES',        phase: 'Analyse risques',  expectedDurationHours: 24,  maxDurationHours: 72  },
+      { stepName: 'notation_interne',          stepLabel: 'Notation interne',                 order: 5,  stepType: 'ANALYSIS',  assignedRole: 'ANALYSTE_RISQUES',        phase: 'Analyse risques',  expectedDurationHours: 24,  maxDurationHours: 72  },
+      { stepName: 'avis_risques',              stepLabel: 'Avis risques',                     order: 6,  stepType: 'APPROVAL',  assignedRole: 'RESPONSABLE_RISQUES',     phase: 'Analyse risques',  expectedDurationHours: 24,  maxDurationHours: 72  },
+      { stepName: 'validation_comite',         stepLabel: 'Validation comité de crédit',      order: 7,  stepType: 'COMMITTEE', assignedRole: 'COMITE_CREDIT',           phase: 'Approbation',      expectedDurationHours: 48,  maxDurationHours: 120 },
+      { stepName: 'decision_direction',        stepLabel: 'Décision direction générale',      order: 8,  stepType: 'APPROVAL',  assignedRole: 'DIRECTION_GENERALE',      phase: 'Approbation',      expectedDurationHours: 48,  maxDurationHours: 120 },
+      { stepName: 'mise_en_place_sib',         stepLabel: 'Mise en place SIB',                order: 9,  stepType: 'DISPATCH',  assignedRole: 'RESPONSABLE_ENGAGEMENTS', phase: 'Mise en place',    expectedDurationHours: 48,  maxDurationHours: 120 },
+      { stepName: 'formalisation_garanties',   stepLabel: 'Formalisation des garanties',      order: 10, stepType: 'DISPATCH',  assignedRole: 'DIRECTION_JURIDIQUE',     phase: 'Mise en place',    expectedDurationHours: 48,  maxDurationHours: 120 },
+      { stepName: 'saisie_garanties',          stepLabel: 'Saisie des garanties',             order: 11, stepType: 'DISPATCH',  assignedRole: 'DIRECTION_JURIDIQUE',     phase: 'Mise en place',    expectedDurationHours: 24,  maxDurationHours: 72  },
+      { stepName: 'tirage_fonds',              stepLabel: 'Tirage des fonds',                 order: 12, stepType: 'DISPATCH',  assignedRole: 'BACK_OFFICE',             phase: 'Mise en place',    expectedDurationHours: 24,  maxDurationHours: 48  },
+      { stepName: 'back_office_setup',         stepLabel: 'Mise en place back-office',        order: 13, stepType: 'DISPATCH',  assignedRole: 'BACK_OFFICE',             phase: 'Mise en place',    expectedDurationHours: 24,  maxDurationHours: 48  },
+    ];
+    const created = await prisma.creditPolicy.create({
+      data: {
+        name:      'Politique Générale BCI',
+        code:      'POL-BCI-2024',
+        isActive:  true,
+        companyId: bci.id,
+        steps: { create: defaultSteps.map(s => ({ ...s, isRequired: true, creditTypeIds: [] })) },
+      },
+    });
+    console.log(`  ✓ Politique BCI créée : ${created.name} (${defaultSteps.length} étapes)`);
+    console.log('  ℹ Relancez le seed pour peupler les RACI A/C/I');
   }
 
   console.log('✓ Mur chinois BCI + RACI A/C/I');

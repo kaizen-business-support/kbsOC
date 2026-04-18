@@ -171,6 +171,13 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
     setPolicyDialogOpen(true);
   };
 
+  const openCreatePolicy = () => {
+    setEditingPolicy(null);
+    setPolicyForm({ name: '', code: '', description: '', validFrom: '', validTo: '' });
+    setPolicyDialogError(null);
+    setPolicyDialogOpen(true);
+  };
+
   const savePolicy = async () => {
     if (!policyForm.name || !policyForm.code) return;
     const payload = {
@@ -180,15 +187,26 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
       validFrom: policyForm.validFrom || undefined,
       validTo: policyForm.validTo || null,
     };
-    if (!editingPolicy) return;
-    const res = await creditPolicyApi.updatePolicy(editingPolicy.id, payload);
-    if (res.success) {
-      showSnack('Politique mise à jour');
-      setPolicyDialogOpen(false);
-      setPolicyDialogError(null);
-      loadPolicies();
+    if (editingPolicy) {
+      const res = await creditPolicyApi.updatePolicy(editingPolicy.id, payload);
+      if (res.success) {
+        showSnack('Politique mise à jour');
+        setPolicyDialogOpen(false);
+        setPolicyDialogError(null);
+        loadPolicies();
+      } else {
+        setPolicyDialogError(res.error || 'Erreur lors de la sauvegarde. Vérifiez que le serveur est accessible.');
+      }
     } else {
-      setPolicyDialogError(res.error || 'Erreur lors de la sauvegarde. Vérifiez que le serveur est accessible.');
+      const res = await creditPolicyApi.createPolicy(payload);
+      if (res.success) {
+        showSnack('Politique créée');
+        setPolicyDialogOpen(false);
+        setPolicyDialogError(null);
+        loadPolicies();
+      } else {
+        setPolicyDialogError(res.error || 'Erreur lors de la création. Vérifiez que le code est unique.');
+      }
     }
   };
 
@@ -286,6 +304,9 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
                 </IconButton>
               </Tooltip>
             )}
+            <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreatePolicy}>
+              Nouvelle politique
+            </Button>
             <Chip label="Admin" color="primary" size="small" />
           </Box>
 
@@ -325,6 +346,19 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
             </Tooltip>
           )}
         </Box>
+      )}
+
+      {/* ── État vide ─────────────────────────────────────────────────────────── */}
+      {!loading && !selectedPolicy && (
+        <Alert severity="info" sx={{ mb: 3 }}
+          action={
+            <Button color="inherit" size="small" startIcon={<AddIcon />} onClick={openCreatePolicy}>
+              Créer
+            </Button>
+          }
+        >
+          Aucune politique de crédit active. Créez-en une pour configurer le circuit de traitement.
+        </Alert>
       )}
 
       {/* ── Section Étapes ────────────────────────────────────────────────────── */}
@@ -673,7 +707,7 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
 
       {/* ── Dialog : Politique ──────────────────────────────────────────────── */}
       <Dialog open={policyDialogOpen} onClose={() => setPolicyDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Modifier la politique de crédit</DialogTitle>
+        <DialogTitle>{editingPolicy ? 'Modifier la politique de crédit' : 'Nouvelle politique de crédit'}</DialogTitle>
         <DialogContent dividers>
           <Box display="flex" flexDirection="column" gap={2} pt={1}>
             <TextField
@@ -725,7 +759,7 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
             onClick={savePolicy}
             disabled={!policyForm.name || !policyForm.code}
           >
-            Mettre à jour
+            {editingPolicy ? 'Mettre à jour' : 'Créer'}
           </Button>
         </DialogActions>
       </Dialog>
