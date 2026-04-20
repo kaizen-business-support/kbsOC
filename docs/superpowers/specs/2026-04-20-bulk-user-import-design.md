@@ -31,8 +31,37 @@ Props :
 ```typescript
 interface BulkUserImportDialogProps {
   open: boolean;
+  /**
+   * Appelé lorsque l'utilisateur ferme le dialog AVANT d'atteindre l'étape 5
+   * (ex : annuler à l'étape 1, 2 ou 3, ou fermer la dialog avant import).
+   * N'est PAS appelé si l'utilisateur quitte depuis l'étape 5.
+   */
   onClose: () => void;
+  /**
+   * Appelé lorsque l'utilisateur quitte l'étape 5 (Rapport), que l'import
+   * soit terminé normalement ou annulé en cours de route.
+   * `created` = nombre d'utilisateurs créés avec succès avant la fin/annulation.
+   * `errors` = liste des lignes échouées (validation ou API).
+   */
   onComplete: (created: number, errors: BulkImportError[]) => void;
+  /**
+   * Uniquement requis dans le contexte SUPER_ADMIN (PlatformAdminPage).
+   * En contexte ADMIN tenant, le companyId est injecté automatiquement
+   * via le JWT côté backend (middleware requireCompany).
+   * En contexte SUPER_ADMIN, le companyId doit être passé explicitement
+   * via cette prop (ex : l'ID de la company sélectionnée dans PlatformAdminPage).
+   */
+  companyId?: string;
+}
+```
+
+### Type BulkImportError
+
+```typescript
+interface BulkImportError {
+  row: number;       // numéro de ligne dans le fichier (1-based, sans compter l'en-tête)
+  email: string;     // email de la ligne concernée (ou chaîne vide si absent)
+  message: string;   // description de l'erreur (validation ou API)
 }
 ```
 
@@ -85,7 +114,26 @@ Le fichier `.xlsx` est généré dynamiquement côté frontend via `xlsx` :
 
 ## Validation frontend (étape Aperçu)
 
-Règles appliquées sur chaque ligne avant import :
+### Validation du format du fichier (étape Upload)
+
+Avant de passer à l'aperçu, les vérifications suivantes bloquent la progression si elles échouent :
+
+| Règle | Résultat si violation |
+|-------|-----------------------|
+| Extension du fichier différente de `.xlsx` | Erreur : "Format invalide — seuls les fichiers .xlsx sont acceptés" |
+| En-têtes de colonnes ne correspondent pas exactement aux colonnes attendues (A=`Nom complet`, B=`Email`, C=`Rôle`, D=`Département`, E=`Agence`, F=`Poste`) | Erreur : "Structure du fichier invalide — utilisez le modèle fourni" |
+| Fichier vide (aucune ligne de données après l'en-tête) | Erreur : "Le fichier ne contient aucune donnée" |
+
+Ces erreurs sont affichées dans l'étape Upload. L'utilisateur doit corriger le fichier ou télécharger à nouveau le modèle.
+
+### Limite de lignes (étape Aperçu)
+
+- Si le fichier contient **plus de 500 lignes de données**, un avertissement est affiché en haut de l'aperçu :  
+  > ⚠️ "Votre fichier contient N lignes. La limite maximale est de 500 lignes. Le bouton d'import est désactivé. Divisez votre fichier en plusieurs lots."
+- Le bouton **"Importer les lignes valides"** est **désactivé** tant que le fichier dépasse 500 lignes.
+- L'utilisateur doit fractionner son fichier avant de pouvoir procéder.
+
+### Règles de validation par ligne
 
 | Règle | Résultat si violation |
 |-------|-----------------------|
@@ -96,8 +144,13 @@ Règles appliquées sur chaque ligne avant import :
 | Email dupliqué dans le fichier | Erreur : "Email en doublon (ligne X)" |
 
 Les lignes invalides sont affichées en rouge dans l'aperçu. L'admin peut :
-- **Importer uniquement les lignes valides** (bouton principal)
+- **Importer uniquement les lignes valides** (bouton principal — désactivé si toutes les lignes sont invalides)
 - **Annuler** et corriger le fichier
+
+### Cas limite : toutes les lignes sont invalides
+
+Si toutes les lignes échouent à la validation, le bouton "Importer les lignes valides" est **désactivé** et un message s'affiche :  
+> ✗ "Aucune ligne valide à importer. Corrigez le fichier et rechargez-le."
 
 ---
 
@@ -105,16 +158,17 @@ Les lignes invalides sont affichées en rouge dans l'aperçu. L'admin peut :
 
 ```
 Pour chaque ligne valide (index i de N) :
-  1. Appel POST /api/users avec { name, email, role, department, branch, jobTitle }
+  1. Appel POST /api/users avec { name, email, role, department, branch, jobTitle, companyId? }
+     — companyId est inclus uniquement si la prop companyId est fournie (contexte SUPER_ADMIN)
   2. Si succès → ligne marquée ✓, compteur ++
   3. Si erreur API → ligne marquée ✗, erreur enregistrée (continue)
-  4. Progress bar = i / N * 100
-  5. Délai minimal 50ms entre appels (éviter flooding)
+  4. Progress bar = (i + 1) / N * 100   // i est 0-based ; +1 pour atteindre 100% à la dernière ligne
+  5. Délai minimal 150ms entre appels (throttling pour protéger le serveur)
 ```
 
 **Gestion des erreurs mid-import :** Option B choisie — continuer malgré les erreurs, lister à la fin.
 
-**Annulation :** Un bouton "Annuler" permet d'arrêter après la ligne en cours. Les utilisateurs déjà créés le restent.
+**Annulation :** Un bouton "Annuler" permet d'arrêter après la ligne en cours. Les utilisateurs déjà créés le restent. Après annulation, l'import s'arrête et le stepper avance automatiquement à l'étape 5 (Rapport), affichant le résumé des créations effectuées avant l'annulation.
 
 ---
 
@@ -132,9 +186,11 @@ Erreurs :
   Ligne 28 — pierre.durand@bci.com   — Erreur serveur
 ```
 
+En cas d'annulation, un bandeau indique : "Import annulé — N utilisateurs créés avant l'annulation."
+
 ### Téléchargement du rapport d'erreurs
 
-Bouton "Télécharger les erreurs (.xlsx)" — génère un Excel avec les lignes échouées, prêtes à être corrigées et ré-importées.
+Bouton "Télécharger les erreurs (.xlsx)" — génère un Excel avec les lignes échouées, prêtes à être corrigées et ré-importées. Ce bouton n'est affiché que s'il y a au moins une erreur.
 
 ---
 
@@ -143,12 +199,13 @@ Bouton "Télécharger les erreurs (.xlsx)" — génère un Excel avec les lignes
 ### 1. UserManagementPage (ADMIN tenant)
 
 - Bouton `Import Excel` ajouté à côté du bouton `Ajouter un utilisateur`
-- Le `companyId` est transmis implicitement via le JWT (middleware `requireCompany`)
+- Le `companyId` est transmis implicitement via le JWT (middleware `requireCompany`) — la prop `companyId` n'est **pas** passée au dialog
 
 ### 2. PlatformAdminPage (SUPER_ADMIN)
 
 - Bouton `Import Excel` ajouté dans le panneau de chaque company
-- Même composant `BulkUserImportDialog`, même comportement
+- Même composant `BulkUserImportDialog`, avec la prop `companyId={company.id}` passée explicitement
+- Sans cette prop, le backend rejette la requête (pas de companyId dans le JWT SUPER_ADMIN)
 
 ---
 
@@ -162,10 +219,12 @@ Bouton "Télécharger les erreurs (.xlsx)" — génère un Excel avec les lignes
 
 ## Contraintes et limites
 
-- **Limite recommandée :** 500 lignes par fichier (au-delà, risque de timeout navigateur)
-- **Ligne 1 obligatoirement l'en-tête** — la première ligne du fichier est ignorée (en-têtes)
+- **Limite stricte :** 500 lignes par fichier — au-delà, le bouton d'import est désactivé avec un message explicatif
+- **Ligne 1 obligatoirement l'en-tête** — la première ligne du fichier est ignorée (en-têtes) ; toute divergence bloque l'import
+- **Formats acceptés :** `.xlsx` uniquement — les formats `.xls`, `.csv` et autres sont rejetés à l'upload
 - **Encodage :** UTF-8 attendu pour les caractères accentués
 - **Pas de rollback :** Les créations réussies avant une annulation ne sont pas annulées
+- **Délai inter-appels :** 150ms minimum entre chaque requête POST pour éviter de saturer le serveur
 
 ---
 
@@ -175,5 +234,5 @@ Bouton "Télécharger les erreurs (.xlsx)" — génère un Excel avec les lignes
 |---------|--------|
 | `src/components/BulkUserImportDialog.tsx` | Créer |
 | `src/pages/UserManagementPage.tsx` | Modifier — ajouter bouton + intégrer dialog |
-| `src/pages/PlatformAdminPage.tsx` | Modifier — ajouter bouton + intégrer dialog |
+| `src/pages/PlatformAdminPage.tsx` | Modifier — ajouter bouton + intégrer dialog avec `companyId` |
 | `package.json` | Modifier — ajouter dépendance `xlsx` si absente |
