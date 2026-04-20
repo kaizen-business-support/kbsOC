@@ -57,23 +57,23 @@ interface SidebarProps {
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
 
-// Brand palette (mirrors theme.ts brand tokens)
+// Brand palette — Clean Light Financial Dashboard
 const brand = {
-  deep:     '#3A56A8',
-  sky:      '#28A8E2',
-  gradient: 'linear-gradient(135deg, #3A56A8 0%, #2878C8 52%, #28A8E2 100%)',
+  deep:     '#0F766E',
+  sky:      '#14B8A6',
+  gradient: 'linear-gradient(135deg, #0F766E 0%, #14B8A6 100%)',
 };
 
 const SB = {
-  bg:           'rgba(255,255,255,0.84)',
-  border:       'rgba(255,255,255,0.55)',
-  shadow:       '1px 0 24px rgba(26,36,64,0.07)',
-  sectionLabel: '#8A99B8',
-  itemText:     '#3A4D72',
-  itemHover:    'rgba(58,86,168,0.05)',
-  activeText:   brand.deep,
-  activeBg:     'linear-gradient(90deg, rgba(58,86,168,0.10) 0%, rgba(40,168,226,0.05) 100%)',
-  activeBorder: brand.deep,
+  bg:           '#FFFFFF',
+  border:       '#E2E8F0',
+  shadow:       '1px 0 20px rgba(15,23,42,0.06)',
+  sectionLabel: '#94A3B8',
+  itemText:     '#334155',
+  itemHover:    'rgba(15,118,110,0.06)',
+  activeText:   '#0F766E',
+  activeBg:     'linear-gradient(90deg, rgba(15,118,110,0.10) 0%, rgba(20,184,166,0.05) 100%)',
+  activeBorder: '#0F766E',
 };
 
 // ─── Component ──────────────────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canViewConfiguration = hasPermission('user_management') || isAdmin;
   // manage_platform est vérifié LITTÉRALEMENT (pas via wildcard) pour distinguer SUPER_ADMIN de ADMIN
   const canViewPlatformAdmin   = perms.includes('manage_platform');
-  const canViewCompanySettings = canViewConfiguration && !canViewPlatformAdmin; // ADMIN tenant seulement
+  const canViewCompanySettings = false; // couvert par platform-admin
   const canViewCreditPolicy    = hasPermission('policy_configuration') || isAdmin;
   const canViewSimulator       = canCreateApplication || canFinancialAnalysis || isAdmin;
 
@@ -166,7 +166,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       WebkitTextFillColor: 'transparent',
       backgroundClip:      'text',
     },
-    '& .MuiListItemText-primary': { fontWeight: 600, color: SB.activeText, fontFamily: '"Inter", sans-serif' },
+    '& .MuiListItemText-primary': { fontWeight: 600, color: SB.activeText, fontFamily: '"IBM Plex Sans", sans-serif' },
     '&:hover':  { background: SB.activeBg },
     '&:active': { transform: 'scale(0.98)', transition: 'transform 0.08s ease' },
   };
@@ -179,8 +179,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     pl:          '14px',
     color:       SB.itemText,
     transition:  'all 0.15s cubic-bezier(0.22,1,0.36,1)',
-    '& .MuiListItemIcon-root': { color: '#8A99B8', transition: 'color 0.15s ease' },
-    '& .MuiListItemText-primary': { fontFamily: '"Inter", sans-serif' },
+    '& .MuiListItemIcon-root': { color: '#94A3B8', transition: 'color 0.15s ease' },
+    '& .MuiListItemText-primary': { fontFamily: '"IBM Plex Sans", sans-serif' },
     '&:hover': {
       bgcolor: SB.itemHover,
       '& .MuiListItemIcon-root': { color: brand.deep },
@@ -214,7 +214,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }}
             >
               <ListItemIcon sx={{ minWidth: 0, justifyContent: 'center' }}>
-                <Icon sx={{ fontSize: 18, color: isActive ? SB.activeText : '#8A99B8' }} />
+                <Icon sx={{ fontSize: 18, color: isActive ? SB.activeText : '#94A3B8' }} />
               </ListItemIcon>
             </ListItemButton>
           </ListItem>
@@ -235,7 +235,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             ...inactiveItemSx,
             pl: '28px',
             py: 0.55,
-            '& .MuiListItemText-primary': { fontSize: '12px', fontFamily: '"Inter", sans-serif' },
+            '& .MuiListItemText-primary': { fontSize: '12px', fontFamily: '"IBM Plex Sans", sans-serif' },
           }}
         >
           <ListItemIcon sx={{ minWidth: 26 }}>
@@ -243,7 +243,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </ListItemIcon>
           <ListItemText
             primary={label}
-            primaryTypographyProps={{ fontSize: '12px', noWrap: true, fontFamily: '"Inter", sans-serif' }}
+            primaryTypographyProps={{ fontSize: '12px', noWrap: true, fontFamily: '"IBM Plex Sans", sans-serif' }}
           />
         </ListItemButton>
       </ListItem>
@@ -283,10 +283,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <ListItemIcon sx={{ minWidth: 0, justifyContent: 'center' }}>
                 {badge ? (
                   <Badge color="success" variant="dot">
-                    <Icon sx={{ fontSize: 22, color: isActive ? SB.activeText : '#6b7280' }} />
+                    <Icon sx={{ fontSize: 22, color: isActive ? SB.activeText : '#94A3B8' }} />
                   </Badge>
                 ) : (
-                  <Icon sx={{ fontSize: 22, color: isActive ? SB.activeText : '#6b7280' }} />
+                  <Icon sx={{ fontSize: 22, color: isActive ? SB.activeText : '#94A3B8' }} />
                 )}
               </ListItemIcon>
             </ListItemButton>
@@ -314,7 +314,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </ListItemIcon>
           <ListItemText
             primary={label}
-            primaryTypographyProps={{ fontSize: '13px', noWrap: true, fontFamily: '"Inter", sans-serif' }}
+            primaryTypographyProps={{ fontSize: '13px', noWrap: true, fontFamily: '"IBM Plex Sans", sans-serif' }}
           />
         </ListItemButton>
       </ListItem>
@@ -330,7 +330,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }> = ({ label, expanded, onToggle }) => {
     if (!open) {
       // Mini: just a thin divider between groups
-      return <Divider sx={{ my: 0.75, mx: 1.5, borderColor: '#f1f5f9' }} />;
+      return <Divider sx={{ my: 0.75, mx: 1.5, borderColor: '#F1F5F9' }} />;
     }
     return (
       <ListItemButton
@@ -341,7 +341,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <Typography sx={{
           textTransform: 'uppercase', letterSpacing: '0.7px',
           color: SB.sectionLabel, fontSize: '10.5px', fontWeight: 600, flex: 1,
-          userSelect: 'none', fontFamily: '"Inter", sans-serif',
+          userSelect: 'none', fontFamily: '"IBM Plex Sans", sans-serif',
         }}>
           {label}
         </Typography>
@@ -354,13 +354,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const StaticLabel: React.FC<{ label: string }> = ({ label }) => {
-    if (!open) return <Divider sx={{ my: 0.75, mx: 1.5, borderColor: '#E8EBED' }} />;
+    if (!open) return <Divider sx={{ my: 0.75, mx: 1.5, borderColor: '#F1F5F9' }} />;
     return (
       <Box sx={{ px: 2, mt: 1.75, mb: 0.25 }}>
         <Typography sx={{
           textTransform: 'uppercase', letterSpacing: '0.7px',
           color: SB.sectionLabel, fontSize: '10.5px', fontWeight: 600,
-          userSelect: 'none', fontFamily: '"Inter", sans-serif',
+          userSelect: 'none', fontFamily: '"IBM Plex Sans", sans-serif',
         }}>
           {label}
         </Typography>
@@ -413,13 +413,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {open && (
               <Box sx={{ overflow: 'hidden' }}>
                 <Typography sx={{
-                  fontSize: '14px', fontWeight: 700, lineHeight: 1.2, whiteSpace: 'nowrap', fontFamily: '"Inter", sans-serif',
+                  fontSize: '14px', fontWeight: 700, lineHeight: 1.2, whiteSpace: 'nowrap', fontFamily: '"IBM Plex Sans", sans-serif',
                   background: brand.gradient, WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent', backgroundClip: 'text',
                 }}>
                   OptimusCredit
                 </Typography>
-                <Typography sx={{ fontSize: '10.5px', color: SB.sectionLabel, lineHeight: 1.2, whiteSpace: 'nowrap', fontFamily: '"Inter", sans-serif' }}>
+                <Typography sx={{ fontSize: '10.5px', color: SB.sectionLabel, lineHeight: 1.2, whiteSpace: 'nowrap', fontFamily: '"IBM Plex Sans", sans-serif' }}>
                   Gestion de Crédit
                 </Typography>
               </Box>
@@ -527,7 +527,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }}>
         <img src={kaizenLogo} alt="Kaizen" style={{ height: 18, opacity: 0.65, flexShrink: 0 }} />
         {open && (
-          <Typography sx={{ fontSize: '10.5px', color: SB.sectionLabel, whiteSpace: 'nowrap', fontFamily: '"Inter", sans-serif' }}>
+          <Typography sx={{ fontSize: '10.5px', color: SB.sectionLabel, whiteSpace: 'nowrap', fontFamily: '"IBM Plex Sans", sans-serif' }}>
             v3.0.0 · © 2025 Kaizen
           </Typography>
         )}

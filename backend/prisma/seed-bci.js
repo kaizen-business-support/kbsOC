@@ -513,12 +513,116 @@ async function main() {
 
   console.log('✓ Mur chinois BCI + RACI A/C/I');
 
-  // ── 7. Résumé ──────────────────────────────────────────────────────────────
+  // ── 7. Infrastructure de notifications ────────────────────────────────────
+  console.log('\n── Notifications ──');
+
+  // 7a. Canal EMAIL (inactif par défaut — les notifications in-app fonctionnent sans SMTP configuré)
+  let emailChannel = await prisma.notificationChannel.findUnique({ where: { type: 'EMAIL' } });
+  if (!emailChannel) {
+    emailChannel = await prisma.notificationChannel.create({
+      data: {
+        type: 'EMAIL',
+        name: 'Email (à configurer)',
+        isActive: false,
+        config: { host: 'smtp.example.com', port: 587, secure: false, user: '', pass: '', fromName: 'OptimusCredit', fromEmail: 'noreply@optimuscredit.sn' },
+      },
+    });
+    console.log('  Créé : canal EMAIL (inactif — configurez le SMTP dans les paramètres)');
+  } else {
+    console.log('  Existant : canal EMAIL');
+  }
+
+  // 7b. Templates de notification (in-app via canal EMAIL)
+  const notifTemplates = [
+    {
+      name: 'Nouveau dossier soumis',
+      event: 'APPLICATION_SUBMITTED',
+      subject: 'Nouveau dossier — {{clientName}} ({{applicationNumber}})',
+      body: 'Un nouveau dossier de crédit a été soumis pour {{clientName}} — {{applicationNumber}} — Montant : {{amount}} {{currency}}. Soumis par {{createdByName}}.',
+    },
+    {
+      name: 'Étape assignée',
+      event: 'STEP_ASSIGNED',
+      subject: 'Action requise — Dossier {{clientName}} ({{applicationNumber}})',
+      body: 'L\'étape "{{stepName}}" vous a été assignée pour le dossier {{clientName}} ({{applicationNumber}}) — Montant : {{amount}} {{currency}}.',
+    },
+    {
+      name: 'Étape approuvée',
+      event: 'STEP_APPROVED',
+      subject: 'Étape validée — {{clientName}} ({{applicationNumber}})',
+      body: 'L\'étape "{{stepName}}" du dossier {{clientName}} ({{applicationNumber}}) a été validée.',
+    },
+    {
+      name: 'Étape rejetée',
+      event: 'STEP_REJECTED',
+      subject: 'Étape rejetée — {{clientName}} ({{applicationNumber}})',
+      body: 'L\'étape "{{stepName}}" du dossier {{clientName}} ({{applicationNumber}}) a été rejetée. Commentaires : {{comments}}',
+    },
+    {
+      name: 'Dossier approuvé',
+      event: 'APPLICATION_APPROVED',
+      subject: 'Dossier approuvé — {{clientName}} ({{applicationNumber}})',
+      body: 'Le dossier de crédit {{clientName}} ({{applicationNumber}}) d\'un montant de {{amount}} {{currency}} a été approuvé.',
+    },
+    {
+      name: 'Dossier rejeté',
+      event: 'APPLICATION_REJECTED',
+      subject: 'Dossier rejeté — {{clientName}} ({{applicationNumber}})',
+      body: 'Le dossier de crédit {{clientName}} ({{applicationNumber}}) a été rejeté. Commentaires : {{comments}}',
+    },
+  ];
+
+  const templateByEvent = {};
+  for (const tpl of notifTemplates) {
+    const existing = await prisma.notificationTemplate.findFirst({
+      where: { event: tpl.event, channelId: emailChannel.id },
+    });
+    if (!existing) {
+      const created = await prisma.notificationTemplate.create({
+        data: { ...tpl, channelId: emailChannel.id, isActive: true },
+      });
+      templateByEvent[tpl.event] = created;
+      console.log(`  Créé : template ${tpl.event}`);
+    } else {
+      templateByEvent[tpl.event] = existing;
+      console.log(`  Existant : template ${tpl.event}`);
+    }
+  }
+
+  // 7c. Règles de notification (qui reçoit quoi)
+  const ALL_WORKFLOW_ROLES = ['CHARGE_AFFAIRES', 'ANALYSTE_RISQUES', 'RESPONSABLE_RISQUES', 'RESPONSABLE_ENGAGEMENTS', 'COMITE_CREDIT', 'DIRECTION_GENERALE', 'DIRECTION_JURIDIQUE', 'BACK_OFFICE'];
+  const notifRules = [
+    { event: 'APPLICATION_SUBMITTED', recipientRoles: ['RESPONSABLE_ENGAGEMENTS', 'ANALYSTE_RISQUES', 'RESPONSABLE_RISQUES', 'CHARGE_AFFAIRES'] },
+    { event: 'STEP_ASSIGNED',         recipientRoles: ALL_WORKFLOW_ROLES },
+    { event: 'STEP_APPROVED',         recipientRoles: ['CHARGE_AFFAIRES', 'RESPONSABLE_ENGAGEMENTS', 'RESPONSABLE_RISQUES'] },
+    { event: 'STEP_REJECTED',         recipientRoles: ['CHARGE_AFFAIRES', 'RESPONSABLE_ENGAGEMENTS', 'RESPONSABLE_RISQUES'] },
+    { event: 'APPLICATION_APPROVED',  recipientRoles: ['CHARGE_AFFAIRES', 'RESPONSABLE_ENGAGEMENTS', 'DIRECTION_GENERALE'] },
+    { event: 'APPLICATION_REJECTED',  recipientRoles: ['CHARGE_AFFAIRES', 'RESPONSABLE_ENGAGEMENTS'] },
+  ];
+
+  let rulesCreated = 0;
+  for (const rule of notifRules) {
+    const tpl = templateByEvent[rule.event];
+    if (!tpl) continue;
+    const existing = await prisma.notificationRule.findUnique({
+      where: { event_templateId: { event: rule.event, templateId: tpl.id } },
+    });
+    if (!existing) {
+      await prisma.notificationRule.create({
+        data: { event: rule.event, templateId: tpl.id, recipientRoles: rule.recipientRoles, isActive: true },
+      });
+      rulesCreated++;
+    }
+  }
+  console.log(`  ✓ Règles : ${rulesCreated} créées / ${notifRules.length - rulesCreated} existantes`);
+
+  // ── 8. Résumé ──────────────────────────────────────────────────────────────
   console.log('\n═══════════════════════════════════════════════════════════');
   console.log(`✓ ${TEST_USERS.length} utilisateurs (upsert)`);
   console.log(`✓ ${createdClients.length} clients`);
   console.log(`✓ Mot de passe commun : ${PASSWORD}`);
   console.log('✓ Mur Chinois + RACI');
+  console.log('✓ Notifications : canal + templates + règles');
   console.log('\nComptes disponibles :');
   console.log('  superadmin@optimuscredit.sn  SuperAdmin2024!  (SUPER_ADMIN plateforme)');
   for (const u of TEST_USERS) {

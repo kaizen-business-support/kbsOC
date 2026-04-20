@@ -2,9 +2,10 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 // Clés alignées avec PERMISSION_GROUPS dans UserManagementPage.tsx
+// Rôles alignés avec l'enum UserRole dans schema.prisma
 const roles = [
   {
-    role: 'ACCOUNT_MANAGER',
+    role: 'CHARGE_AFFAIRES',
     label: 'Chargé d\'Affaires',
     description: 'Gère les relations clients et soumet les demandes de crédit',
     permissions: [
@@ -15,8 +16,8 @@ const roles = [
     ]
   },
   {
-    role: 'CREDIT_ANALYST',
-    label: 'Analyste Crédit',
+    role: 'ANALYSTE_RISQUES',
+    label: 'Analyste Risques',
     description: 'Analyse les dossiers de crédit et produit les rapports d\'analyse',
     permissions: [
       'view_applications', 'view_branch',
@@ -26,8 +27,8 @@ const roles = [
     ]
   },
   {
-    role: 'ANALYST_SUPERVISOR',
-    label: 'Responsable Analyste',
+    role: 'RESPONSABLE_RISQUES',
+    label: 'Responsable Risques',
     description: 'Supervise les analystes, dispatche les dossiers et valide les analyses',
     permissions: [
       'view_applications', 'view_all',
@@ -38,9 +39,9 @@ const roles = [
     ]
   },
   {
-    role: 'BRANCH_MANAGER',
-    label: 'Directeur d\'Agence',
-    description: 'Supervise les opérations de l\'agence et approuve les dossiers de son périmètre',
+    role: 'RESPONSABLE_ENGAGEMENTS',
+    label: 'Responsable Engagements',
+    description: 'Supervise les opérations d\'engagements et approuve les dossiers de son périmètre',
     permissions: [
       'view_applications', 'view_branch',
       'approve_credit', 'approve_applications',
@@ -50,7 +51,7 @@ const roles = [
     ]
   },
   {
-    role: 'CREDIT_COMMITTEE',
+    role: 'COMITE_CREDIT',
     label: 'Comité de Crédit',
     description: 'Prend les décisions finales sur les demandes de crédit importantes',
     permissions: [
@@ -61,13 +62,34 @@ const roles = [
     ]
   },
   {
-    role: 'MANAGEMENT',
+    role: 'DIRECTION_GENERALE',
     label: 'Direction Générale',
     description: 'Accès aux tableaux de bord exécutifs et supervision globale',
     permissions: [
       'view_applications', 'view_all', 'view_portfolio',
       'analytics', 'reports', 'portfolio_analytics',
       'risk_reporting', 'data_export',
+      'approve_applications', 'final_approval',
+    ]
+  },
+  {
+    role: 'DIRECTION_JURIDIQUE',
+    label: 'Direction Juridique',
+    description: 'Assure la conformité juridique et la formalisation des garanties',
+    permissions: [
+      'view_applications', 'view_all',
+      'review_applications', 'application_review',
+      'reports', 'data_export',
+    ]
+  },
+  {
+    role: 'BACK_OFFICE',
+    label: 'Back Office',
+    description: 'Gère les opérations de mise en place, saisie des garanties et tirages de fonds',
+    permissions: [
+      'view_applications', 'view_branch',
+      'review_applications', 'manage_clients',
+      'data_export',
     ]
   },
   {

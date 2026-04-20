@@ -40,6 +40,20 @@ interface HeaderProps {
   onChangePassword?: () => void;
 }
 
+// Design tokens — Clean Light Financial Dashboard
+const HDR = {
+  text:        '#0F172A',
+  textMuted:   '#64748B',
+  textSecond:  '#94A3B8',
+  brand:       '#0F766E',
+  separator:   '#E2E8F0',
+  avatarGrad:  'linear-gradient(135deg, #0F766E 0%, #14B8A6 100%)',
+  menuBg:      '#FFFFFF',
+  menuBorder:  '#E2E8F0',
+  menuDivider: '#F1F5F9',
+  onlineGreen: '#10B981',
+};
+
 export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onReset, onPageChange, onChangePassword }) => {
   const { t } = useTranslation();
   const { state: userState, logout, getRoleLabel } = useUser();
@@ -90,25 +104,20 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
   };
 
   const handleAccountSettings = () => {
-    // Navigate to settings page
     onPageChange('settings');
     handleUserMenuClose();
   };
 
   const handleProfile = () => {
-    // Navigate to user profile page
     onPageChange('profile');
     handleUserMenuClose();
   };
 
   const handleChangePasswordClick = () => {
-    if (onChangePassword) {
-      onChangePassword();
-    }
+    if (onChangePassword) onChangePassword();
     handleUserMenuClose();
   };
 
-  // Generate initials from user name
   const getUserInitials = (name: string) => {
     return name
       .split(' ')
@@ -116,6 +125,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
       .slice(0, 2)
       .join('');
   };
+
   return (
     <AppBar
       position="fixed"
@@ -123,20 +133,21 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
     >
       <Toolbar>
         <IconButton
-          color="primary"
           aria-label="open drawer"
           onClick={onMenuClick}
           edge="start"
           sx={{
-            mr: 2,
-            transition: 'transform 0.18s cubic-bezier(0.34,1.56,0.64,1)',
-            '&:hover':  { transform: 'scale(1.08)' },
+            mr:         2,
+            color:      HDR.textMuted,
+            transition: 'all 0.18s cubic-bezier(0.34,1.56,0.64,1)',
+            '&:hover':  { color: HDR.brand, transform: 'scale(1.08)' },
             '&:active': { transform: 'scale(0.90)' },
           }}
         >
           <MenuIcon />
         </IconButton>
 
+        {/* Logo + App name */}
         <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1 }}>
           <img
             src={logoImage}
@@ -150,14 +161,13 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
             sx={{
               fontWeight:    700,
               fontSize:      '15px',
-              fontFamily:    '"Inter", sans-serif',
+              fontFamily:    '"IBM Plex Sans", sans-serif',
               letterSpacing: '-0.2px',
               display:       { xs: 'none', sm: 'block' },
-              // brand gradient text
-              background:          'linear-gradient(135deg, #3A56A8 0%, #2878C8 52%, #28A8E2 100%)',
-              WebkitBackgroundClip:'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip:      'text',
+              background:    'linear-gradient(135deg, #0F766E 0%, #14B8A6 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor:  'transparent',
+              backgroundClip:       'text',
             }}
           >
             OptimusCredit
@@ -165,15 +175,15 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 1, md: 2 } }}>
-          {/* Séparateur + titre de page */}
+          {/* Page title */}
           <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 1.25 }}>
-            <Box sx={{ width: '1px', height: '16px', background: 'rgba(58,86,168,0.20)', borderRadius: '1px' }} />
+            <Box sx={{ width: '1px', height: '16px', background: HDR.separator, borderRadius: '1px' }} />
             <Typography
               noWrap
               sx={{
-                color:        '#6B7A99',
+                color:        HDR.textMuted,
                 fontSize:     '13px',
-                fontFamily:   '"Inter", sans-serif',
+                fontFamily:   '"IBM Plex Sans", sans-serif',
                 maxWidth:     { sm: 140, md: 220 },
                 overflow:     'hidden',
                 textOverflow: 'ellipsis',
@@ -182,6 +192,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
               {pageTitle[currentPage]}
             </Typography>
           </Box>
+
           {userState.isAuthenticated && (
             <NotificationBell onPageChange={onPageChange} />
           )}
@@ -194,13 +205,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
                 onClick={onReset}
                 startIcon={<ResetIcon />}
                 sx={{
-                  color: 'primary.main',
-                  borderColor: 'rgba(31,78,121,0.30)',
                   ml: 2,
-                  '&:hover': {
-                    borderColor: 'primary.main',
-                    bgcolor: 'rgba(31,78,121,0.05)',
-                  },
                   display: { xs: 'none', md: 'flex' },
                 }}
               >
@@ -209,10 +214,10 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
             </Tooltip>
           )}
 
-          {/* User Profile Section */}
+          {/* User profile */}
           {userState.isAuthenticated && userState.currentUser && (
-            <Box sx={{ display: 'flex', alignItems: 'center', ml: 2 }}>
-              {/* User Info - Hidden on mobile */}
+            <Box sx={{ display: 'flex', alignItems: 'center', ml: 1 }}>
+              {/* Name + role — desktop only */}
               <Box
                 sx={{
                   display: { xs: 'none', md: 'flex' },
@@ -221,15 +226,21 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
                   mr: 1.5,
                 }}
               >
-                <Typography sx={{ color: '#1F272E', fontWeight: 600, fontSize: '13px', lineHeight: 1.2, fontFamily: '"Inter", sans-serif' }}>
+                <Typography sx={{
+                  color: HDR.text, fontWeight: 600, fontSize: '13px', lineHeight: 1.2,
+                  fontFamily: '"IBM Plex Sans", sans-serif',
+                }}>
                   {userState.currentUser.name}
                 </Typography>
-                <Typography sx={{ color: '#8D99A6', fontSize: '11.5px', lineHeight: 1.2, fontFamily: '"Inter", sans-serif' }}>
+                <Typography sx={{
+                  color: HDR.textSecond, fontSize: '11.5px', lineHeight: 1.2,
+                  fontFamily: '"IBM Plex Sans", sans-serif',
+                }}>
                   {getRoleLabel(userState.currentUser.role)}
                 </Typography>
               </Box>
 
-              {/* User Avatar with Menu */}
+              {/* Avatar */}
               <Tooltip title="Mon compte" enterDelay={400}>
                 <IconButton
                   onClick={handleUserMenuClick}
@@ -237,7 +248,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
                     p:          0.5,
                     borderRadius:'10px',
                     transition: 'transform 0.18s cubic-bezier(0.34,1.56,0.64,1)',
-                    '&:hover':  { transform: 'scale(1.06)', bgcolor: 'rgba(58,86,168,0.06)' },
+                    '&:hover':  { transform: 'scale(1.06)', bgcolor: 'rgba(15,118,110,0.12)' },
                     '&:active': { transform: 'scale(0.94)' },
                   }}
                 >
@@ -245,26 +256,22 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
                     overlap="circular"
                     anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
                     badgeContent={
-                      <Box
-                        sx={{
-                          width: 12,
-                          height: 12,
-                          borderRadius: '50%',
-                          bgcolor: '#4caf50',
-                          border: '2px solid white',
-                        }}
-                      />
+                      <Box sx={{
+                        width: 12, height: 12, borderRadius: '50%',
+                        bgcolor: HDR.onlineGreen,
+                        border: '2px solid #FFFFFF',
+                      }} />
                     }
                   >
                     <Avatar
                       sx={{
-                        background:  'linear-gradient(135deg, #3A56A8 0%, #2878C8 52%, #28A8E2 100%)',
-                        width:       34,
-                        height:      34,
-                        fontSize:    '12px',
-                        fontWeight:  600,
-                        fontFamily:  '"Inter", sans-serif',
-                        boxShadow:   '0 2px 8px rgba(40,120,200,0.30)',
+                        background: HDR.avatarGrad,
+                        width:      34,
+                        height:     34,
+                        fontSize:   '12px',
+                        fontWeight: 600,
+                        fontFamily: '"IBM Plex Sans", sans-serif',
+                        boxShadow:  '0 2px 8px rgba(15,118,110,0.35)',
                       }}
                     >
                       {getUserInitials(userState.currentUser.name)}
@@ -273,7 +280,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
                 </IconButton>
               </Tooltip>
 
-              {/* User Menu */}
+              {/* User menu */}
               <Menu
                 anchorEl={userMenuAnchor}
                 open={Boolean(userMenuAnchor)}
@@ -283,23 +290,37 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
                   sx: {
                     minWidth: 272,
                     mt:       1,
+                    background:  HDR.menuBg,
+                    border:      `1px solid ${HDR.menuBorder}`,
+                    backdropFilter: 'blur(20px)',
                     '& .MuiMenuItem-root': { px: 1.5, py: 1 },
                   },
                 }}
                 transformOrigin={{ horizontal: 'right', vertical: 'top' }}
                 anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
               >
-                {/* User Info Header */}
-                <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid #E8EBED' }}>
+                {/* User info header */}
+                <Box sx={{ px: 2, py: 1.5, borderBottom: `1px solid ${HDR.menuDivider}` }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <Avatar sx={{ background: 'linear-gradient(135deg, #3A56A8 0%, #28A8E2 100%)', width: 40, height: 40, fontSize: '13px', fontWeight: 600, fontFamily: '"Inter", sans-serif', boxShadow: '0 2px 8px rgba(40,120,200,0.30)' }}>
+                    <Avatar sx={{
+                      background: HDR.avatarGrad,
+                      width: 40, height: 40, fontSize: '13px', fontWeight: 600,
+                      fontFamily: '"IBM Plex Sans", sans-serif',
+                      boxShadow: '0 2px 8px rgba(15,118,110,0.35)',
+                    }}>
                       {getUserInitials(userState.currentUser.name)}
                     </Avatar>
                     <Box>
-                      <Typography sx={{ fontWeight: 600, fontSize: '14px', color: '#1F272E', fontFamily: '"Inter", sans-serif', lineHeight: 1.3 }}>
+                      <Typography sx={{
+                        fontWeight: 600, fontSize: '14px', color: HDR.text,
+                        fontFamily: '"IBM Plex Sans", sans-serif', lineHeight: 1.3,
+                      }}>
                         {userState.currentUser.name}
                       </Typography>
-                      <Typography sx={{ fontSize: '12px', color: '#8D99A6', fontFamily: '"Inter", sans-serif', lineHeight: 1.3 }}>
+                      <Typography sx={{
+                        fontSize: '12px', color: HDR.textSecond,
+                        fontFamily: '"IBM Plex Sans", sans-serif', lineHeight: 1.3,
+                      }}>
                         {userState.currentUser.email}
                       </Typography>
                       <Box sx={{ mt: 0.75, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
@@ -310,41 +331,40 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
                           color="primary"
                         />
                         {userState.currentUser.department && (
-                          <Chip label={userState.currentUser.department} size="small" variant="outlined" />
+                          <Chip
+                            label={userState.currentUser.department}
+                            size="small"
+                            sx={{
+                              background: '#F8FAFC',
+                              color: '#475569',
+                              border: '1px solid #E2E8F0',
+                            }}
+                          />
                         )}
                       </Box>
                     </Box>
                   </Box>
                 </Box>
 
-                {/* Menu Items */}
                 <MenuItem onClick={handleProfile}>
-                  <ListItemIcon>
-                    <PersonIcon fontSize="small" />
-                  </ListItemIcon>
+                  <ListItemIcon><PersonIcon fontSize="small" sx={{ color: HDR.brand }} /></ListItemIcon>
                   <ListItemText primary="Mon Profil" />
                 </MenuItem>
 
                 <MenuItem onClick={handleAccountSettings}>
-                  <ListItemIcon>
-                    <SettingsIcon fontSize="small" />
-                  </ListItemIcon>
+                  <ListItemIcon><SettingsIcon fontSize="small" sx={{ color: HDR.textMuted }} /></ListItemIcon>
                   <ListItemText primary="Paramètres du Compte" />
                 </MenuItem>
 
                 <MenuItem onClick={handleChangePasswordClick}>
-                  <ListItemIcon>
-                    <LockIcon fontSize="small" />
-                  </ListItemIcon>
+                  <ListItemIcon><LockIcon fontSize="small" sx={{ color: HDR.textMuted }} /></ListItemIcon>
                   <ListItemText primary="Changer mon mot de passe" />
                 </MenuItem>
 
-                <Divider />
+                <Divider sx={{ borderColor: HDR.menuDivider }} />
 
-                <MenuItem onClick={handleLogout}>
-                  <ListItemIcon>
-                    <LogoutIcon fontSize="small" />
-                  </ListItemIcon>
+                <MenuItem onClick={handleLogout} sx={{ color: '#F87171 !important', '&:hover': { bgcolor: 'rgba(239,68,68,0.08) !important' } }}>
+                  <ListItemIcon><LogoutIcon fontSize="small" sx={{ color: '#F87171' }} /></ListItemIcon>
                   <ListItemText primary="Se Déconnecter" />
                 </MenuItem>
               </Menu>

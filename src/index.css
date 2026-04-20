@@ -1,15 +1,35 @@
-/* ── Inter font ─────────────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* ── IBM Plex Sans — financial, trustworthy, professional ───────────────── */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 
-/* ── Brand tokens ────────────────────────────────────────────────────────── */
+/* ── Design tokens — Clean Light Financial Dashboard ─────────────────────── */
 :root {
-  --brand-deep:    #3A56A8;   /* logo left  — indigo    */
-  --brand-mid:     #2878C8;   /* gradient center        */
-  --brand-sky:     #28A8E2;   /* logo right — cerulean  */
-  --brand-gradient: linear-gradient(135deg, #3A56A8 0%, #2878C8 52%, #28A8E2 100%);
-  --brand-gradient-soft: linear-gradient(135deg, rgba(58,86,168,0.08) 0%, rgba(40,168,226,0.04) 100%);
-  --surface: rgba(255,255,255,0.82);
-  --border:  rgba(255,255,255,0.55);
+  /* Primary teal */
+  --brand-primary:   #0F766E;
+  --brand-secondary: #14B8A6;
+  --brand-cta:       #0EA5E9;
+  --brand-amber:     #F59E0B;
+  --brand-gradient:  linear-gradient(135deg, #0F766E 0%, #14B8A6 100%);
+
+  /* Surfaces */
+  --bg-base:    #F8FAFC;
+  --bg-surface: #FFFFFF;
+  --bg-subtle:  #F0FDFC;
+
+  /* Text */
+  --text-primary:   #0F172A;
+  --text-secondary: #475569;
+  --text-muted:     #94A3B8;
+
+  /* Borders */
+  --border-default: #E2E8F0;
+  --border-subtle:  rgba(15,118,110,0.10);
+
+  /* Legacy aliases */
+  --brand-deep: #0F766E;
+  --brand-mid:  #0D9488;
+  --brand-sky:  #14B8A6;
+  --surface: rgba(255,255,255,0.90);
+  --border:  rgba(226,232,240,0.80);
 }
 
 html, body {
@@ -19,18 +39,13 @@ html, body {
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Ambient gradient aligned with the Kaizen brand blues */
-  background: linear-gradient(160deg,
-    #EDF1FC 0%,
-    #E6F4FB 35%,
-    #EEF9FF 65%,
-    #EDF1FC 100%
-  );
+  background: #F8FAFC;
   background-attachment: fixed;
   overflow-x: hidden;
+  color: #0F172A;
 }
 
 #root { min-height: 100%; }
@@ -40,35 +55,34 @@ code {
     Consolas, 'Courier New', monospace;
 }
 
-/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+/* ── Scrollbar — teal accent ─────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #3A56A8, #28A8E2);
+  background: linear-gradient(180deg, #0F766E, #14B8A6);
   border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover { opacity: 0.8; }
 
-/* ── Text selection — brand blue ─────────────────────────────────────────── */
-::selection         { background: rgba(40,168,226,0.22); color: #1A2440; }
-::-moz-selection    { background: rgba(40,168,226,0.22); color: #1A2440; }
-input::selection    { background: rgba(40,168,226,0.30); }
-textarea::selection { background: rgba(40,168,226,0.30); }
+/* ── Text selection ───────────────────────────────────────────────────────── */
+::selection         { background: rgba(20,184,166,0.18); color: #0F172A; }
+::-moz-selection    { background: rgba(20,184,166,0.18); color: #0F172A; }
+input::selection    { background: rgba(20,184,166,0.25); }
+textarea::selection { background: rgba(20,184,166,0.25); }
 
-/* ── Interactive elements — cursor pointer everywhere ────────────────────── */
+/* ── Interactive elements ─────────────────────────────────────────────────── */
 button, [role="button"], [role="tab"], [role="menuitem"],
 [role="option"], label[for], a, select { cursor: pointer !important; }
 
-/* ── Focus ring — Apple-style blue ring ──────────────────────────────────── */
+/* ── Focus ring ───────────────────────────────────────────────────────────── */
 :focus-visible {
-  outline: 2px solid #28A8E2;
+  outline: 2px solid #14B8A6;
   outline-offset: 2px;
   border-radius: 4px;
 }
-/* Suppress default for non-keyboard nav */
 :focus:not(:focus-visible) { outline: none; }
 
-/* ── Smooth overscroll — prevent scroll chaining on nested containers ────── */
+/* ── Smooth overscroll ────────────────────────────────────────────────────── */
 .main-scroll { overscroll-behavior-x: none; }
 
 /* ── Page transition ─────────────────────────────────────────────────────── */
@@ -78,20 +92,8 @@ button, [role="button"], [role="tab"], [role="menuitem"],
 }
 .page-enter { animation: pageEnter 0.28s cubic-bezier(0.22,1,0.36,1) both; }
 
-/* ── Dialog backdrop blur ────────────────────────────────────────────────── */
+/* ── Dialog backdrop blur ─────────────────────────────────────────────────── */
 .MuiBackdrop-root { backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
-
-/* ── Dialog enter — Apple spring scale-in ────────────────────────────────── */
-@keyframes dialogEnter {
-  from { opacity: 0; transform: scale(0.94) translateY(10px); }
-  to   { opacity: 1; transform: scale(1)    translateY(0); }
-}
-
-/* ── Toast / Snackbar slide-in from top ─────────────────────────────────── */
-@keyframes toastSlideIn {
-  from { opacity: 0; transform: translateY(-20px) scale(0.96); }
-  to   { opacity: 1; transform: translateY(0)      scale(1); }
-}
 
 /* ── Shimmer loading skeleton ────────────────────────────────────────────── */
 @keyframes shimmerLoad {
@@ -99,16 +101,13 @@ button, [role="button"], [role="tab"], [role="menuitem"],
   100% { background-position: 400px 0; }
 }
 .skeleton-shimmer {
-  background: linear-gradient(90deg, rgba(58,86,168,0.06) 25%, rgba(58,86,168,0.10) 50%, rgba(58,86,168,0.06) 75%);
+  background: linear-gradient(90deg,
+    rgba(15,118,110,0.04) 25%,
+    rgba(20,184,166,0.08) 50%,
+    rgba(15,118,110,0.04) 75%
+  );
   background-size: 800px 100%;
   animation: shimmerLoad 1.4s ease infinite;
-}
-
-/* ── Active press — tap feedback ─────────────────────────────────────────── */
-@keyframes pressDown {
-  0%   { transform: scale(1); }
-  50%  { transform: scale(0.96); }
-  100% { transform: scale(1); }
 }
 
 /* ── Brand gradient utilities ────────────────────────────────────────────── */
@@ -126,14 +125,14 @@ button, [role="button"], [role="tab"], [role="menuitem"],
 /* ── Financial utilities ─────────────────────────────────────────────────── */
 .financial-table  { font-variant-numeric: tabular-nums; }
 .financial-number {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: 'IBM Plex Mono', 'JetBrains Mono', 'Fira Code', monospace;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 .currency       { font-weight: 500; }
-.positive-trend { color: #099250; }
-.negative-trend { color: #D92D20; }
-.neutral-trend  { color: #667085; }
+.positive-trend { color: #059669; }
+.negative-trend { color: #DC2626; }
+.neutral-trend  { color: #64748B; }
 
 /* ── Print ───────────────────────────────────────────────────────────────── */
 @media print {

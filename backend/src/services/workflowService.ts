@@ -76,17 +76,17 @@ export interface ApplicationProcessingStats {
  * et validTo est null ou dans le futur.
  */
 export async function getActivePolicyForCreditType(
-  creditTypeId: string
+  creditTypeId: string,
+  companyId?: string
 ): Promise<{ id: string; name: string; code: string } | null> {
   const now = new Date();
 
-  // Chercher une politique active qui couvre ce type de crédit
-  // (une étape de cette politique doit référencer ce creditTypeId, ou être sans restriction)
   const policy = await prisma.creditPolicy.findFirst({
     where: {
       isActive: true,
       validFrom: { lte: now },
       OR: [{ validTo: null }, { validTo: { gte: now } }],
+      ...(companyId ? { companyId } : {}),
     },
     orderBy: { createdAt: 'desc' },
     select: { id: true, name: true, code: true },
@@ -182,7 +182,8 @@ async function buildPlanFromCreditType(
  */
 export async function buildWorkflowPlan(
   creditTypeId: string,
-  amount: number
+  amount: number,
+  companyId?: string
 ): Promise<WorkflowPlan> {
   const creditType = await prisma.creditType.findUnique({
     where: { id: creditTypeId },
@@ -193,8 +194,8 @@ export async function buildWorkflowPlan(
     throw new Error(`Type de crédit introuvable : ${creditTypeId}`);
   }
 
-  // Chercher une politique active
-  const policy = await getActivePolicyForCreditType(creditTypeId);
+  // Chercher une politique active (filtrée par tenant si companyId fourni)
+  const policy = await getActivePolicyForCreditType(creditTypeId, companyId);
 
   let steps: WorkflowStepPlan[];
   let allSteps: WorkflowStepPlan[];
@@ -274,7 +275,12 @@ export async function createWorkflowStepsForApplication(
   creditTypeId: string,
   amount: number
 ): Promise<void> {
-  const plan = await buildWorkflowPlan(creditTypeId, amount);
+  // Charger le companyId de l'application pour le filtrage tenant
+  const app = await prisma.creditApplication.findUnique({
+    where: { id: applicationId },
+    select: { companyId: true },
+  });
+  const plan = await buildWorkflowPlan(creditTypeId, amount, app?.companyId ?? undefined);
 
   // Supprimer les étapes non-commencées avant de recréer
   await prisma.workflowStep.deleteMany({
@@ -313,7 +319,9 @@ export async function createWorkflowStepsForApplication(
   }
 
   // Créer les étapes du plan en PENDING
-  for (const step of plan.steps) {
+  // Exclure 'application_created' : cette étape est toujours créée COMPLETED
+  // par l'endpoint POST /api/applications — la dupliquer provoquerait un blocage workflow.
+  for (const step of plan.steps.filter(s => s.stepName !== 'application_created')) {
     await prisma.workflowStep.create({
       data: {
         applicationId,
@@ -484,14 +492,15 @@ export async function getNextWorkflowStep(
 ): Promise<WorkflowStepPlan | null> {
   const application = await prisma.creditApplication.findUnique({
     where: { id: applicationId },
-    select: { creditTypeId: true, amount: true },
+    select: { creditTypeId: true, amount: true, companyId: true },
   });
 
   if (!application?.creditTypeId) return null;
 
   const plan = await buildWorkflowPlan(
     application.creditTypeId,
-    Number(application.amount)
+    Number(application.amount),
+    application.companyId ?? undefined
   );
 
   const currentIndex = plan.steps.findIndex(s => s.stepName === completedStepName);
@@ -510,8 +519,18 @@ export async function getNextWorkflowStep(
  * est dans sa limite d'approbation (CreditPolicyStep si politique, ApprovalLimit sinon).
  */
 // Rôles à portée globale : peuvent traiter les dossiers de toutes les agences.
-// Tous les autres rôles sont limités à leur propre agence.
-const GLOBAL_SCOPE_ROLES: UserRole[] = ['DIRECTION_GENERALE', 'ADMIN', 'COMITE_CREDIT'];
+// Seul CHARGE_AFFAIRES est lié à son agence (il gère ses propres clients).
+// Tous les autres rôles sont des services centraux (risques, engagements, BO, juridique, etc.)
+const GLOBAL_SCOPE_ROLES: UserRole[] = [
+  'DIRECTION_GENERALE',
+  'ADMIN',
+  'COMITE_CREDIT',
+  'ANALYSTE_RISQUES',
+  'RESPONSABLE_RISQUES',
+  'RESPONSABLE_ENGAGEMENTS',
+  'DIRECTION_JURIDIQUE',
+  'BACK_OFFICE',
+];
 
 export async function canApproveStep(
   userId: string,
@@ -598,20 +617,36 @@ export async function canApproveStep(
   }
 
   // ── 3. Vérification du plafond d'approbation ───────────────────────────────
-  const amount = Number(application.amount);
+  // Le plafond ne s'applique qu'aux étapes décisionnelles (APPROVAL, COMMITTEE).
+  // Les étapes DISPATCH et ANALYSIS sont des routages ou analyses — le montant n'y a pas de role.
+  const DECISION_STEP_TYPES: string[] = ['APPROVAL', 'COMMITTEE'];
 
-  const limit = await prisma.approvalLimit.findFirst({
-    where: { role: effectiveRole },
-  });
+  let stepType: string | null = null;
+  if (step.policyStepId) {
+    const policyStep = await prisma.creditPolicyStep.findUnique({
+      where: { id: step.policyStepId },
+      select: { stepType: true },
+    });
+    stepType = policyStep?.stepType ?? null;
+  }
 
-  if (limit) {
-    const min = Number(limit.minAmount);
-    const max = Number(limit.maxAmount);
-    if (amount < min || amount > max) {
-      return {
-        allowed: false,
-        reason: `Montant ${amount.toLocaleString()} XOF hors limite autorisée pour ce rôle (${min.toLocaleString()} – ${max.toLocaleString()} XOF)`,
-      };
+  const isDecisionStep = !stepType || DECISION_STEP_TYPES.includes(stepType);
+
+  if (isDecisionStep) {
+    const amount = Number(application.amount);
+    const limit = await prisma.approvalLimit.findFirst({
+      where: { role: effectiveRole, companyId: application.companyId },
+    });
+
+    if (limit) {
+      const min = Number(limit.minAmount);
+      const max = Number(limit.maxAmount);
+      if (amount < min || amount > max) {
+        return {
+          allowed: false,
+          reason: `Montant ${amount.toLocaleString()} XOF hors limite autorisée pour ce rôle (${min.toLocaleString()} – ${max.toLocaleString()} XOF)`,
+        };
+      }
     }
   }
 

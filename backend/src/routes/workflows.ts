@@ -88,8 +88,7 @@ router.get('/', async (req: Request, res: Response) => {
         }
 
         if (role === 'ANALYSTE_RISQUES') {
-          return currentStep?.stepName === 'credit_analysis' &&
-                 workflow.status === 'UNDER_REVIEW';
+          return currentStep?.role === role && workflow.status === 'UNDER_REVIEW';
         }
 
         // Pour tous les rôles d'approbation : on vérifie simplement
@@ -182,8 +181,32 @@ router.post('/:applicationId/start-step/:stepId', async (req: Request, res: Resp
       return res.status(403).json({ success: false, error: 'Cette étape est assignée à un autre analyste.' });
     }
 
+    // ── Mur chinois : vérification avant toute autre logique ──────────────────
+    if (step && application && user) {
+      const appFull = await prisma.creditApplication.findUnique({
+        where: { id: applicationId },
+        select: { companyId: true },
+      });
+      if (!appFull?.companyId) {
+        return res.status(403).json({ success: false, error: 'Application non liée à un tenant — démarrage impossible' });
+      }
+      const wallRules = await prisma.tenantChineseWallRule.findMany({
+        where: { companyId: appFull.companyId, blockedRole: user.role as any, isActive: true },
+        select: { forbiddenStep: true, reason: true },
+      });
+      const wallBlock = wallRules.find(r => r.forbiddenStep === step.stepName);
+      if (wallBlock) {
+        return res.status(403).json({ success: false, error: wallBlock.reason ?? 'Mur chinois : opération non autorisée pour ce rôle' });
+      }
+    }
+
     // Déterminer le contexte effectif (direct ou par délégation)
-    const GLOBAL_ROLES = ['DIRECTION_GENERALE', 'ADMIN', 'COMITE_CREDIT'];
+    // Services centraux : portée globale (toutes les agences)
+    const GLOBAL_ROLES = [
+      'DIRECTION_GENERALE', 'ADMIN', 'COMITE_CREDIT',
+      'ANALYSTE_RISQUES', 'RESPONSABLE_RISQUES', 'RESPONSABLE_ENGAGEMENTS',
+      'DIRECTION_JURIDIQUE', 'BACK_OFFICE',
+    ];
     if (user && application) {
       let effectiveBranch = (user as any).branch as string | null;
       let effectiveDept   = (user as any).department as string | null;
@@ -327,19 +350,26 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
     const nextStep = await getNextWorkflowStep(applicationId, currentStep.stepName);
 
     if (nextStep) {
-      await prisma.workflowStep.create({
-        data: {
-          applicationId,
-          stepName: nextStep.stepName,
-          role: nextStep.role,
-          status: 'PENDING',
-          deadline: new Date(
-            Date.now() +
-              (nextStep.expectedDurationHours ?? nextStep.durationDays * 24) * 60 * 60 * 1000
-          ),
-          policyStepId: nextStep.policyStepId ?? undefined,
-        }
+      // Si l'étape suivante existe déjà en PENDING (créée par createWorkflowStepsForApplication),
+      // ne pas la recréer — évite les doublons d'étapes.
+      const existingNext = await prisma.workflowStep.findFirst({
+        where: { applicationId, stepName: nextStep.stepName, status: 'PENDING' },
       });
+      if (!existingNext) {
+        await prisma.workflowStep.create({
+          data: {
+            applicationId,
+            stepName: nextStep.stepName,
+            role: nextStep.role,
+            status: 'PENDING',
+            deadline: new Date(
+              Date.now() +
+                (nextStep.expectedDurationHours ?? nextStep.durationDays * 24) * 60 * 60 * 1000
+            ),
+            policyStepId: nextStep.policyStepId ?? undefined,
+          }
+        });
+      }
 
       triggerNotification('STEP_ASSIGNED', applicationId, { nextRole: nextStep.role });
 

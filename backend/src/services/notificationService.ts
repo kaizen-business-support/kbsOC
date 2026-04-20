@@ -113,6 +113,7 @@ export async function createInAppNotification(
     relatedType?: string;
     relatedId?: string;
     actionUrl?: string;
+    companyId?: string;
   }
 ): Promise<void> {
   await prisma.notification.create({
@@ -124,6 +125,7 @@ export async function createInAppNotification(
       relatedType: data.relatedType,
       relatedId: data.relatedId,
       actionUrl: data.actionUrl,
+      companyId: data.companyId,
     },
   });
 }
@@ -155,7 +157,9 @@ export async function triggerNotification(
     });
 
     if (!application) return;
+    if (!application.companyId) return;
 
+    const companyId = application.companyId;
     const latestStep = application.workflowSteps[0];
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3006';
 
@@ -176,11 +180,14 @@ export async function triggerNotification(
     for (const rule of rules) {
       const recipientRoles = rule.recipientRoles as string[];
 
-      // Find users matching the roles
+      // Find users matching the roles — scoped to this tenant only
       const users = await prisma.user.findMany({
         where: {
           role: { in: recipientRoles as any[] },
           isActive: true,
+          memberships: {
+            some: { companyId, isActive: true },
+          },
         },
         select: { id: true, email: true, phone: true, name: true },
       });
@@ -208,6 +215,7 @@ export async function triggerNotification(
           relatedType: 'application',
           relatedId: applicationId,
           actionUrl: `/workflow?applicationId=${applicationId}`,
+          companyId,
         });
 
         // Send external notifications if channel active

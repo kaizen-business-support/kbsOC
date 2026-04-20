@@ -191,7 +191,7 @@ router.get('/dashboard', async (req: Request, res: Response) => {
         id: app.id,
         clientId: app.clientId,
         applicationNumber: app.applicationNumber,
-        branch: app.client.creator.department || 'Non spécifié',
+        branch: app.creator.department || app.client.creator.department || 'Non spécifié',
         createdByName: app.creator.name,
         status: app.status.toLowerCase(),
         finalDecision: (app.status === 'APPROVED' || app.status === 'DISBURSED') ? 'approved' :
@@ -254,6 +254,32 @@ router.get('/dashboard', async (req: Request, res: Response) => {
 // GET /api/analytics/branches - Get branch performance data
 router.get('/branches', async (req: Request, res: Response) => {
   try {
+    const { timeRange, startDate, endDate } = req.query;
+
+    // Build date filter for applications
+    let appDateFilter: any = {};
+    if (timeRange && timeRange !== '') {
+      const now = new Date();
+      let filterStartDate: Date = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+      switch (timeRange) {
+        case '1month':  filterStartDate = new Date(now.getFullYear(), now.getMonth() - 1,  now.getDate()); break;
+        case '3months': filterStartDate = new Date(now.getFullYear(), now.getMonth() - 3,  now.getDate()); break;
+        case '6months': filterStartDate = new Date(now.getFullYear(), now.getMonth() - 6,  now.getDate()); break;
+        case '1year':   filterStartDate = new Date(now.getFullYear() - 1, now.getMonth(),  now.getDate()); break;
+        case 'custom':
+          if (startDate && endDate) {
+            const fd = new Date(startDate as string);
+            const td = new Date(endDate as string);
+            td.setHours(23, 59, 59, 999);
+            appDateFilter = { gte: fd, lte: td };
+          }
+          break;
+      }
+      if (timeRange !== 'custom') {
+        appDateFilter = { gte: filterStartDate, lte: now };
+      }
+    }
+
     const branches = await prisma.user.findMany({
       where: {
         department: { not: null },
@@ -263,6 +289,7 @@ router.get('/branches', async (req: Request, res: Response) => {
         name: true,
         department: true,
         createdApplications: {
+          where: Object.keys(appDateFilter).length > 0 ? { createdAt: appDateFilter } : undefined,
           select: {
             id: true,
             amount: true,
@@ -273,23 +300,25 @@ router.get('/branches', async (req: Request, res: Response) => {
       }
     });
 
-    const branchData = branches.map(branch => {
-      const applications = branch.createdApplications;
-      const approved = applications.filter(a => a.status === 'APPROVED').length;
-      const total = applications.length;
-      const volume = applications.reduce((sum, a) => sum + Number(a.amount), 0);
-      
-      return {
-        branch: branch.department,
-        manager: branch.name,
-        applications: total,
-        approved,
-        rejected: applications.filter(a => a.status === 'REJECTED').length,
-        pending: applications.filter(a => !['APPROVED', 'REJECTED'].includes(a.status)).length,
-        volume,
-        performance: total > 0 ? Math.round((approved / total) * 100) : 0
-      };
-    });
+    const branchData = branches
+      .filter(branch => branch.createdApplications.length > 0)
+      .map(branch => {
+        const applications = branch.createdApplications;
+        const approved = applications.filter(a => a.status === 'APPROVED').length;
+        const total = applications.length;
+        const volume = applications.reduce((sum, a) => sum + Number(a.amount), 0);
+
+        return {
+          branch: branch.department,
+          manager: branch.name,
+          applications: total,
+          approved,
+          rejected: applications.filter(a => a.status === 'REJECTED').length,
+          pending: applications.filter(a => !['APPROVED', 'REJECTED'].includes(a.status)).length,
+          volume,
+          performance: total > 0 ? Math.round((approved / total) * 100) : 0
+        };
+      });
 
     res.json({
       success: true,
@@ -304,17 +333,38 @@ router.get('/branches', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/analytics/managers - Get account manager performance data  
+// GET /api/analytics/managers - Get account manager performance data
 router.get('/managers', async (req: Request, res: Response) => {
   try {
-    const { branch } = req.query;
-    
-    const whereClause: any = {
-      role: 'CHARGE_AFFAIRES'
-    };
-    
+    const { branch, timeRange, startDate, endDate } = req.query;
+
+    const whereClause: any = { role: 'CHARGE_AFFAIRES' };
     if (branch && branch !== 'all') {
       whereClause.department = branch;
+    }
+
+    // Build date filter for applications
+    let appDateFilter: any = {};
+    if (timeRange && timeRange !== '') {
+      const now = new Date();
+      let filterStartDate: Date = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+      switch (timeRange) {
+        case '1month':  filterStartDate = new Date(now.getFullYear(), now.getMonth() - 1,  now.getDate()); break;
+        case '3months': filterStartDate = new Date(now.getFullYear(), now.getMonth() - 3,  now.getDate()); break;
+        case '6months': filterStartDate = new Date(now.getFullYear(), now.getMonth() - 6,  now.getDate()); break;
+        case '1year':   filterStartDate = new Date(now.getFullYear() - 1, now.getMonth(),  now.getDate()); break;
+        case 'custom':
+          if (startDate && endDate) {
+            const fd = new Date(startDate as string);
+            const td = new Date(endDate as string);
+            td.setHours(23, 59, 59, 999);
+            appDateFilter = { gte: fd, lte: td };
+          }
+          break;
+      }
+      if (timeRange !== 'custom') {
+        appDateFilter = { gte: filterStartDate, lte: now };
+      }
     }
 
     const managers = await prisma.user.findMany({
@@ -324,6 +374,7 @@ router.get('/managers', async (req: Request, res: Response) => {
         name: true,
         department: true,
         createdApplications: {
+          where: Object.keys(appDateFilter).length > 0 ? { createdAt: appDateFilter } : undefined,
           select: {
             id: true,
             amount: true,

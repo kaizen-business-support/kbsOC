@@ -81,18 +81,23 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   const [policyAnalytics, setPolicyAnalytics] = useState<any>(null);
   const [policyAnalyticsLoading, setPolicyAnalyticsLoading] = useState(false);
 
-  // Reset manager selection when branch changes + reload managers for that branch
+  // Reset manager selection when branch changes
   React.useEffect(() => {
     setSelectedManager('all');
-    loadFilterOptions(selectedBranch !== 'all' ? selectedBranch : undefined);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranch]);
 
-  // Load filter options on component mount
+  // Load filter options once on mount (dropdown content, not date-dependent)
   React.useEffect(() => {
-    loadFilterOptions();
+    loadFilterOptions(selectedBranch !== 'all' ? selectedBranch : undefined);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reload managers dropdown when branch changes
+  React.useEffect(() => {
+    loadFilterOptions(selectedBranch !== 'all' ? selectedBranch : undefined);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBranch]);
 
   // Load credit policy analytics on mount
   React.useEffect(() => {
@@ -103,10 +108,11 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
     });
   }, []);
 
-  // Load filter options from API
-  const loadFilterOptions = async (branchFilter?: string) => {
+  // Load filter options from API — branches always unfiltered (for the dropdown),
+  // managers loaded without date filter to keep the dropdown complete.
+  const loadFilterOptions = React.useCallback(async (branchFilter?: string) => {
     try {
-      // Load branches (toujours toutes)
+      // Branches dropdown — always all (no date filter needed for the selector)
       const branchesResponse = await ApiService.getBranchesPerformance();
       if (branchesResponse.success && branchesResponse.data) {
         const seen = new Set<string>();
@@ -116,11 +122,10 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
         setAvailableBranches(branches);
       }
 
-      // Load managers filtrés par agence si sélectionnée
+      // Managers dropdown — filtered by branch only (clients count enrichment for ranking display)
       const managersResponse = await ApiService.getManagersPerformance(branchFilter);
       if (managersResponse.success && managersResponse.data) {
         const managers = managersResponse.data
-          .filter((m: any) => !branchFilter || m.branch === branchFilter)
           .map((m: any) => ({
             name: m.name,
             branch: m.branch,
@@ -128,14 +133,15 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
             applications: m.applications,
             approved: m.approved,
             volume: m.volume,
-            performance: m.performance
+            performance: m.performance,
           }));
         setAvailableManagers(managers);
       }
     } catch (error) {
       console.error('Error loading filter options:', error);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Filter workflows based on selected criteria
   // Note: Date filtering is already done on the backend when calling the API
@@ -214,7 +220,6 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
     const interval = setInterval(() => {
       try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {}
       loadWorkflowData(tr, br, mgr, sd, ed);
-      loadFilterOptions();
     }, REFRESH_INTERVAL * 1000);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -658,14 +663,64 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   };
 
 
+  // Derive manager stats from already-filtered workflowTimestamps (respects all active filters)
+  const generateManagerData = () => {
+    const filteredWorkflows = getFilteredWorkflows();
+    if (filteredWorkflows.length === 0) return [];
+
+    const managerMap: { [name: string]: any } = {};
+
+    filteredWorkflows.forEach(wf => {
+      const name = wf.createdByName;
+      if (!name) return;
+
+      if (!managerMap[name]) {
+        // Enrich with clients count from availableManagers lookup (not date-dependent)
+        const info = availableManagers.find(m => m.name === name);
+        managerMap[name] = {
+          name,
+          branch: wf.branch || info?.branch || 'Non défini',
+          clients: info?.clients || 0,
+          applications: 0,
+          approved: 0,
+          volume: 0,
+          totalProcessingTime: 0,
+          completedCount: 0,
+        };
+      }
+
+      managerMap[name].applications++;
+      managerMap[name].volume += wf.requestedAmount;
+
+      const decision = wf.finalDecision || wf.status;
+      if (decision === 'approved') managerMap[name].approved++;
+
+      if (wf.totalDuration && (decision === 'approved' || decision === 'rejected')) {
+        managerMap[name].totalProcessingTime += wf.totalDuration;
+        managerMap[name].completedCount++;
+      }
+    });
+
+    return Object.values(managerMap).map((m: any) => {
+      const avgProcessingDays = m.completedCount > 0
+        ? (m.totalProcessingTime / m.completedCount) / (9 * 3_600_000)
+        : 0;
+      const performance = avgProcessingDays > 0
+        ? Math.max(0, Math.min(100, Math.round(100 - avgProcessingDays * 5)))
+        : 50;
+      return { ...m, performance };
+    });
+  };
+
   const getVisibleManagers = () => {
-    let managers = [...availableManagers];
-    
+    // Use workflow-derived data so the ranking respects the active date/branch/manager filters
+    let managers = generateManagerData();
+
     // Apply manager filter if a specific manager is selected
     if (selectedManager !== 'all') {
       managers = managers.filter(manager => manager.name === selectedManager);
     }
-    
+
     return managers;
   };
 
@@ -834,7 +889,7 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
             )}
             <Tooltip title="Actualiser maintenant">
               <IconButton size="small" disabled={isLoading}
-                onClick={() => { try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {} loadWorkflowData(timeRange, selectedBranch, selectedManager, startDate, endDate); loadFilterOptions(); }}
+                onClick={() => { try { sessionStorage.removeItem(CACHE_KEY); } catch (_) {} loadWorkflowData(timeRange, selectedBranch, selectedManager, startDate, endDate); }}
                 sx={{ color: '#fff', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 1.5, p: 0.6 }}
               >
                 {isLoading ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <RefreshIcon sx={{ fontSize: 16 }} />}

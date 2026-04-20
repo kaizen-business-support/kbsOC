@@ -128,8 +128,8 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ onPageChange
         <IconButton
           onClick={handleOpen}
           sx={{
-            color: 'white',
-            '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
+            color: 'inherit',
+            '&:hover': { bgcolor: 'action.hover' },
           }}
         >
           <Badge
