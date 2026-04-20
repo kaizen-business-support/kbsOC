@@ -73,6 +73,8 @@ import DelegationBadge from '../components/DelegationBadge';
 import DelegationForm from '../components/DelegationForm';
 import { PowerDelegation, DelegatableAction, DELEGATION_ACTION_LABELS } from '../types/delegation';
 import BeachAccessIcon from '@mui/icons-material/BeachAccess';
+import { BulkUserImportDialog } from '../components/BulkUserImportDialog';
+import FileUploadIcon from '@mui/icons-material/FileUpload';
 
 interface User {
   id: string;
@@ -267,6 +269,8 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     message: string;
     severity: 'success' | 'error' | 'info' | 'warning';
   }>({ open: false, message: '', severity: 'info' });
+
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
 
   // Filter state
   const [filters, setFilters] = useState({
@@ -1628,6 +1632,15 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                   Liste des Utilisateurs
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<FileUploadIcon />}
+                    onClick={() => setBulkImportOpen(true)}
+                    disabled={!canEditUserManagement}
+                    sx={{ borderColor: '#0F766E', color: '#0F766E', '&:hover': { borderColor: '#0D6560', bgcolor: 'rgba(15,118,110,0.06)' } }}
+                  >
+                    Import Excel
+                  </Button>
                   <Button
                     variant="contained"
                     startIcon={<AddIcon />}
@@ -3123,6 +3136,22 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
           {notification.message}
         </Alert>
       </Snackbar>
+
+      <BulkUserImportDialog
+        open={bulkImportOpen}
+        onClose={() => setBulkImportOpen(false)}
+        onComplete={(created, errors) => {
+          setBulkImportOpen(false);
+          loadUsers();
+          if (created > 0) {
+            setNotification({
+              open: true,
+              message: `${created} utilisateur${created > 1 ? 's' : ''} importé${created > 1 ? 's' : ''} avec succès${errors.length > 0 ? ` (${errors.length} erreur${errors.length > 1 ? 's' : ''})` : ''}`,
+              severity: errors.length > 0 ? 'warning' : 'success',
+            });
+          }
+        }}
+      />
     </Box>
   );
 };
