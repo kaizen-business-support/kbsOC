@@ -325,7 +325,7 @@ export const BulkUserImportDialog: React.FC<BulkUserImportDialogProps> = ({
           r.rowIndex === row.rowIndex ? { ...r, status: 'success' } : r
         ));
       } catch (err: any) {
-        const msg = err?.response?.data?.error || err?.message || 'Erreur serveur';
+        const msg = err?.response?.data?.error || err?.response?.data?.message || err?.message || 'Erreur serveur';
         errors.push({ row: row.rowIndex, email: row.email, message: msg });
         setRows(prev => prev.map(r =>
           r.rowIndex === row.rowIndex ? { ...r, status: 'error', apiError: msg } : r
