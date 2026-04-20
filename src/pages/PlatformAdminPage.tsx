@@ -18,6 +18,8 @@ import {
 } from '@mui/icons-material';
 import { ApiService } from '../services/api';
 import axios from 'axios';
+import { BulkUserImportDialog } from '../components/BulkUserImportDialog';
+import FileUploadIcon from '@mui/icons-material/FileUpload';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -93,6 +95,8 @@ const PlatformAdminPage: React.FC = () => {
   const [editFile, setEditFile]       = useState<File | null>(null);
   const [saving, setSaving]           = useState(false);
   const fileInputRef                  = useRef<HTMLInputElement>(null);
+
+  const [bulkImportTarget, setBulkImportTarget] = useState<CompanyEntry | null>(null);
 
   // Add member dialog
   const [addMemberTarget, setAddMemberTarget] = useState<CompanyEntry | null>(null);
@@ -337,9 +341,20 @@ const PlatformAdminPage: React.FC = () => {
                           <Typography variant="subtitle2" fontWeight={700} color="text.secondary">
                             Membres — {c.name}
                           </Typography>
-                          <Button size="small" startIcon={<PersonAddIcon />} onClick={() => openAddMember(c)}>
-                            Ajouter un utilisateur
-                          </Button>
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<FileUploadIcon />}
+                              onClick={() => setBulkImportTarget(c)}
+                              sx={{ color: '#0F766E', borderColor: '#0F766E' }}
+                            >
+                              Import Excel
+                            </Button>
+                            <Button size="small" startIcon={<PersonAddIcon />} onClick={() => openAddMember(c)}>
+                              Ajouter un utilisateur
+                            </Button>
+                          </Box>
                         </Box>
 
                         {membersLoading === c.id ? (
@@ -500,6 +515,19 @@ const PlatformAdminPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <BulkUserImportDialog
+        open={Boolean(bulkImportTarget)}
+        companyId={bulkImportTarget?.id}
+        onClose={() => setBulkImportTarget(null)}
+        onComplete={(created, _errors) => {
+          if (bulkImportTarget && expandedId === bulkImportTarget.id) {
+            fetchMembers(bulkImportTarget.id);
+          }
+          fetchCompanies();
+          setBulkImportTarget(null);
+        }}
+      />
     </Box>
   );
 };
