@@ -373,39 +373,84 @@ export const BulkUserImportDialog: React.FC<BulkUserImportDialogProps> = ({
         <Box>
           {/* ── Step 1: Template ── */}
           {activeStep === 0 && (
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
-                Téléchargez le modèle Excel
-              </Typography>
-              <Typography color="text.secondary" sx={{ mb: 3, maxWidth: 480, mx: 'auto' }}>
-                Remplissez le fichier téléchargé avec vos utilisateurs (max 500 lignes),
-                puis revenez sur cette page pour l'importer.
-              </Typography>
-              <Button
-                variant="contained"
-                size="large"
-                startIcon={<DownloadIcon />}
-                onClick={downloadTemplate}
-                sx={{ bgcolor: '#0F766E', '&:hover': { bgcolor: '#0D6560' } }}
-              >
-                Télécharger le modèle (.xlsx)
-              </Button>
-              <Box sx={{ mt: 4, textAlign: 'left', mx: 'auto', maxWidth: 420 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                  Colonnes du modèle :
+            <Box sx={{ py: 2 }}>
+              {/* Header + download button */}
+              <Box sx={{ textAlign: 'center', mb: 3 }}>
+                <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
+                  Téléchargez le modèle Excel
                 </Typography>
-                {[
-                  'A — Nom complet (obligatoire)',
-                  'B — Email (obligatoire)',
-                  `C — Rôle (obligatoire) — valeurs : ${Object.values(ROLE_LABELS).join(', ')}`,
-                  'D — Département',
-                  'E — Agence',
-                  'F — Poste',
-                ].map(col => (
-                  <Typography key={col} variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                    • {col}
+                <Typography color="text.secondary" sx={{ mb: 2.5, maxWidth: 480, mx: 'auto', fontSize: 14 }}>
+                  Remplissez le fichier avec vos utilisateurs (max 500 lignes) puis importez-le à l'étape suivante.
+                </Typography>
+                <Button
+                  variant="contained"
+                  size="large"
+                  startIcon={<DownloadIcon />}
+                  onClick={downloadTemplate}
+                  sx={{ bgcolor: '#0F766E', '&:hover': { bgcolor: '#0D6560' } }}
+                >
+                  Télécharger le modèle (.xlsx)
+                </Button>
+              </Box>
+
+              {/* Columns table */}
+              <Box sx={{ border: '1px solid #E2E8F0', borderRadius: 2, overflow: 'hidden', mb: 2 }}>
+                <Box sx={{ bgcolor: '#F1F5F9', px: 2, py: 1, borderBottom: '1px solid #E2E8F0' }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#334155' }}>
+                    Structure du fichier
                   </Typography>
-                ))}
+                </Box>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                      <TableCell sx={{ fontWeight: 600, color: '#64748B', fontSize: 12, width: 40 }}>Col.</TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: '#64748B', fontSize: 12 }}>Champ</TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: '#64748B', fontSize: 12, width: 90 }}>Requis</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {[
+                      { col: 'A', label: 'Nom complet', required: true },
+                      { col: 'B', label: 'Email',       required: true },
+                      { col: 'C', label: 'Rôle',        required: true },
+                      { col: 'D', label: 'Département', required: false },
+                      { col: 'E', label: 'Agence',      required: false },
+                      { col: 'F', label: 'Poste',       required: false },
+                    ].map(({ col, label, required }) => (
+                      <TableRow key={col} sx={{ '&:last-child td': { border: 0 } }}>
+                        <TableCell>
+                          <Chip label={col} size="small" sx={{ bgcolor: '#0F766E', color: '#fff', fontWeight: 700, fontSize: 11, height: 20, borderRadius: 1 }} />
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 500, color: '#1E293B', fontSize: 13 }}>{label}</TableCell>
+                        <TableCell>
+                          {required
+                            ? <Chip label="Obligatoire" size="small" color="error" variant="outlined" sx={{ fontSize: 11, height: 20 }} />
+                            : <Chip label="Optionnel"   size="small" variant="outlined" sx={{ fontSize: 11, height: 20, color: '#94A3B8', borderColor: '#CBD5E1' }} />
+                          }
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
+
+              {/* Roles */}
+              <Box sx={{ border: '1px solid #E2E8F0', borderRadius: 2, overflow: 'hidden' }}>
+                <Box sx={{ bgcolor: '#F1F5F9', px: 2, py: 1, borderBottom: '1px solid #E2E8F0' }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#334155' }}>
+                    Valeurs acceptées pour la colonne Rôle
+                  </Typography>
+                </Box>
+                <Box sx={{ px: 2, py: 1.5, display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                  {Object.values(ROLE_LABELS).map(label => (
+                    <Chip
+                      key={label}
+                      label={label}
+                      size="small"
+                      sx={{ bgcolor: '#F0FDF9', color: '#0F766E', border: '1px solid #CCFBF1', fontSize: 12 }}
+                    />
+                  ))}
+                </Box>
               </Box>
             </Box>
           )}
