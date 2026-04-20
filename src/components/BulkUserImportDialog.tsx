@@ -67,6 +67,43 @@ const VALID_ROLES = [
   'DIRECTION_JURIDIQUE', 'BACK_OFFICE', 'ADMIN',
 ];
 
+// Display labels shown in template and UI (no underscores)
+const ROLE_LABELS: Record<string, string> = {
+  CHARGE_AFFAIRES:        "Chargé d'Affaires",
+  ANALYSTE_RISQUES:       'Analyste Risques',
+  RESPONSABLE_RISQUES:    'Responsable Risques',
+  RESPONSABLE_ENGAGEMENTS:'Responsable Engagements',
+  COMITE_CREDIT:          'Comité de Crédit',
+  DIRECTION_GENERALE:     'Direction Générale',
+  DIRECTION_JURIDIQUE:    'Direction Juridique',
+  BACK_OFFICE:            'Back Office',
+  ADMIN:                  'Administrateur',
+};
+
+// Reverse map: lowercase display label → enum value
+const ROLE_FROM_LABEL: Record<string, string> = Object.fromEntries(
+  Object.entries(ROLE_LABELS).map(([k, v]) => [v.toLowerCase(), k])
+);
+
+/**
+ * Accepts both display labels ("Chargé d'Affaires") and enum values ("CHARGE_AFFAIRES").
+ * Returns the canonical enum value, or null if unrecognised.
+ */
+const normalizeRole = (input: string): string | null => {
+  const t = input.trim();
+  if (!t) return null;
+  // Direct enum match (case-insensitive)
+  const upper = t.toUpperCase();
+  if (VALID_ROLES.includes(upper)) return upper;
+  // Display label match (case-insensitive)
+  const fromLabel = ROLE_FROM_LABEL[t.toLowerCase()];
+  if (fromLabel) return fromLabel;
+  // Spaces → underscores fallback
+  const underscored = upper.replace(/\s+/g, '_');
+  if (VALID_ROLES.includes(underscored)) return underscored;
+  return null;
+};
+
 const EXPECTED_HEADERS = ['Nom complet', 'Email', 'Rôle', 'Département', 'Agence', 'Poste'];
 
 const MAX_ROWS = 500;
@@ -99,8 +136,13 @@ const validateRows = (raw: BulkImportRow[]): BulkImportRow[] => {
         seenEmails.set(normalized, row.rowIndex);
       }
     }
-    if (!row.role || !VALID_ROLES.includes(row.role)) errors.push('Rôle invalide');
-    return { ...row, valid: errors.length === 0, errorMessage: errors.join(' · ') };
+    const canonicalRole = normalizeRole(row.role);
+    if (!canonicalRole) {
+      errors.push(`Rôle invalide : "${row.role}" — valeurs acceptées : ${Object.values(ROLE_LABELS).join(', ')}`);
+    }
+    // Store canonical enum value so the API receives the correct value
+    const resolvedRow = canonicalRole ? { ...row, role: canonicalRole } : row;
+    return { ...resolvedRow, valid: errors.length === 0, errorMessage: errors.join(' · ') };
   });
 };
 
@@ -147,7 +189,7 @@ export const BulkUserImportDialog: React.FC<BulkUserImportDialogProps> = ({
     const wb = XLSX.utils.book_new();
     const data = [
       EXPECTED_HEADERS,
-      ['Jean Dupont', 'jean.dupont@banque.com', 'CHARGE_AFFAIRES', 'Commercial', 'Siège', 'Chargé d\'Affaires Senior'],
+      ['Jean Dupont', 'jean.dupont@banque.com', ROLE_LABELS['CHARGE_AFFAIRES'], 'Commercial', 'Siège', 'Chargé d\'Affaires Senior'],
     ];
     const ws = XLSX.utils.aoa_to_sheet(data);
     ws['!cols'] = [{ wch: 24 }, { wch: 28 }, { wch: 24 }, { wch: 18 }, { wch: 16 }, { wch: 22 }];
@@ -172,23 +214,44 @@ export const BulkUserImportDialog: React.FC<BulkUserImportDialogProps> = ({
     }
 
     const reader = new FileReader();
+    reader.onerror = () => {
+      setUploadError('Impossible de lire le fichier — vérifiez que le fichier n\'est pas corrompu ou protégé');
+    };
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target!.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: 'array' });
+
+        if (!wb.SheetNames.length) {
+          setUploadError('Le fichier Excel ne contient aucune feuille');
+          return;
+        }
+
         const ws = wb.Sheets[wb.SheetNames[0]];
         const raw: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
+        if (!raw.length) {
+          setUploadError('Le fichier est vide');
+          return;
+        }
+
         const header = (raw[0] ?? []) as string[];
-        const mismatch = EXPECTED_HEADERS.some((h, i) => (header[i] || '').trim() !== h);
-        if (mismatch || header.length < EXPECTED_HEADERS.length) {
-          setUploadError('Structure du fichier invalide — utilisez le modèle fourni');
+        // Identify exactly which columns are wrong
+        const badCols = EXPECTED_HEADERS
+          .map((expected, i) => {
+            const got = String(header[i] ?? '').trim();
+            return got !== expected ? `colonne ${String.fromCharCode(65 + i)} : attendu "${expected}", trouvé "${got || '(vide)'}"` : null;
+          })
+          .filter(Boolean);
+
+        if (badCols.length > 0 || header.length < EXPECTED_HEADERS.length) {
+          setUploadError(`En-têtes incorrects — ${badCols.length > 0 ? badCols.join(' | ') : 'colonnes manquantes'}. Utilisez le modèle fourni.`);
           return;
         }
 
         const dataRows = raw.slice(1).filter(r => r.some(c => String(c).trim() !== ''));
         if (dataRows.length === 0) {
-          setUploadError('Le fichier ne contient aucune donnée');
+          setUploadError('Le fichier ne contient aucune donnée (seulement la ligne d\'en-têtes)');
           return;
         }
 
@@ -207,8 +270,8 @@ export const BulkUserImportDialog: React.FC<BulkUserImportDialogProps> = ({
 
         setRows(validateRows(parsed));
         setActiveStep(2);
-      } catch {
-        setUploadError('Erreur de lecture du fichier — vérifiez que le fichier n\'est pas corrompu');
+      } catch (err: any) {
+        setUploadError(`Erreur de lecture : ${err?.message || 'fichier corrompu ou format non supporté'}`);
       }
     };
     reader.readAsArrayBuffer(file);
@@ -334,7 +397,7 @@ export const BulkUserImportDialog: React.FC<BulkUserImportDialogProps> = ({
                 {[
                   'A — Nom complet (obligatoire)',
                   'B — Email (obligatoire)',
-                  `C — Rôle (obligatoire) — valeurs : ${VALID_ROLES.join(', ')}`,
+                  `C — Rôle (obligatoire) — valeurs : ${Object.values(ROLE_LABELS).join(', ')}`,
                   'D — Département',
                   'E — Agence',
                   'F — Poste',
