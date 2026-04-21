@@ -53,19 +53,20 @@ router.get('/', async (req: Request, res: Response) => {
       orderBy: { order: 'asc' },
     });
 
-    // Collect all unique roles across all steps in one pass
-    const allUniqueRoles = [...new Set(
-      steps.flatMap((s) => [s.assignedRole, ...s.stepRoles.map((r) => r.role)])
-    )] as UserRole[];
-
-    // Single query for all users across all roles
+    // Fetch all active memberships for the company, filter by role in JS
+    // (avoids Prisma enum casting issue: "operator does not exist: text = user_role")
     const allMemberships = await prisma.companyMembership.findMany({
-      where: { companyId, role: { in: allUniqueRoles }, isActive: true },
+      where: { companyId, isActive: true },
       include: { user: { select: { id: true, name: true, email: true } } },
     });
 
+    const stepRoleSet = new Set(
+      steps.flatMap((s) => [s.assignedRole, ...s.stepRoles.map((r) => r.role)])
+    );
+
     const membersByRole: Record<string, { id: string; name: string; email: string }[]> = {};
     for (const m of allMemberships) {
+      if (!stepRoleSet.has(m.role)) continue;
       if (!membersByRole[m.role]) membersByRole[m.role] = [];
       membersByRole[m.role].push(m.user);
     }
