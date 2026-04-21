@@ -501,6 +501,115 @@ router.delete('/:id/steps/:stepId', async (req: Request, res: Response) => {
   }
 });
 
+// ─── Helper : validation des règles métier d'une politique ───────────────────
+
+function getPolicyValidationErrors(
+  steps: { id: string; stepType: string; assignedRole: string | null; stepLabel: string }[]
+) {
+  const errors: { stepId: string | null; message: string }[] = [];
+  const hasDispatch = steps.some((s) => s.stepType === 'DISPATCH');
+  const hasApproval = steps.some((s) => s.stepType === 'APPROVAL' || s.stepType === 'COMMITTEE');
+  if (!hasDispatch) errors.push({ stepId: null, message: 'Au moins une étape DISPATCH est requise' });
+  if (!hasApproval) errors.push({ stepId: null, message: 'Au moins une étape APPROVAL ou COMMITTEE est requise' });
+  for (const step of steps) {
+    if (!step.assignedRole) {
+      errors.push({ stepId: step.id, message: `L'étape "${step.stepLabel}" n'a pas de rôle assigné` });
+    }
+  }
+  return errors;
+}
+
+// ─── POST /api/credit-policies/:id/validate ───────────────────────────────────
+
+router.post('/:id/validate', async (req: Request, res: Response) => {
+  try {
+    const policy = await prisma.creditPolicy.findUnique({
+      where: { id: req.params.id },
+      include: { steps: { orderBy: { order: 'asc' } } },
+    });
+    if (!policy) return res.status(404).json({ success: false, error: 'Politique non trouvée' });
+    if (policy.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
+
+    const errors = getPolicyValidationErrors(policy.steps);
+    if (errors.length > 0) return res.status(422).json({ success: false, valid: false, errors });
+    res.json({ success: true, valid: true });
+  } catch (error) {
+    console.error('[credit-policy] POST /:id/validate', error);
+    res.status(500).json({ success: false, error: 'Erreur lors de la validation' });
+  }
+});
+
+// ─── POST /api/credit-policies/:id/activate ──────────────────────────────────
+
+router.post('/:id/activate', async (req: Request, res: Response) => {
+  try {
+    const policy = await prisma.creditPolicy.findUnique({
+      where: { id: req.params.id },
+      include: { steps: { orderBy: { order: 'asc' } } },
+    });
+    if (!policy) return res.status(404).json({ success: false, error: 'Politique non trouvée' });
+    if (policy.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
+    if ((policy as any).status === 'ARCHIVED') {
+      return res.status(422).json({ success: false, error: 'Une politique archivée ne peut pas être activée' });
+    }
+
+    const validationErrors = getPolicyValidationErrors(policy.steps);
+    if (validationErrors.length > 0) {
+      return res.status(422).json({
+        success: false,
+        error: 'VALIDATION_REQUIRED',
+        message: 'La politique doit être validée avant activation',
+        errors: validationErrors,
+      });
+    }
+
+    const oldActive = await prisma.creditPolicy.findFirst({
+      where: { companyId: req.companyId, status: 'ACTIVE', id: { not: req.params.id } } as any,
+    });
+
+    await prisma.$transaction(async (tx) => {
+      if (oldActive) {
+        await (tx as any).creditPolicy.update({
+          where: { id: oldActive.id },
+          data: { status: 'ARCHIVED', isActive: false },
+        });
+      }
+      await (tx as any).creditPolicy.update({
+        where: { id: req.params.id },
+        data: { status: 'ACTIVE', isActive: true },
+      });
+    });
+
+    res.json({ success: true, activated: true, archivedPolicyId: oldActive?.id ?? null });
+  } catch (error) {
+    console.error('[credit-policy] POST /:id/activate', error);
+    res.status(500).json({ success: false, error: 'Erreur lors de l\'activation' });
+  }
+});
+
+// ─── POST /api/credit-policies/:id/archive ───────────────────────────────────
+
+router.post('/:id/archive', async (req: Request, res: Response) => {
+  try {
+    const policy = await prisma.creditPolicy.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, companyId: true },
+    });
+    if (!policy) return res.status(404).json({ success: false, error: 'Politique non trouvée' });
+    if (policy.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
+
+    await (prisma as any).creditPolicy.update({
+      where: { id: req.params.id },
+      data: { status: 'ARCHIVED', isActive: false },
+    });
+
+    res.json({ success: true, archived: true });
+  } catch (error) {
+    console.error('[credit-policy] POST /:id/archive', error);
+    res.status(500).json({ success: false, error: 'Erreur lors de l\'archivage' });
+  }
+});
+
 // ─── GET /api/credit-policies/:id/application-stats ──────────────────────────
 
 router.get('/:id/application-stats/:applicationId', async (req: Request, res: Response) => {
