@@ -241,6 +241,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     });
 
     if (!policy) return res.status(404).json({ success: false, error: 'Politique introuvable' });
+    if (policy.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
     res.json({ success: true, data: policy });
   } catch (error) {
     console.error('[credit-policy] GET /:id', error);
@@ -252,7 +253,22 @@ router.get('/:id', async (req: Request, res: Response) => {
 
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const { name, description, isActive, validFrom, validTo } = req.body;
+    const { name, description, isActive, validFrom, validTo, steps, expectedVersion } = req.body;
+
+    // Vérification companyId + optimistic locking
+    const current = await prisma.creditPolicy.findUnique({
+      where: { id: req.params.id },
+      select: { version: true, companyId: true, status: true },
+    });
+    if (!current) return res.status(404).json({ success: false, error: 'Politique introuvable' });
+    if (current.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
+    if (expectedVersion !== undefined && current.version !== expectedVersion) {
+      return res.status(409).json({
+        success: false,
+        error: 'CONFLICT',
+        message: 'La politique a été modifiée par quelqu\'un d\'autre. Veuillez recharger avant de sauvegarder.',
+      });
+    }
 
     // Si on active cette politique, désactiver les autres
     if (isActive === true) {
@@ -260,6 +276,35 @@ router.put('/:id', async (req: Request, res: Response) => {
         where: { isActive: true, id: { not: req.params.id }, companyId: req.companyId },
         data: { isActive: false },
       });
+    }
+
+    // Remplacement complet des étapes si fourni
+    if (Array.isArray(steps)) {
+      await prisma.creditPolicyStep.deleteMany({ where: { policyId: req.params.id } });
+      if (steps.length > 0) {
+        await prisma.creditPolicyStep.createMany({
+          data: steps.map((s: any, idx: number) => ({
+            policyId: req.params.id,
+            stepName: s.stepName || s.stepLabel?.toLowerCase().replace(/\s+/g, '_') || `step_${idx + 1}`,
+            stepLabel: s.stepLabel,
+            order: s.order ?? idx + 1,
+            stepType: s.stepType,
+            assignedRole: s.assignedRole,
+            conditionMinAmount: s.conditionMinAmount ?? null,
+            conditionMaxAmount: s.conditionMaxAmount ?? null,
+            approvalMinAmount: s.approvalMinAmount ?? null,
+            approvalMaxAmount: s.approvalMaxAmount ?? null,
+            expectedDurationHours: s.expectedDurationHours ?? 24,
+            maxDurationHours: s.maxDurationHours ?? 72,
+            isRequired: s.isRequired ?? true,
+            isActive: s.isActive ?? true,
+            description: s.description ?? null,
+            creditTypeIds: s.creditTypeIds ?? [],
+            phase: s.phase ?? null,
+            guards: s.guards ?? null,
+          })),
+        });
+      }
     }
 
     const policy = await prisma.creditPolicy.update({
