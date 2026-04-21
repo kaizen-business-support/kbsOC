@@ -41,7 +41,7 @@ La liste d'étapes est la **source de vérité**. L'aperçu React Flow est en le
 | Composant | Rôle |
 |---|---|
 | `WorkflowPolicyBuilder.tsx` | Conteneur principal 3 colonnes |
-| `StepPalette.tsx` | Palette gauche — types d'étapes et rôles disponibles |
+| `StepPalette.tsx` | Palette gauche — types d'étapes (statique) + rôles (enum statique) |
 | `StepList.tsx` | Liste drag & drop des étapes |
 | `StepConfigPanel.tsx` | Config inline expand/collapse par étape |
 | `GuardRulesEditor.tsx` | Rules engine (montant / score / type crédit + AND/OR) |
@@ -51,24 +51,36 @@ La liste d'étapes est la **source de vérité**. L'aperçu React Flow est en le
 
 **Intégration :** Nouvel onglet "Éditeur visuel" dans la route `/credit-policy` existante. Aucun changement de routing.
 
+**Rôles dans la palette :** La liste des rôles affichés dans `StepPalette` est issue de la constante statique `ROLES` déjà définie dans `CreditPolicyPage.tsx` (enum `UserRole`). Aucun appel API supplémentaire pour charger les rôles.
+
 ---
 
 ## 3. Modèle de Données
 
 ### Migration Prisma
 
-Ajout d'un seul champ sur le modèle existant `CreditPolicyStep` :
+Ajout d'un seul champ sur le modèle existant `CreditPolicyStep`. Les champs `conditionMinAmount` / `conditionMaxAmount` existants sont conservés pour rétrocompatibilité avec les données migrées, mais **le champ `guards` est la source de vérité pour les règles de transition dans le nouveau builder**. En cas de coexistence, `guards` prend la priorité.
 
 ```prisma
 model CreditPolicyStep {
   // ... tous les champs existants inchangés ...
-  guards Json? // règles de transition conditionnelles
+  guards Json? @map("guards") // règles de transition conditionnelles (v2 builder)
 }
 ```
 
-Migration SQL :
+> **Note :** Ce champ n'est pas encore dans `schema.prisma` — il doit être ajouté manuellement avant d'exécuter la migration.
+
+**Commandes de migration :**
+```bash
+# 1. Ajouter le champ dans schema.prisma, puis :
+npx prisma migrate dev --name add_guards_to_credit_policy_step
+# 2. Régénérer le client :
+npx prisma generate
+```
+
+SQL généré par Prisma :
 ```sql
-ALTER TABLE credit_policy_steps ADD COLUMN guards JSONB;
+ALTER TABLE "credit_policy_steps" ADD COLUMN "guards" JSONB;
 ```
 
 ### Structure JSON des gardes
@@ -98,11 +110,15 @@ ALTER TABLE credit_policy_steps ADD COLUMN guards JSONB;
 
 ### Champs de conditions supportés en v1
 
-| field | Type | Opérateurs |
-|---|---|---|
-| `amount` | Decimal | `BETWEEN`, `LT`, `GT`, `GTE`, `LTE` |
-| `riskScore` | Int (0–100) | `GTE`, `LTE`, `BETWEEN` |
-| `creditTypeId` | String[] | `IN`, `NOT_IN` |
+| field | Source | Type | Opérateurs |
+|---|---|---|---|
+| `amount` | `CreditApplication.amount` | Decimal | `BETWEEN`, `LT`, `GT`, `GTE`, `LTE` |
+| `riskScore` | `CreditApplication.score.numeric` (Int, extrait du Json) | Int (0–100) | `GTE`, `LTE`, `BETWEEN` |
+| `creditTypeId` | `CreditApplication.creditTypeId` (singular — le type du dossier) | String | `IN`, `NOT_IN` (valeur = tableau de strings) |
+
+**Clarifications importantes :**
+- `riskScore` est extrait du champ `CreditApplication.score` (Json?) via le chemin `score?.numeric`. Si `score` est null ou ne contient pas `numeric`, la condition `riskScore` est évaluée comme non-satisfaite.
+- `creditTypeId` dans les gardes évalue `CreditApplication.creditTypeId` (la FK vers le type de crédit du dossier, valeur unique). Le champ `guards.conditions[].value` pour l'opérateur `IN` est un tableau de strings (IDs de CreditType).
 
 **Opérateurs logiques :** `AND` / `OR` au niveau racine uniquement (pas d'imbrication en v1).
 
@@ -117,7 +133,7 @@ ALTER TABLE credit_policy_steps ADD COLUMN guards JSONB;
 3. Il clique sur une étape → panneau de config s'expand inline
 4. Il configure : nom, rôle, SLA, gardes
 5. L'aperçu React Flow se met à jour en temps réel
-6. Il clique **Valider** → validation automatique
+6. Il clique **Valider** → validation automatique (client + serveur)
 7. Il clique **Sauvegarder** → API + incrément de version automatique
 
 ### Panneau de configuration inline
@@ -161,9 +177,9 @@ Les erreurs s'affichent **inline** sur le bloc concerné (bordure rouge + messag
 | Méthode | Route | Changement |
 |---|---|---|
 | `GET` | `/api/credit-policies/:id` | Inclure `guards` dans la réponse des steps |
-| `PUT` | `/api/credit-policies/:id` | Auto-incrément `version` + persistance `guards` |
+| `PUT` | `/api/credit-policies/:id` | Auto-incrément `version` + persistance `guards` + contrôle optimiste de version |
 
-### Nouvel endpoint
+### Nouvel endpoint de validation
 
 ```
 POST /api/credit-policies/:id/validate
@@ -180,15 +196,25 @@ version: { increment: 1 }
 
 Les gardes ne s'appliquent qu'aux nouvelles applications créées après activation de la politique modifiée. Les dossiers en cours ne sont pas impactés.
 
+### Contrôle de concurrence (optimistic locking)
+
+Le `PUT` accepte un champ `expectedVersion: number` dans le body. Le handler vérifie que la version en base correspond avant d'écrire. Si elle ne correspond pas (deux admins sauvegardant simultanément) :
+
+```
+→ 409 { error: "CONFLICT", message: "La politique a été modifiée par quelqu'un d'autre. Veuillez recharger avant de sauvegarder." }
+```
+
+Le frontend affiche ce message et propose un bouton "Recharger".
+
 ### Guard Engine
 
 Nouveau service `backend/src/services/guardEngine.ts` :
 
 ```ts
 type GuardContext = {
-  amount: number;
-  riskScore: number;
-  creditTypeId: string;
+  amount: number;        // CreditApplication.amount
+  riskScore: number;     // extrait de CreditApplication.score?.numeric (défaut: 0)
+  creditTypeId: string;  // CreditApplication.creditTypeId
 };
 
 function evaluateGuards(guards: GuardsJson | null, ctx: GuardContext): boolean
@@ -200,12 +226,22 @@ Fonction pure, testable indépendamment, appelée par le moteur de workflow lors
 
 ## 6. Permissions & Accès
 
-Le builder utilise le système RBAC existant (`RolePermission`). Aucun hardcoding de rôles dans le composant.
+Le builder utilise le système RBAC existant (`RolePermission.permissions` — tableau Json de strings).
 
-- Si l'utilisateur a la permission `MANAGE_CREDIT_POLICY` → accès édition complet
+- Si l'utilisateur possède la permission `MANAGE_CREDIT_POLICY` dans son `RolePermission` → accès édition complet
 - Sinon → builder en lecture seule (boutons Sauvegarder/Valider masqués, drag & drop désactivé)
 
-La permission `MANAGE_CREDIT_POLICY` est configurée dans l'interface de gestion des rôles existante.
+**Initialisation :** La permission `MANAGE_CREDIT_POLICY` doit être ajoutée dans le seed / script de migration des rôles pour `ADMIN` et `SUPER_ADMIN`. Sans cette initialisation, le builder sera en lecture seule pour tous les utilisateurs au premier déploiement. Ajouter au script de seed existant :
+
+```ts
+// Dans seed ou migration script
+for (const role of ['ADMIN', 'SUPER_ADMIN'] as const) {
+  await prisma.rolePermission.update({
+    where: { role },
+    data: { permissions: { push: 'MANAGE_CREDIT_POLICY' } },
+  });
+}
+```
 
 ---
 
@@ -221,6 +257,7 @@ La permission `MANAGE_CREDIT_POLICY` est configurée dans l'interface de gestion
 
 ## 8. Dépendances
 
-- `@xyflow/react` (React Flow v12) — à ajouter dans `package.json`
-- Prisma migration — 1 champ `guards JSONB` sur `credit_policy_steps`
+- `@xyflow/react` (React Flow v12) — à ajouter dans `package.json` frontend
+- Prisma migration — 1 champ `guards JSONB` sur `credit_policy_steps` + `prisma generate`
+- Seed update — ajouter `MANAGE_CREDIT_POLICY` aux rôles `ADMIN` et `SUPER_ADMIN`
 - Aucune autre dépendance externe
