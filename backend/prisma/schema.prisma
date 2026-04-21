@@ -361,6 +361,7 @@ model CreditPolicy {
   code        String             // "POL-2024-001"
   description String?
   isActive    Boolean            @default(true) @map("is_active")
+  status      PolicyStatus       @default(DRAFT)
   version     Int                @default(1)
   validFrom   DateTime           @default(now()) @map("valid_from")
   validTo     DateTime?          @map("valid_to")
@@ -422,6 +423,9 @@ model CreditPolicyStep {
 
   // Phase d'affichage dans la matrice RACI (ex: "Montage dossier", "Analyse risques")
   phase         String?          @map("phase")
+
+  // Règles de transition conditionnelles (builder v2) — priorité sur conditionMin/MaxAmount
+  guards        Json?            @map("guards")
 
   workflowSteps WorkflowStep[]
   stepRoles     CreditPolicyStepRole[]
@@ -560,6 +564,14 @@ enum UserRole {
   DIRECTION_JURIDIQUE     @map("direction_juridique")   // nouveau
 
   @@map("user_role")
+}
+
+enum PolicyStatus {
+  DRAFT    @map("draft")
+  ACTIVE   @map("active")
+  ARCHIVED @map("archived")
+
+  @@map("policy_status")
 }
 
 enum ApplicationStatus {

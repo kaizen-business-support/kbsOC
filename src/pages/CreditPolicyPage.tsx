@@ -20,6 +20,7 @@ import {
 } from '@mui/icons-material';
 import { useUser } from '../contexts/UserContext';
 import { creditPolicyApi, ApiService } from '../services/api';
+import { WorkflowPolicyBuilder } from '../components/workflow-builder/WorkflowPolicyBuilder';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -315,6 +316,7 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
           <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
             <Tab label="Étapes de crédit" disabled={!selectedPolicy} />
             <Tab label="Simulation du circuit" />
+            <Tab label="Éditeur visuel" icon={<PolicyIcon />} iconPosition="start" />
           </Tabs>
         </>
       )}
@@ -969,6 +971,13 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
           <Button variant="contained" color="error" onClick={deleteStep}>Supprimer</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Tab 2 — Éditeur visuel */}
+      {tab === 2 && (
+        <Box sx={{ height: 'calc(100vh - 220px)', display: 'flex', flexDirection: 'column' }}>
+          <WorkflowPolicyBuilder />
+        </Box>
+      )}
 
       {/* Snackbar */}
       <Snackbar

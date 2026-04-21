@@ -241,6 +241,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     });
 
     if (!policy) return res.status(404).json({ success: false, error: 'Politique introuvable' });
+    if (policy.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
     res.json({ success: true, data: policy });
   } catch (error) {
     console.error('[credit-policy] GET /:id', error);
@@ -252,7 +253,22 @@ router.get('/:id', async (req: Request, res: Response) => {
 
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const { name, description, isActive, validFrom, validTo } = req.body;
+    const { name, description, isActive, validFrom, validTo, steps, expectedVersion } = req.body;
+
+    // Vérification companyId + optimistic locking
+    const current = await prisma.creditPolicy.findUnique({
+      where: { id: req.params.id },
+      select: { version: true, companyId: true, status: true },
+    });
+    if (!current) return res.status(404).json({ success: false, error: 'Politique introuvable' });
+    if (current.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
+    if (expectedVersion !== undefined && current.version !== expectedVersion) {
+      return res.status(409).json({
+        success: false,
+        error: 'CONFLICT',
+        message: 'La politique a été modifiée par quelqu\'un d\'autre. Veuillez recharger avant de sauvegarder.',
+      });
+    }
 
     // Si on active cette politique, désactiver les autres
     if (isActive === true) {
@@ -260,6 +276,35 @@ router.put('/:id', async (req: Request, res: Response) => {
         where: { isActive: true, id: { not: req.params.id }, companyId: req.companyId },
         data: { isActive: false },
       });
+    }
+
+    // Remplacement complet des étapes si fourni
+    if (Array.isArray(steps)) {
+      await prisma.creditPolicyStep.deleteMany({ where: { policyId: req.params.id } });
+      if (steps.length > 0) {
+        await prisma.creditPolicyStep.createMany({
+          data: steps.map((s: any, idx: number) => ({
+            policyId: req.params.id,
+            stepName: s.stepName || s.stepLabel?.toLowerCase().replace(/\s+/g, '_') || `step_${idx + 1}`,
+            stepLabel: s.stepLabel,
+            order: s.order ?? idx + 1,
+            stepType: s.stepType,
+            assignedRole: s.assignedRole,
+            conditionMinAmount: s.conditionMinAmount ?? null,
+            conditionMaxAmount: s.conditionMaxAmount ?? null,
+            approvalMinAmount: s.approvalMinAmount ?? null,
+            approvalMaxAmount: s.approvalMaxAmount ?? null,
+            expectedDurationHours: s.expectedDurationHours ?? 24,
+            maxDurationHours: s.maxDurationHours ?? 72,
+            isRequired: s.isRequired ?? true,
+            isActive: s.isActive ?? true,
+            description: s.description ?? null,
+            creditTypeIds: s.creditTypeIds ?? [],
+            phase: s.phase ?? null,
+            guards: s.guards ?? null,
+          })),
+        });
+      }
     }
 
     const policy = await prisma.creditPolicy.update({
@@ -453,6 +498,115 @@ router.delete('/:id/steps/:stepId', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[credit-policy] DELETE /:id/steps/:stepId', error);
     res.status(500).json({ success: false, error: 'Erreur lors de la suppression de l\'étape' });
+  }
+});
+
+// ─── Helper : validation des règles métier d'une politique ───────────────────
+
+function getPolicyValidationErrors(
+  steps: { id: string; stepType: string; assignedRole: string | null; stepLabel: string }[]
+) {
+  const errors: { stepId: string | null; message: string }[] = [];
+  const hasDispatch = steps.some((s) => s.stepType === 'DISPATCH');
+  const hasApproval = steps.some((s) => s.stepType === 'APPROVAL' || s.stepType === 'COMMITTEE');
+  if (!hasDispatch) errors.push({ stepId: null, message: 'Au moins une étape DISPATCH est requise' });
+  if (!hasApproval) errors.push({ stepId: null, message: 'Au moins une étape APPROVAL ou COMMITTEE est requise' });
+  for (const step of steps) {
+    if (!step.assignedRole) {
+      errors.push({ stepId: step.id, message: `L'étape "${step.stepLabel}" n'a pas de rôle assigné` });
+    }
+  }
+  return errors;
+}
+
+// ─── POST /api/credit-policies/:id/validate ───────────────────────────────────
+
+router.post('/:id/validate', async (req: Request, res: Response) => {
+  try {
+    const policy = await prisma.creditPolicy.findUnique({
+      where: { id: req.params.id },
+      include: { steps: { orderBy: { order: 'asc' } } },
+    });
+    if (!policy) return res.status(404).json({ success: false, error: 'Politique non trouvée' });
+    if (policy.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
+
+    const errors = getPolicyValidationErrors(policy.steps);
+    if (errors.length > 0) return res.status(422).json({ success: false, valid: false, errors });
+    res.json({ success: true, valid: true });
+  } catch (error) {
+    console.error('[credit-policy] POST /:id/validate', error);
+    res.status(500).json({ success: false, error: 'Erreur lors de la validation' });
+  }
+});
+
+// ─── POST /api/credit-policies/:id/activate ──────────────────────────────────
+
+router.post('/:id/activate', async (req: Request, res: Response) => {
+  try {
+    const policy = await prisma.creditPolicy.findUnique({
+      where: { id: req.params.id },
+      include: { steps: { orderBy: { order: 'asc' } } },
+    });
+    if (!policy) return res.status(404).json({ success: false, error: 'Politique non trouvée' });
+    if (policy.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
+    if ((policy as any).status === 'ARCHIVED') {
+      return res.status(422).json({ success: false, error: 'Une politique archivée ne peut pas être activée' });
+    }
+
+    const validationErrors = getPolicyValidationErrors(policy.steps);
+    if (validationErrors.length > 0) {
+      return res.status(422).json({
+        success: false,
+        error: 'VALIDATION_REQUIRED',
+        message: 'La politique doit être validée avant activation',
+        errors: validationErrors,
+      });
+    }
+
+    const oldActive = await prisma.creditPolicy.findFirst({
+      where: { companyId: req.companyId, status: 'ACTIVE', id: { not: req.params.id } } as any,
+    });
+
+    await prisma.$transaction(async (tx) => {
+      if (oldActive) {
+        await (tx as any).creditPolicy.update({
+          where: { id: oldActive.id },
+          data: { status: 'ARCHIVED', isActive: false },
+        });
+      }
+      await (tx as any).creditPolicy.update({
+        where: { id: req.params.id },
+        data: { status: 'ACTIVE', isActive: true },
+      });
+    });
+
+    res.json({ success: true, activated: true, archivedPolicyId: oldActive?.id ?? null });
+  } catch (error) {
+    console.error('[credit-policy] POST /:id/activate', error);
+    res.status(500).json({ success: false, error: 'Erreur lors de l\'activation' });
+  }
+});
+
+// ─── POST /api/credit-policies/:id/archive ───────────────────────────────────
+
+router.post('/:id/archive', async (req: Request, res: Response) => {
+  try {
+    const policy = await prisma.creditPolicy.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, companyId: true },
+    });
+    if (!policy) return res.status(404).json({ success: false, error: 'Politique non trouvée' });
+    if (policy.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
+
+    await (prisma as any).creditPolicy.update({
+      where: { id: req.params.id },
+      data: { status: 'ARCHIVED', isActive: false },
+    });
+
+    res.json({ success: true, archived: true });
+  } catch (error) {
+    console.error('[credit-policy] POST /:id/archive', error);
+    res.status(500).json({ success: false, error: 'Erreur lors de l\'archivage' });
   }
 });
 
