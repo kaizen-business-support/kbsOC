@@ -121,6 +121,30 @@ const roles = [
       'manage_branch', 'manage_team', 'workflow_override',
       // Dispatching
       'dispatch_applications', 'assign_analyst', 'view_analyst_workload',
+      // Politique de crédit
+      'manage_credit_policy',
+    ]
+  },
+  {
+    role: 'SUPER_ADMIN',
+    label: 'Super Administrateur',
+    description: 'Accès plateforme complet, toutes les compagnies',
+    permissions: [
+      'user_management', 'role_assignment', 'system_administration',
+      'system_configuration', 'audit_logs', 'data_export',
+      'manage_notifications', 'manage_announcements',
+      'manage_backup', 'manage_2fa_config',
+      'view_all', 'view_branch', 'view_own', 'view_applications', 'view_portfolio',
+      'analytics', 'reports', 'portfolio_analytics', 'risk_reporting', 'policy_configuration',
+      'create_client', 'edit_client_data', 'manage_clients',
+      'create_application', 'review_applications', 'application_review',
+      'analyze_credit', 'financial_analysis', 'score_applications',
+      'benchmark_analysis', 'edit_analysis',
+      'approve_credit', 'approve_applications', 'committee_review',
+      'committee_vote', 'final_approval', 'risk_override', 'policy_exceptions',
+      'manage_branch', 'manage_team', 'workflow_override',
+      'dispatch_applications', 'assign_analyst', 'view_analyst_workload',
+      'manage_credit_policy',
     ]
   }
 ];
