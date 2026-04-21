@@ -15,6 +15,7 @@ import {
   ExpandLess as ExpandLessIcon,
   PersonAdd as PersonAddIcon,
   PersonOff as PersonOffIcon,
+  ManageAccounts as ManageIcon,
 } from '@mui/icons-material';
 import { ApiService } from '../services/api';
 import axios from 'axios';
@@ -132,6 +133,26 @@ const PlatformAdminPage: React.FC = () => {
   };
 
   useEffect(() => { fetchCompanies(); }, []);
+
+  // ── Gérer compagnie (accès complet SUPER_ADMIN) ───────────────────────────
+
+  const handleManage = async (c: CompanyEntry) => {
+    try {
+      const token = localStorage.getItem('optimus_access_token') || '';
+      const res = await axios.post(
+        `${API_BASE_URL}/platform/manage-company`,
+        { companyId: c.id },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (res.data?.success) {
+        localStorage.setItem('superadmin_backup_token', token);
+        localStorage.setItem('optimus_access_token', res.data.token);
+        window.location.reload();
+      }
+    } catch (e: any) {
+      setError(e.response?.data?.error || 'Erreur accès compagnie');
+    }
+  };
 
   // ── Toggle expand ──────────────────────────────────────────────────────────
 
@@ -326,6 +347,11 @@ const PlatformAdminPage: React.FC = () => {
                       <Tooltip title={c.isActive ? 'Désactiver' : 'Activer'}>
                         <IconButton size="small" color={c.isActive ? 'warning' : 'success'} onClick={() => handleToggle(c)}>
                           <ToggleIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Gérer cette compagnie">
+                        <IconButton size="small" color="secondary" onClick={() => handleManage(c)}>
+                          <ManageIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                     </Stack>

@@ -151,6 +151,39 @@ router.post('/companies/:id/logo', authenticate, requireSuperAdmin, uploadLogo.s
   }
 });
 
+// POST /api/platform/manage-company — token SUPER_ADMIN avec contexte compagnie (accès complet)
+router.post('/manage-company', authenticate, requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const { companyId } = req.body;
+    if (!companyId) return res.status(400).json({ success: false, error: 'companyId requis' });
+
+    const company = await prisma.company.findUnique({ where: { id: companyId } });
+    if (!company) return res.status(404).json({ success: false, error: 'Compagnie introuvable' });
+
+    const jti = uuidv4();
+    const token = jwt.sign(
+      { userId: req.user!.id, email: req.user!.email, role: 'SUPER_ADMIN', companyId, jti },
+      process.env.JWT_SECRET || 'dev-secret',
+      { expiresIn: '2h' }
+    );
+
+    prisma.auditLog.create({
+      data: {
+        userId: req.user!.id,
+        action: 'MANAGE_COMPANY_STARTED',
+        entityType: 'company',
+        entityId: companyId,
+        ipAddress: req.ip || null,
+        userAgent: req.get('User-Agent') || null,
+      }
+    }).catch(() => {});
+
+    return res.json({ success: true, token, company });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Erreur accès compagnie' });
+  }
+});
+
 // POST /api/platform/impersonate — token d'impersonation readOnly (30 min)
 router.post('/impersonate', authenticate, requireSuperAdmin, async (req: Request, res: Response) => {
   try {
