@@ -508,7 +508,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Support */}
         <StaticLabel label="Support" />
         <List disablePadding sx={{ px: 0.5 }}>
-          <NavItem id="raci-matrix"   label="Matrice RACI"                   icon={StepsIcon}          />
+          {activeCompany && <NavItem id="raci-matrix" label="Matrice RACI" icon={StepsIcon} />}
           <NavItem id="documentation" label={t('navigation.documentation')} icon={DocumentationIcon} />
           <NavItem id="settings"      label={t('navigation.settings')}       icon={SettingsIcon}       />
         </List>
