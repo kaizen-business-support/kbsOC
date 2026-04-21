@@ -1593,6 +1593,47 @@ export const creditPolicyApi = {
     }
   },
 
+  async validatePolicy(id: string): Promise<any> {
+    try {
+      const res = await api.post(`/credit-policies/${id}/validate`);
+      return { success: true, data: res.data };
+    } catch (e: any) {
+      const body = e.response?.data;
+      return { success: false, valid: false, errors: body?.errors || [], error: body?.error };
+    }
+  },
+
+  async activatePolicy(id: string): Promise<any> {
+    try {
+      const res = await api.post(`/credit-policies/${id}/activate`);
+      return { success: true, data: res.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.message || e.response?.data?.error || 'Erreur lors de l\'activation' };
+    }
+  },
+
+  async archivePolicy(id: string): Promise<any> {
+    try {
+      const res = await api.post(`/credit-policies/${id}/archive`);
+      return { success: true, data: res.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur lors de l\'archivage' };
+    }
+  },
+
+  async savePolicyWithSteps(id: string, data: { steps: any[]; expectedVersion: number }): Promise<any> {
+    try {
+      const res = await api.put(`/credit-policies/${id}`, data);
+      return { success: true, data: res.data.data };
+    } catch (e: any) {
+      const body = e.response?.data;
+      if (e.response?.status === 409) {
+        return { success: false, conflict: true, error: body?.message || 'Conflit de version' };
+      }
+      return { success: false, error: body?.error || 'Erreur sauvegarde' };
+    }
+  },
+
   // ─── Délégations de pouvoir ────────────────────────────────────────────────
 
   async getDelegations(params?: { status?: string; delegatorId?: string; delegateId?: string }): Promise<any> {
