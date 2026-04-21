@@ -16,7 +16,84 @@ OptimusCredit dispose déjà d'une `CreditPolicyPage.tsx` avec une interface tab
 
 ---
 
-## 2. Architecture Générale
+## 2. Multi-Tenancy & Dynamisme par Banque
+
+### Isolation stricte par companyId
+
+Chaque banque (tenant) est totalement isolée. Toutes les données du builder sont scopées au `companyId` de la banque active de l'utilisateur connecté (issu de `UserContext`).
+
+- Un ADMIN de la Banque A ne voit jamais les politiques de la Banque B
+- Le backend filtre **systématiquement** par `companyId` sur tous les endpoints du builder
+- Un SUPER_ADMIN peut switcher de contexte compagnie (comportement déjà existant via le bouton "Gérer")
+
+### Politiques multiples par banque
+
+Chaque banque peut avoir **plusieurs politiques** (brouillons, archives, active). Une seule peut être `isActive = true` à la fois.
+
+```
+Banque BCI :
+  ├── POL-2024-001  [active]   version 5
+  ├── POL-2025-DRAFT [brouillon] version 1
+  └── POL-2023-ARC  [archivée]  version 3
+
+Banque CBAO :
+  └── POL-2024-001  [active]   version 2   ← données complètement séparées
+```
+
+Le builder affiche un **sélecteur de politique** en haut de page (dropdown), limité aux politiques de la banque active.
+
+### Données dynamiques par banque
+
+Les éléments suivants sont chargés dynamiquement depuis la base, filtrés par `companyId` :
+
+| Donnée | Source | Endpoint |
+|---|---|---|
+| Liste des politiques | `CreditPolicy` | `GET /api/credit-policies?companyId` |
+| Étapes d'une politique | `CreditPolicyStep` | `GET /api/credit-policies/:id` |
+| Types de crédit disponibles | `CreditType` | `GET /api/credit-types` (déjà scopé) |
+
+Les **rôles** restent une enum statique (identique pour toutes les banques).
+
+### Cycle de vie d'une politique par banque
+
+```
+[Brouillon] → [Valider] → [Activer] → [Active]
+                              ↑             ↓
+                         (remplace)   [Archiver] → [Archivée]
+```
+
+- **Brouillon** : éditable dans le builder, non appliqué aux nouveaux dossiers
+- **Valider** : déclenche `POST /api/credit-policies/:id/validate` — la banque voit les erreurs éventuelles
+- **Activer** : passe `isActive = true` sur cette politique, archive automatiquement l'ancienne active
+- **Archivée** : lecture seule, non applicable aux nouveaux dossiers
+
+Le statut est affiché dans le sélecteur de politique et dans le header du builder. Les boutons Sauvegarder/Valider/Activer changent selon le statut.
+
+### Nouveau champ `status` sur CreditPolicy
+
+Le champ `isActive` booléen existant ne suffit pas pour distinguer brouillon / archivé. Ajout d'un enum :
+
+```prisma
+enum PolicyStatus {
+  DRAFT    @map("draft")
+  ACTIVE   @map("active")
+  ARCHIVED @map("archived")
+}
+
+model CreditPolicy {
+  // ... champs existants ...
+  status  PolicyStatus @default(DRAFT)
+}
+```
+
+Migration associée :
+```bash
+npx prisma migrate dev --name add_status_to_credit_policy
+```
+
+---
+
+## 3. Architecture Générale
 
 ### Layout 3 colonnes
 
@@ -52,6 +129,10 @@ La liste d'étapes est la **source de vérité**. L'aperçu React Flow est en le
 **Intégration :** Nouvel onglet "Éditeur visuel" dans la route `/credit-policy` existante. Aucun changement de routing.
 
 **Rôles dans la palette :** La liste des rôles affichés dans `StepPalette` est issue de la constante statique `ROLES` déjà définie dans `CreditPolicyPage.tsx` (enum `UserRole`). Aucun appel API supplémentaire pour charger les rôles.
+
+**Types de crédit dans le panneau de config :** Chargés dynamiquement via `GET /api/credit-types` (scopé au `companyId` de la banque active), affichés dans le sélecteur multi-select des gardes. Chaque banque voit uniquement ses propres types de crédit.
+
+**Sélecteur de politique :** En haut du builder, un dropdown charge `GET /api/credit-policies` (filtrés par `companyId`). L'utilisateur choisit quelle politique éditer. Le statut (DRAFT / ACTIVE / ARCHIVED) est affiché à côté du nom. Un bouton "Nouvelle politique" permet de créer un brouillon.
 
 ---
 
@@ -172,19 +253,36 @@ Les erreurs s'affichent **inline** sur le bloc concerné (bordure rouge + messag
 
 ## 5. Backend API
 
+### Isolation multi-tenant — règle absolue
+
+**Tous les endpoints du builder filtrent par `companyId`** extrait du JWT de l'utilisateur connecté. Toute tentative d'accéder à une politique d'une autre banque retourne `403 Forbidden`.
+
 ### Endpoints existants étendus
 
 | Méthode | Route | Changement |
 |---|---|---|
-| `GET` | `/api/credit-policies/:id` | Inclure `guards` dans la réponse des steps |
-| `PUT` | `/api/credit-policies/:id` | Auto-incrément `version` + persistance `guards` + contrôle optimiste de version |
+| `GET` | `/api/credit-policies` | Filtre par `companyId` du user + inclure `status` |
+| `GET` | `/api/credit-policies/:id` | Vérification `companyId` + inclure `guards` dans les steps |
+| `PUT` | `/api/credit-policies/:id` | Auto-incrément `version` + persistance `guards` + optimistic locking — uniquement si `status = DRAFT` |
 
-### Nouvel endpoint de validation
+### Nouveaux endpoints
 
 ```
 POST /api/credit-policies/:id/validate
-→ 200 { valid: true }
-→ 422 { valid: false, errors: [{ stepId: string, message: string }] }
+  → Vérifie la cohérence du workflow (règles métier)
+  → 200 { valid: true }
+  → 422 { valid: false, errors: [{ stepId: string, message: string }] }
+
+POST /api/credit-policies/:id/activate
+  → Passe la politique en status=ACTIVE
+  → Archive automatiquement l'ancienne politique active de la même banque
+  → Nécessite une validation préalable réussie
+  → 200 { activated: true, archivedPolicyId: string | null }
+  → 422 { error: "VALIDATION_REQUIRED" } si la politique n'a pas été validée
+
+POST /api/credit-policies/:id/archive
+  → Passe la politique en status=ARCHIVED (lecture seule)
+  → 200 { archived: true }
 ```
 
 ### Auto-versioning
@@ -258,6 +356,7 @@ for (const role of ['ADMIN', 'SUPER_ADMIN'] as const) {
 ## 8. Dépendances
 
 - `@xyflow/react` (React Flow v12) — à ajouter dans `package.json` frontend
-- Prisma migration — 1 champ `guards JSONB` sur `credit_policy_steps` + `prisma generate`
+- **Migration 1** — champ `guards JSONB` sur `credit_policy_steps`
+- **Migration 2** — enum `PolicyStatus` + champ `status` sur `credit_policies`
 - Seed update — ajouter `MANAGE_CREDIT_POLICY` aux rôles `ADMIN` et `SUPER_ADMIN`
 - Aucune autre dépendance externe
