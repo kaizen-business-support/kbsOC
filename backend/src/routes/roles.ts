@@ -153,9 +153,15 @@ router.post('/',
       throw new AppError('Role, label, and permissions are required', 400, 'MISSING_FIELDS');
     }
 
+    const sanitizedRole = String(role).trim().toUpperCase().replace(/\s+/g, '_');
+
+    if (!/^[A-Z][A-Z0-9_]*$/.test(sanitizedRole)) {
+      throw new AppError('Le nom du rôle ne doit contenir que des lettres, chiffres et underscores', 400, 'INVALID_ROLE_NAME');
+    }
+
     const newRole = await prisma.rolePermission.create({
       data: {
-        role: role as any,
+        role: sanitizedRole as any,
         label,
         description: description || null,
         permissions
