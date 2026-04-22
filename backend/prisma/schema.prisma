@@ -647,6 +647,7 @@ enum StepType {
 }
 
 enum PolicyStepType {
+  CREATION   @map("creation")   // Point de départ : création du dossier par le Chargé d'Affaires
   DISPATCH   @map("dispatch")   // Dispatching : qui route le dossier vers la prochaine étape
   ANALYSIS   @map("analysis")   // Analyse : traitement sans décision d'approbation formelle
   APPROVAL   @map("approval")   // Approbation : décision formelle (approuver / rejeter)

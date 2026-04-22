@@ -1,4 +1,4 @@
-export type PolicyStepType = 'DISPATCH' | 'ANALYSIS' | 'APPROVAL' | 'COMMITTEE';
+export type PolicyStepType = 'CREATION' | 'DISPATCH' | 'ANALYSIS' | 'APPROVAL' | 'COMMITTEE';
 export type PolicyStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
 export type GuardOperator = 'AND' | 'OR';
 export type ConditionOperator = 'BETWEEN' | 'LT' | 'GT' | 'GTE' | 'LTE' | 'IN' | 'NOT_IN';
@@ -57,6 +57,7 @@ export interface CreditType {
 }
 
 export const STEP_TYPE_CONFIG: Record<PolicyStepType, { label: string; color: string; bgColor: string }> = {
+  CREATION:  { label: 'Création',     color: '#0e7490', bgColor: '#ecfeff' },
   DISPATCH:  { label: 'Dispatch',     color: '#1d4ed8', bgColor: '#eff6ff' },
   ANALYSIS:  { label: 'Analyse',      color: '#c2410c', bgColor: '#fff7ed' },
   APPROVAL:  { label: 'Approbation',  color: '#15803d', bgColor: '#f0fdf4' },

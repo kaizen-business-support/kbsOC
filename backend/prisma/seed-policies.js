@@ -11,7 +11,7 @@ const prisma = new PrismaClient({
 const POLICY_CODE = 'POL-BCI-GENERALE';
 
 const STEPS = [
-  { stepName: 'application_created',      stepLabel: 'Création du dossier',            order: 0,  stepType: 'DISPATCH',  assignedRole: 'CHARGE_AFFAIRES',        expectedDurationHours: 24, maxDurationHours: 72,  phase: 'Montage dossier' },
+  { stepName: 'application_created',      stepLabel: 'Création du dossier',            order: 0,  stepType: 'CREATION',  assignedRole: 'CHARGE_AFFAIRES',        expectedDurationHours: 24, maxDurationHours: 72,  phase: 'Montage dossier' },
   { stepName: 'charge_affaires_dispatch', stepLabel: 'Traitement par le CA',            order: 1,  stepType: 'DISPATCH',  assignedRole: 'CHARGE_AFFAIRES',        expectedDurationHours: 48, maxDurationHours: 120, phase: 'Montage dossier' },
   { stepName: 'verification_completude',  stepLabel: 'Vérification de la complétude',  order: 2,  stepType: 'ANALYSIS',  assignedRole: 'CHARGE_AFFAIRES',        expectedDurationHours: 24, maxDurationHours: 48,  phase: 'Montage dossier' },
   { stepName: 'contre_analyse',           stepLabel: 'Contre-analyse',                 order: 3,  stepType: 'ANALYSIS',  assignedRole: 'ANALYSTE_RISQUES',       expectedDurationHours: 48, maxDurationHours: 120, phase: 'Analyse risques' },
