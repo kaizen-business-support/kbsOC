@@ -2,13 +2,16 @@ import React from 'react';
 import {
   Box, TextField, Select, MenuItem, InputLabel, FormControl,
   Typography, Divider, Chip, Collapse, IconButton, Tooltip,
+  Checkbox, FormControlLabel,
 } from '@mui/material';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { ExpandMore, ExpandLess, Delete as DeleteIcon } from '@mui/icons-material';
 import { PolicyStep, ROLES, STEP_TYPE_CONFIG, CreditType } from '../../types/creditPolicyBuilder';
 import { GuardRulesEditor } from './GuardRulesEditor';
 
 interface Props {
   step: PolicyStep;
+  index: number;
   expanded: boolean;
   onToggle: () => void;
   onChange: (patch: Partial<PolicyStep>) => void;
@@ -17,54 +20,96 @@ interface Props {
   readOnly?: boolean;
 }
 
-export function StepConfigPanel({ step, expanded, onToggle, onChange, onDelete, creditTypes, readOnly = false }: Props) {
+const ACTIONS = [
+  { key: 'approve',   label: 'Approuver' },
+  { key: 'reject',    label: 'Refuser' },
+  { key: 'request',   label: 'Demander des informations' },
+  { key: 'transfer',  label: 'Transférer' },
+];
+
+function getActions(desc: string | null): string[] {
+  try { return JSON.parse(desc ?? '[]'); } catch { return ['approve', 'reject', 'request']; }
+}
+function setActions(actions: string[]): string {
+  return JSON.stringify(actions);
+}
+
+export function StepConfigPanel({
+  step, index, expanded, onToggle, onChange, onDelete, creditTypes, readOnly = false,
+}: Props) {
   const cfg = STEP_TYPE_CONFIG[step.stepType];
   const hasError = !!step._error;
+  const actions = getActions(step.description);
+
+  const toggleAction = (key: string) => {
+    const next = actions.includes(key) ? actions.filter((a) => a !== key) : [...actions, key];
+    onChange({ description: setActions(next) });
+  };
 
   return (
-    <Box
-      sx={{
-        border: `2px solid ${hasError ? '#f44336' : cfg.color}`,
-        borderRadius: 2,
-        mb: 1,
-        bgcolor: 'background.paper',
-        transition: 'border-color 0.2s',
-      }}
-    >
+    <Box sx={{
+      border: `1.5px solid ${hasError ? '#ef5350' : '#e0e0e0'}`,
+      borderLeft: `4px solid ${hasError ? '#ef5350' : cfg.color}`,
+      borderRadius: '8px',
+      mb: 1,
+      bgcolor: '#fff',
+      overflow: 'hidden',
+      boxShadow: expanded ? '0 2px 8px rgba(0,0,0,0.08)' : 'none',
+      transition: 'box-shadow 0.2s',
+    }}>
       {/* Header */}
       <Box
         sx={{
-          display: 'flex', alignItems: 'center', gap: 1, p: 1.5,
-          bgcolor: cfg.bgColor, borderRadius: expanded ? '6px 6px 0 0' : 2, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 1,
+          px: 1.5, py: 1.2,
+          bgcolor: expanded ? cfg.bgColor : '#fff',
+          cursor: 'pointer',
+          '&:hover': { bgcolor: cfg.bgColor },
+          transition: 'background 0.15s',
         }}
         onClick={onToggle}
       >
-        <Typography variant="body2" sx={{ fontWeight: 700, color: cfg.color, minWidth: 20 }}>
-          {step.order}.
-        </Typography>
-        <Typography variant="body2" sx={{ fontWeight: 600, flex: 1 }}>
+        {!readOnly && (
+          <DragIndicatorIcon sx={{ fontSize: 16, color: '#bdbdbd', flexShrink: 0, cursor: 'grab' }} />
+        )}
+        <Box sx={{
+          width: 22, height: 22, borderRadius: '50%', bgcolor: cfg.color,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
+          <Typography sx={{ color: '#fff', fontSize: 11, fontWeight: 800, lineHeight: 1 }}>{index + 1}</Typography>
+        </Box>
+        <Typography sx={{ fontWeight: 600, flex: 1, fontSize: 13, color: '#222' }}>
           {step.stepLabel || '(sans nom)'}
         </Typography>
-        <Chip label={cfg.label} size="small" sx={{ bgcolor: cfg.color, color: '#fff', fontWeight: 700, fontSize: 11 }} />
+        <Chip
+          label={cfg.label}
+          size="small"
+          sx={{ bgcolor: `${cfg.color}18`, color: cfg.color, fontWeight: 700, fontSize: 10, height: 20 }}
+        />
         {!readOnly && (
-          <Tooltip title="Supprimer l'étape">
-            <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); onDelete(); }}>
-              <DeleteIcon fontSize="small" />
+          <Tooltip title="Supprimer">
+            <IconButton
+              size="small"
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              sx={{ color: '#bdbdbd', '&:hover': { color: '#ef5350' } }}
+            >
+              <DeleteIcon sx={{ fontSize: 15 }} />
             </IconButton>
           </Tooltip>
         )}
-        {expanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+        {expanded ? <ExpandLess sx={{ fontSize: 16, color: '#9e9e9e' }} /> : <ExpandMore sx={{ fontSize: 16, color: '#9e9e9e' }} />}
       </Box>
 
       {hasError && (
-        <Typography variant="caption" color="error" sx={{ px: 2, py: 0.5, display: 'block', bgcolor: '#ffebee' }}>
-          {step._error}
-        </Typography>
+        <Box sx={{ px: 2, py: 0.5, bgcolor: '#ffebee' }}>
+          <Typography sx={{ fontSize: 11, color: '#c62828' }}>{step._error}</Typography>
+        </Box>
       )}
 
-      {/* Body */}
       <Collapse in={expanded}>
         <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+
+          {/* Nom */}
           <TextField
             label="Nom de l'étape" size="small" fullWidth disabled={readOnly}
             value={step.stepLabel}
@@ -74,15 +119,33 @@ export function StepConfigPanel({ step, expanded, onToggle, onChange, onDelete, 
             })}
           />
 
+          {/* Type */}
           <FormControl size="small" fullWidth>
-            <InputLabel>Rôle assigné</InputLabel>
-            <Select value={step.assignedRole} label="Rôle assigné" disabled={readOnly}
+            <InputLabel>Type d'étape</InputLabel>
+            <Select value={step.stepType} label="Type d'étape" disabled={readOnly}
+              onChange={(e) => onChange({ stepType: e.target.value as any })}>
+              {(['DISPATCH', 'ANALYSIS', 'APPROVAL', 'COMMITTEE'] as const).map((t) => (
+                <MenuItem key={t} value={t}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: STEP_TYPE_CONFIG[t].color }} />
+                    {STEP_TYPE_CONFIG[t].label}
+                  </Box>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {/* Rôle */}
+          <FormControl size="small" fullWidth>
+            <InputLabel>Assignée à</InputLabel>
+            <Select value={step.assignedRole} label="Assignée à" disabled={readOnly}
               onChange={(e) => onChange({ assignedRole: e.target.value })}>
               {ROLES.map((r) => <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>)}
             </Select>
           </FormControl>
 
-          <Box sx={{ display: 'flex', gap: 2 }}>
+          {/* SLA */}
+          <Box sx={{ display: 'flex', gap: 1.5 }}>
             <TextField label="SLA attendu (h)" size="small" type="number" disabled={readOnly}
               value={step.expectedDurationHours}
               onChange={(e) => onChange({ expectedDurationHours: Number(e.target.value) })}
@@ -95,12 +158,44 @@ export function StepConfigPanel({ step, expanded, onToggle, onChange, onDelete, 
 
           <Divider />
 
-          <GuardRulesEditor
-            value={step.guards}
-            onChange={(guards) => onChange({ guards })}
-            creditTypes={creditTypes}
-            readOnly={readOnly}
-          />
+          {/* Actions autorisées */}
+          <Box>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#555', mb: 1 }}>
+              Actions autorisées
+            </Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.2 }}>
+              {ACTIONS.map(({ key, label }) => (
+                <FormControlLabel
+                  key={key}
+                  disabled={readOnly}
+                  control={
+                    <Checkbox
+                      checked={actions.includes(key)}
+                      onChange={() => toggleAction(key)}
+                      size="small"
+                      sx={{ py: 0.4 }}
+                    />
+                  }
+                  label={<Typography sx={{ fontSize: 12 }}>{label}</Typography>}
+                />
+              ))}
+            </Box>
+          </Box>
+
+          <Divider />
+
+          {/* Gardes */}
+          <Box>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#555', mb: 1 }}>
+              Gardes (Règles)
+            </Typography>
+            <GuardRulesEditor
+              value={step.guards}
+              onChange={(guards) => onChange({ guards })}
+              creditTypes={creditTypes}
+              readOnly={readOnly}
+            />
+          </Box>
         </Box>
       </Collapse>
     </Box>

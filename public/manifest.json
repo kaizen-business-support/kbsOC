@@ -1,15 +1,56 @@
 {
   "short_name": "OptimusCredit",
-  "name": "OptimusCredit - Financial Analysis Platform",
+  "name": "OptimusCredit – Plateforme de Crédit",
+  "description": "Gestion et analyse des demandes de crédit bancaire",
   "icons": [
     {
       "src": "favicon.ico",
       "sizes": "64x64 32x32 24x24 16x16",
       "type": "image/x-icon"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
-  "start_url": ".",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "landscape",
   "theme_color": "#1f4e79",
-  "background_color": "#ffffff"
+  "background_color": "#ffffff",
+  "lang": "fr",
+  "categories": ["finance", "business"],
+  "shortcuts": [
+    {
+      "name": "Tableau de bord",
+      "url": "/",
+      "description": "Accueil OptimusCredit"
+    },
+    {
+      "name": "Nouvelle demande",
+      "url": "/credit-application",
+      "description": "Créer une demande de crédit"
+    }
+  ]
 }

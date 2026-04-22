@@ -144,7 +144,7 @@ const roles = [
       'committee_vote', 'final_approval', 'risk_override', 'policy_exceptions',
       'manage_branch', 'manage_team', 'workflow_override',
       'dispatch_applications', 'assign_analyst', 'view_analyst_workload',
-      'manage_credit_policy',
+      'manage_credit_policy', 'manage_platform',
     ]
   }
 ];

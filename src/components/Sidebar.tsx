@@ -92,6 +92,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [creditExpanded, setCreditExpanded]     = useState(true);
   const [analysisExpanded, setAnalysisExpanded] = useState(true);
   const [configExpanded, setConfigExpanded]     = useState(true);
+  const [policyExpanded, setPolicyExpanded]     = useState(true);
 
   const handleItemClick = (page: PageType) => {
     onPageChange(page);
@@ -498,7 +499,50 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <NavItem key={item.id} id={item.id} label={item.label} icon={item.icon} />
                 ))}
                 {canViewCreditPolicy && (
-                  <NavItem id="credit-policy" label="Politique de Crédit" icon={PolicyIcon} />
+                  <>
+                    {/* Parent — Politique de Crédit */}
+                    {open ? (
+                      <ListItem disablePadding sx={{ mb: 0.25 }}>
+                        <ListItemButton
+                          onClick={() => setPolicyExpanded(p => !p)}
+                          sx={{
+                            borderRadius: '10px', px: 1.5, py: 0.75,
+                            color: '#64748B',
+                            '&:hover': { bgcolor: '#F1F5F9' },
+                          }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 32 }}>
+                            <PolicyIcon sx={{ fontSize: 18, color: '#64748B' }} />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary="Politique de Crédit"
+                            primaryTypographyProps={{ fontSize: '13px', fontWeight: 500, noWrap: true }}
+                          />
+                          {policyExpanded ? <ExpandLess sx={{ fontSize: 16 }} /> : <ExpandMore sx={{ fontSize: 16 }} />}
+                        </ListItemButton>
+                      </ListItem>
+                    ) : (
+                      <Tooltip title="Politique de Crédit" placement="right" arrow>
+                        <ListItem disablePadding sx={{ mb: 0.25 }}>
+                          <ListItemButton
+                            onClick={() => setPolicyExpanded(p => !p)}
+                            sx={{ justifyContent: 'center', px: 0, py: 0.8, mx: 0.75, borderRadius: '8px', minHeight: 36, '&:hover': { bgcolor: '#F1F5F9' } }}
+                          >
+                            <ListItemIcon sx={{ minWidth: 0, justifyContent: 'center' }}>
+                              <PolicyIcon sx={{ fontSize: 18, color: '#64748B' }} />
+                            </ListItemIcon>
+                          </ListItemButton>
+                        </ListItem>
+                      </Tooltip>
+                    )}
+                    <Collapse in={open ? policyExpanded : false} timeout="auto">
+                      <List disablePadding sx={{ pl: 1 }}>
+                        <SubNavItem id="credit-policy"    label="Circuit de traitement" icon={StepsIcon} />
+                        <SubNavItem id="raci-matrix"      label="Matrice RACI"          icon={WorkflowIcon} />
+                        <SubNavItem id="workflow-builder" label="Éditeur de Workflow"   icon={PolicyIcon} />
+                      </List>
+                    </Collapse>
+                  </>
                 )}
               </List>
             </Collapse>
@@ -508,7 +552,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Support */}
         <StaticLabel label="Support" />
         <List disablePadding sx={{ px: 0.5 }}>
-          {activeCompany && <NavItem id="raci-matrix" label="Matrice RACI" icon={StepsIcon} />}
           <NavItem id="documentation" label={t('navigation.documentation')} icon={DocumentationIcon} />
           <NavItem id="settings"      label={t('navigation.settings')}       icon={SettingsIcon}       />
         </List>

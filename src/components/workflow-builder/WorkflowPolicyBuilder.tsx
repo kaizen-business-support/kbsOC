@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Typography, Select, MenuItem, Button, Chip, Alert,
-  CircularProgress, Divider, Tooltip, FormControl, InputLabel,
+  CircularProgress, Tooltip, FormControl, IconButton, Divider,
+  Snackbar,
 } from '@mui/material';
-import {
-  Save as SaveIcon,
-  CheckCircle as ValidateIcon,
-  PlayArrow as ActivateIcon,
-  Archive as ArchiveIcon,
-  Add as AddIcon,
-} from '@mui/icons-material';
+import SaveIcon from '@mui/icons-material/Save';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import ArchiveIcon from '@mui/icons-material/Archive';
+import AddIcon from '@mui/icons-material/Add';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import { useUser } from '../../contexts/UserContext';
 import { creditPolicyApi } from '../../services/api';
 import {
@@ -19,6 +21,10 @@ import { StepPalette } from './StepPalette';
 import { StepList } from './StepList';
 import { WorkflowPreview } from './WorkflowPreview';
 
+// Mini sidebar width from Sidebar.tsx
+const SIDEBAR_W = 64;
+const HEADER_H  = 64;
+
 function generateTempId() {
   return `new_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
@@ -26,59 +32,50 @@ function generateTempId() {
 function createStep(type: PolicyStepType, order: number): PolicyStep {
   const cfg = STEP_TYPE_CONFIG[type];
   return {
-    id: generateTempId(),
-    policyId: '',
-    stepName: type.toLowerCase(),
-    stepLabel: cfg.label,
-    order,
-    stepType: type,
-    assignedRole: 'CHARGE_AFFAIRES',
-    conditionMinAmount: null,
-    conditionMaxAmount: null,
-    expectedDurationHours: 24,
-    maxDurationHours: 72,
-    isRequired: true,
-    isActive: true,
-    description: null,
-    creditTypeIds: [],
-    guards: null,
+    id: generateTempId(), policyId: '',
+    stepName: type.toLowerCase(), stepLabel: cfg.label,
+    order, stepType: type, assignedRole: 'CHARGE_AFFAIRES',
+    conditionMinAmount: null, conditionMaxAmount: null,
+    expectedDurationHours: 24, maxDurationHours: 72,
+    isRequired: true, isActive: true, description: null,
+    creditTypeIds: [], guards: null,
   };
 }
 
 function validateStepsClient(steps: PolicyStep[]): PolicyStep[] {
   return steps.map((s) => {
     if (!s.stepLabel.trim()) return { ...s, _error: 'Nom obligatoire' };
-    if (!s.assignedRole) return { ...s, _error: 'Rôle obligatoire' };
+    if (!s.assignedRole)    return { ...s, _error: 'Rôle obligatoire' };
     return { ...s, _error: undefined };
   });
 }
 
-function statusColor(status: string) {
-  if (status === 'ACTIVE') return { bg: '#e8f5e9', color: '#2e7d32' };
-  if (status === 'DRAFT') return { bg: '#fff3e0', color: '#e65100' };
-  return { bg: '#f5f5f5', color: '#757575' };
-}
-
-function statusLabel(status: string) {
-  if (status === 'ACTIVE') return 'Active';
-  if (status === 'DRAFT') return 'Brouillon';
-  return 'Archivée';
-}
+const STATUS_CFG: Record<string, { bg: string; color: string; label: string; dot: string }> = {
+  ACTIVE:   { bg: '#e8f5e9', color: '#2e7d32', label: 'Active',    dot: '#4caf50' },
+  DRAFT:    { bg: '#fff8e1', color: '#f57f17', label: 'Brouillon', dot: '#ffc107' },
+  ARCHIVED: { bg: '#f5f5f5', color: '#757575', label: 'Archivée',  dot: '#9e9e9e' },
+};
 
 export function WorkflowPolicyBuilder() {
   const { hasPermission } = useUser();
-  const canEdit = hasPermission('manage_credit_policy');
+  const canEdit = hasPermission('manage_credit_policy') || hasPermission('policy_configuration');
 
-  const [policies, setPolicies] = useState<CreditPolicyFull[]>([]);
-  const [selectedPolicyId, setSelectedPolicyId] = useState<string>('');
-  const [steps, setSteps] = useState<PolicyStep[]>([]);
-  const [currentVersion, setCurrentVersion] = useState<number>(1);
-  const [creditTypes, setCreditTypes] = useState<CreditType[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
+  const [policies, setPolicies]               = useState<CreditPolicyFull[]>([]);
+  const [selectedPolicyId, setSelectedPolicyId] = useState('');
+  const [steps, setSteps]                     = useState<PolicyStep[]>([]);
+  const [currentVersion, setCurrentVersion]   = useState(1);
+  const [creditTypes, setCreditTypes]         = useState<CreditType[]>([]);
+  const [loading, setLoading]                 = useState(false);
+  const [saving, setSaving]                   = useState(false);
+  const [snack, setSnack]                     = useState<{ msg: string; sev: 'success'|'error'|'warning'|'info' } | null>(null);
+  const [selectedStepId, setSelectedStepId]   = useState<string | null>(null);
+  const [paletteOpen, setPaletteOpen]         = useState(true);
+  const [configOpen, setConfigOpen]           = useState(true);
 
   const selectedPolicy = policies.find((p) => p.id === selectedPolicyId) ?? null;
+  const isDraft  = selectedPolicy?.status === 'DRAFT';
+  const isActive = selectedPolicy?.status === 'ACTIVE';
+  const sc = selectedPolicy ? (STATUS_CFG[selectedPolicy.status] ?? STATUS_CFG.ARCHIVED) : null;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -88,14 +85,10 @@ export function WorkflowPolicyBuilder() {
     ]);
     if (polRes.success && polRes.data) {
       setPolicies(polRes.data);
-      const active = polRes.data.find((p: CreditPolicyFull) => p.status === 'ACTIVE')
-        ?? polRes.data.find((p: CreditPolicyFull) => p.status === 'DRAFT')
+      const best = polRes.data.find((p: CreditPolicyFull) => p.status === 'DRAFT')
+        ?? polRes.data.find((p: CreditPolicyFull) => p.status === 'ACTIVE')
         ?? polRes.data[0];
-      if (active) {
-        setSelectedPolicyId(active.id);
-        setSteps(active.steps ?? []);
-        setCurrentVersion(active.version);
-      }
+      if (best) { setSelectedPolicyId(best.id); setSteps(best.steps ?? []); setCurrentVersion(best.version); }
     }
     if (ctRes.success && ctRes.data) setCreditTypes(ctRes.data);
     setLoading(false);
@@ -109,12 +102,15 @@ export function WorkflowPolicyBuilder() {
     setSelectedPolicyId(id);
     setSteps(pol.steps ?? []);
     setCurrentVersion(pol.version);
-    setMessage(null);
+    setSelectedStepId(null);
   };
 
   const handleAddStep = (type: PolicyStepType) => {
-    if (!canEdit || selectedPolicy?.status !== 'DRAFT') return;
-    setSteps((prev) => [...prev, createStep(type, prev.length + 1)]);
+    if (!canEdit || !isDraft) return;
+    const s = createStep(type, steps.length + 1);
+    setSteps((prev) => [...prev, s]);
+    setSelectedStepId(s.id);
+    if (!configOpen) setConfigOpen(true);
   };
 
   const handleSave = async () => {
@@ -122,25 +118,24 @@ export function WorkflowPolicyBuilder() {
     const validated = validateStepsClient(steps);
     setSteps(validated);
     if (validated.some((s) => s._error)) {
-      setMessage({ text: 'Corrigez les erreurs avant de sauvegarder', type: 'error' });
+      setSnack({ msg: 'Corrigez les erreurs avant de sauvegarder', sev: 'error' });
       return;
     }
     setSaving(true);
     const res = await creditPolicyApi.savePolicyWithSteps(selectedPolicyId, {
-      steps: validated.map((s) => { const { _error, ...rest } = s; return rest; }),
+      steps: validated.map(({ _error, ...rest }) => rest),
       expectedVersion: currentVersion,
     });
     setSaving(false);
     if (res.success) {
-      const newVersion = res.data?.version ?? currentVersion + 1;
-      setCurrentVersion(newVersion);
-      // Rafraîchir les étapes avec les IDs persistés
+      const v = res.data?.version ?? currentVersion + 1;
+      setCurrentVersion(v);
       if (res.data?.steps) setSteps(res.data.steps);
-      setMessage({ text: `Politique sauvegardée (v${newVersion})`, type: 'success' });
+      setSnack({ msg: `Sauvegardé — v${v}`, sev: 'success' });
     } else if (res.conflict) {
-      setMessage({ text: res.error, type: 'warning' });
+      setSnack({ msg: res.error, sev: 'warning' });
     } else {
-      setMessage({ text: res.error, type: 'error' });
+      setSnack({ msg: res.error, sev: 'error' });
     }
   };
 
@@ -148,80 +143,88 @@ export function WorkflowPolicyBuilder() {
     if (!selectedPolicyId) return;
     const res = await creditPolicyApi.validatePolicy(selectedPolicyId);
     if (res.data?.valid) {
-      setMessage({ text: 'Workflow valide — vous pouvez activer la politique', type: 'success' });
+      setSnack({ msg: 'Workflow valide — vous pouvez activer la politique', sev: 'success' });
     } else {
-      const errMsgs = (res.errors ?? []).map((e: any) => e.message).join(' | ');
-      setMessage({ text: errMsgs || res.error || 'Workflow invalide', type: 'error' });
+      const errs = (res.errors ?? []).map((e: any) => e.message).join(' · ');
+      setSnack({ msg: errs || res.error || 'Workflow invalide', sev: 'error' });
     }
   };
 
   const handleActivate = async () => {
     if (!selectedPolicyId) return;
     const res = await creditPolicyApi.activatePolicy(selectedPolicyId);
-    if (res.success) {
-      setMessage({ text: 'Politique activée avec succès', type: 'success' });
-      await loadData();
-    } else {
-      setMessage({ text: res.error, type: 'error' });
-    }
+    if (res.success) { setSnack({ msg: 'Politique activée', sev: 'success' }); await loadData(); }
+    else setSnack({ msg: res.error, sev: 'error' });
   };
 
   const handleArchive = async () => {
     if (!selectedPolicyId) return;
     const res = await creditPolicyApi.archivePolicy(selectedPolicyId);
-    if (res.success) {
-      setMessage({ text: 'Politique archivée', type: 'info' });
-      await loadData();
-    } else {
-      setMessage({ text: res.error, type: 'error' });
-    }
+    if (res.success) { setSnack({ msg: 'Politique archivée', sev: 'info' }); await loadData(); }
+    else setSnack({ msg: res.error, sev: 'error' });
   };
 
   const handleNewPolicy = async () => {
-    const name = `Politique ${new Date().getFullYear()}-DRAFT`;
-    const code = `POL-${Date.now()}`;
-    const res = await creditPolicyApi.createPolicy({ name, code, description: '' });
+    const name = `Politique ${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
+    const res = await creditPolicyApi.createPolicy({ name, code: `POL-${Date.now()}`, description: '' });
     if (res.success && res.data) {
       await loadData();
       setSelectedPolicyId(res.data.id);
-      setSteps([]);
-      setCurrentVersion(1);
+      setSteps([]); setCurrentVersion(1);
     }
   };
 
-  const isDraft = selectedPolicy?.status === 'DRAFT';
-  const isActive = selectedPolicy?.status === 'ACTIVE';
-
-  if (loading) {
-    return <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>;
-  }
-
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 1 }}>
-      {/* Header */}
+    <Box sx={{
+      position: 'fixed',
+      top: HEADER_H,
+      left: SIDEBAR_W,
+      right: 0,
+      bottom: 0,
+      display: 'flex',
+      flexDirection: 'column',
+      bgcolor: '#f0f2f5',
+      zIndex: 10,
+    }}>
+
+      {/* ══ TOOLBAR ══ */}
       <Box sx={{
-        display: 'flex', alignItems: 'center', gap: 2, p: 1.5,
-        bgcolor: 'background.paper', borderRadius: 2, flexWrap: 'wrap',
-        boxShadow: 1,
+        display: 'flex', alignItems: 'center', gap: 1.5,
+        px: 2, height: 52, flexShrink: 0,
+        bgcolor: '#ffffff',
+        borderBottom: '1px solid #e2e8f0',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
       }}>
-        <FormControl size="small" sx={{ minWidth: 300 }}>
-          <InputLabel>Politique de crédit</InputLabel>
+        {/* Titre */}
+        <AccountTreeIcon sx={{ fontSize: 20, color: '#1d4ed8' }} />
+        <Typography sx={{ fontWeight: 700, fontSize: 14, color: '#1e293b', mr: 0.5 }}>
+          Éditeur de Workflow
+        </Typography>
+
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.5, borderColor: '#e2e8f0' }} />
+
+        {/* Label politique */}
+        <Typography sx={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>
+          Politique :
+        </Typography>
+
+        {/* Sélecteur politique — fond blanc, texte sombre */}
+        <FormControl size="small" sx={{ minWidth: 280 }}>
           <Select
             value={selectedPolicyId}
-            label="Politique de crédit"
             onChange={(e) => handleSelectPolicy(e.target.value)}
+            displayEmpty
+            sx={{ fontSize: 13, bgcolor: '#f8fafc', color: '#1e293b' }}
           >
             {policies.map((p) => {
-              const sc = statusColor(p.status);
+              const s = STATUS_CFG[p.status] ?? STATUS_CFG.ARCHIVED;
               return (
-                <MenuItem key={p.id} value={p.id}>
+                <MenuItem key={p.id} value={p.id} sx={{ fontSize: 13 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
-                    <Box sx={{ flex: 1 }}>{p.name} — v{p.version}</Box>
-                    <Chip
-                      size="small"
-                      label={statusLabel(p.status)}
-                      sx={{ fontSize: 10, bgcolor: sc.bg, color: sc.color, fontWeight: 700 }}
-                    />
+                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: s.dot, flexShrink: 0 }} />
+                    <Box sx={{ flex: 1, color: '#1e293b' }}>{p.name}</Box>
+                    <Typography sx={{ fontSize: 11, color: '#94a3b8' }}>v{p.version} · {s.label}</Typography>
                   </Box>
                 </MenuItem>
               );
@@ -229,90 +232,205 @@ export function WorkflowPolicyBuilder() {
           </Select>
         </FormControl>
 
-        {canEdit && (
-          <Button size="small" startIcon={<AddIcon />} variant="outlined" onClick={handleNewPolicy}>
-            Nouvelle politique
-          </Button>
+        {/* Chip statut */}
+        {sc && (
+          <Chip size="small" label={sc.label}
+            sx={{ bgcolor: sc.bg, color: sc.color, fontWeight: 700, fontSize: 11, height: 22 }} />
+        )}
+
+        {loading && <CircularProgress size={16} sx={{ color: '#1d4ed8' }} />}
+
+        {/* Badge mode */}
+        {canEdit && isDraft && (
+          <Chip size="small" label="✏️ Mode édition"
+            sx={{ bgcolor: '#dcfce7', color: '#15803d', fontWeight: 700, fontSize: 11, height: 22 }} />
+        )}
+        {(!canEdit || !isDraft) && selectedPolicy && (
+          <Chip size="small" label="🔒 Lecture seule"
+            sx={{ bgcolor: '#fef9c3', color: '#854d0e', fontWeight: 700, fontSize: 11, height: 22 }} />
         )}
 
         <Box sx={{ flex: 1 }} />
 
+        {/* Boutons d'action */}
         {canEdit && isDraft && (
           <>
-            <Button
-              size="small" variant="outlined"
-              startIcon={saving ? <CircularProgress size={14} /> : <SaveIcon />}
-              onClick={handleSave}
-              disabled={saving}
+            <Tooltip title="Vérifier la cohérence du workflow avant activation">
+              <Button size="small" variant="outlined" color="inherit"
+                startIcon={<CheckCircleOutlineIcon sx={{ fontSize: 15 }} />}
+                onClick={handleValidate}
+                sx={{ fontSize: 12, textTransform: 'none', borderColor: '#e2e8f0', color: '#475569' }}
+              >
+                Valider
+              </Button>
+            </Tooltip>
+            <Button size="small" variant="outlined" color="primary"
+              startIcon={saving ? <CircularProgress size={13} /> : <SaveIcon sx={{ fontSize: 15 }} />}
+              onClick={handleSave} disabled={saving}
+              sx={{ fontSize: 12, textTransform: 'none' }}
             >
-              Sauvegarder
+              Enregistrer
             </Button>
-            <Button size="small" variant="outlined" color="info" startIcon={<ValidateIcon />} onClick={handleValidate}>
-              Valider
-            </Button>
-            <Button size="small" variant="contained" color="success" startIcon={<ActivateIcon />} onClick={handleActivate}>
+            <Button size="small" variant="contained" color="success"
+              startIcon={<PlayArrowIcon sx={{ fontSize: 15 }} />}
+              onClick={handleActivate}
+              sx={{ fontSize: 12, textTransform: 'none' }}
+            >
               Activer
             </Button>
           </>
         )}
-
         {canEdit && isActive && (
-          <Tooltip title="Archiver cette politique (la rend lecture seule)">
-            <Button size="small" variant="outlined" color="warning" startIcon={<ArchiveIcon />} onClick={handleArchive}>
+          <Tooltip title="Archiver (rend la politique lecture seule)">
+            <Button size="small" variant="outlined" color="warning"
+              startIcon={<ArchiveIcon sx={{ fontSize: 15 }} />}
+              onClick={handleArchive}
+              sx={{ fontSize: 12, textTransform: 'none' }}
+            >
               Archiver
             </Button>
           </Tooltip>
         )}
+        <Tooltip title="Créer une nouvelle politique vierge">
+          <IconButton size="small" onClick={handleNewPolicy} sx={{ color: '#94a3b8', ml: 0.5 }}>
+            <AddIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Tooltip>
       </Box>
 
-      {message && (
-        <Alert severity={message.type} onClose={() => setMessage(null)}>
-          {message.text}
-        </Alert>
-      )}
-
+      {/* ══ ALERTES ══ */}
       {!isDraft && selectedPolicy && (
-        <Alert severity="info">
-          Cette politique est en statut <strong>{statusLabel(selectedPolicy.status)}</strong> — lecture seule.
-          {isActive && ' Archivez-la pour créer une nouvelle version modifiable.'}
+        <Alert severity="info" sx={{ borderRadius: 0, py: 0.4, fontSize: 12 }}>
+          Politique <strong>{sc?.label}</strong> — lecture seule.
+          {isActive && ' Archivez-la pour la modifier.'}
         </Alert>
       )}
 
-      {/* Corps 3 colonnes */}
-      <Box sx={{
-        display: 'flex', flex: 1, overflow: 'hidden',
-        bgcolor: 'background.paper', borderRadius: 2, boxShadow: 1,
-      }}>
-        {/* Palette */}
-        <Box sx={{ bgcolor: '#fafafa', borderRight: '1px solid', borderColor: 'divider' }}>
-          <StepPalette onAddStep={handleAddStep} readOnly={!canEdit || !isDraft} />
+      {/* ══ CORPS 3 COLONNES ══ */}
+      <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+
+        {/* ── Palette gauche ── */}
+        <Box sx={{
+          width: paletteOpen ? 185 : 0,
+          overflow: 'hidden',
+          transition: 'width 0.2s ease',
+          flexShrink: 0,
+          bgcolor: '#fff',
+          borderRight: '1px solid #e2e8f0',
+          display: 'flex', flexDirection: 'column',
+          position: 'relative',
+        }}>
+          <Box sx={{ px: 1.5, pt: 1.5, pb: 0.5, flexShrink: 0 }}>
+            <Typography sx={{ fontWeight: 700, fontSize: 12, color: '#334155', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+              Éléments
+            </Typography>
+          </Box>
+          <Box sx={{ flex: 1, overflowY: 'auto' }}>
+            <StepPalette onAddStep={handleAddStep} readOnly={!canEdit || !isDraft} />
+          </Box>
         </Box>
 
-        <Divider orientation="vertical" flexItem />
+        {/* Toggle palette */}
+        <Box sx={{
+          width: 20, flexShrink: 0, bgcolor: '#f8fafc',
+          borderRight: '1px solid #e2e8f0',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', '&:hover': { bgcolor: '#e2e8f0' }, transition: 'background 0.15s',
+        }} onClick={() => setPaletteOpen(o => !o)}>
+          {paletteOpen
+            ? <ChevronLeftIcon sx={{ fontSize: 16, color: '#94a3b8' }} />
+            : <ChevronRightIcon sx={{ fontSize: 16, color: '#94a3b8' }} />}
+        </Box>
 
-        {/* Liste des étapes */}
-        <Box sx={{ flex: 1, p: 2, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-          <StepList
+        {/* ── Canvas centre ── */}
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', bgcolor: '#f8fafc' }}>
+          <Box sx={{
+            px: 2, py: 0.8, borderBottom: '1px solid #e2e8f0',
+            display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0, bgcolor: '#fff',
+          }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.6 }}>
+              Schéma du workflow
+            </Typography>
+            {steps.length > 0 && !selectedStepId && (
+              <Typography sx={{ fontSize: 11, color: '#94a3b8' }}>
+                👆 Cliquez sur un nœud pour le configurer
+              </Typography>
+            )}
+            <Box sx={{ flex: 1 }} />
+            {selectedStepId && (
+              <Chip
+                size="small"
+                label={`Étape sélectionnée — modifiez dans le panel droit →`}
+                onDelete={() => setSelectedStepId(null)}
+                sx={{ fontSize: 10, height: 22, bgcolor: '#eff6ff', color: '#1d4ed8', fontWeight: 600 }}
+              />
+            )}
+            <Typography sx={{ fontSize: 10, color: '#cbd5e1' }}>
+              Molette pour zoomer · Cliquer-glisser pour naviguer
+            </Typography>
+          </Box>
+          <WorkflowPreview
             steps={steps}
-            onStepsChange={setSteps}
-            creditTypes={creditTypes}
-            readOnly={!canEdit || !isDraft}
+            selectedStepId={selectedStepId}
+            onSelectStep={(id) => { setSelectedStepId(id); if (!configOpen) setConfigOpen(true); }}
           />
         </Box>
 
-        <Divider orientation="vertical" flexItem />
-
-        {/* Aperçu React Flow */}
-        <Box sx={{ width: 380, display: 'flex', flexDirection: 'column', borderLeft: '1px solid', borderColor: 'divider' }}>
-          <Typography variant="caption" color="text.secondary" sx={{
-            p: 1.5, fontWeight: 700, textTransform: 'uppercase',
-            borderBottom: '1px solid', borderColor: 'divider',
-          }}>
-            Aperçu du workflow
-          </Typography>
-          <WorkflowPreview steps={steps} />
+        {/* Toggle config */}
+        <Box sx={{
+          width: 20, flexShrink: 0, bgcolor: '#f8fafc',
+          borderLeft: '1px solid #e2e8f0',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', '&:hover': { bgcolor: '#e2e8f0' }, transition: 'background 0.15s',
+        }} onClick={() => setConfigOpen(o => !o)}>
+          {configOpen
+            ? <ChevronRightIcon sx={{ fontSize: 16, color: '#94a3b8' }} />
+            : <ChevronLeftIcon sx={{ fontSize: 16, color: '#94a3b8' }} />}
         </Box>
+
+        {/* ── Panel config droite ── */}
+        <Box sx={{
+          width: configOpen ? 360 : 0,
+          overflow: 'hidden',
+          transition: 'width 0.2s ease',
+          flexShrink: 0,
+          bgcolor: '#fff',
+          borderLeft: '1px solid #e2e8f0',
+          display: 'flex', flexDirection: 'column',
+        }}>
+          <Box sx={{ px: 2, py: 1, borderBottom: '1px solid #e2e8f0', flexShrink: 0, bgcolor: '#f8fafc' }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+              Configuration des étapes
+            </Typography>
+            <Typography sx={{ fontSize: 10, color: '#94a3b8', mt: 0.2 }}>
+              {steps.length} étape{steps.length !== 1 ? 's' : ''} · cliquez un nœud pour cibler
+            </Typography>
+          </Box>
+          <Box sx={{ flex: 1, p: 1.5, overflowY: 'auto' }}>
+            <StepList
+              steps={steps}
+              onStepsChange={setSteps}
+              creditTypes={creditTypes}
+              readOnly={!canEdit || !isDraft}
+              selectedStepId={selectedStepId}
+              onSelectStep={setSelectedStepId}
+            />
+          </Box>
+        </Box>
+
       </Box>
+
+      {/* ══ SNACKBAR ══ */}
+      <Snackbar
+        open={!!snack}
+        autoHideDuration={4000}
+        onClose={() => setSnack(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity={snack?.sev ?? 'info'} onClose={() => setSnack(null)} sx={{ minWidth: 280 }}>
+          {snack?.msg}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

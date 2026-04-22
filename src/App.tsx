@@ -42,6 +42,8 @@ const AnnouncementsAdminPage = lazy(() => import('./pages/AnnouncementsAdminPage
 const NotificationsConfigPage = lazy(() => import('./pages/NotificationsConfigPage'));
 const DispatchingPage        = lazy(() => import('./pages/DispatchingPage').then(m => ({ default: m.DispatchingPage })));
 const CreditManagementPage   = lazy(() => import('./pages/CreditManagementPage').then(m => ({ default: m.CreditManagementPage })));
+const CreditPolicyPage       = lazy(() => import('./pages/CreditPolicyPage').then(m => ({ default: m.CreditPolicyPage })));
+const WorkflowBuilderPage    = lazy(() => import('./components/workflow-builder/WorkflowPolicyBuilder').then(m => ({ default: m.WorkflowPolicyBuilder })));
 const CompanySettingsPage    = lazy(() => import('./pages/CompanySettingsPage'));
 const PlatformAdminPage      = lazy(() => import('./pages/PlatformAdminPage'));
 const RACIMatrixPage         = lazy(() => import('./pages/RACIMatrixPage'));
@@ -74,6 +76,10 @@ const ScrollToTop: React.FC = () => {
 // ── Page transition wrapper — re-animates on each route change ─────────────
 const PageTransition: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { pathname } = useLocation();
+  // Les pages plein-écran ne doivent pas avoir willChange:transform (casse position:fixed)
+  if (pathname === '/workflow-builder') {
+    return <>{children}</>;
+  }
   return (
     <Box
       key={pathname}
@@ -89,7 +95,15 @@ const PageTransition: React.FC<{ children: React.ReactNode }> = ({ children }) =
 const AppContent: React.FC = () => {
   const { state, navigateTo, hasAnalysisData, resetSession } = useApp();
   const { state: userState } = useUser();
-  const [sidebarOpen, setSidebarOpen] = React.useState(true); // Start open on desktop
+  const { pathname } = useLocation();
+  const [sidebarOpen, setSidebarOpen] = React.useState(true);
+
+  // Replier la sidebar automatiquement sur les pages plein-écran
+  React.useEffect(() => {
+    if (pathname === '/workflow-builder') {
+      setSidebarOpen(false);
+    }
+  }, [pathname]);
   const [showResetDialog, setShowResetDialog] = React.useState(false);
   const [changePasswordDialog, setChangePasswordDialog] = React.useState({
     open: false,
@@ -348,6 +362,7 @@ const AppContent: React.FC = () => {
                 path="/credit-policy"
                 element={<CreditManagementPage initialTab={1} onNavigate={handlePageChange} />}
               />
+              <Route path="/workflow-builder" element={<WorkflowBuilderPage />} />
               <Route
                 path="/approval-limits"
                 element={<CreditManagementPage initialTab={2} onNavigate={handlePageChange} />}

@@ -57,10 +57,10 @@ export interface CreditType {
 }
 
 export const STEP_TYPE_CONFIG: Record<PolicyStepType, { label: string; color: string; bgColor: string }> = {
-  DISPATCH:  { label: 'Dispatch',     color: '#1565c0', bgColor: '#e3f2fd' },
-  ANALYSIS:  { label: 'Analyse',      color: '#e65100', bgColor: '#fff3e0' },
-  APPROVAL:  { label: 'Approbation',  color: '#2e7d32', bgColor: '#e8f5e9' },
-  COMMITTEE: { label: 'Comité',       color: '#6a1b9a', bgColor: '#f3e5f5' },
+  DISPATCH:  { label: 'Dispatch',     color: '#1d4ed8', bgColor: '#eff6ff' },
+  ANALYSIS:  { label: 'Analyse',      color: '#c2410c', bgColor: '#fff7ed' },
+  APPROVAL:  { label: 'Approbation',  color: '#15803d', bgColor: '#f0fdf4' },
+  COMMITTEE: { label: 'Comité',       color: '#7c3aed', bgColor: '#faf5ff' },
 };
 
 export const ROLES = [

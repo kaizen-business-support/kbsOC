@@ -31,6 +31,13 @@ import { PageType } from '../types';
 import logoImage from '../assets/OC_logo.png';
 import { useUser } from '../contexts/UserContext';
 import { NotificationBell } from './NotificationBell';
+import { usePWAInstall } from '../hooks/usePWAInstall';
+import GetAppIcon from '@mui/icons-material/GetApp';
+import WindowIcon from '@mui/icons-material/Window';
+import AppleIcon from '@mui/icons-material/Apple';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import Snackbar from '@mui/material/Snackbar';
+import Alert from '@mui/material/Alert';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -58,6 +65,9 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
   const { t } = useTranslation();
   const { state: userState, logout, getRoleLabel } = useUser();
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
+  const { canInstall, isInstalled, installViaPWA, downloadWindowsInstaller, downloadMacInstaller } = usePWAInstall();
+  const [installMenuAnchor, setInstallMenuAnchor] = useState<null | HTMLElement>(null);
+  const [installSnack, setInstallSnack] = useState(false);
 
   const pageTitle: Record<PageType, string> = {
     home: t('navigation.home'),
@@ -85,9 +95,10 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
     'notifications-config': 'Configuration Notifications',
     dispatching: 'Dispatching des Demandes',
     'credit-policy':    'Politique de Crédit',
-    'company-settings': 'Paramètres Compagnie',
-    'platform-admin':   'Administration Plateforme',
-    'raci-matrix':      'Matrice RACI',
+    'company-settings':  'Paramètres Compagnie',
+    'platform-admin':    'Administration Plateforme',
+    'raci-matrix':       'Matrice RACI',
+    'workflow-builder':  'Éditeur de Workflow',
   };
 
   const handleUserMenuClick = (event: React.MouseEvent<HTMLElement>) => {
@@ -192,6 +203,94 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
               {pageTitle[currentPage]}
             </Typography>
           </Box>
+
+          {!isInstalled && (
+            <>
+              <Tooltip title="Installer OptimusCredit sur votre ordinateur">
+                <Box
+                  onClick={(e) => setInstallMenuAnchor(e.currentTarget as HTMLElement)}
+                  sx={{
+                    display: { xs: 'none', sm: 'flex' },
+                    alignItems: 'center',
+                    gap: 0.6,
+                    cursor: 'pointer',
+                    color: HDR.brand,
+                    border: `1.5px solid ${HDR.brand}50`,
+                    borderRadius: '8px',
+                    px: 1.2,
+                    py: 0.6,
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    fontFamily: '"IBM Plex Sans", sans-serif',
+                    transition: 'all 0.18s',
+                    userSelect: 'none',
+                    '&:hover': { bgcolor: `${HDR.brand}12`, borderColor: HDR.brand, transform: 'translateY(-1px)' },
+                    '&:active': { transform: 'scale(0.96)' },
+                  }}
+                >
+                  <GetAppIcon sx={{ fontSize: 15 }} />
+                  <Box component="span" sx={{ display: { xs: 'none', md: 'inline' } }}>Installer</Box>
+                </Box>
+              </Tooltip>
+
+              <Menu
+                anchorEl={installMenuAnchor}
+                open={Boolean(installMenuAnchor)}
+                onClose={() => setInstallMenuAnchor(null)}
+                PaperProps={{
+                  sx: {
+                    minWidth: 260,
+                    mt: 1,
+                    border: `1px solid ${HDR.menuBorder}`,
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+                  },
+                }}
+                transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+                anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+              >
+                <Box sx={{ px: 2, py: 1.2, borderBottom: `1px solid ${HDR.menuDivider}` }}>
+                  <Typography sx={{ fontWeight: 700, fontSize: 13, color: HDR.text }}>
+                    Installer l'application
+                  </Typography>
+                  <Typography sx={{ fontSize: 11, color: HDR.textSecond, mt: 0.3 }}>
+                    Accès rapide depuis le bureau
+                  </Typography>
+                </Box>
+
+                {canInstall && (
+                  <MenuItem onClick={async () => { await installViaPWA(); setInstallMenuAnchor(null); }}>
+                    <ListItemIcon><GetAppIcon fontSize="small" sx={{ color: HDR.brand }} /></ListItemIcon>
+                    <ListItemText
+                      primary="Installation rapide"
+                      secondary="Via le navigateur (Chrome/Edge)"
+                      primaryTypographyProps={{ fontSize: 13, fontWeight: 600 }}
+                      secondaryTypographyProps={{ fontSize: 11 }}
+                    />
+                  </MenuItem>
+                )}
+
+                <MenuItem onClick={() => { downloadWindowsInstaller(); setInstallMenuAnchor(null); setInstallSnack(true); }}>
+                  <ListItemIcon><WindowIcon fontSize="small" sx={{ color: '#0078D4' }} /></ListItemIcon>
+                  <ListItemText
+                    primary="Windows"
+                    secondary="Télécharger le script d'installation (.bat)"
+                    primaryTypographyProps={{ fontSize: 13, fontWeight: 600 }}
+                    secondaryTypographyProps={{ fontSize: 11 }}
+                  />
+                </MenuItem>
+
+                <MenuItem onClick={() => { downloadMacInstaller(); setInstallMenuAnchor(null); setInstallSnack(true); }}>
+                  <ListItemIcon><AppleIcon fontSize="small" sx={{ color: '#555' }} /></ListItemIcon>
+                  <ListItemText
+                    primary="macOS"
+                    secondary="Télécharger le script d'installation (.command)"
+                    primaryTypographyProps={{ fontSize: 13, fontWeight: 600 }}
+                    secondaryTypographyProps={{ fontSize: 11 }}
+                  />
+                </MenuItem>
+              </Menu>
+            </>
+          )}
 
           {userState.isAuthenticated && (
             <NotificationBell onPageChange={onPageChange} />
@@ -372,6 +471,16 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
           )}
         </Box>
       </Toolbar>
+      <Snackbar
+        open={installSnack}
+        autoHideDuration={10000}
+        onClose={() => setInstallSnack(false)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert severity="success" onClose={() => setInstallSnack(false)} sx={{ width: '100%' }}>
+          <strong>Script téléchargé !</strong> Ouvrez le fichier téléchargé et exécutez-le — un raccourci OptimusCredit apparaîtra sur votre Bureau.
+        </Alert>
+      </Snackbar>
     </AppBar>
   );
 };
