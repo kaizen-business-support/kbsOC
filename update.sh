@@ -294,6 +294,11 @@ if [[ -f "$APP_DIR/backend/prisma/seed-data.js" ]]; then
     && dep_ok "Départements et agences seedés" \
     || warn "seed-data.js : erreur (non bloquant)"
 fi
+if [[ -f "$APP_DIR/backend/prisma/seed-policies.js" ]]; then
+  node "$APP_DIR/backend/prisma/seed-policies.js" 2>/dev/null \
+    && dep_ok "Politiques de crédit seedées" \
+    || warn "seed-policies.js : erreur (non bloquant)"
+fi
 
 # Vider les clés Redis liées aux listes (cache périmé après seed)
 redis-cli DEL cache:departments:active cache:branches:active 2>/dev/null \
