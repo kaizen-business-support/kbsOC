@@ -155,13 +155,11 @@ usermod -aG www-data "$APP_USER" 2>/dev/null || true
 # =============================================================================
 section "3. Services pré-requis"
 
-# Chargement .env
-set +u
-source "$BACKEND_ENV" 2>/dev/null || true
-set -u
-
-DB_URL="${DATABASE_URL:-}"
+# Chargement .env — lecture directe pour gérer les espaces en début/fin de ligne
+DB_URL=$(grep -E '^\s*DATABASE_URL\s*=' "$BACKEND_ENV" | head -1 \
+  | sed -E 's/^\s*DATABASE_URL\s*=\s*//' | tr -d '[:space:]')
 [[ -z "$DB_URL" ]] && die "DATABASE_URL non définie dans $BACKEND_ENV."
+export DATABASE_URL="$DB_URL"
 
 DB_HOST=$(echo "$DB_URL" | sed -E 's|postgresql://[^:]+:[^@]+@([^:/]+).*|\1|')
 DB_PORT=$(echo "$DB_URL" | sed -E 's|postgresql://[^:]+:[^@]+@[^:]+:([0-9]+)/.*|\1|' || echo "5432")
@@ -293,11 +291,11 @@ npx prisma generate 2>&1 | tail -2
 ok "Client Prisma généré"
 
 info "Application des migrations..."
-if npx prisma migrate deploy 2>/dev/null; then
+if npx prisma migrate deploy; then
   ok "Migrations appliquées (migrate deploy)"
 else
   warn "migrate deploy non disponible — db push en fallback..."
-  npx prisma db push --accept-data-loss 2>/dev/null \
+  npx prisma db push --accept-data-loss \
     && ok "Schéma synchronisé (db push)" \
     || warn "db push échoué — vérifiez la connexion DB."
 fi
@@ -316,9 +314,10 @@ ok "Privilèges DB accordés"
 
 # Seed
 if [[ "$SKIP_SEED" == "false" ]]; then
-  for seed_file in seed-roles.js seed-data.js; do
+  cd "$BACKEND_DIR"
+  for seed_file in seed-roles.js seed-data.js seed-policies.js; do
     if [[ -f "$BACKEND_DIR/prisma/$seed_file" ]]; then
-      node "$BACKEND_DIR/prisma/$seed_file" 2>/dev/null \
+      node "$BACKEND_DIR/prisma/$seed_file" \
         && ok "Seed $seed_file : OK" \
         || warn "$seed_file : erreur non bloquante"
     fi
