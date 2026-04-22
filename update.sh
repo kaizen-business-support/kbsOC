@@ -171,10 +171,10 @@ log "Toutes les dépendances sont satisfaites"
 # ─── 2. Services pré-requis (PostgreSQL + Redis) ─────────────────────────────
 section "Services pré-requis"
 
-# Chargement du .env et extraction des variables DB
-source "$BACKEND_ENV" 2>/dev/null || true
-DB_URL="${DATABASE_URL:-}"
+# Chargement du .env — lecture directe pour éviter les problèmes d'espaces
+DB_URL=$(grep -E '^\s*DATABASE_URL\s*=' "$BACKEND_ENV" | head -1 | sed -E 's/^\s*DATABASE_URL\s*=\s*//' | tr -d '[:space:]')
 [[ -z "$DB_URL" ]] && error "DATABASE_URL non définie dans $BACKEND_ENV."
+export DATABASE_URL="$DB_URL"
 DB_HOST=$(echo "$DB_URL" | sed -E 's|postgresql://[^:]+:[^@]+@([^:/]+).*|\1|')
 DB_PORT=$(echo "$DB_URL" | sed -E 's|postgresql://[^:]+:[^@]+@[^:]+:([0-9]+)/.*|\1|' || echo "5432")
 DB_NAME=$(echo "$DB_URL" | sed -E 's|.*/([^?]+).*|\1|')
