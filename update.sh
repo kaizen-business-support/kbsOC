@@ -295,7 +295,8 @@ if [[ -f "$APP_DIR/backend/prisma/seed-data.js" ]]; then
     || warn "seed-data.js : erreur (non bloquant)"
 fi
 if [[ -f "$APP_DIR/backend/prisma/seed-policies.js" ]]; then
-  node "$APP_DIR/backend/prisma/seed-policies.js" 2>/dev/null \
+  cd "$APP_DIR/backend"
+  node "$APP_DIR/backend/prisma/seed-policies.js" \
     && dep_ok "Politiques de crédit seedées" \
     || warn "seed-policies.js : erreur (non bloquant)"
 fi
