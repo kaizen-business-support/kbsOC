@@ -259,6 +259,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [departmentDialogOpen, setDepartmentDialogOpen] = useState(false);
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+  const [roleDialogError, setRoleDialogError] = useState<string | null>(null);
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedDepartment, setSelectedDepartment] = useState<Department | null>(null);
@@ -1113,11 +1114,13 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
         isActive: true
       });
     }
+    setRoleDialogError(null);
     setRoleDialogOpen(true);
   };
 
   const closeRoleDialog = () => {
     setRoleDialogOpen(false);
+    setRoleDialogError(null);
     setSelectedRole(null);
     setRoleForm({
       name: '',
@@ -1217,9 +1220,15 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
   };
 
   const saveRole = async () => {
+    setRoleDialogError(null);
+
+    if (!roleForm.name.trim() || !roleForm.label.trim()) {
+      setRoleDialogError('Le code du rôle et le nom d\'affichage sont obligatoires.');
+      return;
+    }
+
     try {
       if (selectedRole) {
-        // Update the role via API
         const response = await ApiService.updateRolePermissions(selectedRole.name, {
           label: roleForm.label,
           description: roleForm.description,
@@ -1227,22 +1236,12 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
         });
 
         if (response.success) {
-          setNotification({
-            open: true,
-            message: 'Rôle et permissions utilisateurs mis à jour avec succès',
-            severity: 'success'
-          });
-
-          // Reload users and roles to get updated data
+          setNotification({ open: true, message: 'Rôle et permissions mis à jour avec succès', severity: 'success' });
           await loadUsers();
           await loadRoles();
           closeRoleDialog();
         } else {
-          setNotification({
-            open: true,
-            message: response.error || 'Erreur lors de la mise à jour du rôle',
-            severity: 'error'
-          });
+          setRoleDialogError(response.error || 'Erreur lors de la mise à jour du rôle.');
         }
       } else {
         const response = await ApiService.createRole({
@@ -1253,28 +1252,16 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
         });
 
         if (response.success) {
-          setNotification({
-            open: true,
-            message: 'Rôle créé avec succès',
-            severity: 'success'
-          });
+          setNotification({ open: true, message: 'Rôle créé avec succès', severity: 'success' });
           await loadRoles();
           closeRoleDialog();
         } else {
-          setNotification({
-            open: true,
-            message: response.error || 'Erreur lors de la création du rôle',
-            severity: 'error'
-          });
+          setRoleDialogError(response.error || 'Erreur lors de la création du rôle.');
         }
       }
     } catch (error) {
       console.error('Error saving role:', error);
-      setNotification({
-        open: true,
-        message: 'Erreur lors de la sauvegarde du rôle',
-        severity: 'error'
-      });
+      setRoleDialogError('Erreur lors de la sauvegarde du rôle.');
     }
   };
 
@@ -2777,6 +2764,11 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
           onClose={closeRoleDialog}
         />
         <DialogContent>
+          {roleDialogError && (
+            <Alert severity="error" onClose={() => setRoleDialogError(null)} sx={{ mb: 2 }}>
+              {roleDialogError}
+            </Alert>
+          )}
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>
               <TextField
