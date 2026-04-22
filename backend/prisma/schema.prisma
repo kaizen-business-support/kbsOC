@@ -497,7 +497,7 @@ model Branch {
 
 model RolePermission {
   id                String   @id @default(cuid())
-  role              UserRole @unique
+  role              String   @unique
   label             String
   description       String?
   permissions       Json     // Array of permission strings

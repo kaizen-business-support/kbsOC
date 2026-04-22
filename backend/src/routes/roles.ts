@@ -51,7 +51,7 @@ router.get('/',
       description: role.description,
       permissions: role.permissions as string[],
       twoFactorRequired: (role as any).twoFactorRequired ?? false,
-      userCount: countByRole.get(role.role) ?? 0,
+      userCount: countByRole.get(role.role as any) ?? 0,
       isActive: role.isActive,
       createdAt: role.createdAt.toISOString(),
       updatedAt: role.updatedAt.toISOString()
@@ -75,7 +75,7 @@ router.get('/:role',
     }
 
     const userCount = await prisma.user.count({
-      where: { role: rolePermission.role }
+      where: { role: rolePermission.role as any }
     });
 
     res.json({
@@ -123,7 +123,7 @@ router.put('/:role',
     });
 
     const userCount = await prisma.user.count({
-      where: { role: updatedRole.role }
+      where: { role: updatedRole.role as any }
     });
 
     res.json({
@@ -161,7 +161,7 @@ router.post('/',
 
     const newRole = await prisma.rolePermission.create({
       data: {
-        role: sanitizedRole as any,
+        role: sanitizedRole,
         label,
         description: description || null,
         permissions

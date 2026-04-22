@@ -1222,8 +1222,8 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
   const saveRole = async () => {
     setRoleDialogError(null);
 
-    if (!roleForm.name.trim() || !roleForm.label.trim()) {
-      setRoleDialogError('Le code du rôle et le nom d\'affichage sont obligatoires.');
+    if (!roleForm.label.trim()) {
+      setRoleDialogError('Le nom du rôle est obligatoire.');
       return;
     }
 
@@ -1244,8 +1244,9 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
           setRoleDialogError(response.error || 'Erreur lors de la mise à jour du rôle.');
         }
       } else {
+        const autoRole = roleForm.label.trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
         const response = await ApiService.createRole({
-          role: roleForm.name,
+          role: autoRole,
           label: roleForm.label,
           description: roleForm.description,
           permissions: roleForm.permissions
@@ -2770,28 +2771,15 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
             </Alert>
           )}
           <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12}>
               <TextField
                 fullWidth
                 size="small"
-                label="Code du Rôle"
-                value={roleForm.name}
-                onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value.toUpperCase() })}
-                required
-                placeholder="ex: MANAGER"
-                disabled={!canEditUserManagement}
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Nom d'Affichage"
+                label="Nom du Rôle"
                 value={roleForm.label}
                 onChange={(e) => setRoleForm({ ...roleForm, label: e.target.value })}
                 required
-                placeholder="ex: Gestionnaire"
+                placeholder="ex: Gestionnaire de Crédit"
                 disabled={!canEditUserManagement}
               />
             </Grid>
