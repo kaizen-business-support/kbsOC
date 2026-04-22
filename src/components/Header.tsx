@@ -6,7 +6,6 @@ import {
   IconButton,
   Box,
   Chip,
-  Button,
   Tooltip,
   Menu,
   MenuItem,
@@ -18,7 +17,6 @@ import {
 } from '@mui/material';
 import {
   Menu as MenuIcon,
-  Refresh as ResetIcon,
   AccountCircle as AccountIcon,
   Settings as SettingsIcon,
   ExitToApp as LogoutIcon,
@@ -42,7 +40,6 @@ import Alert from '@mui/material/Alert';
 interface HeaderProps {
   onMenuClick: () => void;
   currentPage: PageType;
-  onReset?: () => void;
   onPageChange: (page: PageType) => void;
   onChangePassword?: () => void;
 }
@@ -61,7 +58,7 @@ const HDR = {
   onlineGreen: '#10B981',
 };
 
-export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onReset, onPageChange, onChangePassword }) => {
+export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onPageChange, onChangePassword }) => {
   const { t } = useTranslation();
   const { state: userState, logout, getRoleLabel } = useUser();
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
@@ -294,23 +291,6 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onRese
 
           {userState.isAuthenticated && (
             <NotificationBell onPageChange={onPageChange} />
-          )}
-
-          {onReset && (
-            <Tooltip title="Réinitialiser la session et recommencer">
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={onReset}
-                startIcon={<ResetIcon />}
-                sx={{
-                  ml: 2,
-                  display: { xs: 'none', md: 'flex' },
-                }}
-              >
-                Reset
-              </Button>
-            </Tooltip>
           )}
 
           {/* User profile */}

@@ -214,7 +214,6 @@ const AppContent: React.FC = () => {
       <Header
         onMenuClick={() => setSidebarOpen(!sidebarOpen)}
         currentPage={state.currentPage}
-        onReset={handleResetClick}
         onPageChange={handlePageChange}
         onChangePassword={handleOpenChangePassword}
       />
@@ -225,6 +224,7 @@ const AppContent: React.FC = () => {
         currentPage={state.currentPage}
         onPageChange={handlePageChange}
         hasAnalysisData={hasAnalysisData()}
+        onReset={handleResetClick}
       />
 
       <Box

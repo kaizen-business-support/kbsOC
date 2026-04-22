@@ -13,6 +13,7 @@ import {
   Collapse,
   Tooltip,
   Divider,
+  Button,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import optimusIcon from '../assets/Optimus_icon.png';
@@ -39,6 +40,7 @@ import {
   ListAltOutlined as StepsIcon,
   ExpandLess,
   ExpandMore,
+  Refresh as ResetIcon,
 } from '@mui/icons-material';
 import { PageType } from '../types';
 import { useUser } from '../contexts/UserContext';
@@ -53,6 +55,7 @@ interface SidebarProps {
   currentPage: PageType;
   onPageChange: (page: PageType) => void;
   hasAnalysisData: boolean;
+  onReset?: () => void;
 }
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
@@ -84,6 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentPage,
   onPageChange,
   hasAnalysisData,
+  onReset,
 }) => {
   const { t } = useTranslation();
   const { isRole, hasPermission, state: userState } = useUser();
@@ -470,6 +474,58 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     badge={item.requiresData && hasAnalysisData}
                   />
                 ))}
+                {/* Bouton Reset session */}
+                {onReset && (
+                  open ? (
+                    <ListItem disablePadding sx={{ mt: 0.5, mb: 0.25 }}>
+                      <Button
+                        onClick={onReset}
+                        startIcon={<ResetIcon sx={{ fontSize: '16px !important' }} />}
+                        size="small"
+                        fullWidth
+                        sx={{
+                          mx: 1,
+                          justifyContent: 'flex-start',
+                          color: '#94A3B8',
+                          fontSize: '13px',
+                          fontFamily: '"IBM Plex Sans", sans-serif',
+                          fontWeight: 400,
+                          textTransform: 'none',
+                          borderRadius: '7px',
+                          py: 0.7,
+                          pl: '14px',
+                          border: '1px dashed #E2E8F0',
+                          '&:hover': {
+                            bgcolor: 'rgba(239,68,68,0.06)',
+                            color: '#EF4444',
+                            borderColor: '#FCA5A5',
+                            '& .MuiButton-startIcon': { color: '#EF4444' },
+                          },
+                        }}
+                      >
+                        Réinitialiser la session
+                      </Button>
+                    </ListItem>
+                  ) : (
+                    <Tooltip title="Réinitialiser la session" placement="right" arrow>
+                      <ListItem disablePadding sx={{ mb: 0.25 }}>
+                        <ListItemButton
+                          onClick={onReset}
+                          sx={{
+                            justifyContent: 'center',
+                            px: 0, py: 0.8, mx: 0.75,
+                            borderRadius: '8px', minHeight: 36,
+                            '&:hover': { bgcolor: 'rgba(239,68,68,0.06)', '& .MuiListItemIcon-root': { color: '#EF4444' } },
+                          }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 0, justifyContent: 'center' }}>
+                            <ResetIcon sx={{ fontSize: 20, color: '#94A3B8' }} />
+                          </ListItemIcon>
+                        </ListItemButton>
+                      </ListItem>
+                    </Tooltip>
+                  )
+                )}
               </List>
             </Collapse>
           </>
