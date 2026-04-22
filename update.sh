@@ -284,18 +284,20 @@ npx prisma migrate deploy
 dep_ok "Schéma Prisma synchronisé"
 
 # Seed données initiales (idempotent — ne recrée pas si déjà existant)
+cd "$APP_DIR/backend"
+export DATABASE_URL="$DB_URL"
+
 if [[ -f "$APP_DIR/backend/prisma/seed-roles.js" ]]; then
-  node "$APP_DIR/backend/prisma/seed-roles.js" 2>/dev/null \
+  node "$APP_DIR/backend/prisma/seed-roles.js" \
     && dep_ok "Rôles système seedés" \
     || warn "seed-roles.js : erreur (non bloquant)"
 fi
 if [[ -f "$APP_DIR/backend/prisma/seed-data.js" ]]; then
-  node "$APP_DIR/backend/prisma/seed-data.js" 2>/dev/null \
+  node "$APP_DIR/backend/prisma/seed-data.js" \
     && dep_ok "Départements et agences seedés" \
     || warn "seed-data.js : erreur (non bloquant)"
 fi
 if [[ -f "$APP_DIR/backend/prisma/seed-policies.js" ]]; then
-  cd "$APP_DIR/backend"
   node "$APP_DIR/backend/prisma/seed-policies.js" \
     && dep_ok "Politiques de crédit seedées" \
     || warn "seed-policies.js : erreur (non bloquant)"

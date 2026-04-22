@@ -1,5 +1,10 @@
+const path = require('path');
+process.chdir(path.join(__dirname, '..'));
+
 const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env.DATABASE_URL } },
+});
 
 // Clés alignées avec PERMISSION_GROUPS dans UserManagementPage.tsx
 // Rôles alignés avec l'enum UserRole dans schema.prisma

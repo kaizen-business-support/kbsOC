@@ -1,5 +1,12 @@
+// S'assurer que le répertoire de travail est bien backend/
+// pour que Prisma trouve le schema même si appelé depuis un autre répertoire
+const path = require('path');
+process.chdir(path.join(__dirname, '..'));
+
 const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env.DATABASE_URL } },
+});
 
 const POLICY_CODE = 'POL-BCI-GENERALE';
 
