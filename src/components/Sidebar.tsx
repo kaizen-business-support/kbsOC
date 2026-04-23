@@ -105,6 +105,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // ── Permission gates ──────────────────────────────────────────────────────────
   const perms = userState.currentUser?.permissions ?? [];
   const isAdmin              = isRole('admin') || perms.includes('*');
+  const canViewApplications  = hasPermission('view_applications') || hasPermission('view_own') || isAdmin;
+  const canViewClients       = canViewApplications || hasPermission('create_client') || hasPermission('manage_clients');
   const canCreateApplication = hasPermission('create_application');
   const canDispatching       = hasPermission('dispatch_applications');
   const canViewAnalytics     = hasPermission('analytics');
@@ -119,13 +121,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // ── Sections ─────────────────────────────────────────────────────────────────
 
-  // Processus crédit — visible par tous les utilisateurs actifs
+  // Processus crédit — conditionné par les permissions
   const creditProcessItems = [
-    { id: 'clients'           as PageType, label: t('navigation.clients'),  icon: ClientsIcon },
-    ...(canCreateApplication ? [{ id: 'credit-application' as PageType, label: 'Nouvelle Demande',       icon: ApplicationIcon }] : []),
-    ...(canDispatching       ? [{ id: 'dispatching'         as PageType, label: 'Dispatching',            icon: DispatchIcon    }] : []),
-    { id: 'workflow'          as PageType, label: t('navigation.workflow'), icon: WorkflowIcon },
-    ...(canViewAnalytics     ? [{ id: 'analytics'           as PageType, label: t('navigation.analytics'), icon: InsightsIcon    }] : []),
+    ...(canViewClients       ? [{ id: 'clients'           as PageType, label: t('navigation.clients'),       icon: ClientsIcon     }] : []),
+    ...(canCreateApplication ? [{ id: 'credit-application' as PageType, label: 'Nouvelle Demande',            icon: ApplicationIcon }] : []),
+    ...(canDispatching       ? [{ id: 'dispatching'         as PageType, label: 'Dispatching',                icon: DispatchIcon    }] : []),
+    ...(canViewApplications  ? [{ id: 'workflow'            as PageType, label: t('navigation.workflow'),     icon: WorkflowIcon    }] : []),
+    ...(canViewAnalytics     ? [{ id: 'analytics'           as PageType, label: t('navigation.analytics'),   icon: InsightsIcon    }] : []),
   ];
 
   // Analyse hors-processus — uniquement pour les profils d'analyse financière
@@ -440,19 +442,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <NavItem id="home" label={t('navigation.home')} icon={DashboardIcon} />
         </List>
 
-        {/* Processus Crédit */}
-        <SectionHeader
-          label={t('navigation.creditProcess')}
-          expanded={creditExpanded}
-          onToggle={() => setCreditExpanded(p => !p)}
-        />
-        <Collapse in={open ? creditExpanded : true} timeout="auto" unmountOnExit={false}>
-          <List disablePadding sx={{ px: 0.5 }}>
-            {creditProcessItems.map(item => (
-              <NavItem key={item.id} id={item.id} label={item.label} icon={item.icon} />
-            ))}
-          </List>
-        </Collapse>
+        {/* Processus Crédit — masqué si aucun item accessible */}
+        {creditProcessItems.length > 0 && (
+          <>
+            <SectionHeader
+              label={t('navigation.creditProcess')}
+              expanded={creditExpanded}
+              onToggle={() => setCreditExpanded(p => !p)}
+            />
+            <Collapse in={open ? creditExpanded : true} timeout="auto" unmountOnExit={false}>
+              <List disablePadding sx={{ px: 0.5 }}>
+                {creditProcessItems.map(item => (
+                  <NavItem key={item.id} id={item.id} label={item.label} icon={item.icon} />
+                ))}
+              </List>
+            </Collapse>
+          </>
+        )}
 
         {/* Analyse hors-processus — uniquement pour les profils financiers */}
         {outOfProcessItems.length > 0 && (
