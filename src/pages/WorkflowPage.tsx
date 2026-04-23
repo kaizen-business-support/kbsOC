@@ -220,14 +220,14 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
       if (workflowsResponse.success) {
         setWorkflows(workflowsResponse.data || []);
       } else {
-        setError('Impossible de charger les workflows depuis l\'API');
+        console.error('Workflows load error:', workflowsResponse.error);
         setWorkflows([]);
       }
 
       if (applicationsResponse.success) {
         setApplications(applicationsResponse.data || []);
       } else {
-        setError('Impossible de charger les demandes depuis l\'API');
+        console.error('Applications load error:', applicationsResponse.error);
         setApplications([]);
       }
     } catch (error) {

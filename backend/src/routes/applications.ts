@@ -66,28 +66,30 @@ router.get('/', async (req: Request, res: Response) => {
     });
 
     // Transform to match frontend expectations
-    const applicationData = applications.map(app => ({
-      id: app.id,
-      clientName: app.client.companyName,
-      clientId: app.clientId,
-      amount: Number(app.amount),
-      currency: app.currency || 'XOF',
-      status: app.status.toLowerCase(),
-      accountManager: app.creator.name,
-      createdAt: app.createdAt.toISOString(),
-      updatedAt: app.updatedAt.toISOString(),
-      purpose: app.purpose || '',
-      duration: app.durationMonths || 0,
-      durationMonths: app.durationMonths || 0,
-      proposedRate: app.proposedRate ? Number(app.proposedRate) : null,
-      collateralType: app.collateralType,
-      collateralValue: app.collateralValue ? Number(app.collateralValue) : null,
-      repaymentSchedule: app.repaymentSchedule?.toLowerCase(),
-      creditType: app.creditType,
-      workflowSteps: app.workflowSteps, // Include workflow steps for checking completion status
-      analysisResults: app.analysisResults, // Include analysis results with financial data
-      applicationNumber: app.applicationNumber
-    }));
+    const applicationData = applications
+      .filter(app => app.client && app.creator)
+      .map(app => ({
+        id: app.id,
+        clientName: app.client!.companyName,
+        clientId: app.clientId,
+        amount: Number(app.amount),
+        currency: app.currency || 'XOF',
+        status: app.status.toLowerCase(),
+        accountManager: app.creator!.name,
+        createdAt: app.createdAt.toISOString(),
+        updatedAt: app.updatedAt.toISOString(),
+        purpose: app.purpose || '',
+        duration: app.durationMonths || 0,
+        durationMonths: app.durationMonths || 0,
+        proposedRate: app.proposedRate ? Number(app.proposedRate) : null,
+        collateralType: app.collateralType,
+        collateralValue: app.collateralValue ? Number(app.collateralValue) : null,
+        repaymentSchedule: app.repaymentSchedule?.toLowerCase(),
+        creditType: app.creditType,
+        workflowSteps: app.workflowSteps,
+        analysisResults: app.analysisResults,
+        applicationNumber: app.applicationNumber
+      }));
 
     res.json({
       success: true,

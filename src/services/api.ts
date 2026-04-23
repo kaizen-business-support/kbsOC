@@ -938,7 +938,7 @@ export class ApiService {
     } catch (error: any) {
       return {
         success: false,
-        error: error.response?.data?.message || 'Erreur lors de la récupération des demandes',
+        error: error.response?.data?.error || error.response?.data?.message || 'Erreur lors de la récupération des demandes',
       };
     }
   }
