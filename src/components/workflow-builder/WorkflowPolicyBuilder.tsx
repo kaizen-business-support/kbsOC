@@ -12,6 +12,7 @@ import AddIcon from '@mui/icons-material/Add';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import TableChartIcon from '@mui/icons-material/TableChart';
 import { useUser } from '../../contexts/UserContext';
 import { creditPolicyApi } from '../../services/api';
 import {
@@ -20,6 +21,7 @@ import {
 import { StepPalette } from './StepPalette';
 import { StepList } from './StepList';
 import { WorkflowPreview } from './WorkflowPreview';
+import { RaciImportModal } from './RaciImportModal';
 
 // Mini sidebar width from Sidebar.tsx
 const SIDEBAR_W = 64;
@@ -71,6 +73,7 @@ export function WorkflowPolicyBuilder() {
   const [selectedStepId, setSelectedStepId]   = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen]         = useState(true);
   const [configOpen, setConfigOpen]           = useState(true);
+  const [raciOpen, setRaciOpen]               = useState(false);
 
   const selectedPolicy = policies.find((p) => p.id === selectedPolicyId) ?? null;
   const isDraft  = selectedPolicy?.status === 'DRAFT';
@@ -164,6 +167,14 @@ export function WorkflowPolicyBuilder() {
     else setSnack({ msg: res.error, sev: 'error' });
   };
 
+  const handleRaciImport = (importedSteps: PolicyStep[]) => {
+    if (!isDraft) return;
+    const reordered = importedSteps.map((s, i) => ({ ...s, policyId: selectedPolicyId, order: i + 1 }));
+    setSteps(reordered);
+    setSelectedStepId(null);
+    setSnack({ msg: `${reordered.length} étapes importées depuis la matrice RACI`, sev: 'success' });
+  };
+
   const handleNewPolicy = async () => {
     const name = `Politique ${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
     const res = await creditPolicyApi.createPolicy({ name, code: `POL-${Date.now()}`, description: '' });
@@ -251,6 +262,19 @@ export function WorkflowPolicyBuilder() {
         )}
 
         <Box sx={{ flex: 1 }} />
+
+        {/* Bouton RACI — toujours visible */}
+        <Tooltip title="Consulter la matrice RACI, télécharger le modèle ou importer un workflow">
+          <Button size="small" variant="outlined" color="inherit"
+            startIcon={<TableChartIcon sx={{ fontSize: 15 }} />}
+            onClick={() => setRaciOpen(true)}
+            sx={{ fontSize: 12, textTransform: 'none', borderColor: '#e2e8f0', color: '#475569' }}
+          >
+            Matrice RACI
+          </Button>
+        </Tooltip>
+
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.5, borderColor: '#e2e8f0' }} />
 
         {/* Boutons d'action */}
         {canEdit && isDraft && (
@@ -419,6 +443,14 @@ export function WorkflowPolicyBuilder() {
         </Box>
 
       </Box>
+
+      {/* ══ MODAL RACI ══ */}
+      <RaciImportModal
+        open={raciOpen}
+        onClose={() => setRaciOpen(false)}
+        onImport={handleRaciImport}
+        canEdit={canEdit && isDraft}
+      />
 
       {/* ══ SNACKBAR ══ */}
       <Snackbar
