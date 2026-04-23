@@ -635,32 +635,19 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
   const loadUsers = async () => {
     setLoading(true);
     try {
-      console.log('Loading users...');
       const response = await ApiService.getUsers();
-      console.log('Users API response:', response);
       if (response.success && response.data) {
         setUsers(response.data || []);
-      } else {
-        console.error('Failed to load users:', response.error);
+      }
+    } catch (error: any) {
+      // Ignorer silencieusement les 403 — utilisateur sans droit de gestion
+      if (error.response?.status !== 403 && error.response?.status !== 401) {
         setNotification({
           open: true,
-          message: response.error || 'Erreur lors du chargement des utilisateurs',
+          message: `Erreur lors du chargement des utilisateurs: ${error.response?.data?.error || error.message || 'Erreur inconnue'}`,
           severity: 'error'
         });
       }
-    } catch (error: any) {
-      console.error('Error loading users:', error);
-      console.error('Error details:', {
-        message: error.message,
-        response: error.response,
-        status: error.response?.status,
-        data: error.response?.data
-      });
-      setNotification({
-        open: true,
-        message: `Erreur lors du chargement des utilisateurs: ${error.response?.data?.error || error.message || 'Erreur inconnue'}`,
-        severity: 'error'
-      });
     } finally {
       setLoading(false);
     }
