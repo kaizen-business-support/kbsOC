@@ -296,7 +296,7 @@ router.post('/assign', async (req: Request, res: Response) => {
     // ── Guard agence : un superviseur ne peut dispatcher que les dossiers de son agence.
     // Si l'acteur est un délégué, utiliser la branche du délégant.
     // Les rôles globaux (Admin, DG) peuvent dispatcher tous les dossiers.
-    const GLOBAL_ROLES = ['DIRECTION_GENERALE', 'ADMIN'];
+    const GLOBAL_ROLES = ['RESPONSABLE_RISQUES', 'DIRECTION_GENERALE', 'ADMIN'];
     const delegCtx = (req as any).delegationContext as {
       delegatorBranch: string | null;
       delegatorDepartment: string | null;
