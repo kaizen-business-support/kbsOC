@@ -832,7 +832,21 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
                       <td><Typography variant="body2" fontWeight={600} color="text.secondary">{label}</Typography></td>
                       {financialYears.filter(y => !!financialData[y]).sort((a, b) => b - a).map(y => {
                         const entry = financialData[y];
-                        const val = entry?.ratios?.[key];
+                        const d = entry?.multiyear_data?.N?.data ?? entry;
+                        const ca = Number(d?.chiffre_affaires) || 0;
+                        const rn = Number(d?.resultat_net) || 0;
+                        const ta = Number(d?.total_actif) || 0;
+                        const cp = Number(d?.capitaux_propres) || 0;
+                        const df = Number(d?.dettes_financieres) || 0;
+                        const actifCirculant = Number(d?.actif_circulant) || 0;
+                        const passifCourant = Number(d?.passif_courant) || Number(d?.dettes_court_terme) || 0;
+                        const computedRatios: Record<string, number | null> = {
+                          netMargin: ca > 0 ? rn / ca : null,
+                          currentRatio: passifCourant > 0 ? actifCirculant / passifCourant : null,
+                          roa: ta > 0 ? rn / ta : null,
+                          debtToEquity: cp > 0 ? df / cp : null,
+                        };
+                        const val = entry?.ratios?.[key] ?? computedRatios[key];
                         return (
                           <td key={y}>
                             <Typography variant="body2" color="text.secondary">

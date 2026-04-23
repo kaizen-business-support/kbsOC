@@ -426,7 +426,8 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
        getNumericValue(yearData, 'creances_clients') +
        getNumericValue(yearData, 'autres_creances'));
     const tresorerieActif = getNumericValue(yearData, 'tresorerie');
-    const totalActif = actifImmobilise + actifCirculant + tresorerieActif;
+    const totalActif = getNumericValue(yearData, 'total_actif') ||
+      (actifImmobilise + actifCirculant + tresorerieActif);
 
     const capitauxPropres = getNumericValue(yearData, 'capitaux_propres') ||
       (getNumericValue(yearData, 'capital_social') +
@@ -450,7 +451,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   const calculateRatios = (yearData: any) => {
     if (!yearData) return null;
 
-    const totalActif = computeBalanceTotals(yearData).totalActif;
+    const totalActif = getNumericValue(yearData, 'total_actif') || computeBalanceTotals(yearData).totalActif;
     const actifCirculant = getNumericValue(yearData, 'actif_circulant') || getNumericValue(yearData, 'total_actif_circulant');
     const capitauxPropres = getNumericValue(yearData, 'capitaux_propres') || getNumericValue(yearData, 'fonds_propres');
     const passifCirculant = getNumericValue(yearData, 'passif_circulant') ||
