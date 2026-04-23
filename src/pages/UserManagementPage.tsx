@@ -594,14 +594,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
   const canEditUserManagement = isRole('admin');
 
   useEffect(() => {
-    if (!canViewUserManagement) {
-      setNotification({
-        open: true,
-        message: 'Accès non autorisé. Seuls les administrateurs et la direction générale peuvent accéder à cette page.',
-        severity: 'error'
-      });
-      return;
-    }
+    if (!canViewUserManagement) return;
     loadUsers();
     loadDepartments();
     loadRoles();
