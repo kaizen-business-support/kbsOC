@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import path from 'path';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
@@ -57,6 +58,9 @@ export { prisma };
 
 // ─── Security headers ─────────────────────────────────────────────────────────
 app.use(helmet());
+
+// ─── Compression gzip — réduit la bande passante jusqu'à 70% ─────────────────
+app.use(compression());
 
 // ─── CORS — auto-detect local IPs + explicit list ────────────────────────────
 const FRONTEND_PORT = process.env.FRONTEND_PORT || '3006';
@@ -116,10 +120,11 @@ app.use(cors(corsOptions));
 const isProd = process.env.NODE_ENV === 'production';
 
 // Global limiter — only in production (dev has too many double-renders with React StrictMode)
+// 500 req/15min par IP : pour 200 users, chaque utilisateur peut faire ~2,5 req/min en moyenne.
 if (isProd) {
   const globalLimiter = rateLimit({
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW || '15') * 60 * 1000,
-    max: parseInt(process.env.RATE_LIMIT_MAX || '100'),
+    max: parseInt(process.env.RATE_LIMIT_MAX || '500'),
     standardHeaders: true,
     legacyHeaders: false,
     message: {
@@ -133,10 +138,10 @@ if (isProd) {
   console.log('⚠️  Global rate limiting disabled in development');
 }
 
-// Auth-specific limiter — always active but generous in dev
+// Auth-specific limiter — 30 en prod (200 users peuvent se connecter dans la même fenêtre)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isProd ? 10 : 200,
+  max: isProd ? 30 : 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -145,7 +150,7 @@ const authLimiter = rateLimit({
   },
 });
 
-console.log(`🔒  Auth rate limiting: ${isProd ? '10' : '200'} req/15min`);
+console.log(`🔒  Auth rate limiting: ${isProd ? '30' : '200'} req/15min`);
 
 // ─── Body parsing — conservative limits ──────────────────────────────────────
 app.use(express.json({ limit: '1mb' }));
@@ -247,7 +252,14 @@ process.on('SIGINT', async () => {
 });
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 OptimusCredit Backend API running on port ${PORT}`);
+  // Libérer les connexions HTTP inactives après 65s (légèrement > les 60s des proxies)
+  server.keepAliveTimeout = 65_000;
+  // Le client doit envoyer ses headers dans les 10s
+  server.headersTimeout = 70_000;
+  // Timeout de requête à 30s — évite les connexions zombies
+  server.timeout = 30_000;
+
+  console.log(`🚀 OptimusCredit Backend API running on port ${PORT} (worker ${process.pid})`);
   console.log(`📊 Environment: ${process.env.NODE_ENV}`);
   console.log(`🔗 Frontend URL: ${process.env.FRONTEND_URL}`);
   console.log(`📝 API Documentation: http://localhost:${PORT}/api/health`);

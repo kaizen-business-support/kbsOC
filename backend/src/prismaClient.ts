@@ -6,10 +6,12 @@ import { PrismaClient } from '@prisma/client';
 
 // Injecter connection_limit et pool_timeout dans l'URL si non déjà présents,
 // pour éviter l'épuisement du pool lors de démos avec plusieurs utilisateurs.
+// En mode cluster (8 workers), chaque worker tient 20 connexions → 160 total.
+// PostgreSQL doit avoir max_connections ≥ 200 (voir instructions de déploiement).
 const rawUrl = process.env.DATABASE_URL || '';
 const dbUrl = rawUrl.includes('connection_limit')
   ? rawUrl
-  : `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}connection_limit=20&pool_timeout=20`;
+  : `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}connection_limit=20&pool_timeout=30`;
 
 export const prisma = new PrismaClient({
   datasources: { db: { url: dbUrl } },
