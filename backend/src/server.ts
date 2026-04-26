@@ -263,12 +263,21 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     .catch(err => console.error('[delegation] expiration error:', err));
 });
 
-process.on('unhandledRejection', async (err: Error) => {
-  console.error('❌ Unhandled Promise Rejection:', err);
-  await prisma.$disconnect();
-  server.close(() => {
+// Ne pas tuer le processus sur une promesse non gérée — loguer seulement.
+// En démo avec plusieurs utilisateurs simultanés, une erreur isolée (timeout DB,
+// requête malformée, etc.) ne doit pas faire tomber le serveur entier.
+process.on('unhandledRejection', (reason: unknown) => {
+  console.error('⚠️  Unhandled Promise Rejection (non-fatal):', reason);
+});
+
+process.on('uncaughtException', (err: Error) => {
+  console.error('❌ Uncaught Exception:', err);
+  // Erreur synchrone inattendue — ici on laisse le processus continuer
+  // sauf si c'est une erreur catastrophique (EADDRINUSE, etc.)
+  if ((err as any).code === 'EADDRINUSE') {
+    console.error('Port already in use — shutting down.');
     process.exit(1);
-  });
+  }
 });
 
 export default app;
