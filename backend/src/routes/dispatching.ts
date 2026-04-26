@@ -277,7 +277,11 @@ router.post('/assign', async (req: Request, res: Response) => {
     const [application, analyst] = await Promise.all([
       prisma.creditApplication.findUnique({
         where: { id: applicationId },
-        include: { workflowSteps: true, client: { select: { companyName: true } } }
+        include: {
+          workflowSteps: true,
+          client: { select: { companyName: true } },
+          creator: { select: { branch: true, department: true } }
+        }
       }),
       prisma.user.findUnique({ where: { id: analystId } })
     ]);
@@ -309,12 +313,7 @@ router.post('/assign', async (req: Request, res: Response) => {
       : ((supervisorUser as any)?.branch || (supervisorUser as any)?.department);
 
     if (!GLOBAL_ROLES.includes(effectiveRole)) {
-      // Branche du créateur du dossier
-      const appWithCreator = await prisma.creditApplication.findUnique({
-        where: { id: applicationId },
-        select: { creator: { select: { branch: true, department: true } } },
-      });
-      const creatorBranch = appWithCreator?.creator?.branch || appWithCreator?.creator?.department;
+      const creatorBranch = (application as any).creator?.branch || (application as any).creator?.department;
       if (effectiveBranch && creatorBranch && effectiveBranch !== creatorBranch) {
         return res.status(403).json({
           success: false,

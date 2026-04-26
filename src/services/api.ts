@@ -861,6 +861,30 @@ export class ApiService {
     }
   }
 
+  static async deleteRole(roleId: string): Promise<ApiResponse<void>> {
+    try {
+      const response = await api.delete(`/roles/${roleId}`);
+      return { success: true, message: response.data.message };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.response?.data?.message || 'Erreur lors de la suppression du rôle'
+      };
+    }
+  }
+
+  static async deleteBranch(branchId: string): Promise<ApiResponse<void>> {
+    try {
+      const response = await api.delete(`/branches/${branchId}`);
+      return { success: true, message: response.data.message };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.response?.data?.message || 'Erreur lors de la suppression de l\'agence'
+      };
+    }
+  }
+
   static async updateRolePermissions(role: string, roleData: {
     label: string;
     description: string;

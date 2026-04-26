@@ -353,7 +353,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   // Extract financial data and analysis results
   const analysisResults = application?.analysisResults || {};
   const financialData = analysisResults?.financialData || {};
-  const preliminaryAnalysis = analysisResults?.preliminaryAnalysis || {};
+  const preliminaryAnalysis = (typeof analysisResults?.preliminaryAnalysis === 'object' && analysisResults.preliminaryAnalysis !== null ? analysisResults.preliminaryAnalysis : {}) as any;
 
   // Get scores
   const overallScore = preliminaryAnalysis?.overallScore || application?.overallScore || 0;

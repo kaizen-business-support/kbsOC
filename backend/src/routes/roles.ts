@@ -143,6 +143,23 @@ router.put('/:role',
   })
 );
 
+// DELETE /api/roles/:id - Delete role (admin only)
+router.delete('/:id',
+  requireAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    const existing = await prisma.rolePermission.findUnique({ where: { id } });
+    if (!existing) {
+      throw new AppError('Rôle introuvable', 404, 'NOT_FOUND');
+    }
+
+    await prisma.rolePermission.delete({ where: { id } });
+
+    res.json({ success: true, message: 'Rôle supprimé avec succès' });
+  })
+);
+
 // POST /api/roles - Create new role (admin only)
 router.post('/',
   requireAdmin,

@@ -364,7 +364,7 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
             status: 'PENDING',
             deadline: new Date(
               Date.now() +
-                (nextStep.expectedDurationHours ?? nextStep.durationDays * 24) * 60 * 60 * 1000
+                (nextStep.expectedDurationHours ?? (nextStep.durationDays ?? 7) * 24) * 60 * 60 * 1000
             ),
             policyStepId: nextStep.policyStepId ?? undefined,
           }
@@ -458,7 +458,7 @@ router.post('/fix-missing-approval-steps', async (req: Request, res: Response) =
             stepName: nextStep.stepName,
             role: nextStep.role,
             status: 'PENDING',
-            deadline: new Date(Date.now() + nextStep.durationDays * 24 * 60 * 60 * 1000),
+            deadline: new Date(Date.now() + (nextStep.durationDays ?? 7) * 24 * 60 * 60 * 1000),
           }
         });
         fixedCount++;
@@ -518,7 +518,7 @@ router.post('/fix-prematurely-approved', async (req: Request, res: Response) => 
             stepName: firstMissing.stepName,
             role: firstMissing.role,
             status: 'PENDING',
-            deadline: new Date(Date.now() + firstMissing.durationDays * 24 * 60 * 60 * 1000),
+            deadline: new Date(Date.now() + (firstMissing.durationDays ?? 7) * 24 * 60 * 60 * 1000),
           }
         });
 

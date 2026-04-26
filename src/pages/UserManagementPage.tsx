@@ -1252,19 +1252,16 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     }
 
     try {
-      setRoles(prev => prev.filter(role => role.id !== roleId));
-      setNotification({
-        open: true,
-        message: 'Rôle supprimé avec succès',
-        severity: 'success'
-      });
+      const response = await ApiService.deleteRole(roleId);
+      if (response.success) {
+        await loadRoles();
+        setNotification({ open: true, message: 'Rôle supprimé avec succès', severity: 'success' });
+      } else {
+        setNotification({ open: true, message: response.error || 'Erreur lors de la suppression du rôle', severity: 'error' });
+      }
     } catch (error) {
       console.error('Error deleting role:', error);
-      setNotification({
-        open: true,
-        message: 'Erreur lors de la suppression du rôle',
-        severity: 'error'
-      });
+      setNotification({ open: true, message: 'Erreur lors de la suppression du rôle', severity: 'error' });
     }
   };
 
@@ -1405,19 +1402,16 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     }
 
     try {
-      setBranches(prev => prev.filter(branch => branch.id !== branchId));
-      setNotification({
-        open: true,
-        message: 'Agence supprimée avec succès',
-        severity: 'success'
-      });
+      const response = await ApiService.deleteBranch(branchId);
+      if (response.success) {
+        await loadBranches();
+        setNotification({ open: true, message: 'Agence supprimée avec succès', severity: 'success' });
+      } else {
+        setNotification({ open: true, message: response.error || 'Erreur lors de la suppression de l\'agence', severity: 'error' });
+      }
     } catch (error) {
       console.error('Error deleting branch:', error);
-      setNotification({
-        open: true,
-        message: 'Erreur lors de la suppression de l\'agence',
-        severity: 'error'
-      });
+      setNotification({ open: true, message: 'Erreur lors de la suppression de l\'agence', severity: 'error' });
     }
   };
 

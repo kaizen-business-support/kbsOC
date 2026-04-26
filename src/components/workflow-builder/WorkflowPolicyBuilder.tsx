@@ -167,12 +167,24 @@ export function WorkflowPolicyBuilder() {
     else setSnack({ msg: res.error, sev: 'error' });
   };
 
-  const handleRaciImport = (importedSteps: PolicyStep[]) => {
+  const handleRaciImport = async (importedSteps: PolicyStep[]) => {
     if (!isDraft) return;
     const reordered = importedSteps.map((s, i) => ({ ...s, policyId: selectedPolicyId, order: i + 1 }));
-    setSteps(reordered);
-    setSelectedStepId(null);
-    setSnack({ msg: `${reordered.length} étapes importées depuis la matrice RACI`, sev: 'success' });
+    setSaving(true);
+    const res = await creditPolicyApi.savePolicyWithSteps(selectedPolicyId, {
+      steps: reordered.map(({ _error, ...rest }: any) => rest),
+      expectedVersion: currentVersion,
+    });
+    setSaving(false);
+    if (res.success) {
+      const v = res.data?.version ?? currentVersion + 1;
+      setCurrentVersion(v);
+      setSteps(res.data?.steps || reordered);
+      setSelectedStepId(null);
+      setSnack({ msg: `${reordered.length} étapes importées et sauvegardées (v${v})`, sev: 'success' });
+    } else {
+      setSnack({ msg: res.error || 'Erreur lors de la sauvegarde des étapes RACI', sev: 'error' });
+    }
   };
 
   const handleNewPolicy = async () => {
