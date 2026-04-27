@@ -90,6 +90,7 @@ router.post('/', async (req: Request, res: Response) => {
                 isRequired: s.isRequired ?? true,
                 description: s.description ?? null,
                 creditTypeIds: s.creditTypeIds ?? [],
+                allowedActions: s.allowedActions ?? [],
               })),
             }
           : undefined,
@@ -300,6 +301,7 @@ router.put('/:id', async (req: Request, res: Response) => {
             isActive: s.isActive ?? true,
             description: s.description ?? null,
             creditTypeIds: s.creditTypeIds ?? [],
+            allowedActions: s.allowedActions ?? [],
             phase: s.phase ?? null,
             guards: s.guards ?? null,
           })),
@@ -366,7 +368,7 @@ router.post('/:id/steps', async (req: Request, res: Response) => {
       conditionMinAmount, conditionMaxAmount,
       approvalMinAmount, approvalMaxAmount,
       expectedDurationHours, maxDurationHours,
-      isRequired, description, creditTypeIds,
+      isRequired, description, creditTypeIds, allowedActions,
     } = req.body;
 
     if (!stepName || !stepLabel || !stepType || !assignedRole) {
@@ -412,6 +414,7 @@ router.post('/:id/steps', async (req: Request, res: Response) => {
         isRequired: isRequired ?? true,
         description: description ?? null,
         creditTypeIds: creditTypeIds ?? [],
+        allowedActions: allowedActions ?? [],
       },
     });
 
