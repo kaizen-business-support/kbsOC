@@ -1724,6 +1724,66 @@ export const creditPolicyApi = {
   },
 };
 
+// ─── Contract Templates API ──────────────────────────────────────────────────
+export const contractTemplateApi = {
+  async list(creditTypeId?: string): Promise<any> {
+    const url = creditTypeId
+      ? `/contract-templates?creditTypeId=${encodeURIComponent(creditTypeId)}`
+      : '/contract-templates';
+    try {
+      const r = await api.get(url);
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur récupération modèles' };
+    }
+  },
+  async get(id: string): Promise<any> {
+    try {
+      const r = await api.get(`/contract-templates/${id}`);
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur récupération modèle' };
+    }
+  },
+  async create(form: FormData): Promise<any> {
+    try {
+      const r = await api.post('/contract-templates', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur création modèle' };
+    }
+  },
+  async update(id: string, data: any): Promise<any> {
+    try {
+      const r = await api.put(`/contract-templates/${id}`, data);
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur mise à jour modèle' };
+    }
+  },
+  async deactivate(id: string): Promise<any> {
+    try {
+      await api.delete(`/contract-templates/${id}`);
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur désactivation' };
+    }
+  },
+  downloadUrl(id: string): string {
+    return `${API_BASE_URL}/contract-templates/${id}/download`;
+  },
+  async getCatalog(): Promise<any> {
+    try {
+      const r = await api.get('/contract-templates/catalog/variables');
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur catalogue' };
+    }
+  },
+};
+
 // Utility function to handle API errors
 export const handleApiError = (error: any): string => {
   if (error.response) {
