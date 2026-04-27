@@ -243,9 +243,9 @@ Pas de SDK DocuSeal — appels REST via `fetch`.
 - `GET /application/:applicationId`
 - `POST /generate` *(body : `{ templateId, applicationId, customValues }`)*
 - `GET /:id/download`
-- `POST /:id/signatories`
-- `POST /:id/send-for-signature` *(body : `{ mode }`)*
-- `POST /:id/upload-signed` *(multer PDF, mode MANUAL)*
+- `POST /:id/signatories` *(body : `{ signatories: Array<{ order: number, party: 'BANK'|'CLIENT', fullName: string, email?: string, role?: string }> }` ; remplace la liste complète)*
+- `POST /:id/send-for-signature` *(body : `{ mode: 'MANUAL'|'EXTERNAL' }`. **MANUAL** : transition `DRAFT → PENDING_SIGNATURE` sans appel externe ; le juridique imprime/fait signer hors-ligne puis utilise `/upload-signed`. **EXTERNAL** : appel DocuSeal puis `DRAFT → PENDING_SIGNATURE`. Validation : signataires définis dans les deux modes.)*
+- `POST /:id/upload-signed` *(multer PDF, mode MANUAL uniquement)*
 - `POST /:id/cancel`
 - `POST /webhooks/docuseal` *(HMAC, hors auth JWT)*
 
@@ -269,9 +269,9 @@ Ajouts dans `seed-bci.js` + table `RolePermission`.
 
 ```
 backend/uploads/
-  contract-templates/<templateId>.docx
-  contracts/<applicationId>/<contractId>.docx
-  contracts/<applicationId>/<contractId>.signed.pdf
+  contract-templates/<templateId>.<ext>           # ext = "docx" ou "pdf" selon ContractTemplate.fileFormat
+  contracts/<applicationId>/<contractId>.<ext>    # ext = "docx" pour DOCX généré, "pdf" pour PDF copié tel quel
+  contracts/<applicationId>/<contractId>.signed.pdf  # toujours .pdf (signature MANUAL ou retour DocuSeal)
 ```
 
 Servis **uniquement** par routes authentifiées + check tenant — pas via `/uploads` static.
@@ -301,7 +301,7 @@ Servis **uniquement** par routes authentifiées + check tenant — pas via `/upl
 - `Sidebar.tsx` — entrée « Modèles de contrats » (gardée par `manage_contract_templates`).
 - `workflow-builder/StepPalette.tsx` + `StepConfigPanel.tsx` — ajout type `LEGAL` (icône `GavelIcon`, couleur `#7e22ce`).
 - `types/creditPolicyBuilder.ts` — `LEGAL` dans `STEP_TYPE_CONFIG`.
-- `pages/ApprovalsPage.tsx` — pour étape LEGAL : bouton « Ouvrir étape juridique » → `LegalStepPage`.
+- `pages/ApprovalsPage.tsx` — les dossiers en étape LEGAL apparaissent dans les **mêmes onglets/badges** que les autres approbations (pas de filtre séparé). Seul le bouton d'action change : « Ouvrir étape juridique » → `LegalStepPage` au lieu du `ApprovalActionDialog` standard.
 - `Header.tsx`, `contexts/AppContext.tsx`, `types/index.ts`, `App.tsx`, `services/api.ts` — routes/types/clients API.
 
 ---
@@ -345,7 +345,7 @@ Tous reliés à `applicationId` quand pertinent.
 | Webhook après clôture étape | Statut contrat mis à jour, étape inchangée, audit log. |
 | Upload mode MANUAL non-PDF | Refus 400 (magic bytes). |
 | `{{application.amountInWords}}` | Calculé à la volée. |
-| Re-génération même template/dossier | Autorisée, nouveau contrat ; ancien à annuler manuellement. |
+| Re-génération même template/dossier | Autorisée, nouveau contrat. Si l'ancien est en `PENDING_SIGNATURE`, **dialog de confirmation bloquant** : "Un contrat de ce modèle est déjà en signature. Continuer ?" ; choix juridique : annuler l'ancien manuellement après. |
 | `{{bank.legalRepresentative}}` non renseigné | Chaîne vide (champ optionnel sur Company). |
 | Politique modifiée rétroactivement (LEGAL ajoutée) | Versioning existant : dossiers en cours gardent leur plan. |
 
@@ -406,9 +406,11 @@ Au boot dans `server.ts` : `mkdirSync` de `uploads/contract-templates/` et `uplo
 
 ### Rollout phasé
 
-1. **Phase 1** — schéma + page Modèles (configuration, sans étape LEGAL en prod).
-2. **Phase 2** — type LEGAL + `LegalStepPage` mode MANUAL uniquement.
-3. **Phase 3** — intégration DocuSeal EXTERNAL.
+**Migration unique** : la migration Prisma est livrée intégralement en Phase 1 (incluant la valeur `LEGAL` dans `policy_step_type` et toutes les tables/enums signature). Les phases jouent uniquement sur l'**exposition UI/fonctionnelle**, pas sur le schéma.
+
+1. **Phase 1** — schéma + page Modèles (configuration). `LEGAL` présent dans l'enum mais **caché de la palette du `WorkflowPolicyBuilder`** côté frontend.
+2. **Phase 2** — `LEGAL` exposé dans la palette + `LegalStepPage` opérationnelle en mode MANUAL uniquement (bouton « Envoyer en signature externe » disabled).
+3. **Phase 3** — activation du mode EXTERNAL + intégration DocuSeal complète (provider config, webhook).
 
 ---
 
