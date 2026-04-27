@@ -160,32 +160,52 @@ Les comportements APPROVED et REJECTED existants sont conservés à l'identique.
 
 ### 1. `src/components/workflow-builder/StepConfigPanel.tsx`
 
-Les checkboxes "Actions autorisées" existantes passent de lire/écrire dans `description` (JSON) à lire/écrire directement dans `step.allowedActions`.
+**État actuel du fichier :**
+- Les actions sont lues depuis `step.description` via `getActions(desc)` (JSON.parse)
+- La clé pour "Demander des infos" est `'request'` (pas `'request_info'`)
+- Les actions sont écrites dans `description` via `onChange({ description: setActions(next) })`
 
-**Mapping checkboxes → valeurs :**
+**Changements à apporter :**
 
-| Checkbox | Valeur `allowedActions` |
-|----------|------------------------|
-| Approuver | `approve` |
-| Refuser | `reject` |
-| Demander des informations | `request_info` |
-| Transférer | `transfer` |
-
-**Lecture (initialisation) :**
+1. Renommer la clé `'request'` → `'request_info'` dans le tableau `ACTIONS` :
 ```ts
-const isChecked = (action: string) => step.allowedActions?.includes(action) ?? true
-// Si allowedActions vide → toutes cochées par défaut (UX intuitive)
+// Avant
+const ACTIONS = [
+  { key: 'approve',  label: 'Approuver' },
+  { key: 'reject',   label: 'Refuser' },
+  { key: 'request',  label: 'Demander des informations' },   // ← à renommer
+  { key: 'transfer', label: 'Transférer' },
+]
+
+// Après
+const ACTIONS = [
+  { key: 'approve',      label: 'Approuver' },
+  { key: 'reject',       label: 'Refuser' },
+  { key: 'request_info', label: 'Demander des informations' },
+  { key: 'transfer',     label: 'Transférer' },
+]
 ```
 
-**Écriture (on change) :**
+2. Supprimer `getActions` / `setActions` et lire/écrire dans `allowedActions` :
 ```ts
-const toggleAction = (action: string, checked: boolean) => {
-  const current = step.allowedActions ?? []
-  const next = checked
-    ? [...current, action]
-    : current.filter(a => a !== action)
-  onChange({ ...step, allowedActions: next })
+// Avant
+const actions = getActions(step.description)
+const toggleAction = (key: string) => {
+  const next = actions.includes(key) ? actions.filter(a => a !== key) : [...actions, key]
+  onChange({ description: setActions(next) })
 }
+
+// Après
+const actions = step.allowedActions ?? []
+const toggleAction = (key: string) => {
+  const next = actions.includes(key) ? actions.filter(a => a !== key) : [...actions, key]
+  onChange({ allowedActions: next })
+}
+```
+
+3. Les checkboxes cochées par défaut quand `allowedActions = []` (comportement initial inchangé) :
+```ts
+checked={actions.length === 0 ? true : actions.includes(key)}
 ```
 
 ### 2. `src/components/WorkflowDetailsDialog.tsx`
@@ -200,12 +220,19 @@ const isActionAllowed = (action: string): boolean => {
 }
 ```
 
-**Application sur les boutons :**
+**Application sur les boutons :** Les boutons Approuver / Rejeter sont déjà présents dans `WorkflowDetailsDialog.tsx` (ligne ~2464 et ~2478) — ils appellent `handleApproval('REJECTED')` et `handleApproval('APPROVED')`. Leur affichage se base actuellement sur la logique `canApprove()` locale. On ajoute le check `isActionAllowed` **en plus** de ce check existant (le plus restrictif des deux s'applique) :
+
 ```tsx
-{isActionAllowed('approve') && <Button onClick={handleApprove}>Approuver</Button>}
-{isActionAllowed('reject') && <Button onClick={handleReject}>Rejeter</Button>}
-{isActionAllowed('request_info') && <Button onClick={handleRequestInfo}>Demander infos</Button>}
-{isActionAllowed('transfer') && <Button onClick={handleTransfer}>Transférer</Button>}
+{canApprove() && isActionAllowed('approve') && (
+  <Button onClick={() => setOtpDialog({ open: true, pendingDecision: 'APPROVED' })}>
+    Approuver
+  </Button>
+)}
+{canApprove() && isActionAllowed('reject') && (
+  <Button onClick={() => setOtpDialog({ open: true, pendingDecision: 'REJECTED' })}>
+    Rejeter
+  </Button>
+)}
 ```
 
 ### 3. `src/services/api.ts`
@@ -251,7 +278,9 @@ S'assurer que les réponses des routes workflow retournent `allowedActions` sur 
 - Toutes les étapes existantes ont `allowedActions = []` → aucune restriction → comportement identique à aujourd'hui
 - `canApproveStep` a `action = 'approve'` en paramètre par défaut → aucun appelant existant à modifier au-delà de la route `/approve`
 - La route `/approve` valide uniquement `decision` in `['APPROVED','REJECTED','REQUEST_INFO','TRANSFER']` — les nouvelles valeurs ne changent pas la logique des deux premières
-- Le champ `description` conserve son contenu actuel (non supprimé), la migration n'est qu'un ajout
+- Le champ `description` dans `CreditPolicyStep` n'est pas supprimé — les données JSON qu'il contenait sont abandonnées (le nouveau champ `allowedActions` est la source de vérité)
+- La clé `'request'` (ancienne) devient `'request_info'` — les étapes existantes avec `description` contenant `'request'` ne sont pas migrées (elles auront `allowedActions = []` = aucune restriction)
+- `npx prisma generate` doit être exécuté après la migration pour régénérer le client Prisma
 
 ---
 
