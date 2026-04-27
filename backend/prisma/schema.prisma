@@ -416,7 +416,8 @@ model CreditPolicyStep {
 
   isRequired    Boolean        @default(true) @map("is_required")
   isActive      Boolean        @default(true) @map("is_active")
-  description   String?
+  description    String?
+  allowedActions String[]      @default([]) @map("allowed_actions")
 
   // Types de crédit auxquels s'applique cette étape (tableau vide = tous)
   creditTypeIds String[]       @default([]) @map("credit_type_ids")
