@@ -21,29 +21,22 @@ interface Props {
 }
 
 const ACTIONS = [
-  { key: 'approve',   label: 'Approuver' },
-  { key: 'reject',    label: 'Refuser' },
-  { key: 'request',   label: 'Demander des informations' },
-  { key: 'transfer',  label: 'Transférer' },
+  { key: 'approve',      label: 'Approuver' },
+  { key: 'reject',       label: 'Refuser' },
+  { key: 'request_info', label: 'Demander des informations' },
+  { key: 'transfer',     label: 'Transférer' },
 ];
-
-function getActions(desc: string | null): string[] {
-  try { return JSON.parse(desc ?? '[]'); } catch { return ['approve', 'reject', 'request']; }
-}
-function setActions(actions: string[]): string {
-  return JSON.stringify(actions);
-}
 
 export function StepConfigPanel({
   step, index, expanded, onToggle, onChange, onDelete, creditTypes, readOnly = false,
 }: Props) {
   const cfg = STEP_TYPE_CONFIG[step.stepType];
   const hasError = !!step._error;
-  const actions = getActions(step.description);
+  const actions = step.allowedActions ?? [];
 
   const toggleAction = (key: string) => {
     const next = actions.includes(key) ? actions.filter((a) => a !== key) : [...actions, key];
-    onChange({ description: setActions(next) });
+    onChange({ allowedActions: next });
   };
 
   return (
@@ -170,7 +163,7 @@ export function StepConfigPanel({
                   disabled={readOnly}
                   control={
                     <Checkbox
-                      checked={actions.includes(key)}
+                      checked={actions.length === 0 ? true : actions.includes(key)}
                       onChange={() => toggleAction(key)}
                       size="small"
                       sx={{ py: 0.4 }}
