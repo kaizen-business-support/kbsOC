@@ -42,6 +42,7 @@ import {
   ExpandLess,
   ExpandMore,
   Refresh as ResetIcon,
+  DescriptionOutlined as ContractIcon,
 } from '@mui/icons-material';
 import { PageType } from '../types';
 import { useUser } from '../contexts/UserContext';
@@ -133,6 +134,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canViewCompanySettings = false; // couvert par platform-admin
   const canViewCreditPolicy    = hasPermission('policy_configuration') || isAdmin;
   const canViewSimulator       = canCreateApplication || canFinancialAnalysis || isAdmin;
+  const canManageContractTemplates = hasPermission('manage_contract_templates') || isAdmin;
 
   // ── Sections ─────────────────────────────────────────────────────────────────
 
@@ -568,6 +570,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <StaticLabel label="Outils" />
             <List disablePadding sx={{ px: 0.5 }}>
               <NavItem id="credit-simulation" label="Simulateur de Crédit" icon={CalculateIcon} />
+            </List>
+          </>
+        )}
+
+        {/* Juridique — gestion des modèles de contrats */}
+        {canManageContractTemplates && (
+          <>
+            <StaticLabel label="Juridique" />
+            <List disablePadding sx={{ px: 0.5 }}>
+              <NavItem id="contract-templates" label="Modèles de contrats" icon={ContractIcon} />
             </List>
           </>
         )}

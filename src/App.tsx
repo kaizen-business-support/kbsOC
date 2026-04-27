@@ -48,6 +48,7 @@ const WorkflowBuilderPage    = lazy(() => import('./components/workflow-builder/
 const CompanySettingsPage    = lazy(() => import('./pages/CompanySettingsPage'));
 const PlatformAdminPage      = lazy(() => import('./pages/PlatformAdminPage'));
 const RACIMatrixPage         = lazy(() => import('./pages/RACIMatrixPage'));
+const ContractTemplatesPage  = lazy(() => import('./pages/ContractTemplatesPage').then(m => ({ default: m.ContractTemplatesPage })));
 
 // ── Thin branded progress bar while chunk loads ────────────────────────────
 const PageLoader = () => (
@@ -390,6 +391,14 @@ const AppContent: React.FC = () => {
                 })()}
               />
               <Route path="/raci-matrix" element={<RACIMatrixPage />} />
+              <Route
+                path="/contract-templates"
+                element={(() => {
+                  const p = userState.currentUser?.permissions ?? [];
+                  const allowed = p.includes('manage_contract_templates');
+                  return allowed ? <ContractTemplatesPage /> : <Navigate to="/" replace />;
+                })()}
+              />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             </PageTransition>

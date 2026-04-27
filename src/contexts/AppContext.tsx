@@ -371,6 +371,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       'raci-matrix':       '/raci-matrix',
       'workflow-builder':  '/workflow-builder',
       'approvals':         '/approvals',
+      'contract-templates': '/contract-templates',
     };
     
     const route = routeMap[page];
