@@ -111,7 +111,7 @@ export interface FileUploadResult {
 }
 
 // Navigation Types
-export type PageType = 'home' | 'configuration' | 'data-input' | 'upload' | 'manual-input' | 'analysis' | 'reports' | 'settings' | 'documentation' | 'clients' | 'credit-scoring' | 'credit-application' | 'workflow' | 'analytics' | 'bank-holidays-admin' | 'user-management' | 'approval-limits' | 'credit-simulation' | 'credit-types' | 'profile' | 'backup' | 'announcements' | 'notifications-config' | 'dispatching' | 'credit-policy' | 'workflow-builder' | 'company-settings' | 'platform-admin' | 'raci-matrix';
+export type PageType = 'home' | 'configuration' | 'data-input' | 'upload' | 'manual-input' | 'analysis' | 'reports' | 'settings' | 'documentation' | 'clients' | 'credit-scoring' | 'credit-application' | 'workflow' | 'analytics' | 'bank-holidays-admin' | 'user-management' | 'approval-limits' | 'credit-simulation' | 'credit-types' | 'profile' | 'backup' | 'announcements' | 'notifications-config' | 'dispatching' | 'credit-policy' | 'workflow-builder' | 'company-settings' | 'platform-admin' | 'raci-matrix' | 'approvals';
 
 // Report Types
 export interface ReportData {
@@ -213,6 +213,26 @@ export interface WorkflowStep {
   decision?: 'approved' | 'rejected' | 'on_hold' | 'pending';
   comments?: string;
   allowedActions?: string[];
+}
+
+export interface ApprovalItem {
+  id: string;
+  applicationId: string;
+  applicationNumber: string;
+  clientName: string;
+  amount: number;
+  currency: string;
+  stepName: string;
+  stepLabel: string;
+  stepType: string;
+  allowedActions: string[];
+  type: 'financial' | 'process';
+  creditType: string | null;
+  branch: string | null;
+  purpose: string;
+  daysWaiting: number;
+  deadline: string | null;
+  isOverdue: boolean;
 }
 
 export interface WorkflowTimestamps {

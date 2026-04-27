@@ -96,6 +96,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onPage
     'platform-admin':    'Administration Plateforme',
     'raci-matrix':       'Matrice RACI',
     'workflow-builder':  'Éditeur de Workflow',
+    'approvals':         'Mes Approbations',
   };
 
   const handleUserMenuClick = (event: React.MouseEvent<HTMLElement>) => {

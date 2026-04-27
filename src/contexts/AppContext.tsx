@@ -370,6 +370,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       'platform-admin':    '/platform-admin',
       'raci-matrix':       '/raci-matrix',
       'workflow-builder':  '/workflow-builder',
+      'approvals':         '/approvals',
     };
     
     const route = routeMap[page];
