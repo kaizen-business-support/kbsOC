@@ -41,6 +41,7 @@ const BackupPage            = lazy(() => import('./pages/BackupPage').then(m => 
 const AnnouncementsAdminPage = lazy(() => import('./pages/AnnouncementsAdminPage'));
 const NotificationsConfigPage = lazy(() => import('./pages/NotificationsConfigPage'));
 const DispatchingPage        = lazy(() => import('./pages/DispatchingPage').then(m => ({ default: m.DispatchingPage })));
+const ApprovalsPage          = lazy(() => import('./pages/ApprovalsPage').then(m => ({ default: m.ApprovalsPage })));
 const CreditManagementPage   = lazy(() => import('./pages/CreditManagementPage').then(m => ({ default: m.CreditManagementPage })));
 const CreditPolicyPage       = lazy(() => import('./pages/CreditPolicyPage').then(m => ({ default: m.CreditPolicyPage })));
 const WorkflowBuilderPage    = lazy(() => import('./components/workflow-builder/WorkflowPolicyBuilder').then(m => ({ default: m.WorkflowPolicyBuilder })));
@@ -357,6 +358,10 @@ const AppContent: React.FC = () => {
               <Route
                 path="/dispatching"
                 element={<DispatchingPage />}
+              />
+              <Route
+                path="/approvals"
+                element={<ApprovalsPage />}
               />
               <Route
                 path="/credit-policy"
