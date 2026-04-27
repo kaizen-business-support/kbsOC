@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import { AnalysisData, FileUploadResult, ApiResponse } from '../types';
+import { AnalysisData, FileUploadResult, ApiResponse, ApprovalItem } from '../types';
 
 // API Configuration - Uses same origin as browser (proxied via nginx on port 80)
 const getApiBaseUrl = (): string => {
@@ -184,13 +184,31 @@ export class ApiService {
   // ── Workflow approval ───────────────────────────────────────────────────────
   static async approveWorkflow(
     applicationId: string,
-    payload: { userId: string; decision: 'APPROVED' | 'REJECTED'; comments?: string }
+    payload: { userId: string; decision: 'APPROVED' | 'REJECTED' | 'REQUEST_INFO' | 'TRANSFER'; comments?: string }
   ): Promise<{ success: boolean; message?: string; status?: string; error?: string }> {
     try {
       const response = await api.post(`/workflows/${applicationId}/approve`, payload);
       return response.data;
     } catch (error: any) {
       throw new Error(error.response?.data?.error || 'Erreur lors de la soumission de la décision');
+    }
+  }
+
+  static async getPendingApprovals(): Promise<ApiResponse<ApprovalItem[]>> {
+    try {
+      const response = await api.get('/workflows/pending-approvals');
+      return { success: true, data: response.data.data || [] };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur chargement approbations' };
+    }
+  }
+
+  static async getPendingApprovalsCount(): Promise<ApiResponse<{ count: number }>> {
+    try {
+      const response = await api.get('/workflows/pending-approvals/count');
+      return { success: true, data: { count: response.data.count ?? 0 } };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur comptage' };
     }
   }
 
