@@ -87,6 +87,17 @@ allowedActions: allowedActions ?? []
 
 ### 2. `backend/src/services/workflowService.ts`
 
+**Architecture réelle des routes :** Il existe une seule route `POST /:applicationId/approve` qui reçoit `decision: 'APPROVED' | 'REJECTED'`. Les actions `request_info` et `transfer` n'ont pas encore de routes dédiées.
+
+**Mapping `decision` → `action` :**
+
+| Valeur `decision` (route existante) | Valeur `action` (allowedActions) |
+|--------------------------------------|----------------------------------|
+| `APPROVED` | `approve` |
+| `REJECTED` | `reject` |
+| `REQUEST_INFO` *(nouvelle valeur)* | `request_info` |
+| `TRANSFER` *(nouvelle valeur)* | `transfer` |
+
 **Signature étendue de `canApproveStep` :**
 
 ```ts
@@ -122,23 +133,26 @@ if (currentStep.policyStepId) {
 
 ### 3. `backend/src/routes/workflows.ts`
 
-Les 4 routes d'action passent leur type à `canApproveStep` :
+La route existante `POST /:applicationId/approve` étend les valeurs de `decision` acceptées et mappe vers l'action correspondante avant d'appeler `canApproveStep` :
 
-| Route | Action passée |
-|-------|---------------|
-| `POST /:applicationId/approve` | `'approve'` |
-| `POST /:applicationId/reject` | `'reject'` |
-| `POST /:applicationId/request-info` | `'request_info'` |
-| `POST /:applicationId/transfer` | `'transfer'` |
-
-Exemple :
 ```ts
-// Avant
-const authCheck = await canApproveStep(userId, applicationId, currentStep.stepName)
+// Valeurs decision acceptées (extension des valeurs existantes)
+type Decision = 'APPROVED' | 'REJECTED' | 'REQUEST_INFO' | 'TRANSFER'
 
-// Après
-const authCheck = await canApproveStep(userId, applicationId, currentStep.stepName, 'approve')
+// Mapping decision → action pour canApproveStep
+const DECISION_TO_ACTION: Record<Decision, StepAction> = {
+  APPROVED:     'approve',
+  REJECTED:     'reject',
+  REQUEST_INFO: 'request_info',
+  TRANSFER:     'transfer',
+}
+
+// Appel modifié
+const action = DECISION_TO_ACTION[decision as Decision] ?? 'approve'
+const authCheck = await canApproveStep(userId, applicationId, currentStep.stepName, action)
 ```
+
+Les comportements APPROVED et REJECTED existants sont conservés à l'identique. REQUEST_INFO et TRANSFER sont de nouvelles décisions dont la logique métier (changement de statut du step) est à implémenter dans la même route.
 
 ---
 
@@ -215,14 +229,16 @@ S'assurer que les réponses des routes workflow retournent `allowedActions` sur 
    → Boutons "Demander infos" ✗ et "Transférer" ✗ masqués
 
 3. Agent clique "Approuver"
-   → POST /api/workflows/:id/approve
+   → POST /api/workflows/:id/approve  { decision: 'APPROVED' }
+   → Mapping APPROVED → action 'approve'
    → canApproveStep(..., 'approve')
    → Vérifie rôle ✓, montant ✓, agence ✓
    → Vérifie allowedActions: ['approve', 'reject'].includes('approve') ✓
    → Action autorisée → workflow avance
 
-4. Appel direct à l'API (bypass frontend)
-   → POST /api/workflows/:id/request-info
+4. Appel avec décision non configurée (bypass frontend ou mauvaise config)
+   → POST /api/workflows/:id/approve  { decision: 'REQUEST_INFO' }
+   → Mapping REQUEST_INFO → action 'request_info'
    → canApproveStep(..., 'request_info')
    → allowedActions: ['approve', 'reject'].includes('request_info') ✗
    → 403 { error: "L'action request_info n'est pas configurée pour cette étape" }
@@ -233,7 +249,8 @@ S'assurer que les réponses des routes workflow retournent `allowedActions` sur 
 ## Rétrocompatibilité
 
 - Toutes les étapes existantes ont `allowedActions = []` → aucune restriction → comportement identique à aujourd'hui
-- `canApproveStep` a `action = 'approve'` en paramètre par défaut → aucun appelant existant à modifier au-delà des 4 routes workflows
+- `canApproveStep` a `action = 'approve'` en paramètre par défaut → aucun appelant existant à modifier au-delà de la route `/approve`
+- La route `/approve` valide uniquement `decision` in `['APPROVED','REJECTED','REQUEST_INFO','TRANSFER']` — les nouvelles valeurs ne changent pas la logique des deux premières
 - Le champ `description` conserve son contenu actuel (non supprimé), la migration n'est qu'un ajout
 
 ---
