@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import path from 'path';
+import fs from 'fs';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import os from 'os';
@@ -34,6 +35,7 @@ import auditLogRoutes from './routes/audit-logs';
 import documentRoutes from './routes/documents';
 import dispatchingRoutes from './routes/dispatching';
 import creditPolicyRoutes from './routes/credit-policy';
+import contractTemplateRoutes from './routes/contract-templates';
 import raciMatrixRoutes from './routes/raci-matrix';
 import delegationRoutes from './routes/delegations';
 import companyRoutes from './routes/companies';
@@ -156,6 +158,12 @@ console.log(`🔒  Auth rate limiting: ${isProd ? '30' : '200'} req/15min`);
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
+// ─── Ensure upload subdirectories exist ───────────────────────────────────────
+const uploadsRoot = path.join(__dirname, '../uploads');
+['logos', 'contract-templates', 'contracts'].forEach((d) => {
+  fs.mkdirSync(path.join(uploadsRoot, d), { recursive: true });
+});
+
 // ─── Serve uploaded files (logos, documents) ──────────────────────────────────
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
@@ -211,6 +219,7 @@ app.use('/api/audit-logs',   authenticate, auditLogRoutes);
 app.use('/api/documents',    authenticate, documentRoutes);
 app.use('/api/dispatching',    authenticate, dispatchingRoutes);
 app.use('/api/credit-policies', authenticate, creditPolicyRoutes);
+app.use('/api/contract-templates', contractTemplateRoutes);
 app.use('/api/raci-matrix', authenticate, raciMatrixRoutes);
 app.use('/api/delegations',    authenticate, delegationRoutes);
 app.use('/api/companies', companyRoutes);
