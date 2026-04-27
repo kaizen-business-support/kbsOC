@@ -297,6 +297,12 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
     return false;
   };
 
+  const isActionAllowed = (action: string): boolean => {
+    const currentStep = workflow?.steps?.find(step => !step.completedAt);
+    if (!currentStep?.allowedActions || currentStep.allowedActions.length === 0) return true;
+    return currentStep.allowedActions.includes(action);
+  };
+
   const handleApproval = async (decision: 'APPROVED' | 'REJECTED') => {
     if (!userState.currentUser || !workflow) return;
 
@@ -2456,6 +2462,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                 },
               }}
             />
+            {isActionAllowed('reject') && (
             <Button
               variant="outlined"
               color="error"
@@ -2470,6 +2477,8 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
             >
               Rejeter
             </Button>
+            )}
+            {isActionAllowed('approve') && (
             <Button
               variant="contained"
               color="success"
@@ -2485,6 +2494,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
             >
               Approuver
             </Button>
+            )}
           </>
         )}
 
