@@ -38,12 +38,14 @@ import {
   CallSplit as DispatchIcon,
   PolicyOutlined as PolicyIcon,
   ListAltOutlined as StepsIcon,
+  HowToVote as ApprovalMenuIcon,
   ExpandLess,
   ExpandMore,
   Refresh as ResetIcon,
 } from '@mui/icons-material';
 import { PageType } from '../types';
 import { useUser } from '../contexts/UserContext';
+import { ApiService } from '../services/api';
 import { useCompany } from '../contexts/CompanyContext';
 
 export const FULL_WIDTH  = 260;
@@ -97,6 +99,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [analysisExpanded, setAnalysisExpanded] = useState(true);
   const [configExpanded, setConfigExpanded]     = useState(true);
   const [policyExpanded, setPolicyExpanded]     = useState(true);
+  const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
+
+  React.useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const res = await ApiService.getPendingApprovalsCount();
+        if (res.success) setPendingApprovalsCount(res.data?.count ?? 0);
+      } catch { /* silencieux */ }
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleItemClick = (page: PageType) => {
     onPageChange(page);
@@ -126,6 +141,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ...(canViewClients       ? [{ id: 'clients'           as PageType, label: t('navigation.clients'),       icon: ClientsIcon     }] : []),
     ...(canCreateApplication ? [{ id: 'credit-application' as PageType, label: 'Nouvelle Demande',            icon: ApplicationIcon }] : []),
     ...(canDispatching       ? [{ id: 'dispatching'         as PageType, label: 'Dispatching',                icon: DispatchIcon    }] : []),
+    ...(canViewApplications  ? [{ id: 'approvals'           as PageType, label: 'Approbations',               icon: ApprovalMenuIcon, badgeCount: pendingApprovalsCount }] : []),
     ...(canViewApplications  ? [{ id: 'workflow'            as PageType, label: t('navigation.workflow'),     icon: WorkflowIcon    }] : []),
     ...(canViewAnalytics     ? [{ id: 'analytics'           as PageType, label: t('navigation.analytics'),   icon: InsightsIcon    }] : []),
   ];
@@ -264,8 +280,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     label: string;
     icon: React.ElementType;
     badge?: boolean;
+    badgeCount?: number;
     disabled?: boolean;
-  }> = ({ id, label, icon: Icon, badge, disabled }) => {
+  }> = ({ id, label, icon: Icon, badge, badgeCount, disabled }) => {
     const isActive = currentPage === id;
 
     // ── Mini (icon-only) mode ──────────────────────────────────────────────
@@ -288,7 +305,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }}
             >
               <ListItemIcon sx={{ minWidth: 0, justifyContent: 'center' }}>
-                {badge ? (
+                {badgeCount && badgeCount > 0 ? (
+                  <Badge badgeContent={badgeCount} color="error" max={99}>
+                    <Icon sx={{ fontSize: 22, color: isActive ? SB.activeText : '#94A3B8' }} />
+                  </Badge>
+                ) : badge ? (
                   <Badge color="success" variant="dot">
                     <Icon sx={{ fontSize: 22, color: isActive ? SB.activeText : '#94A3B8' }} />
                   </Badge>
@@ -311,7 +332,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           sx={isActive ? activeItemSx : inactiveItemSx}
         >
           <ListItemIcon sx={{ minWidth: 30 }}>
-            {badge ? (
+            {badgeCount && badgeCount > 0 ? (
+              <Badge badgeContent={badgeCount} color="error" max={99}>
+                <Icon sx={{ fontSize: 19 }} />
+              </Badge>
+            ) : badge ? (
               <Badge color="success" variant="dot">
                 <Icon sx={{ fontSize: 19 }} />
               </Badge>
@@ -453,7 +478,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Collapse in={open ? creditExpanded : true} timeout="auto" unmountOnExit={false}>
               <List disablePadding sx={{ px: 0.5 }}>
                 {creditProcessItems.map(item => (
-                  <NavItem key={item.id} id={item.id} label={item.label} icon={item.icon} />
+                  <NavItem key={item.id} id={item.id} label={item.label} icon={item.icon} badgeCount={(item as any).badgeCount} />
                 ))}
               </List>
             </Collapse>
