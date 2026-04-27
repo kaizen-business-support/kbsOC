@@ -160,6 +160,107 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/workflows/pending-approvals
+router.get('/pending-approvals', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const userRole = (req as any).user?.role;
+    if (!userId || !userRole) {
+      return res.status(401).json({ success: false, error: 'Authentification requise' });
+    }
+
+    const steps = await prisma.workflowStep.findMany({
+      where: {
+        status: 'PENDING',
+        completedAt: null,
+        application: { companyId: req.companyId },
+        OR: [
+          { role: userRole },
+          { assigneeId: userId },
+        ],
+      },
+      include: {
+        application: {
+          include: {
+            client: { select: { companyName: true } },
+            creator: { select: { branch: true, department: true } },
+            creditType: { select: { name: true } },
+          },
+        },
+        policyStep: {
+          select: { stepLabel: true, stepType: true, allowedActions: true },
+        },
+      },
+      orderBy: [
+        { isOverdue: 'desc' },
+        { deadline: 'asc' },
+        { createdAt: 'asc' },
+      ],
+    });
+
+    const FINANCIAL_STEP_TYPES = ['APPROVAL', 'COMMITTEE'];
+    const now = Date.now();
+
+    const data = steps.map((step) => {
+      const policyStep = (step as any).policyStep;
+      const app = (step as any).application;
+      const stepType: string = policyStep?.stepType ?? 'ANALYSIS';
+      return {
+        id: step.id,
+        applicationId: step.applicationId,
+        applicationNumber: app.applicationNumber,
+        clientName: app.client.companyName,
+        amount: Number(app.amount),
+        currency: app.currency || 'XOF',
+        stepName: step.stepName,
+        stepLabel: policyStep?.stepLabel ?? step.stepName,
+        stepType,
+        allowedActions: policyStep?.allowedActions ?? [],
+        type: FINANCIAL_STEP_TYPES.includes(stepType) ? 'financial' : 'process',
+        creditType: app.creditType?.name ?? null,
+        branch: app.creator?.branch ?? app.creator?.department ?? null,
+        purpose: app.purpose,
+        daysWaiting: Math.floor((now - new Date(step.createdAt).getTime()) / 86_400_000),
+        deadline: step.deadline ? step.deadline.toISOString() : null,
+        isOverdue: step.isOverdue,
+      };
+    });
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('[workflows] GET /pending-approvals error:', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// GET /api/workflows/pending-approvals/count
+router.get('/pending-approvals/count', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const userRole = (req as any).user?.role;
+    if (!userId || !userRole) {
+      return res.status(401).json({ success: false, error: 'Authentification requise' });
+    }
+
+    const count = await prisma.workflowStep.count({
+      where: {
+        status: 'PENDING',
+        completedAt: null,
+        application: { companyId: req.companyId },
+        OR: [
+          { role: userRole },
+          { assigneeId: userId },
+        ],
+      },
+    });
+
+    res.json({ success: true, count });
+  } catch (error) {
+    console.error('[workflows] GET /pending-approvals/count error:', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
 // POST /api/workflows/:applicationId/start-step/:stepId
 // Marque une étape comme "en cours" (IN_REVIEW) et enregistre startedAt
 // À appeler dès qu'un profil ouvre le dossier pour traitement
