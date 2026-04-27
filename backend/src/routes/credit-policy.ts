@@ -443,7 +443,7 @@ router.put('/:id/steps/:stepId', async (req: Request, res: Response) => {
       conditionMinAmount, conditionMaxAmount,
       approvalMinAmount, approvalMaxAmount,
       expectedDurationHours, maxDurationHours,
-      isRequired, isActive, description, creditTypeIds,
+      isRequired, isActive, description, creditTypeIds, allowedActions,
     } = req.body;
 
     // Validation cohérence des plages de montant
@@ -471,6 +471,7 @@ router.put('/:id/steps/:stepId', async (req: Request, res: Response) => {
         ...(isActive !== undefined && { isActive }),
         ...(description !== undefined && { description }),
         ...(creditTypeIds !== undefined && { creditTypeIds }),
+        ...(allowedActions !== undefined && { allowedActions }),
       },
     });
 
