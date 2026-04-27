@@ -532,10 +532,13 @@ const GLOBAL_SCOPE_ROLES: UserRole[] = [
   'BACK_OFFICE',
 ];
 
+export type StepAction = 'approve' | 'reject' | 'request_info' | 'transfer';
+
 export async function canApproveStep(
   userId: string,
   applicationId: string,
-  stepName: string
+  stepName: string,
+  action: StepAction = 'approve'
 ): Promise<{
   allowed: boolean;
   reason?: string;
@@ -645,6 +648,22 @@ export async function canApproveStep(
         return {
           allowed: false,
           reason: `Montant ${amount.toLocaleString()} XOF hors limite autorisée pour ce rôle (${min.toLocaleString()} – ${max.toLocaleString()} XOF)`,
+        };
+      }
+    }
+  }
+
+  // ── 4. Vérification des actions autorisées sur l'étape de politique ──────────
+  if (step.policyStepId) {
+    const policyStepForActions = await prisma.creditPolicyStep.findUnique({
+      where: { id: step.policyStepId },
+      select: { allowedActions: true },
+    });
+    if (policyStepForActions && policyStepForActions.allowedActions.length > 0) {
+      if (!policyStepForActions.allowedActions.includes(action)) {
+        return {
+          allowed: false,
+          reason: `L'action "${action}" n'est pas autorisée sur cette étape`,
         };
       }
     }
