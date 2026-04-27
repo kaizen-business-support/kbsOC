@@ -72,7 +72,7 @@ const TEST_USERS = [
     jobTitle: 'Responsable des Engagements',
     department: 'Crédit et Financement',
     branch: 'DKR-SG',
-    permissions: ['view_applications', 'view_all', 'approve_applications', 'application_review', 'workflow_override', 'manage_team'],
+    permissions: ['view_applications', 'view_all', 'approve_applications', 'application_review', 'workflow_override', 'manage_team', 'view_contracts'],
   },
   {
     email: 'comite@bci.sn',
@@ -111,6 +111,7 @@ const TEST_USERS = [
       'approve_applications','committee_review','committee_vote','final_approval',
       'risk_override','policy_exceptions','manage_branch','manage_team','workflow_override',
       'dispatch_applications','assign_analyst','view_analyst_workload',
+      'manage_contract_templates','view_contracts',
     ],
   },
   {
@@ -120,7 +121,7 @@ const TEST_USERS = [
     jobTitle: 'Directrice Juridique',
     department: 'Direction Générale',
     branch: 'DKR-SG',
-    permissions: ['view_applications', 'view_all', 'approve_applications', 'application_review', 'analytics'],
+    permissions: ['view_applications', 'view_all', 'approve_applications', 'application_review', 'analytics', 'manage_contract_templates', 'generate_contracts', 'view_contracts'],
   },
   {
     email: 'backoffice@bci.sn',
@@ -129,7 +130,7 @@ const TEST_USERS = [
     jobTitle: 'Chargé Back-Office',
     department: 'Opérations et Back-office',
     branch: 'DKR-SG',
-    permissions: ['view_applications', 'view_branch', 'application_review'],
+    permissions: ['view_applications', 'view_branch', 'application_review', 'view_contracts'],
   },
 ];
 
