@@ -212,6 +212,7 @@ export interface WorkflowStep {
   branch?: string;
   decision?: 'approved' | 'rejected' | 'on_hold' | 'pending';
   comments?: string;
+  allowedActions?: string[];
 }
 
 export interface WorkflowTimestamps {
