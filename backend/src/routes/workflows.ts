@@ -4,6 +4,7 @@ import { triggerNotification } from '../services/notificationService';
 import {
   getNextWorkflowStep,
   canApproveStep,
+  StepAction,
   startWorkflowStep,
   finalizeStepDuration,
   finalizeApplicationDuration,
@@ -64,7 +65,8 @@ router.get('/', async (req: Request, res: Response) => {
             createdAt: 'asc'
           },
           include: {
-            assignee: true
+            assignee: true,
+            policyStep: { select: { allowedActions: true } },
           }
         }
       },
@@ -130,7 +132,8 @@ router.get('/', async (req: Request, res: Response) => {
         decision: step.status === 'APPROVED' ? 'approved' : 
                  step.status === 'REJECTED' ? 'rejected' : 
                  step.status === 'PENDING' ? 'pending' : 'on_hold',
-        comments: step.comments || undefined
+        comments: step.comments || undefined,
+        allowedActions: (step as any).policyStep?.allowedActions ?? [],
       })),
       createdBy: workflow.createdBy,
       createdByName: workflow.creator.name,
@@ -258,12 +261,21 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       });
     }
 
-    if (decision !== 'APPROVED' && decision !== 'REJECTED') {
+    const VALID_DECISIONS = ['APPROVED', 'REJECTED', 'REQUEST_INFO', 'TRANSFER'];
+    if (!VALID_DECISIONS.includes(decision)) {
       return res.status(400).json({
         success: false,
-        error: 'decision must be APPROVED or REJECTED'
+        error: `decision must be one of: ${VALID_DECISIONS.join(', ')}`
       });
     }
+
+    const DECISION_TO_ACTION: Record<string, StepAction> = {
+      APPROVED:     'approve',
+      REJECTED:     'reject',
+      REQUEST_INFO: 'request_info',
+      TRANSFER:     'transfer',
+    };
+    const stepAction = DECISION_TO_ACTION[decision] ?? 'approve';
 
     // Get the application with all workflow steps
     const application = await prisma.creditApplication.findUnique({
@@ -308,7 +320,7 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
     }
 
     // Vérifier que l'approbateur a le droit d'approuver cette étape et ce montant
-    const authCheck = await canApproveStep(userId, applicationId, currentStep.stepName);
+    const authCheck = await canApproveStep(userId, applicationId, currentStep.stepName, stepAction);
     if (!authCheck.allowed) {
       return res.status(403).json({
         success: false,
