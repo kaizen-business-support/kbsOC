@@ -31,6 +31,9 @@ L'objectif est d'ajouter un système dynamique de **profils de modules** inspir�
 | Coexistence avec l'existant | Couche additionnelle (les deux doivent passer) |
 | Qui configure | ADMIN et SUPER_ADMIN uniquement |
 | Scope de données | BRANCH_ONLY / MULTI_BRANCH / ALL_BRANCHES |
+| Relation avec PowerDelegation | ScopeDelegate remplace PowerDelegation pour les délégations de périmètre réseau ; PowerDelegation (délégations d'étapes workflow ponctuelles) est maintenu en parallèle — les deux coexistent sans ambiguïté car ScopeDelegate cible le périmètre de données, PowerDelegation cible des étapes workflow précises |
+| Unicité du profil par rôle | Un seul profil par rôle par tenant (MVP délibéré) — une segmentation intra-rôle par agence serait une évolution v2 |
+| Comportement avant chargement du profil | fail-open : `canAccess()` retourne `true` tant que le contexte n'est pas résolu — choix délibéré pour éviter un écran blanc sur réseau lent ; la sécurité réelle est assurée côté backend via `scopeFilter` et les permissions métier existantes |
 
 ---
 
@@ -97,6 +100,7 @@ export interface ModuleDefinition {
   group: ModuleGroup;  // groupe d'appartenance dans la sidebar
   actions: ModuleAction[];
   sections: ModuleSection[];
+  superAdminOnly?: boolean; // si true, exclu des profils tenant (ex: backup, platform-admin)
 }
 
 export type ModuleGroup =
@@ -132,8 +136,8 @@ export type ModuleGroup =
 | `bank-holidays-admin` | Administration | `create`, `edit`, `delete` | — |
 | `notifications-config` | Administration | `edit` | — |
 | `announcements` | Administration | `create`, `edit`, `delete` | — |
-| `backup` | Administration | `create_backup`, `restore` | — |
-| `platform-admin` | Administration | — | — |
+| `backup` | Administration | `create_backup`, `restore` | — | `superAdminOnly: true` — exclu des profils tenant |
+| `platform-admin` | Administration | — | — | `superAdminOnly: true` — exclu des profils tenant |
 
 ### Structure JSON d'un profil stocké
 
@@ -182,9 +186,10 @@ model ModuleProfile {
   companyId     String    @map("company_id")
   role          UserRole
   label         String
-  modules       Json                        // ModuleAccess JSON
-  defaultScope  DataScope @default(BRANCH_ONLY) @map("default_scope")
-  isDefault     Boolean   @default(false) @map("is_default")
+  modules         Json                        // ModuleAccess JSON
+  defaultScope    DataScope @default(BRANCH_ONLY) @map("default_scope")
+  allowedBranches String[]  @default([]) @map("allowed_branches") // agences par défaut si MULTI_BRANCH
+  isDefault       Boolean   @default(false) @map("is_default")
   createdById   String    @map("created_by_id")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
@@ -249,14 +254,26 @@ model ScopeDelegate {
 }
 ```
 
+### Ordre total des scopes (pour la fusion)
+
+```
+BRANCH_ONLY < MULTI_BRANCH < ALL_BRANCHES
+```
+
+Un scope plus large l'emporte toujours. La fusion ne peut qu'élargir, jamais restreindre.
+
 ### Logique de fusion du scope effectif
 
 ```
-1. scope de base   = ModuleProfile.defaultScope (du rôle de l'utilisateur)
-2. override user   = UserModuleOverride.dataScope (si défini, remplace le scope de base)
-3. délégation      = ScopeDelegate actif (si existant, étend temporairement le scope)
-4. scope final     = max(scope_base_ou_override, scope_délégué)
-5. filtre SQL      = WHERE branch_id IN (branches_autorisées) | sans filtre si ALL_BRANCHES
+1. scope de base      = ModuleProfile.defaultScope (du rôle de l'utilisateur)
+   branches de base   = ModuleProfile.allowedBranches
+2. override user      = UserModuleOverride.dataScope (si défini, remplace le scope de base)
+   branches override  = UserModuleOverride.allowedBranches (remplace les branches de base)
+3. délégation active  = ScopeDelegate où delegateId = userId ET isActive = true
+                        ET (endDate IS NULL OR endDate > now())
+4. scope final        = max(scope_base_ou_override, ScopeDelegate.scope)
+   branches finales   = union(branches_base_ou_override, ScopeDelegate.allowedBranches)
+5. filtre SQL         = WHERE branch_id IN (branches_finales) | sans filtre si ALL_BRANCHES
 ```
 
 ### Seed initial des profils par défaut
@@ -422,7 +439,7 @@ Sélecteur : [CHARGE_AFFAIRES ▼]                [Réinitialiser défauts]
 ## 8. Gestion des erreurs et cas limites
 
 - **Profil absent** : si aucun `ModuleProfile` n'existe pour le rôle du tenant → seed automatique depuis `DEFAULT_ROLE_PROFILES` au premier accès
-- **Cache invalidation** : toute mise à jour de profil (rôle ou user) invalide le cache Redis des utilisateurs concernés
+- **Cache invalidation** : toute mise à jour d'un `ModuleProfile` (rôle) invalide les clés Redis de tous les membres du tenant ayant ce rôle (pattern `module-profile:{companyId}:{userId}:*`) via une lookup des `CompanyMembership` ; toute mise à jour d'un `UserModuleOverride` invalide uniquement la clé de cet utilisateur
 - **Fail-open** : si `ModuleProfileContext` n'est pas encore chargé, `canAccess()` retourne `true` pour éviter un écran blanc
 - **Délégation expirée** : le middleware vérifie `endDate` et `isActive` à chaque requête
 - **SUPER_ADMIN** : bypass total du système de profils (accès à tout)
