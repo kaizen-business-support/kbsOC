@@ -228,7 +228,7 @@ async function main() {
   const approvalLimits = [
     { role: 'CHARGE_AFFAIRES',         displayName: "Chargé d'Affaires",       minAmount: 0,          maxAmount: 5_000_000,    order: 1, reviewDuration: 1440 },
     { role: 'RESPONSABLE_ENGAGEMENTS', displayName: 'Responsable Engagements', minAmount: 5_000_001,  maxAmount: 50_000_000,   order: 2, reviewDuration: 2880 },
-    { role: 'COMITE_CREDIT',           displayName: 'Comité de Crédit',        minAmount: 50_000_001, maxAmount: 500_000_000,  order: 3, reviewDuration: 4320 },
+    { role: 'COMITE_CREDIT',           displayName: 'Comité de Crédit',        minAmount: 50_000_001, maxAmount: 2_000_000_000, order: 3, reviewDuration: 4320 },
     { role: 'DIRECTION_GENERALE',      displayName: 'Direction Générale',      minAmount: 500_000_001, maxAmount: 2_000_000_000, order: 4, reviewDuration: 2880 },
   ];
   for (const al of approvalLimits) {
