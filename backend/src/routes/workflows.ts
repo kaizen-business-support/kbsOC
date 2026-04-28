@@ -355,7 +355,7 @@ router.post('/:applicationId/start-step/:stepId', async (req: Request, res: Resp
 router.post('/:applicationId/approve', async (req: Request, res: Response) => {
   try {
     const { applicationId } = req.params;
-    const { userId, decision, comments } = req.body;
+    const { userId, decision, comments, stepName } = req.body;
 
     if (!userId || !decision) {
       return res.status(400).json({
@@ -403,8 +403,15 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       });
     }
 
-    // Find the current pending step
-    const currentStep = application.workflowSteps.find(step => !step.completedAt);
+    // Trouver l'étape courante :
+    // 1. Si stepName fourni par le frontend → chercher cette étape précise (PENDING ou IN_REVIEW)
+    // 2. Sinon → première étape non complétée (comportement historique)
+    // Cela évite l'erreur "rôle requis X, rôle actuel Y" quand plusieurs étapes
+    // sont PENDING simultanément (workflows legacy ou parallèles).
+    const pendingSteps = application.workflowSteps.filter(s => !s.completedAt);
+    const currentStep = stepName
+      ? (pendingSteps.find(s => s.stepName === stepName) ?? pendingSteps[0])
+      : pendingSteps[0];
 
     if (!currentStep) {
       return res.status(400).json({

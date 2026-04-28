@@ -70,6 +70,7 @@ export const ApprovalActionDialog: React.FC<Props> = ({ item, open, onClose, onS
         userId: userState.currentUser.id,
         decision: cfg.decision,
         comments: comments.trim() || undefined,
+        stepName: item.stepName,
       });
       if (!data.success) throw new Error(data.error || 'Erreur');
       setSuccess(cfg.label + ' — décision enregistrée');
