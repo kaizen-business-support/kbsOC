@@ -31,6 +31,9 @@ model Company {
   branches       Branch[]
   chineseWallRules TenantChineseWallRule[]
   contractTemplates ContractTemplate[]
+  moduleProfiles      ModuleProfile[]
+  userModuleOverrides UserModuleOverride[]
+  scopeDelegates      ScopeDelegate[]
 
   @@map("companies")
 }
@@ -92,6 +95,12 @@ model User {
   delegationsRevoked  PowerDelegation[]   @relation("DelegationRevokedBy")
   memberships         CompanyMembership[]
   generatedContracts  GeneratedContract[] @relation("UserGeneratedContracts")
+  createdModuleProfiles    ModuleProfile[]       @relation("ModuleProfileCreatedBy")
+  moduleOverrides          UserModuleOverride[]
+  createdOverrides         UserModuleOverride[]  @relation("OverrideCreatedBy")
+  scopeDelegationsGiven    ScopeDelegate[]       @relation("ScopeDelegatorRel")
+  scopeDelegationsReceived ScopeDelegate[]       @relation("ScopeDelegateRel")
+  scopeDelegationsRevoked  ScopeDelegate[]       @relation("ScopeRevokedBy")
 
   @@map("users")
 }
@@ -573,6 +582,14 @@ enum UserRole {
   @@map("user_role")
 }
 
+enum DataScope {
+  BRANCH_ONLY  @map("branch_only")
+  MULTI_BRANCH @map("multi_branch")
+  ALL_BRANCHES @map("all_branches")
+
+  @@map("data_scope")
+}
+
 enum PolicyStatus {
   DRAFT    @map("draft")
   ACTIVE   @map("active")
@@ -899,4 +916,68 @@ model WebhookEventLog {
 
   @@unique([provider, eventId])
   @@map("webhook_event_log")
+}
+
+model ModuleProfile {
+  id              String    @id @default(cuid())
+  companyId       String    @map("company_id")
+  role            UserRole
+  label           String
+  modules         Json
+  defaultScope    DataScope @default(BRANCH_ONLY) @map("default_scope")
+  allowedBranches String[]  @default([]) @map("allowed_branches")
+  isDefault       Boolean   @default(false) @map("is_default")
+  createdById     String    @map("created_by_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  company   Company @relation(fields: [companyId], references: [id])
+  createdBy User    @relation("ModuleProfileCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([companyId, role])
+  @@index([companyId])
+  @@map("module_profiles")
+}
+
+model UserModuleOverride {
+  id              String     @id @default(cuid())
+  userId          String     @map("user_id")
+  companyId       String     @map("company_id")
+  modules         Json?
+  dataScope       DataScope? @map("data_scope")
+  allowedBranches String[]   @default([]) @map("allowed_branches")
+  createdById     String     @map("created_by_id")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  user      User    @relation(fields: [userId], references: [id])
+  company   Company @relation(fields: [companyId], references: [id])
+  createdBy User    @relation("OverrideCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([userId, companyId])
+  @@map("user_module_overrides")
+}
+
+model ScopeDelegate {
+  id              String    @id @default(cuid())
+  delegatorId     String    @map("delegator_id")
+  delegateId      String    @map("delegate_id")
+  companyId       String    @map("company_id")
+  scope           DataScope
+  allowedBranches String[]  @default([]) @map("allowed_branches")
+  allowedActions  String[]  @default([]) @map("allowed_actions")
+  startDate       DateTime  @map("start_date")
+  endDate         DateTime? @map("end_date")
+  isActive        Boolean   @default(true) @map("is_active")
+  revokedAt       DateTime? @map("revoked_at")
+  revokedById     String?   @map("revoked_by_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  delegator User    @relation("ScopeDelegatorRel", fields: [delegatorId], references: [id])
+  delegate  User    @relation("ScopeDelegateRel", fields: [delegateId], references: [id])
+  company   Company @relation(fields: [companyId], references: [id])
+  revokedBy User?   @relation("ScopeRevokedBy", fields: [revokedById], references: [id])
+
+  @@index([delegateId, isActive])
+  @@index([companyId])
+  @@map("scope_delegates")
 }

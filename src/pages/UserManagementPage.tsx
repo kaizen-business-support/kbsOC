@@ -75,6 +75,8 @@ import { PowerDelegation, DelegatableAction, DELEGATION_ACTION_LABELS } from '..
 import BeachAccessIcon from '@mui/icons-material/BeachAccess';
 import { BulkUserImportDialog } from '../components/BulkUserImportDialog';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
+import ViewModuleIcon from '@mui/icons-material/ViewModule';
+import { ModuleProfileTab } from '../components/module-profiles/ModuleProfileTab';
 
 interface User {
   id: string;
@@ -636,7 +638,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
 
   // Audit log: load support data once when admin tab is active
   useEffect(() => {
-    if (activeTab === 6 && canEditUserManagement) {
+    if (activeTab === 7 && canEditUserManagement) {
       api.get('/users').then(r => setAuditUsers(r.data.users || [])).catch(() => {});
       api.get('/audit-logs/actions').then(r => setAuditActions(r.data.actions || [])).catch(() => {});
       fetchAuditLogs(0, auditRowsPerPage, auditFilters);
@@ -645,7 +647,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
 
   // Re-fetch when pagination changes (not filters — those use handleAuditSearch)
   useEffect(() => {
-    if (activeTab === 6) fetchAuditLogs(auditPage, auditRowsPerPage, auditFilters);
+    if (activeTab === 7) fetchAuditLogs(auditPage, auditRowsPerPage, auditFilters);
   }, [auditPage, auditRowsPerPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadUsers = async () => {
@@ -1610,6 +1612,11 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
               icon={<BeachAccessIcon />}
               iconPosition="start"
             />
+            <Tab
+              label="Profils modules"
+              icon={<ViewModuleIcon />}
+              iconPosition="start"
+            />
             {canEditUserManagement && (
               <Tab
                 label="Journal d'activité"
@@ -2416,8 +2423,13 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
             </Box>
           )}
 
-          {/* Journal d'activité (admin only, tab 6) */}
-          {activeTab === 6 && canEditUserManagement && (
+          {/* Profils Modules (tab 6) */}
+          {activeTab === 6 && (
+            <ModuleProfileTab users={users} />
+          )}
+
+          {/* Journal d'activité (admin only, tab 7) */}
+          {activeTab === 7 && canEditUserManagement && (
             <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
                 <HistoryIcon sx={{ mr: 1, color: 'primary.main' }} />

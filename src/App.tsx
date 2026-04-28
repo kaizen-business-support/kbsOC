@@ -5,6 +5,7 @@ import { Lock as LockIcon, Cancel as CancelIcon, Save as SaveIcon } from '@mui/i
 import { AppProvider, useApp } from './contexts/AppContext';
 import { UserProvider, useUser } from './contexts/UserContext';
 import { CompanyProvider } from './contexts/CompanyContext';
+import { ModuleProfileProvider } from './contexts/ModuleProfileContext';
 import { ApiService } from './services/api';
 import { ThemeWrapper } from './components/ThemeWrapper';
 import { MsalWrapper } from './components/MsalWrapper';
@@ -524,9 +525,11 @@ function App() {
       <CompanyProvider>
         <UserProvider>
           <AppProvider>
-            <ThemeWrapper>
-              <AppContent />
-            </ThemeWrapper>
+            <ModuleProfileProvider>
+              <ThemeWrapper>
+                <AppContent />
+              </ThemeWrapper>
+            </ModuleProfileProvider>
           </AppProvider>
         </UserProvider>
       </CompanyProvider>
