@@ -403,7 +403,15 @@ const AppContent: React.FC = () => {
                 path="/contract-templates"
                 element={(() => {
                   const p = userState.currentUser?.permissions ?? [];
-                  const allowed = p.includes('manage_contract_templates');
+                  const role = userState.currentUser?.role;
+                  // Tolérant aux sessions antérieures au re-seed des permissions :
+                  // accepte aussi les rôles 'admin' et 'management' (DIRECTION_JURIDIQUE
+                  // est mappé sur 'management' dans LoginPage.tsx).
+                  const allowed =
+                    p.includes('manage_contract_templates') ||
+                    p.includes('*') ||
+                    role === 'admin' ||
+                    role === 'management';
                   return allowed ? <ContractTemplatesPage /> : <Navigate to="/" replace />;
                 })()}
               />
@@ -411,7 +419,13 @@ const AppContent: React.FC = () => {
                 path="/legal-step/:applicationId"
                 element={(() => {
                   const p = userState.currentUser?.permissions ?? [];
-                  const allowed = p.includes('view_contracts') || p.includes('generate_contracts');
+                  const role = userState.currentUser?.role;
+                  const allowed =
+                    p.includes('view_contracts') ||
+                    p.includes('generate_contracts') ||
+                    p.includes('*') ||
+                    role === 'admin' ||
+                    role === 'management';
                   return allowed ? <LegalStepPageWrapper /> : <Navigate to="/" replace />;
                 })()}
               />
