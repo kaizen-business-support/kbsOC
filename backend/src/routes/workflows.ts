@@ -503,7 +503,25 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       });
     }
 
-    // Plus d'étapes → approbation finale
+    // Filet de sécurité : vérifier qu'il ne reste pas d'étapes PENDING en DB
+    // (cas des workflows legacy où les étapes sont créées en bloc dès la soumission)
+    const remainingSteps = await prisma.workflowStep.findMany({
+      where: { applicationId, status: { in: ['PENDING', 'IN_REVIEW'] }, id: { not: currentStep.id } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (remainingSteps.length > 0) {
+      const nextRemaining = remainingSteps[0];
+      triggerNotification('STEP_ASSIGNED', applicationId, { nextRole: nextRemaining.role });
+      return res.json({
+        success: true,
+        message: `Approuvé. Étape suivante : ${nextRemaining.stepName}`,
+        status: 'UNDER_REVIEW',
+        nextStep: nextRemaining.stepName,
+      });
+    }
+
+    // Plus aucune étape → approbation finale
     await prisma.creditApplication.update({
       where: { id: applicationId },
       data: { status: 'APPROVED' }

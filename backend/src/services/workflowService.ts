@@ -492,24 +492,52 @@ export async function getNextWorkflowStep(
 ): Promise<WorkflowStepPlan | null> {
   const application = await prisma.creditApplication.findUnique({
     where: { id: applicationId },
-    select: { creditTypeId: true, amount: true, companyId: true },
+    select: { creditTypeId: true, amount: true, companyId: true, policyId: true },
   });
 
   if (!application?.creditTypeId) return null;
 
-  const plan = await buildWorkflowPlan(
-    application.creditTypeId,
-    Number(application.amount),
-    application.companyId ?? undefined
-  );
-
-  const currentIndex = plan.steps.findIndex(s => s.stepName === completedStepName);
-
-  if (currentIndex === -1 || currentIndex >= plan.steps.length - 1) {
-    return null;
+  // ── Workflow moderne (policyId renseigné) ─────────────────────────────────
+  // Le plan est construit depuis la politique active — les noms d'étapes correspondent.
+  if (application.policyId) {
+    const plan = await buildWorkflowPlan(
+      application.creditTypeId,
+      Number(application.amount),
+      application.companyId ?? undefined
+    );
+    const currentIndex = plan.steps.findIndex(s => s.stepName === completedStepName);
+    if (currentIndex === -1 || currentIndex >= plan.steps.length - 1) return null;
+    return plan.steps[currentIndex + 1];
   }
 
-  return plan.steps[currentIndex + 1];
+  // ── Workflow legacy (policyId null) ───────────────────────────────────────
+  // Les étapes ont été créées en bloc dès la soumission avec des noms anciens
+  // (credit_analysis, branch_manager_review, credit_committee_review…).
+  // La politique active ne connaît pas ces noms → on lit la séquence depuis la DB.
+  const dbSteps = await prisma.workflowStep.findMany({
+    where: { applicationId },
+    orderBy: { createdAt: 'asc' },
+  });
+  const currentIdx = dbSteps.findIndex(s => s.stepName === completedStepName);
+  if (currentIdx === -1 || currentIdx >= dbSteps.length - 1) return null;
+
+  const next = dbSteps[currentIdx + 1];
+  return {
+    order: currentIdx + 1,
+    stepName: next.stepName,
+    stepLabel: STEP_NAME_FR[next.stepName] ?? next.stepName,
+    role: next.role,
+    stepType: undefined,
+    durationDays: 7,
+    expectedDurationHours: 168,
+    maxDurationHours: 336,
+    isConditional: false,
+    conditionMinAmount: null,
+    conditionMaxAmount: null,
+    approvalMinAmount: null,
+    approvalMaxAmount: null,
+    policyStepId: null,
+  };
 }
 
 // ─── Vérification du droit d'approbation ─────────────────────────────────────
@@ -620,8 +648,10 @@ export async function canApproveStep(
   }
 
   // ── 3. Vérification du plafond d'approbation ───────────────────────────────
-  // Le plafond ne s'applique qu'aux étapes décisionnelles (APPROVAL, COMMITTEE).
-  // Les étapes DISPATCH et ANALYSIS sont des routages ou analyses — le montant n'y a pas de role.
+  // Le plafond ne s'applique qu'aux étapes décisionnelles de la politique moderne
+  // (stepType APPROVAL ou COMMITTEE, avec policyStepId renseigné).
+  // Les étapes legacy (sans policyStepId) ignorent ce check : elles ont été
+  // créées par l'ancien circuit qui routait par rôle, pas par montant.
   const DECISION_STEP_TYPES: string[] = ['APPROVAL', 'COMMITTEE'];
 
   let stepType: string | null = null;
@@ -633,7 +663,8 @@ export async function canApproveStep(
     stepType = policyStep?.stepType ?? null;
   }
 
-  const isDecisionStep = !stepType || DECISION_STEP_TYPES.includes(stepType);
+  // Étapes legacy (pas de policyStepId) → pas de check montant
+  const isDecisionStep = !!step.policyStepId && (!stepType || DECISION_STEP_TYPES.includes(stepType));
 
   if (isDecisionStep) {
     const amount = Number(application.amount);
