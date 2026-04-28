@@ -134,7 +134,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canViewCompanySettings = false; // couvert par platform-admin
   const canViewCreditPolicy    = hasPermission('policy_configuration') || isAdmin;
   const canViewSimulator       = canCreateApplication || canFinancialAnalysis || isAdmin;
-  const canManageContractTemplates = hasPermission('manage_contract_templates') || isAdmin;
+  // Le juridique est mappé sur 'management' côté frontend (cf. LoginPage.tsx).
+  // On accepte aussi le rôle 'management' pour être tolérant aux sessions antérieures
+  // au re-seed des permissions, et au cas où une politique tenant n'a pas encore
+  // attribué la permission au juridique.
+  const isManagement              = isRole('management');
+  const canManageContractTemplates = hasPermission('manage_contract_templates') || isAdmin || isManagement;
 
   // ── Sections ─────────────────────────────────────────────────────────────────
 
