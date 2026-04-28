@@ -19,7 +19,9 @@ router.use(requireCompany);
 // GET /api/workflows - Get workflow data with filters and role-based filtering
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { status, branch, dateFrom, dateTo, userId, userRole } = req.query;
+    const { status, branch, dateFrom, dateTo, userId } = req.query;
+    // Le rôle est toujours tiré du token JWT — jamais du query param (protection contre l'usurpation)
+    const userRole = (req as any).user?.role as string | undefined;
 
     // Build filter conditions
     const whereConditions: any = { companyId: req.companyId };
@@ -78,8 +80,8 @@ router.get('/', async (req: Request, res: Response) => {
     // Role-based filtering: Show only applications pending review for the user's role
     let filteredWorkflows = workflows;
 
-    if (userRole && userRole !== 'ADMIN' && userRole !== 'all') {
-      const role = userRole as string;
+    if (userRole && userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN') {
+      const role = userRole;
 
       filteredWorkflows = workflows.filter(workflow => {
         // L'étape courante est la première non-complétée

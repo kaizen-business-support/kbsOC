@@ -41,6 +41,7 @@ const roles = [
       'review_applications', 'application_review', 'edit_analysis',
       'dispatch_applications', 'assign_analyst', 'view_analyst_workload',
       'manage_team',
+      'approve_applications',
     ]
   },
   {
@@ -53,6 +54,7 @@ const roles = [
       'workflow_override', 'manage_branch', 'manage_team',
       'analytics', 'reports',
       'manage_clients',
+      'view_contracts',
     ]
   },
   {
@@ -62,8 +64,9 @@ const roles = [
     permissions: [
       'view_applications', 'view_all',
       'approve_applications', 'committee_review', 'committee_vote',
-      'final_approval', 'risk_override',
-      'analytics', 'reports', 'risk_reporting',
+      'final_approval', 'risk_override', 'risk_reporting',
+      'analytics', 'reports',
+      'view_contracts',
     ]
   },
   {
@@ -75,6 +78,7 @@ const roles = [
       'analytics', 'reports', 'portfolio_analytics',
       'risk_reporting', 'data_export',
       'approve_applications', 'final_approval',
+      'view_contracts',
     ]
   },
   {
@@ -85,6 +89,8 @@ const roles = [
       'view_applications', 'view_all',
       'review_applications', 'application_review',
       'reports', 'data_export',
+      'approve_applications',
+      'generate_contracts', 'manage_contract_templates', 'view_contracts',
     ]
   },
   {
@@ -93,8 +99,9 @@ const roles = [
     description: 'Gère les opérations de mise en place, saisie des garanties et tirages de fonds',
     permissions: [
       'view_applications', 'view_branch',
-      'review_applications', 'manage_clients',
+      'review_applications', 'application_review', 'manage_clients',
       'data_export',
+      'view_contracts',
     ]
   },
   {
@@ -128,6 +135,8 @@ const roles = [
       'dispatch_applications', 'assign_analyst', 'view_analyst_workload',
       // Politique de crédit
       'manage_credit_policy',
+      // Contrats
+      'generate_contracts', 'manage_contract_templates', 'view_contracts',
     ]
   },
   {
@@ -150,6 +159,8 @@ const roles = [
       'manage_branch', 'manage_team', 'workflow_override',
       'dispatch_applications', 'assign_analyst', 'view_analyst_workload',
       'manage_credit_policy', 'manage_platform',
+      // Contrats
+      'generate_contracts', 'manage_contract_templates', 'view_contracts',
     ]
   }
 ];
