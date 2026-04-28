@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useEffect } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { Box, Container, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, TextField, Alert, IconButton, Tooltip, LinearProgress } from '@mui/material';
 import { Lock as LockIcon, Cancel as CancelIcon, Save as SaveIcon } from '@mui/icons-material';
 import { AppProvider, useApp } from './contexts/AppContext';
@@ -49,6 +49,14 @@ const CompanySettingsPage    = lazy(() => import('./pages/CompanySettingsPage'))
 const PlatformAdminPage      = lazy(() => import('./pages/PlatformAdminPage'));
 const RACIMatrixPage         = lazy(() => import('./pages/RACIMatrixPage'));
 const ContractTemplatesPage  = lazy(() => import('./pages/ContractTemplatesPage').then(m => ({ default: m.ContractTemplatesPage })));
+const LegalStepPage          = lazy(() => import('./pages/LegalStepPage').then(m => ({ default: m.LegalStepPage })));
+
+// Wrapper pour récupérer l'applicationId depuis l'URL et le passer en prop
+function LegalStepPageWrapper() {
+  const { applicationId } = useParams<{ applicationId: string }>();
+  if (!applicationId) return <Navigate to="/approvals" replace />;
+  return <LegalStepPage applicationId={applicationId} />;
+}
 
 // ── Thin branded progress bar while chunk loads ────────────────────────────
 const PageLoader = () => (
@@ -397,6 +405,14 @@ const AppContent: React.FC = () => {
                   const p = userState.currentUser?.permissions ?? [];
                   const allowed = p.includes('manage_contract_templates');
                   return allowed ? <ContractTemplatesPage /> : <Navigate to="/" replace />;
+                })()}
+              />
+              <Route
+                path="/legal-step/:applicationId"
+                element={(() => {
+                  const p = userState.currentUser?.permissions ?? [];
+                  const allowed = p.includes('view_contracts') || p.includes('generate_contracts');
+                  return allowed ? <LegalStepPageWrapper /> : <Navigate to="/" replace />;
                 })()}
               />
               <Route path="*" element={<Navigate to="/" replace />} />

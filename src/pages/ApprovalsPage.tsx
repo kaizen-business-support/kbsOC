@@ -11,6 +11,8 @@ import {
   Warning as WarningIcon,
   AccessTime as TimeIcon,
 } from '@mui/icons-material';
+import GavelIcon from '@mui/icons-material/Gavel';
+import { useNavigate } from 'react-router-dom';
 import { ApprovalItem } from '../types';
 import { ApiService } from '../services/api';
 import { ApprovalActionDialog } from '../components/ApprovalActionDialog';
@@ -32,6 +34,7 @@ function SlaChip({ item }: { item: ApprovalItem }) {
 }
 
 export const ApprovalsPage: React.FC = () => {
+  const navigate = useNavigate();
   const [items, setItems]               = useState<ApprovalItem[]>([]);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState('');
@@ -219,18 +222,34 @@ export const ApprovalsPage: React.FC = () => {
                     <SlaChip item={item} />
                   </TableCell>
                   <TableCell align="center">
-                    <Button
-                      variant="contained"
-                      size="small"
-                      onClick={() => setDialog(item)}
-                      sx={{
-                        borderRadius: '8px', fontSize: '12px', fontWeight: 600,
-                        textTransform: 'none', bgcolor: ACCENT, boxShadow: 'none',
-                        '&:hover': { bgcolor: '#4a2a9e', boxShadow: 'none' },
-                      }}
-                    >
-                      Traiter
-                    </Button>
+                    {item.stepType === 'LEGAL' ? (
+                      <Button
+                        variant="contained"
+                        size="small"
+                        startIcon={<GavelIcon sx={{ fontSize: 14 }} />}
+                        onClick={() => navigate(`/legal-step/${item.applicationId}`)}
+                        sx={{
+                          borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                          textTransform: 'none', bgcolor: '#7e22ce', boxShadow: 'none',
+                          '&:hover': { bgcolor: '#6b21a8', boxShadow: 'none' },
+                        }}
+                      >
+                        Étape juridique
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="contained"
+                        size="small"
+                        onClick={() => setDialog(item)}
+                        sx={{
+                          borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                          textTransform: 'none', bgcolor: ACCENT, boxShadow: 'none',
+                          '&:hover': { bgcolor: '#4a2a9e', boxShadow: 'none' },
+                        }}
+                      >
+                        Traiter
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

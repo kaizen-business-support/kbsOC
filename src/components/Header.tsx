@@ -98,6 +98,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onPage
     'workflow-builder':  'Éditeur de Workflow',
     'approvals':         'Mes Approbations',
     'contract-templates': 'Modèles de contrats',
+    'legal-step':         'Étape juridique',
   };
 
   const handleUserMenuClick = (event: React.MouseEvent<HTMLElement>) => {
