@@ -5,6 +5,7 @@ import SendIcon from '@mui/icons-material/Send';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import VerifiedIcon from '@mui/icons-material/Verified';
 import GroupsIcon from '@mui/icons-material/Groups';
+import GavelIcon from '@mui/icons-material/Gavel';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import { PolicyStepType, STEP_TYPE_CONFIG, ROLES } from '../../types/creditPolicyBuilder';
 
@@ -14,9 +15,10 @@ const TYPE_ICONS: Record<PolicyStepType, React.ReactNode> = {
   ANALYSIS:  <AssessmentIcon sx={{ fontSize: 15 }} />,
   APPROVAL:  <VerifiedIcon sx={{ fontSize: 15 }} />,
   COMMITTEE: <GroupsIcon sx={{ fontSize: 15 }} />,
+  LEGAL:     <GavelIcon sx={{ fontSize: 15 }} />,
 };
 
-const STEP_TYPES: PolicyStepType[] = ['CREATION', 'DISPATCH', 'ANALYSIS', 'APPROVAL', 'COMMITTEE'];
+const STEP_TYPES: PolicyStepType[] = ['CREATION', 'DISPATCH', 'ANALYSIS', 'APPROVAL', 'COMMITTEE', 'LEGAL'];
 
 interface Props {
   onAddStep: (type: PolicyStepType) => void;

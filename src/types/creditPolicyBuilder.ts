@@ -1,4 +1,4 @@
-export type PolicyStepType = 'CREATION' | 'DISPATCH' | 'ANALYSIS' | 'APPROVAL' | 'COMMITTEE';
+export type PolicyStepType = 'CREATION' | 'DISPATCH' | 'ANALYSIS' | 'APPROVAL' | 'COMMITTEE' | 'LEGAL';
 export type PolicyStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
 export type GuardOperator = 'AND' | 'OR';
 export type ConditionOperator = 'BETWEEN' | 'LT' | 'GT' | 'GTE' | 'LTE' | 'IN' | 'NOT_IN';
@@ -63,6 +63,7 @@ export const STEP_TYPE_CONFIG: Record<PolicyStepType, { label: string; color: st
   ANALYSIS:  { label: 'Analyse',      color: '#c2410c', bgColor: '#fff7ed' },
   APPROVAL:  { label: 'Approbation',  color: '#15803d', bgColor: '#f0fdf4' },
   COMMITTEE: { label: 'Comité',       color: '#7c3aed', bgColor: '#faf5ff' },
+  LEGAL:     { label: 'Juridique',    color: '#7e22ce', bgColor: '#faf5ff' },
 };
 
 export const ROLES = [

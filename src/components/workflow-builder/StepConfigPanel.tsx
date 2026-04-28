@@ -117,7 +117,7 @@ export function StepConfigPanel({
             <InputLabel>Type d'étape</InputLabel>
             <Select value={step.stepType} label="Type d'étape" disabled={readOnly}
               onChange={(e) => onChange({ stepType: e.target.value as any })}>
-              {(['DISPATCH', 'ANALYSIS', 'APPROVAL', 'COMMITTEE'] as const).map((t) => (
+              {(['DISPATCH', 'ANALYSIS', 'APPROVAL', 'COMMITTEE', 'LEGAL'] as const).map((t) => (
                 <MenuItem key={t} value={t}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: STEP_TYPE_CONFIG[t].color }} />
