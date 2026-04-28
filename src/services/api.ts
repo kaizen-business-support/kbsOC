@@ -1886,6 +1886,118 @@ export const contractApi = {
   },
 };
 
+// ─── Module Profiles API ─────────────────────────────────────────────────────
+export const moduleProfileApi = {
+  async getMyProfile(): Promise<any> {
+    try {
+      const r = await api.get('/module-profiles/me');
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur récupération profil' };
+    }
+  },
+  async listAll(): Promise<any> {
+    try {
+      const r = await api.get('/module-profiles');
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur récupération profils' };
+    }
+  },
+  async getByRole(role: string): Promise<any> {
+    try {
+      const r = await api.get(`/module-profiles/${role}`);
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur récupération profil rôle' };
+    }
+  },
+  async updateRole(role: string, payload: { modules: any; defaultScope: string; allowedBranches?: string[]; label?: string }): Promise<any> {
+    try {
+      const r = await api.put(`/module-profiles/${role}`, payload);
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur mise à jour profil' };
+    }
+  },
+  async resetRole(role: string): Promise<any> {
+    try {
+      const r = await api.post(`/module-profiles/reset/${role}`);
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réinitialisation profil' };
+    }
+  },
+  async seed(): Promise<any> {
+    try {
+      const r = await api.post('/module-profiles/seed');
+      return { success: true, message: r.data.message };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur seed profils' };
+    }
+  },
+  async getUserOverride(userId: string): Promise<any> {
+    try {
+      const r = await api.get(`/module-profiles/users/${userId}`);
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur récupération override' };
+    }
+  },
+  async updateUserOverride(userId: string, payload: { modules?: any; dataScope?: string; allowedBranches?: string[] }): Promise<any> {
+    try {
+      const r = await api.put(`/module-profiles/users/${userId}`, payload);
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur mise à jour override' };
+    }
+  },
+  async deleteUserOverride(userId: string): Promise<any> {
+    try {
+      const r = await api.delete(`/module-profiles/users/${userId}`);
+      return { success: true, message: r.data.message };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur suppression override' };
+    }
+  },
+};
+
+// ─── Scope Delegates API ─────────────────────────────────────────────────────
+export const scopeDelegateApi = {
+  async list(): Promise<any> {
+    try {
+      const r = await api.get('/scope-delegates');
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur récupération délégations' };
+    }
+  },
+  async create(payload: { delegateId: string; scope: string; allowedBranches?: string[]; allowedActions?: string[]; startDate: string; endDate?: string }): Promise<any> {
+    try {
+      const r = await api.post('/scope-delegates', payload);
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur création délégation' };
+    }
+  },
+  async update(id: string, payload: Partial<{ scope: string; allowedBranches: string[]; allowedActions: string[]; startDate: string; endDate: string | null }>): Promise<any> {
+    try {
+      const r = await api.put(`/scope-delegates/${id}`, payload);
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur mise à jour délégation' };
+    }
+  },
+  async revoke(id: string): Promise<any> {
+    try {
+      const r = await api.delete(`/scope-delegates/${id}`);
+      return { success: true, message: r.data.message };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur révocation délégation' };
+    }
+  },
+};
+
 // Utility function to handle API errors
 export const handleApiError = (error: any): string => {
   if (error.response) {
