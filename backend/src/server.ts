@@ -36,7 +36,7 @@ import documentRoutes from './routes/documents';
 import dispatchingRoutes from './routes/dispatching';
 import creditPolicyRoutes from './routes/credit-policy';
 import contractTemplateRoutes from './routes/contract-templates';
-import contractRoutes from './routes/contracts';
+import contractRoutes, { handleDocusealWebhook } from './routes/contracts';
 import raciMatrixRoutes from './routes/raci-matrix';
 import delegationRoutes from './routes/delegations';
 import companyRoutes from './routes/companies';
@@ -154,6 +154,13 @@ const authLimiter = rateLimit({
 });
 
 console.log(`🔒  Auth rate limiting: ${isProd ? '30' : '200'} req/15min`);
+
+// ─── Webhooks (besoin du rawBody → AVANT express.json) ───────────────────────
+app.post(
+  '/api/contracts/webhooks/docuseal',
+  express.raw({ type: 'application/json', limit: '5mb' }),
+  handleDocusealWebhook,
+);
 
 // ─── Body parsing — conservative limits ──────────────────────────────────────
 app.use(express.json({ limit: '1mb' }));
