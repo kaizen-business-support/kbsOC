@@ -337,25 +337,34 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     return departments.filter(dept => dept.isActive).map(dept => dept.name);
   };
 
+  // Liste alignée sur l'enum Prisma UserRole (cf. backend/prisma/schema.prisma).
+  // SUPER_ADMIN volontairement exclu : ne s'attribue pas via cette page.
   const availableRoles = [
-    { value: 'ADMIN', label: 'Administrateur' },
-    { value: 'MANAGEMENT', label: 'Direction Générale' },
-    { value: 'BRANCH_MANAGER', label: 'Directeur d\'Agence' },
-    { value: 'ACCOUNT_MANAGER', label: 'Chargé d\'Affaires' },
-    { value: 'CREDIT_ANALYST', label: 'Analyste Crédit' },
-    { value: 'CREDIT_COMMITTEE', label: 'Comité de Crédit' }
+    { value: 'ADMIN',                   label: 'Administrateur' },
+    { value: 'DIRECTION_GENERALE',      label: 'Direction Générale' },
+    { value: 'DIRECTION_JURIDIQUE',     label: 'Direction Juridique' },
+    { value: 'RESPONSABLE_ENGAGEMENTS', label: 'Responsable Engagements' },
+    { value: 'RESPONSABLE_RISQUES',     label: 'Responsable Risques' },
+    { value: 'COMITE_CREDIT',           label: 'Comité de Crédit' },
+    { value: 'CHARGE_AFFAIRES',         label: "Chargé d'Affaires" },
+    { value: 'ANALYSTE_RISQUES',        label: 'Analyste Risques' },
+    { value: 'BACK_OFFICE',             label: 'Back Office' },
   ];
 
   // 2FA management state
   const [saving2FA, setSaving2FA] = useState<string | null>(null);
 
   const ROLE_2FA_LABELS: Record<string, string> = {
-    ADMIN:            'Administrateur',
-    MANAGEMENT:       'Directeur Général',
-    BRANCH_MANAGER:   "Directeur d'Agence",
-    ACCOUNT_MANAGER:  "Chargé d'Affaires",
-    CREDIT_ANALYST:   'Analyste Crédit',
-    CREDIT_COMMITTEE: 'Comité de Crédit',
+    ADMIN:                   'Administrateur',
+    SUPER_ADMIN:             'Super Administrateur',
+    DIRECTION_GENERALE:      'Direction Générale',
+    DIRECTION_JURIDIQUE:     'Direction Juridique',
+    RESPONSABLE_ENGAGEMENTS: 'Responsable Engagements',
+    RESPONSABLE_RISQUES:     'Responsable Risques',
+    COMITE_CREDIT:           'Comité de Crédit',
+    CHARGE_AFFAIRES:         "Chargé d'Affaires",
+    ANALYSTE_RISQUES:        'Analyste Risques',
+    BACK_OFFICE:             'Back Office',
   };
 
   const handleRoleToggle2FA = async (roleName: string, required: boolean) => {
@@ -397,10 +406,16 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
   });
 
   const ROLE_LABEL_MAP: Record<string, string> = {
-    ADMIN: 'Administrateur', MANAGEMENT: 'Directeur Général',
-    BRANCH_MANAGER: "Dir. d'Agence", ACCOUNT_MANAGER: "Chargé d'Affaires",
-    CREDIT_ANALYST: 'Analyste Crédit', ANALYST_SUPERVISOR: 'Superviseur Analyste',
-    CREDIT_COMMITTEE: 'Comité de Crédit',
+    ADMIN:                   'Administrateur',
+    SUPER_ADMIN:             'Super Admin',
+    DIRECTION_GENERALE:      'Direction Générale',
+    DIRECTION_JURIDIQUE:     'Direction Juridique',
+    RESPONSABLE_ENGAGEMENTS: 'Resp. Engagements',
+    RESPONSABLE_RISQUES:     'Resp. Risques',
+    COMITE_CREDIT:           'Comité Crédit',
+    CHARGE_AFFAIRES:         "Chargé d'Affaires",
+    ANALYSTE_RISQUES:        'Analyste Risques',
+    BACK_OFFICE:             'Back Office',
   };
 
   const formatAuditDate = (iso: string) => {
@@ -730,9 +745,9 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
 
   // Helper function to get available staff for manager dropdown
   const getAvailableStaff = () => {
-    return users.filter(user => 
-      user.isActive && 
-      ['ADMIN', 'MANAGEMENT', 'BRANCH_MANAGER', 'ACCOUNT_MANAGER'].includes(user.role)
+    return users.filter(user =>
+      user.isActive &&
+      ['ADMIN', 'DIRECTION_GENERALE', 'RESPONSABLE_ENGAGEMENTS', 'CHARGE_AFFAIRES'].includes(user.role)
     );
   };
 
@@ -893,37 +908,49 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     return Array.from(new Set(users.map(user => user[field]).filter(Boolean) as string[])).sort();
   };
 
-  // Helper functions for UI display
+  // Helper functions for UI display — alignés sur l'enum Prisma UserRole
   const roleLabels: Record<string, string> = {
-    ADMIN: 'Administrateur',
-    MANAGEMENT: 'Direction Générale', 
-    BRANCH_MANAGER: 'Directeur d\'Agence',
-    ACCOUNT_MANAGER: 'Chargé d\'Affaires',
-    CREDIT_ANALYST: 'Analyste Crédit',
-    CREDIT_COMMITTEE: 'Comité de Crédit'
+    ADMIN:                   'Administrateur',
+    SUPER_ADMIN:             'Super Administrateur',
+    DIRECTION_GENERALE:      'Direction Générale',
+    DIRECTION_JURIDIQUE:     'Direction Juridique',
+    RESPONSABLE_ENGAGEMENTS: 'Responsable Engagements',
+    RESPONSABLE_RISQUES:     'Responsable Risques',
+    COMITE_CREDIT:           'Comité de Crédit',
+    CHARGE_AFFAIRES:         "Chargé d'Affaires",
+    ANALYSTE_RISQUES:        'Analyste Risques',
+    BACK_OFFICE:             'Back Office',
   };
 
   const getRoleIcon = (role: string) => {
     switch (role) {
-      case 'ADMIN': return <AdminIcon />;
-      case 'MANAGEMENT': return <BusinessIcon />;
-      case 'BRANCH_MANAGER': return <BranchIcon />;
-      case 'ACCOUNT_MANAGER': return <PersonIcon />;
-      case 'CREDIT_ANALYST': return <GroupIcon />;
-      case 'CREDIT_COMMITTEE': return <SecurityIcon />;
-      default: return <PersonIcon />;
+      case 'ADMIN':                   return <AdminIcon />;
+      case 'SUPER_ADMIN':             return <AdminIcon />;
+      case 'DIRECTION_GENERALE':      return <BusinessIcon />;
+      case 'DIRECTION_JURIDIQUE':     return <SecurityIcon />;
+      case 'RESPONSABLE_ENGAGEMENTS': return <BranchIcon />;
+      case 'RESPONSABLE_RISQUES':     return <GroupIcon />;
+      case 'COMITE_CREDIT':           return <SecurityIcon />;
+      case 'CHARGE_AFFAIRES':         return <PersonIcon />;
+      case 'ANALYSTE_RISQUES':        return <GroupIcon />;
+      case 'BACK_OFFICE':             return <PersonIcon />;
+      default:                        return <PersonIcon />;
     }
   };
 
   const getRoleColor = (role: string) => {
     switch (role) {
-      case 'ADMIN': return 'error';
-      case 'MANAGEMENT': return 'primary';
-      case 'BRANCH_MANAGER': return 'warning';
-      case 'ACCOUNT_MANAGER': return 'info';
-      case 'CREDIT_ANALYST': return 'success';
-      case 'CREDIT_COMMITTEE': return 'secondary';
-      default: return 'default';
+      case 'ADMIN':                   return 'error';
+      case 'SUPER_ADMIN':             return 'error';
+      case 'DIRECTION_GENERALE':      return 'primary';
+      case 'DIRECTION_JURIDIQUE':     return 'secondary';
+      case 'RESPONSABLE_ENGAGEMENTS': return 'warning';
+      case 'RESPONSABLE_RISQUES':     return 'warning';
+      case 'COMITE_CREDIT':           return 'secondary';
+      case 'CHARGE_AFFAIRES':         return 'info';
+      case 'ANALYSTE_RISQUES':        return 'success';
+      case 'BACK_OFFICE':             return 'default';
+      default:                        return 'default';
     }
   };
 
