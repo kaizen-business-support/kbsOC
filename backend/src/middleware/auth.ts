@@ -155,7 +155,9 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
-// Authorization middleware factory
+// Authorization middleware factory.
+// Bypass : SUPER_ADMIN, ADMIN, ou un user disposant du wildcard '*' passent
+// systématiquement (cohérent avec le rôle d'administration tenant).
 export const authorize = (requiredPermissions: string[] = [], requiredRoles: string[] = []) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
@@ -163,6 +165,13 @@ export const authorize = (requiredPermissions: string[] = [], requiredRoles: str
         error: 'Authentication required',
         code: 'AUTH_REQUIRED'
       });
+    }
+
+    // Bypass admin / wildcard
+    const isAdminLike = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
+    const hasWildcard = req.user.permissions.includes('*');
+    if (isAdminLike || hasWildcard) {
+      return next();
     }
 
     // Check roles if specified

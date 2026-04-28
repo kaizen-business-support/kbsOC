@@ -111,7 +111,7 @@ const TEST_USERS = [
       'approve_applications','committee_review','committee_vote','final_approval',
       'risk_override','policy_exceptions','manage_branch','manage_team','workflow_override',
       'dispatch_applications','assign_analyst','view_analyst_workload',
-      'manage_contract_templates','view_contracts',
+      'manage_contract_templates','generate_contracts','view_contracts',
     ],
   },
   {

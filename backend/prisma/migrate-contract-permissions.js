@@ -18,8 +18,8 @@ const prisma = new PrismaClient();
 
 const PERMS_BY_ROLE = {
   DIRECTION_JURIDIQUE:     ['manage_contract_templates', 'generate_contracts', 'view_contracts'],
-  ADMIN:                   ['manage_contract_templates', 'view_contracts'],
-  SUPER_ADMIN:             ['manage_contract_templates', 'view_contracts'],
+  ADMIN:                   ['manage_contract_templates', 'generate_contracts', 'view_contracts'],
+  SUPER_ADMIN:             ['manage_contract_templates', 'generate_contracts', 'view_contracts'],
   RESPONSABLE_ENGAGEMENTS: ['view_contracts'],
   BACK_OFFICE:             ['view_contracts'],
 };
