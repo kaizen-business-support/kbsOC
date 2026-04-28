@@ -315,7 +315,7 @@ ok "Privilèges DB accordés"
 # Seed
 if [[ "$SKIP_SEED" == "false" ]]; then
   cd "$BACKEND_DIR"
-  for seed_file in seed-roles.js seed-data.js seed-policies.js; do
+  for seed_file in seed-roles.js seed-data.js seed-policies.js seed-bci.js; do
     if [[ -f "$BACKEND_DIR/prisma/$seed_file" ]]; then
       node "$BACKEND_DIR/prisma/$seed_file" \
         && ok "Seed $seed_file : OK" \
@@ -323,6 +323,17 @@ if [[ "$SKIP_SEED" == "false" ]]; then
     fi
   done
 fi
+
+# Migrations de données idempotentes (corrections approval limits, allowedActions…)
+info "Migrations de données post-seed..."
+cd "$BACKEND_DIR"
+for migrate_file in migrate-approval-limits.js migrate-allowed-actions.js migrate-legal-step-type.js; do
+  if [[ -f "$BACKEND_DIR/prisma/$migrate_file" ]]; then
+    node "$BACKEND_DIR/prisma/$migrate_file" 2>&1 | tail -5 \
+      && ok "$migrate_file : OK" \
+      || warn "$migrate_file : erreur non bloquante"
+  fi
+done
 
 # Vider le cache Redis
 redis-cli DEL cache:departments:active cache:branches:active 2>/dev/null \
