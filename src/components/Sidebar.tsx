@@ -48,6 +48,7 @@ import { PageType } from '../types';
 import { useUser } from '../contexts/UserContext';
 import { ApiService } from '../services/api';
 import { useCompany } from '../contexts/CompanyContext';
+import { useModuleAccess } from '../hooks/useModuleAccess';
 
 export const FULL_WIDTH  = 260;
 export const MINI_WIDTH  = 64;
@@ -95,6 +96,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { t } = useTranslation();
   const { isRole, hasPermission, state: userState } = useUser();
   const { activeCompany } = useCompany();
+  const { canAccess } = useModuleAccess();
 
   const [creditExpanded, setCreditExpanded]     = useState(true);
   const [analysisExpanded, setAnalysisExpanded] = useState(true);
@@ -121,25 +123,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // ── Permission gates ──────────────────────────────────────────────────────────
   const perms = userState.currentUser?.permissions ?? [];
   const isAdmin              = isRole('admin') || perms.includes('*');
-  const canViewApplications  = hasPermission('view_applications') || hasPermission('view_own') || isAdmin;
-  const canViewClients       = canViewApplications || hasPermission('create_client') || hasPermission('manage_clients');
-  const canCreateApplication = hasPermission('create_application');
-  const canDispatching       = hasPermission('dispatch_applications');
-  const canViewAnalytics     = hasPermission('analytics');
+  const canViewApplications  = (hasPermission('view_applications') || hasPermission('view_own') || isAdmin) && canAccess('applications');
+  const canViewClients       = (canViewApplications || hasPermission('create_client') || hasPermission('manage_clients')) && canAccess('clients');
+  const canCreateApplication = hasPermission('create_application') && canAccess('applications');
+  const canDispatching       = hasPermission('dispatch_applications') && canAccess('dispatching');
+  const canViewAnalytics     = hasPermission('analytics') && canAccess('analytics');
   const canFinancialAnalysis = hasPermission('financial_analysis') || hasPermission('analyze_credit');
-  const canViewReports       = hasPermission('reports') || isAdmin;
+  const canViewReports       = (hasPermission('reports') || isAdmin) && canAccess('analytics');
   const canViewConfiguration = hasPermission('user_management') || isAdmin;
   // manage_platform est vérifié LITTÉRALEMENT (pas via wildcard) pour distinguer SUPER_ADMIN de ADMIN
   const canViewPlatformAdmin   = perms.includes('manage_platform');
   const canViewCompanySettings = false; // couvert par platform-admin
-  const canViewCreditPolicy    = hasPermission('policy_configuration') || isAdmin;
+  const canViewCreditPolicy    = (hasPermission('policy_configuration') || isAdmin) && canAccess('credit-policy');
   const canViewSimulator       = canCreateApplication || canFinancialAnalysis || isAdmin;
   // Le juridique est mappé sur 'management' côté frontend (cf. LoginPage.tsx).
   // On accepte aussi le rôle 'management' pour être tolérant aux sessions antérieures
   // au re-seed des permissions, et au cas où une politique tenant n'a pas encore
   // attribué la permission au juridique.
   const isManagement              = isRole('management');
-  const canManageContractTemplates = hasPermission('manage_contract_templates') || isAdmin || isManagement;
+  const canManageContractTemplates = (hasPermission('manage_contract_templates') || isAdmin || isManagement) && canAccess('contracts');
 
   // ── Sections ─────────────────────────────────────────────────────────────────
 
