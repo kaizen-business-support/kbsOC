@@ -35,21 +35,23 @@ export interface JwtPayload {
 // Authentication middleware
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // Accept token from Authorization header OR ?token= query param.
+    // Le query param est nécessaire pour les téléchargements directs déclenchés
+    // par le navigateur (balises <a href>, multer download routes) qui ne
+    // peuvent pas porter d'en-tête Authorization personnalisé.
     const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    let token: string | undefined;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    } else if (typeof req.query.token === 'string' && req.query.token.length > 0) {
+      token = req.query.token;
+    }
+
+    if (!token) {
       return res.status(401).json({
         error: 'Authorization header missing or invalid format',
         code: 'MISSING_AUTH_HEADER'
-      });
-    }
-
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    
-    if (!token) {
-      return res.status(401).json({
-        error: 'Access token missing',
-        code: 'MISSING_TOKEN'
       });
     }
 

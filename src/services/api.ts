@@ -1772,7 +1772,9 @@ export const contractTemplateApi = {
     }
   },
   downloadUrl(id: string): string {
-    return `${API_BASE_URL}/contract-templates/${id}/download`;
+    const t = tokenManager.getAccessToken() || localStorage.getItem('auth_token') || '';
+    const q = t ? `?token=${encodeURIComponent(t)}` : '';
+    return `${API_BASE_URL}/contract-templates/${id}/download${q}`;
   },
   async getCatalog(): Promise<any> {
     try {
@@ -1875,7 +1877,12 @@ export const contractApi = {
     }
   },
   downloadUrl(id: string, signed = false): string {
-    return `${API_BASE_URL}/contracts/${id}/download${signed ? '?signed=1' : ''}`;
+    const t = tokenManager.getAccessToken() || localStorage.getItem('auth_token') || '';
+    const params = new URLSearchParams();
+    if (signed) params.set('signed', '1');
+    if (t) params.set('token', t);
+    const qs = params.toString();
+    return `${API_BASE_URL}/contracts/${id}/download${qs ? `?${qs}` : ''}`;
   },
 };
 
