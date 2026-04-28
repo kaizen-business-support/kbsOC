@@ -36,6 +36,8 @@ const ENTITY_MAP: Record<string, string> = {
   otp:                      'session',
   '2fa':                    'two_factor',
   'bank-holidays':          'bank_holiday',
+  'contract-templates':     'contract_template',
+  contracts:                'contract',
 };
 
 const METHOD_ACTION: Record<string, string> = {
@@ -65,6 +67,11 @@ const VERB_ACTION: Record<string, string> = {
   activate:                 'ACTIVATE',
   deactivate:               'DEACTIVATE',
   archive:                  'ARCHIVE',
+  generate:                 'GENERATE',
+  signatories:              'SET_SIGNATORIES',
+  'send-for-signature':     'SEND_FOR_SIGNATURE',
+  'upload-signed':          'UPLOAD_SIGNED',
+  cancel:                   'CANCEL',
 };
 
 // Regex patterns to detect ID-like path segments (UUID, CUID, or numeric)
@@ -106,6 +113,37 @@ function buildNewValues(subVerb: string | undefined, entitySegment: string, body
   if (entitySegment === '2fa') {
     if (body.userId) return { userId: body.userId };
     return null;
+  }
+
+  // Contract generation
+  if (subVerb === 'generate' && entitySegment === 'contracts') {
+    const vals: Record<string, unknown> = {};
+    if (body.templateId)     vals.templateId     = body.templateId;
+    if (body.applicationId)  vals.applicationId  = body.applicationId;
+    if (body.customValues)   vals.customValues   = body.customValues;
+    return Object.keys(vals).length ? vals : null;
+  }
+
+  // Contract send for signature
+  if (subVerb === 'send-for-signature' && entitySegment === 'contracts') {
+    return body.mode ? { mode: body.mode } : null;
+  }
+
+  // Contract signatories
+  if (subVerb === 'signatories' && entitySegment === 'contracts') {
+    if (Array.isArray(body.signatories)) {
+      return { signatoriesCount: body.signatories.length };
+    }
+    return null;
+  }
+
+  // Contract template create/update — capture nom + type
+  if (entitySegment === 'contract-templates') {
+    const vals: Record<string, unknown> = {};
+    if (body.name)         vals.name         = body.name;
+    if (body.documentType) vals.documentType = body.documentType;
+    if (body.isActive !== undefined) vals.isActive = body.isActive;
+    return Object.keys(vals).length ? vals : null;
   }
 
   return null;
