@@ -1784,6 +1784,65 @@ export const contractTemplateApi = {
   },
 };
 
+// ─── Contracts API ───────────────────────────────────────────────────────────
+export const contractApi = {
+  async listForApplication(applicationId: string): Promise<any> {
+    try {
+      const r = await api.get(`/contracts/application/${applicationId}`);
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur récupération contrats' };
+    }
+  },
+  async generate(payload: { templateId: string; applicationId: string; customValues: Record<string, any> }): Promise<any> {
+    try {
+      const r = await api.post('/contracts/generate', payload);
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur génération contrat' };
+    }
+  },
+  async setSignatories(id: string, signatories: any[]): Promise<any> {
+    try {
+      const r = await api.post(`/contracts/${id}/signatories`, { signatories });
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur signataires' };
+    }
+  },
+  async sendForSignature(id: string, mode: 'MANUAL' | 'EXTERNAL'): Promise<any> {
+    try {
+      const r = await api.post(`/contracts/${id}/send-for-signature`, { mode });
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur envoi en signature' };
+    }
+  },
+  async uploadSigned(id: string, file: File): Promise<any> {
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const r = await api.post(`/contracts/${id}/upload-signed`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur upload signé' };
+    }
+  },
+  async cancel(id: string): Promise<any> {
+    try {
+      const r = await api.post(`/contracts/${id}/cancel`);
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur annulation' };
+    }
+  },
+  downloadUrl(id: string, signed = false): string {
+    return `${API_BASE_URL}/contracts/${id}/download${signed ? '?signed=1' : ''}`;
+  },
+};
+
 // Utility function to handle API errors
 export const handleApiError = (error: any): string => {
   if (error.response) {
