@@ -399,36 +399,11 @@ const AppContent: React.FC = () => {
                 })()}
               />
               <Route path="/raci-matrix" element={<RACIMatrixPage />} />
-              <Route
-                path="/contract-templates"
-                element={(() => {
-                  const p = userState.currentUser?.permissions ?? [];
-                  const role = userState.currentUser?.role;
-                  // Tolérant aux sessions antérieures au re-seed des permissions :
-                  // accepte aussi les rôles 'admin' et 'management' (DIRECTION_JURIDIQUE
-                  // est mappé sur 'management' dans LoginPage.tsx).
-                  const allowed =
-                    p.includes('manage_contract_templates') ||
-                    p.includes('*') ||
-                    role === 'admin' ||
-                    role === 'management';
-                  return allowed ? <ContractTemplatesPage /> : <Navigate to="/" replace />;
-                })()}
-              />
-              <Route
-                path="/legal-step/:applicationId"
-                element={(() => {
-                  const p = userState.currentUser?.permissions ?? [];
-                  const role = userState.currentUser?.role;
-                  const allowed =
-                    p.includes('view_contracts') ||
-                    p.includes('generate_contracts') ||
-                    p.includes('*') ||
-                    role === 'admin' ||
-                    role === 'management';
-                  return allowed ? <LegalStepPageWrapper /> : <Navigate to="/" replace />;
-                })()}
-              />
+              {/* Pas de guard React strict ici : l'autorisation est faite par
+                  l'API backend (authorize middleware). Évite les redirections
+                  silencieuses dues à un snapshot de permissions obsolète. */}
+              <Route path="/contract-templates" element={<ContractTemplatesPage />} />
+              <Route path="/legal-step/:applicationId" element={<LegalStepPageWrapper />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             </PageTransition>

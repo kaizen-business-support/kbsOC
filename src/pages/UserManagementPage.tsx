@@ -226,6 +226,14 @@ const PERMISSION_GROUPS = [
       { key: 'view_analyst_workload', label: 'Voir la charge des analystes' },
     ],
   },
+  {
+    category: 'Juridique & Contrats',
+    permissions: [
+      { key: 'manage_contract_templates', label: 'Gérer les modèles de contrats' },
+      { key: 'generate_contracts',         label: 'Générer des contrats' },
+      { key: 'view_contracts',             label: 'Consulter les contrats' },
+    ],
+  },
 ];
 
 const allPermissions = PERMISSION_GROUPS.flatMap(g => g.permissions.map(p => p.key));
