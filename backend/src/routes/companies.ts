@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
-import { authenticate, requireCompany, requireSuperAdmin, blockReadOnly } from '../middleware/auth';
+import { authenticate, authorize, requireCompany, requireSuperAdmin, blockReadOnly } from '../middleware/auth';
+import { encrypt, decrypt } from '../utils/encryption';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -127,5 +128,78 @@ router.patch('/members/:userId', authenticate, requireCompany, blockReadOnly, as
     return res.status(500).json({ success: false, error: 'Erreur serveur' });
   }
 });
+
+// ─── Configuration provider de signature ──────────────────────────────────────
+// GET status — public au tenant authentifié, juste un booléen
+router.get('/signature-provider-status',
+  authenticate, requireCompany,
+  async (req: Request, res: Response) => {
+    const c = await prisma.company.findUnique({ where: { id: req.companyId } });
+    const cfg = c?.signatureProviderConfig as any;
+    res.json({ success: true, data: { configured: !!cfg?.ciphertext } });
+  },
+);
+
+// GET — renvoie les champs sauf l'API key (masquée). Réservé ADMIN tenant.
+router.get('/signature-provider-config',
+  authenticate, requireCompany, authorize([], ['ADMIN', 'SUPER_ADMIN']),
+  async (req: Request, res: Response) => {
+    try {
+      const c = await prisma.company.findUnique({ where: { id: req.companyId } });
+      const cfg = c?.signatureProviderConfig as any;
+      if (!cfg?.ciphertext) return res.json({ success: true, data: null });
+      const decoded = JSON.parse(decrypt(cfg.ciphertext));
+      res.json({
+        success: true,
+        data: {
+          provider: decoded.provider,
+          baseUrl: decoded.baseUrl,
+          apiKey: '***',
+          hasWebhookSecret: !!decoded.webhookSecret,
+        },
+      });
+    } catch (e: any) {
+      console.error('[companies] GET /signature-provider-config', e);
+      res.status(500).json({ success: false, error: e.message });
+    }
+  },
+);
+
+// PUT — enregistre la config (chiffrée). Réservé ADMIN tenant.
+router.put('/signature-provider-config',
+  authenticate, requireCompany, authorize([], ['ADMIN', 'SUPER_ADMIN']), blockReadOnly,
+  async (req: Request, res: Response) => {
+    try {
+      const { provider, baseUrl, apiKey, webhookSecret } = req.body;
+      if (provider !== 'docuseal') {
+        return res.status(400).json({ success: false, error: 'Provider non supporté (docuseal uniquement)' });
+      }
+      if (!baseUrl || !apiKey || !webhookSecret) {
+        return res.status(400).json({ success: false, error: 'baseUrl, apiKey et webhookSecret obligatoires' });
+      }
+      const ciphertext = encrypt(JSON.stringify({ provider, baseUrl, apiKey, webhookSecret }));
+      await prisma.company.update({
+        where: { id: req.companyId },
+        data: { signatureProviderConfig: { ciphertext } as any },
+      });
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error('[companies] PUT /signature-provider-config', e);
+      res.status(500).json({ success: false, error: e.message });
+    }
+  },
+);
+
+// DELETE — supprime la config (désactive le mode EXTERNAL). Réservé ADMIN tenant.
+router.delete('/signature-provider-config',
+  authenticate, requireCompany, authorize([], ['ADMIN', 'SUPER_ADMIN']), blockReadOnly,
+  async (req: Request, res: Response) => {
+    await prisma.company.update({
+      where: { id: req.companyId },
+      data: { signatureProviderConfig: null as any },
+    });
+    res.json({ success: true });
+  },
+);
 
 export default router;

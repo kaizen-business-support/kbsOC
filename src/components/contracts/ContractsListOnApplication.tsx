@@ -20,10 +20,11 @@ interface Props {
     bankFullName?: string; bankEmail?: string;
     clientFullName?: string; clientEmail?: string;
   };
+  externalProviderConfigured?: boolean;
   onChanged: () => void;
 }
 
-export function ContractsListOnApplication({ contracts, applicationDefaults, onChanged }: Props) {
+export function ContractsListOnApplication({ contracts, applicationDefaults, externalProviderConfigured = false, onChanged }: Props) {
   const [signatoriesFor, setSignatoriesFor] = useState<GeneratedContract | null>(null);
   const [sendFor, setSendFor] = useState<GeneratedContract | null>(null);
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -180,7 +181,7 @@ export function ContractsListOnApplication({ contracts, applicationDefaults, onC
       {sendFor && (
         <SendForSignatureDialog
           contract={sendFor}
-          externalProviderConfigured={false}
+          externalProviderConfigured={externalProviderConfigured}
           onClose={() => setSendFor(null)}
           onSent={() => { setSendFor(null); onChanged(); }}
         />

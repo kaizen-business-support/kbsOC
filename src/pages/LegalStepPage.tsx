@@ -7,7 +7,7 @@ import GavelIcon from '@mui/icons-material/Gavel';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DescriptionIcon from '@mui/icons-material/Description';
-import { ApiService, contractTemplateApi, contractApi } from '../services/api';
+import { ApiService, contractTemplateApi, contractApi, companySignatureApi } from '../services/api';
 import { useUser } from '../contexts/UserContext';
 import { useApp } from '../contexts/AppContext';
 import { ContractTemplate, GeneratedContract } from '../types/contracts';
@@ -28,6 +28,7 @@ export function LegalStepPage({ applicationId }: Props) {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState<ContractTemplate | null>(null);
   const [completing, setCompleting] = useState(false);
+  const [externalProviderConfigured, setExternalProviderConfigured] = useState(false);
   const [snack, setSnack] = useState<{ msg: string; sev: 'success' | 'error' | 'info' } | null>(null);
 
   const reloadAll = async () => {
@@ -42,6 +43,9 @@ export function LegalStepPage({ applicationId }: Props) {
 
       const cRes = await contractApi.listForApplication(applicationId);
       if (cRes.success) setContracts(cRes.data);
+
+      const sigRes = await companySignatureApi.getStatus();
+      setExternalProviderConfigured(sigRes.success && !!sigRes.data?.configured);
     } finally {
       setLoading(false);
     }
@@ -168,6 +172,7 @@ export function LegalStepPage({ applicationId }: Props) {
                   clientFullName: application.client?.contactPerson,
                   clientEmail: application.client?.email,
                 }}
+                externalProviderConfigured={externalProviderConfigured}
                 onChanged={reloadAll}
               />
             </CardContent>

@@ -1784,6 +1784,42 @@ export const contractTemplateApi = {
   },
 };
 
+// ─── Company signature provider config API ──────────────────────────────────
+export const companySignatureApi = {
+  async getStatus(): Promise<any> {
+    try {
+      const r = await api.get('/companies/signature-provider-status');
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur statut signature' };
+    }
+  },
+  async get(): Promise<any> {
+    try {
+      const r = await api.get('/companies/signature-provider-config');
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur récupération config' };
+    }
+  },
+  async save(payload: { provider: 'docuseal'; baseUrl: string; apiKey: string; webhookSecret: string }): Promise<any> {
+    try {
+      await api.put('/companies/signature-provider-config', payload);
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur enregistrement config' };
+    }
+  },
+  async remove(): Promise<any> {
+    try {
+      await api.delete('/companies/signature-provider-config');
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur suppression config' };
+    }
+  },
+};
+
 // ─── Contracts API ───────────────────────────────────────────────────────────
 export const contractApi = {
   async listForApplication(applicationId: string): Promise<any> {
