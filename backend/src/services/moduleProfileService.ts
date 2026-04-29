@@ -4,7 +4,22 @@ import { derivePermissions } from '../constants/moduleToPermissionsMap';
 import type { ModuleAccess as MappingModuleAccess } from '../constants/moduleToPermissionsMap';
 import { cacheDel } from './redis';
 import { logger } from '../utils/logger';
+import { Prisma } from '@prisma/client';
 import type { UserRole } from '@prisma/client';
+
+// Maps Prisma TypeScript enum keys to PostgreSQL native user_role enum values (@map values)
+const ROLE_TO_DB: Record<string, string> = {
+  CHARGE_AFFAIRES: 'account_manager',
+  ANALYSTE_RISQUES: 'credit_analyst',
+  RESPONSABLE_RISQUES: 'analyst_supervisor',
+  RESPONSABLE_ENGAGEMENTS: 'branch_manager',
+  COMITE_CREDIT: 'credit_committee',
+  DIRECTION_GENERALE: 'management',
+  ADMIN: 'admin',
+  SUPER_ADMIN: 'super_admin',
+  BACK_OFFICE: 'back_office',
+  DIRECTION_JURIDIQUE: 'direction_juridique',
+};
 
 type DataScopeValue = 'BRANCH_ONLY' | 'MULTI_BRANCH' | 'ALL_BRANCHES';
 const SCOPE_ORDER: DataScopeValue[] = ['BRANCH_ONLY', 'MULTI_BRANCH', 'ALL_BRANCHES'];
@@ -109,15 +124,16 @@ export async function invalidateRoleProfileCache(
   prismaClient: typeof prisma
 ): Promise<void> {
   try {
-    // Filtre direct sur CompanyMembership.role (champ direct)
-    const memberships = await prismaClient.companyMembership.findMany({
-      where: { companyId, role: role as UserRole },
-      select: { userId: true },
-    });
+    // $queryRaw avec cast explicite ::user_role — évite l'erreur Prisma/PG
+    // "operator does not exist: text = user_role" sur les findMany avec enum natif
+    const dbRole = ROLE_TO_DB[role] ?? role;
+    const rows = await prismaClient.$queryRaw<Array<{ user_id: string }>>(
+      Prisma.sql`SELECT user_id FROM company_memberships WHERE company_id = ${companyId} AND role = ${dbRole}::user_role`
+    );
     await Promise.all(
-      memberships.map(({ userId }) =>
-        cacheDel(`module-profile:${companyId}:${userId}`).catch((err: unknown) =>
-          logger.warn(`Redis invalidation failed for ${userId}:`, err)
+      rows.map(({ user_id }) =>
+        cacheDel(`module-profile:${companyId}:${user_id}`).catch((err: unknown) =>
+          logger.warn(`Redis invalidation failed for ${user_id}:`, err)
         )
       )
     );

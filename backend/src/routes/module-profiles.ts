@@ -87,9 +87,6 @@ router.post('/reset/:role', requireAdmin, asyncHandler(async (req: Request, res:
     prisma
   );
 
-  const affected = await prisma.companyMembership.findMany({ where: { companyId, role: role as any } });
-  await Promise.all(affected.map(m => cacheDel(cacheKey(companyId, m.userId))));
-
   res.json({ success: true, data: profile });
 }));
 
@@ -215,10 +212,6 @@ router.put('/:role', requireAdmin, asyncHandler(async (req: Request, res: Respon
     companyId,
     prisma
   );
-
-  // Invalider le cache de tous les membres du tenant ayant ce rôle
-  const affected = await prisma.companyMembership.findMany({ where: { companyId, role: role as any } });
-  await Promise.all(affected.map(m => cacheDel(cacheKey(companyId, m.userId))));
 
   res.json({ success: true, data: profile });
 }));
