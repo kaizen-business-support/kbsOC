@@ -7,9 +7,9 @@ import {
 import TuneIcon from '@mui/icons-material/Tune';
 import PersonIcon from '@mui/icons-material/Person';
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
-import { RoleProfileEditor } from './RoleProfileEditor';
 import { UserScopeEditor } from './UserScopeEditor';
 import { ScopeDelegateManager } from './ScopeDelegateManager';
+import { RoleManagerPanel } from '../role-manager/RoleManagerPanel';
 import { moduleProfileApi } from '../../services/api';
 import { USER_ROLE_LABELS } from '../../types';
 
@@ -64,7 +64,7 @@ export const ModuleProfileTab: React.FC<Props> = ({ users }) => {
         </Tabs>
       </Box>
 
-      {section === 0 && <RoleProfileEditor />}
+      {section === 0 && <RoleManagerPanel canEdit={true} />}
 
       {section === 1 && (
         <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start' }}>

@@ -1,5 +1,10 @@
 import { ModuleAccess, ModuleProfileData, DEFAULT_ROLE_PROFILES } from '../constants/defaultModuleProfiles';
 import { prisma } from '../prismaClient';
+import { derivePermissions } from '../constants/moduleToPermissionsMap';
+import type { ModuleAccess as MappingModuleAccess } from '../constants/moduleToPermissionsMap';
+import { cacheDel } from './redis';
+import { logger } from '../utils/logger';
+import type { UserRole } from '@prisma/client';
 
 type DataScopeValue = 'BRANCH_ONLY' | 'MULTI_BRANCH' | 'ALL_BRANCHES';
 const SCOPE_ORDER: DataScopeValue[] = ['BRANCH_ONLY', 'MULTI_BRANCH', 'ALL_BRANCHES'];
@@ -96,6 +101,57 @@ export async function getMergedProfile(userId: string, companyId: string) {
     delegationActive: !!delegation,
     delegationActions: delegation?.allowedActions ?? [],
   };
+}
+
+export async function invalidateRoleProfileCache(
+  companyId: string,
+  role: string,
+  prismaClient: typeof prisma
+): Promise<void> {
+  try {
+    // Filtre direct sur CompanyMembership.role (champ direct)
+    const memberships = await prismaClient.companyMembership.findMany({
+      where: { companyId, role: role as UserRole },
+      select: { userId: true },
+    });
+    await Promise.all(
+      memberships.map(({ userId }) =>
+        cacheDel(`module-profile:${companyId}:${userId}`).catch((err: unknown) =>
+          logger.warn(`Redis invalidation failed for ${userId}:`, err)
+        )
+      )
+    );
+  } catch (err) {
+    logger.warn('invalidateRoleProfileCache: Redis unavailable, skipping', err);
+  }
+}
+
+export async function syncPermissionsForRole(
+  role: string,
+  modules: Record<string, MappingModuleAccess>,
+  defaultScope: string,
+  companyId: string,
+  prismaClient: typeof prisma
+): Promise<void> {
+  const isAdminRole = ['ADMIN', 'SUPER_ADMIN'].includes(role);
+  const permissions = isAdminRole ? ['*'] : derivePermissions(modules, defaultScope);
+
+  await prismaClient.$transaction([
+    prismaClient.rolePermission.upsert({
+      where: { role: role as UserRole },
+      update: { permissions },
+      create: { role: role as any, label: role, permissions, isActive: true },
+    }),
+    prismaClient.user.updateMany({
+      where: {
+        role: role as UserRole,
+        memberships: { some: { companyId } },
+      },
+      data: { permissions },
+    }),
+  ]);
+
+  await invalidateRoleProfileCache(companyId, role, prismaClient);
 }
 
 export async function seedDefaultProfiles(companyId: string, createdById: string) {
