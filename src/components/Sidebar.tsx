@@ -643,8 +643,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                     <Collapse in={open ? policyExpanded : false} timeout="auto">
                       <List disablePadding sx={{ pl: 1 }}>
-                        <SubNavItem id="credit-policy"    label="Circuit de traitement" icon={StepsIcon} />
-                        <SubNavItem id="raci-matrix"      label="Matrice RACI"          icon={WorkflowIcon} />
+                        <SubNavItem id="credit-types"     label="Types de crédit"       icon={CalculateIcon} />
                         <SubNavItem id="workflow-builder" label="Éditeur de Workflow"   icon={PolicyIcon} />
                       </List>
                     </Collapse>
