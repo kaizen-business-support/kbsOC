@@ -42,50 +42,12 @@ router.get('/', requireAdmin, asyncHandler(async (req: Request, res: Response) =
   res.json({ success: true, data: profiles });
 }));
 
-// GET /api/module-profiles/:role
-router.get('/:role', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
-  const { role } = req.params;
-  const companyId = req.user!.companyId!;
-
-  const profile = await prisma.moduleProfile.findUnique({
-    where: { companyId_role: { companyId, role: role as any } }
-  });
-
-  if (!profile) throw new AppError('Profile not found', 404, 'NOT_FOUND');
-  res.json({ success: true, data: profile });
-}));
-
-// PUT /api/module-profiles/:role
-router.put('/:role', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
-  const { role } = req.params;
-  const { modules, defaultScope, allowedBranches, label } = req.body;
+// POST /api/module-profiles/seed
+router.post('/seed', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
   const companyId = req.user!.companyId!;
   const userId = req.user!.id;
-
-  if (!modules || !defaultScope) {
-    throw new AppError('modules et defaultScope sont requis', 400, 'MISSING_FIELDS');
-  }
-
-  const profile = await prisma.moduleProfile.upsert({
-    where: { companyId_role: { companyId, role: role as any } },
-    update: { modules, defaultScope, allowedBranches: allowedBranches ?? [], label, isDefault: false },
-    create: {
-      companyId,
-      role: role as any,
-      label: label ?? role,
-      modules,
-      defaultScope,
-      allowedBranches: allowedBranches ?? [],
-      isDefault: false,
-      createdById: userId
-    }
-  });
-
-  // Invalider le cache de tous les membres du tenant ayant ce rôle
-  const affected = await prisma.companyMembership.findMany({ where: { companyId, role: role as any } });
-  await Promise.all(affected.map(m => cacheDel(cacheKey(companyId, m.userId))));
-
-  res.json({ success: true, data: profile });
+  await seedDefaultProfiles(companyId, userId);
+  res.json({ success: true, message: 'Profils par défaut créés pour le tenant' });
 }));
 
 // POST /api/module-profiles/reset/:role
@@ -120,14 +82,6 @@ router.post('/reset/:role', requireAdmin, asyncHandler(async (req: Request, res:
   await Promise.all(affected.map(m => cacheDel(cacheKey(companyId, m.userId))));
 
   res.json({ success: true, data: profile });
-}));
-
-// POST /api/module-profiles/seed
-router.post('/seed', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
-  const companyId = req.user!.companyId!;
-  const userId = req.user!.id;
-  await seedDefaultProfiles(companyId, userId);
-  res.json({ success: true, message: 'Profils par défaut créés pour le tenant' });
 }));
 
 // GET /api/module-profiles/users/:userId
@@ -179,6 +133,52 @@ router.delete('/users/:userId', requireAdmin, asyncHandler(async (req: Request, 
   await prisma.userModuleOverride.deleteMany({ where: { userId, companyId } });
   await cacheDel(cacheKey(companyId, userId));
   res.json({ success: true, message: 'Override supprimé' });
+}));
+
+// GET /api/module-profiles/:role
+router.get('/:role', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  const { role } = req.params;
+  const companyId = req.user!.companyId!;
+
+  const profile = await prisma.moduleProfile.findUnique({
+    where: { companyId_role: { companyId, role: role as any } }
+  });
+
+  if (!profile) throw new AppError('Profile not found', 404, 'NOT_FOUND');
+  res.json({ success: true, data: profile });
+}));
+
+// PUT /api/module-profiles/:role
+router.put('/:role', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  const { role } = req.params;
+  const { modules, defaultScope, allowedBranches, label } = req.body;
+  const companyId = req.user!.companyId!;
+  const userId = req.user!.id;
+
+  if (!modules || !defaultScope) {
+    throw new AppError('modules et defaultScope sont requis', 400, 'MISSING_FIELDS');
+  }
+
+  const profile = await prisma.moduleProfile.upsert({
+    where: { companyId_role: { companyId, role: role as any } },
+    update: { modules, defaultScope, allowedBranches: allowedBranches ?? [], label, isDefault: false },
+    create: {
+      companyId,
+      role: role as any,
+      label: label ?? role,
+      modules,
+      defaultScope,
+      allowedBranches: allowedBranches ?? [],
+      isDefault: false,
+      createdById: userId
+    }
+  });
+
+  // Invalider le cache de tous les membres du tenant ayant ce rôle
+  const affected = await prisma.companyMembership.findMany({ where: { companyId, role: role as any } });
+  await Promise.all(affected.map(m => cacheDel(cacheKey(companyId, m.userId))));
+
+  res.json({ success: true, data: profile });
 }));
 
 export default router;
