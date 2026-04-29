@@ -1,23 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Box, Typography, Card, CardContent, CardHeader, Button, Chip,
+  Box, Typography, Button, Chip,
   CircularProgress, Alert, Switch, FormControlLabel, Divider,
   Accordion, AccordionSummary, AccordionDetails, Select, MenuItem,
-  FormControl, InputLabel, Tooltip, IconButton, Snackbar,
+  FormControl, InputLabel, Tooltip, Snackbar,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import RefreshIcon from '@mui/icons-material/Refresh';
 import SaveIcon from '@mui/icons-material/Save';
 import RestoreIcon from '@mui/icons-material/Restore';
 import { TENANT_MODULES, ModuleDef } from '../../config/moduleRegistry';
 import { moduleProfileApi } from '../../services/api';
 import { USER_ROLE_LABELS, UserRole } from '../../types';
-
-const TENANT_ROLES: UserRole[] = [
-  'CHARGE_AFFAIRES', 'ANALYSTE_RISQUES', 'RESPONSABLE_RISQUES',
-  'RESPONSABLE_ENGAGEMENTS', 'COMITE_CREDIT', 'DIRECTION_GENERALE',
-  'ADMIN', 'BACK_OFFICE', 'DIRECTION_JURIDIQUE',
-];
+import { DerivedPermissionsSection } from '../role-manager/DerivedPermissionsSection';
+import { derivePermissions } from '../../utils/derivePermissions';
 
 const SCOPE_LABELS: Record<string, string> = {
   BRANCH_ONLY: 'Agence uniquement',
@@ -31,8 +26,13 @@ interface ModuleState {
   sections: string[];
 }
 
-export const RoleProfileEditor: React.FC = () => {
-  const [selectedRole, setSelectedRole] = useState<UserRole>('CHARGE_AFFAIRES');
+interface Props {
+  selectedRole: string;
+  userCount?: number;
+  onSaved?: () => void;
+}
+
+export const RoleProfileEditor: React.FC<Props> = ({ selectedRole, userCount = 0, onSaved }) => {
   const [modules, setModules] = useState<Record<string, ModuleState>>({});
   const [dataScope, setDataScope] = useState<string>('BRANCH_ONLY');
   const [loading, setLoading] = useState(false);
@@ -60,7 +60,7 @@ export const RoleProfileEditor: React.FC = () => {
     setLoading(false);
   };
 
-  useEffect(() => { load(selectedRole); }, [selectedRole]);
+  useEffect(() => { load(selectedRole as UserRole); }, [selectedRole]);
 
   const toggleVisible = (key: string) =>
     setModules(prev => ({ ...prev, [key]: { ...prev[key], visible: !prev[key].visible } }));
@@ -88,11 +88,12 @@ export const RoleProfileEditor: React.FC = () => {
     const res = await moduleProfileApi.updateRole(selectedRole, {
       modules,
       defaultScope: dataScope,
-      label: USER_ROLE_LABELS[selectedRole],
+      label: (USER_ROLE_LABELS as Record<string, string>)[selectedRole] ?? selectedRole,
     });
     setSaving(false);
     if (res.success) {
       setSnack({ open: true, msg: 'Profil sauvegardé', severity: 'success' });
+      onSaved?.();
     } else {
       setSnack({ open: true, msg: res.error || 'Erreur', severity: 'error' });
     }
@@ -103,29 +104,18 @@ export const RoleProfileEditor: React.FC = () => {
     const res = await moduleProfileApi.resetRole(selectedRole);
     setSaving(false);
     if (res.success) {
-      await load(selectedRole);
+      await load(selectedRole as UserRole);
       setSnack({ open: true, msg: 'Profil réinitialisé aux valeurs par défaut', severity: 'success' });
     } else {
       setSnack({ open: true, msg: res.error || 'Erreur', severity: 'error' });
     }
   };
 
+  const isAdmin = selectedRole === 'ADMIN' || selectedRole === 'SUPER_ADMIN';
+
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-        <FormControl size="small" sx={{ minWidth: 220 }}>
-          <InputLabel>Rôle</InputLabel>
-          <Select
-            value={selectedRole}
-            label="Rôle"
-            onChange={e => setSelectedRole(e.target.value as UserRole)}
-          >
-            {TENANT_ROLES.map(r => (
-              <MenuItem key={r} value={r}>{USER_ROLE_LABELS[r]}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
         <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel>Périmètre de données</InputLabel>
           <Select
@@ -251,6 +241,12 @@ export const RoleProfileEditor: React.FC = () => {
           })}
         </Box>
       )}
+
+      <DerivedPermissionsSection
+        permissions={derivePermissions(modules as any, dataScope)}
+        userCount={userCount}
+        isAdmin={isAdmin}
+      />
 
       <Snackbar
         open={snack.open}
