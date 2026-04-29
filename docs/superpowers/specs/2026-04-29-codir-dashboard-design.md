@@ -149,13 +149,13 @@ Returns the full dashboard data in a single request.
 }
 ```
 
-**Query logic:** `WorkflowStep WHERE status IN (PENDING, IN_REVIEW)`, joined with `CreditApplication WHERE status IN (SUBMITTED, UNDER_REVIEW)`, with `User` for assignee name and `Client` for client name.
+**Query logic:** `WorkflowStep WHERE status IN (PENDING, IN_REVIEW)`, joined with `CreditApplication WHERE status NOT IN (APPROVED, REJECTED, DISBURSED)` (couvre tous les statuts actifs quelle que soit leur dénomination), with `User` for assignee name and `Client` for client name.
 
 ### POST /api/codir/relance/:stepId
 
 Body: `{ message: string }`
 
-Creates a notification for the assigned agent. Stores `lastRelancedAt` as a derived value (from the notification timestamp — no new DB column needed). Returns `{ success: true }`.
+Creates a notification for the assigned agent. Sets `workflowStep.lastRelancedAt = now()`. Returns `{ success: true }`.
 
 ### POST /api/codir/escalade/:stepId
 
@@ -179,12 +179,13 @@ Returns active users of the given role in the current user's company.
 
 ## 5. Database Migration
 
-Add 3 fields to `WorkflowStep`:
+Add 4 fields to `WorkflowStep`:
 
 ```prisma
 isEscalated    Boolean   @default(false) @map("is_escalated")
 escalatedAt    DateTime? @map("escalated_at")
 escalatedById  String?   @map("escalated_by_id")
+lastRelancedAt DateTime? @map("last_relanced_at")
 ```
 
 No foreign key on `escalatedById` (user might be deleted). Stored as plain string.
