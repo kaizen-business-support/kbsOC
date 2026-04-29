@@ -18,13 +18,10 @@ export interface ModuleDef {
 
 export const MODULE_REGISTRY: ModuleDef[] = [
   {
-    key: 'dashboard',
+    key: 'home',
     label: 'Tableau de bord',
     actions: [],
-    sections: [
-      { key: 'kpis', label: 'KPIs' },
-      { key: 'charts', label: 'Graphiques' },
-    ],
+    sections: [],
   },
   {
     key: 'clients',
@@ -41,20 +38,13 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     ],
   },
   {
-    key: 'applications',
+    key: 'credit-application',
     label: 'Demandes de crédit',
     actions: [
       { key: 'create', label: 'Créer' },
-      { key: 'edit', label: 'Modifier' },
       { key: 'submit', label: 'Soumettre' },
-      { key: 'delete', label: 'Supprimer' },
-      { key: 'export', label: 'Exporter' },
     ],
-    sections: [
-      { key: 'documents', label: 'Documents' },
-      { key: 'guarantees', label: 'Garanties' },
-      { key: 'history', label: 'Historique' },
-    ],
+    sections: [],
   },
   {
     key: 'approvals',
@@ -62,7 +52,8 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     actions: [
       { key: 'approve', label: 'Approuver' },
       { key: 'reject', label: 'Rejeter' },
-      { key: 'request_info', label: 'Demander info' },
+      { key: 'comment', label: 'Commenter' },
+      { key: 'export', label: 'Exporter' },
     ],
     sections: [
       { key: 'pending', label: 'En attente' },
@@ -73,22 +64,41 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     key: 'dispatching',
     label: 'Dispatching',
     actions: [
-      { key: 'assign', label: 'Assigner' },
-      { key: 'reassign', label: 'Réassigner' },
+      { key: 'dispatch', label: 'Dispatcher' },
     ],
     sections: [],
   },
   {
-    key: 'contracts',
-    label: 'Contrats',
+    key: 'data-input',
+    label: 'Saisie de données financières',
     actions: [
-      { key: 'create', label: 'Créer' },
-      { key: 'sign', label: 'Signer' },
-      { key: 'download', label: 'Télécharger' },
+      { key: 'save_draft', label: 'Enregistrer brouillon' },
     ],
     sections: [
-      { key: 'templates', label: 'Modèles' },
+      { key: 'balance-sheet', label: 'Bilan' },
+      { key: 'income-statement', label: 'Compte de résultat' },
     ],
+  },
+  {
+    key: 'analysis',
+    label: 'Analyse financière',
+    actions: [
+      { key: 'export', label: 'Exporter' },
+    ],
+    sections: [
+      { key: 'ratios', label: 'Ratios' },
+      { key: 'benchmarks', label: 'Benchmarks' },
+      { key: 'bceao', label: 'Normes BCEAO' },
+    ],
+  },
+  {
+    key: 'reports',
+    label: 'Rapports',
+    actions: [
+      { key: 'export', label: 'Exporter' },
+      { key: 'print', label: 'Imprimer' },
+    ],
+    sections: [],
   },
   {
     key: 'analytics',
@@ -99,46 +109,73 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     sections: [
       { key: 'portfolio', label: 'Portefeuille' },
       { key: 'performance', label: 'Performance' },
-      { key: 'risk', label: 'Risque' },
+      { key: 'compliance', label: 'Conformité' },
     ],
+  },
+  {
+    key: 'credit-scoring',
+    label: 'Scoring crédit',
+    actions: [],
+    sections: [],
+  },
+  {
+    key: 'credit-simulation',
+    label: 'Simulation crédit',
+    actions: [],
+    sections: [],
   },
   {
     key: 'credit-policy',
     label: 'Politique de crédit',
     actions: [
-      { key: 'create', label: 'Créer' },
-      { key: 'edit', label: 'Modifier' },
+      { key: 'edit_policy', label: 'Modifier la politique' },
       { key: 'activate', label: 'Activer' },
+      { key: 'archive', label: 'Archiver' },
     ],
     sections: [],
   },
   {
-    key: 'users',
-    label: 'Utilisateurs',
+    key: 'credit-types',
+    label: 'Types de crédit',
     actions: [
       { key: 'create', label: 'Créer' },
       { key: 'edit', label: 'Modifier' },
-      { key: 'delete', label: 'Désactiver' },
-      { key: 'reset_password', label: 'Réinitialiser MDP' },
-    ],
-    sections: [
-      { key: 'profiles', label: 'Profils modules' },
-      { key: 'audit', label: 'Audit' },
-    ],
-  },
-  {
-    key: 'workflow-config',
-    label: 'Configuration workflow',
-    actions: [
-      { key: 'edit', label: 'Modifier' },
+      { key: 'delete', label: 'Supprimer' },
     ],
     sections: [],
   },
   {
     key: 'approval-limits',
-    label: 'Limites d\'approbation',
+    label: "Limites d'approbation",
     actions: [
       { key: 'edit', label: 'Modifier' },
+    ],
+    sections: [],
+  },
+  {
+    key: 'workflow',
+    label: 'Configuration workflow',
+    actions: [
+      { key: 'edit_workflow', label: 'Modifier le workflow' },
+    ],
+    sections: [],
+  },
+  {
+    key: 'contract-templates',
+    label: 'Modèles de contrats',
+    actions: [
+      { key: 'upload', label: 'Téléverser' },
+      { key: 'edit', label: 'Modifier' },
+      { key: 'delete', label: 'Supprimer' },
+    ],
+    sections: [],
+  },
+  {
+    key: 'legal-step',
+    label: 'Étape juridique',
+    actions: [
+      { key: 'validate', label: 'Valider' },
+      { key: 'reject', label: 'Rejeter' },
     ],
     sections: [],
   },
@@ -147,15 +184,40 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     label: 'Matrice RACI',
     actions: [
       { key: 'edit', label: 'Modifier' },
+      { key: 'import', label: 'Importer' },
     ],
     sections: [],
   },
   {
-    key: 'delegations',
-    label: 'Délégations',
+    key: 'user-management',
+    label: 'Gestion des utilisateurs',
+    actions: [
+      { key: 'create_user', label: 'Créer utilisateur' },
+      { key: 'edit_user', label: 'Modifier utilisateur' },
+      { key: 'reset_password', label: 'Réinitialiser MDP' },
+      { key: 'deactivate', label: 'Désactiver' },
+    ],
+    sections: [
+      { key: 'users', label: 'Utilisateurs' },
+      { key: 'roles', label: 'Rôles' },
+      { key: 'module-profiles', label: 'Profils modules' },
+    ],
+  },
+  {
+    key: 'bank-holidays-admin',
+    label: 'Jours fériés',
     actions: [
       { key: 'create', label: 'Créer' },
-      { key: 'revoke', label: 'Révoquer' },
+      { key: 'edit', label: 'Modifier' },
+      { key: 'delete', label: 'Supprimer' },
+    ],
+    sections: [],
+  },
+  {
+    key: 'notifications-config',
+    label: 'Notifications',
+    actions: [
+      { key: 'edit', label: 'Configurer' },
     ],
     sections: [],
   },
@@ -169,53 +231,7 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     ],
     sections: [],
   },
-  {
-    key: 'notifications',
-    label: 'Notifications',
-    actions: [
-      { key: 'configure', label: 'Configurer' },
-    ],
-    sections: [
-      { key: 'channels', label: 'Canaux' },
-      { key: 'templates', label: 'Modèles' },
-      { key: 'rules', label: 'Règles' },
-    ],
-  },
-  {
-    key: 'audit-logs',
-    label: 'Journal d\'audit',
-    actions: [
-      { key: 'export', label: 'Exporter' },
-    ],
-    sections: [],
-  },
-  {
-    key: 'branches',
-    label: 'Agences',
-    actions: [
-      { key: 'create', label: 'Créer' },
-      { key: 'edit', label: 'Modifier' },
-    ],
-    sections: [],
-  },
-  {
-    key: 'departments',
-    label: 'Départements',
-    actions: [
-      { key: 'create', label: 'Créer' },
-      { key: 'edit', label: 'Modifier' },
-    ],
-    sections: [],
-  },
-  {
-    key: 'credit-types',
-    label: 'Types de crédit',
-    actions: [
-      { key: 'create', label: 'Créer' },
-      { key: 'edit', label: 'Modifier' },
-    ],
-    sections: [],
-  },
+  // Modules SUPER_ADMIN uniquement (hors tenant)
   {
     key: 'backup',
     label: 'Sauvegarde',
