@@ -1,6 +1,18 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../server';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
+import { logger } from '../utils/logger';
+
+function buildEmptyModuleProfile(): Record<string, { visible: boolean; actions: string[]; sections: string[] }> {
+  const keys = [
+    'home','clients','credit-application','dispatching','approvals','workflow',
+    'analytics','credit-scoring','credit-simulation','data-input','analysis',
+    'reports','credit-policy','credit-types','approval-limits','contract-templates',
+    'legal-step','raci-matrix','user-management','bank-holidays-admin',
+    'notifications-config','announcements',
+  ];
+  return Object.fromEntries(keys.map(k => [k, { visible: false, actions: [], sections: [] }]));
+}
 
 const router = express.Router();
 
@@ -95,52 +107,17 @@ router.get('/:role',
   })
 );
 
-// PUT /api/roles/:role - Update role permissions (admin only)
+// PUT /api/roles/:role - DÉPRÉCIÉ (HTTP 410)
+// Utiliser PUT /api/module-profiles/:role pour modifier les permissions.
 router.put('/:role',
   requireAdmin,
-  asyncHandler(async (req: Request, res: Response) => {
-    const { role } = req.params;
-    const { permissions, label, description } = req.body;
-
-    if (!permissions || !Array.isArray(permissions)) {
-      throw new AppError('Permissions array is required', 400, 'INVALID_PERMISSIONS');
-    }
-
-    // Update role permissions
-    const updatedRole = await prisma.rolePermission.update({
-      where: { role: role as any },
-      data: {
-        permissions,
-        ...(label && { label }),
-        ...(description !== undefined && { description })
-      }
+  (_req: Request, res: Response) => {
+    res.status(410).json({
+      success: false,
+      deprecated: true,
+      message: 'Cette route est dépréciée. Utilisez PUT /api/module-profiles/:role pour modifier les permissions.',
     });
-
-    // Update all users with this role to have the new permissions
-    await prisma.user.updateMany({
-      where: { role: role as any },
-      data: { permissions }
-    });
-
-    const userCount = await prisma.user.count({
-      where: { role: updatedRole.role as any }
-    });
-
-    res.json({
-      success: true,
-      message: `Role ${updatedRole.label} and all associated users updated successfully`,
-      role: {
-        id: updatedRole.id,
-        name: updatedRole.role,
-        label: updatedRole.label,
-        description: updatedRole.description,
-        permissions: updatedRole.permissions as string[],
-        userCount,
-        isActive: updatedRole.isActive,
-        updatedAt: updatedRole.updatedAt.toISOString()
-      }
-    });
-  })
+  }
 );
 
 // DELETE /api/roles/:id - Delete role (admin only)
@@ -184,6 +161,25 @@ router.post('/',
         permissions
       }
     });
+
+    // Seed d'un profil de modules vide pour éviter un état indéfini
+    const companyId = req.user?.companyId;
+    if (companyId) {
+      // upsert pour idempotence (race condition safe)
+      await prisma.moduleProfile.upsert({
+        where: { companyId_role: { companyId, role: sanitizedRole as any } },
+        update: {},
+        create: {
+          companyId,
+          role: sanitizedRole as any,
+          label,
+          modules: buildEmptyModuleProfile() as any,
+          defaultScope: 'BRANCH_ONLY',
+          isDefault: false,
+          createdById: req.user!.id,
+        },
+      }).catch(err => logger.warn('Failed to seed empty ModuleProfile for new role:', err));
+    }
 
     res.status(201).json({
       success: true,
