@@ -1,7 +1,8 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../prismaClient';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
-import { getMergedProfile, seedDefaultProfiles } from '../services/moduleProfileService';
+import { getMergedProfile, mergeModuleProfile, seedDefaultProfiles, syncPermissionsForRole } from '../services/moduleProfileService';
+import { derivePermissions } from '../constants/moduleToPermissionsMap';
 import { DEFAULT_ROLE_PROFILES } from '../constants/defaultModuleProfiles';
 import { cacheGet, cacheSet, cacheDel } from '../services/redis';
 
@@ -78,6 +79,14 @@ router.post('/reset/:role', requireAdmin, asyncHandler(async (req: Request, res:
     }
   });
 
+  await syncPermissionsForRole(
+    role,
+    profile.modules as Record<string, any>,
+    profile.defaultScope,
+    companyId,
+    prisma
+  );
+
   const affected = await prisma.companyMembership.findMany({ where: { companyId, role: role as any } });
   await Promise.all(affected.map(m => cacheDel(cacheKey(companyId, m.userId))));
 
@@ -109,7 +118,7 @@ router.put('/users/:userId', requireAdmin, asyncHandler(async (req: Request, res
     update: {
       modules: modules ?? null,
       dataScope: dataScope ?? null,
-      allowedBranches: allowedBranches ?? []
+      allowedBranches: allowedBranches ?? [],
     },
     create: {
       userId,
@@ -117,9 +126,34 @@ router.put('/users/:userId', requireAdmin, asyncHandler(async (req: Request, res
       modules: modules ?? null,
       dataScope: dataScope ?? null,
       allowedBranches: allowedBranches ?? [],
-      createdById
-    }
+      createdById,
+    },
   });
+
+  // Recalcul individuel depuis la fusion rôle + override
+  const membership = await prisma.companyMembership.findUnique({
+    where: { userId_companyId: { userId, companyId } },
+    select: { role: true },
+  });
+
+  if (membership) {
+    const role = membership.role as string;
+    const isAdminRole = ['ADMIN', 'SUPER_ADMIN'].includes(role);
+    if (!isAdminRole) {
+      const roleProfile = await prisma.moduleProfile.findUnique({
+        where: { companyId_role: { companyId, role: membership.role } },
+      });
+      if (roleProfile) {
+        const mergedModules = mergeModuleProfile(
+          roleProfile.modules as Record<string, any>,
+          (modules ?? {}) as Record<string, any>
+        );
+        const effectiveScope = dataScope ?? roleProfile.defaultScope;
+        const permissions = derivePermissions(mergedModules, effectiveScope);
+        await prisma.user.update({ where: { id: userId }, data: { permissions } });
+      }
+    }
+  }
 
   await cacheDel(cacheKey(companyId, userId));
   res.json({ success: true, data: override });
@@ -173,6 +207,14 @@ router.put('/:role', requireAdmin, asyncHandler(async (req: Request, res: Respon
       createdById: userId
     }
   });
+
+  await syncPermissionsForRole(
+    role,
+    profile.modules as Record<string, any>,
+    profile.defaultScope,
+    companyId,
+    prisma
+  );
 
   // Invalider le cache de tous les membres du tenant ayant ce rôle
   const affected = await prisma.companyMembership.findMany({ where: { companyId, role: role as any } });
