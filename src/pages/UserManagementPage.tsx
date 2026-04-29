@@ -77,6 +77,7 @@ import { BulkUserImportDialog } from '../components/BulkUserImportDialog';
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import ViewModuleIcon from '@mui/icons-material/ViewModule';
 import { ModuleProfileTab } from '../components/module-profiles/ModuleProfileTab';
+import { RoleManagerPanel } from '../components/role-manager/RoleManagerPanel';
 
 interface User {
   id: string;
@@ -165,6 +166,7 @@ const PERMISSION_GROUPS = [
       { key: 'view_all', label: 'Voir toutes les données' },
       { key: 'view_branch', label: 'Voir les données d\'agence' },
       { key: 'view_own', label: 'Voir ses propres données' },
+      { key: 'view_client', label: 'Voir les clients' },
       { key: 'view_applications', label: 'Voir les demandes' },
       { key: 'view_portfolio', label: 'Voir le portefeuille' },
     ],
@@ -268,12 +270,9 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [departmentDialogOpen, setDepartmentDialogOpen] = useState(false);
-  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
-  const [roleDialogError, setRoleDialogError] = useState<string | null>(null);
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedDepartment, setSelectedDepartment] = useState<Department | null>(null);
-  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [notification, setNotification] = useState<{
     open: boolean;
@@ -307,14 +306,6 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     name: '',
     code: '',
     description: '',
-    isActive: true
-  });
-
-  const [roleForm, setRoleForm] = useState({
-    name: '',
-    label: '',
-    description: '',
-    permissions: [] as string[],
     isActive: true
   });
 
@@ -1110,43 +1101,6 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     }
   };
 
-  // Role management functions
-  const openRoleDialog = (role?: Role) => {
-    if (role) {
-      setSelectedRole(role);
-      setRoleForm({
-        name: role.name,
-        label: role.label,
-        description: role.description || '',
-        permissions: role.permissions,
-        isActive: role.isActive
-      });
-    } else {
-      setSelectedRole(null);
-      setRoleForm({
-        name: '',
-        label: '',
-        description: '',
-        permissions: [],
-        isActive: true
-      });
-    }
-    setRoleDialogError(null);
-    setRoleDialogOpen(true);
-  };
-
-  const closeRoleDialog = () => {
-    setRoleDialogOpen(false);
-    setRoleDialogError(null);
-    setSelectedRole(null);
-    setRoleForm({
-      name: '',
-      label: '',
-      description: '',
-      permissions: [],
-      isActive: true
-    });
-  };
 
   // Password management functions
   const handleResetPassword = async (user: User) => {
@@ -1233,53 +1187,6 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
         message: 'Erreur lors du changement de mot de passe',
         severity: 'error'
       });
-    }
-  };
-
-  const saveRole = async () => {
-    setRoleDialogError(null);
-
-    if (!roleForm.label.trim()) {
-      setRoleDialogError('Le nom du rôle est obligatoire.');
-      return;
-    }
-
-    try {
-      if (selectedRole) {
-        const response = await ApiService.updateRolePermissions(selectedRole.name, {
-          label: roleForm.label,
-          description: roleForm.description,
-          permissions: roleForm.permissions
-        });
-
-        if (response.success) {
-          setNotification({ open: true, message: 'Rôle et permissions mis à jour avec succès', severity: 'success' });
-          await loadUsers();
-          await loadRoles();
-          closeRoleDialog();
-        } else {
-          setRoleDialogError(response.error || 'Erreur lors de la mise à jour du rôle.');
-        }
-      } else {
-        const autoRole = roleForm.label.trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-        const response = await ApiService.createRole({
-          role: autoRole,
-          label: roleForm.label,
-          description: roleForm.description,
-          permissions: roleForm.permissions
-        });
-
-        if (response.success) {
-          setNotification({ open: true, message: 'Rôle créé avec succès', severity: 'success' });
-          await loadRoles();
-          closeRoleDialog();
-        } else {
-          setRoleDialogError(response.error || 'Erreur lors de la création du rôle.');
-        }
-      }
-    } catch (error) {
-      console.error('Error saving role:', error);
-      setRoleDialogError('Erreur lors de la sauvegarde du rôle.');
     }
   };
 
@@ -2010,64 +1917,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
 
           {/* Roles Tab */}
           {activeTab === 2 && (
-            <>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  Gestion des Rôles
-                </Typography>
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={() => openRoleDialog()}
-                  disabled={!canEditUserManagement}
-                >
-                  Ajouter Rôle
-                </Button>
-              </Box>
-
-              <List>
-                {roles.map((role) => (
-                  <ListItem key={role.id} divider>
-                    <ListItemIcon>
-                      <RoleIcon />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={role.label}
-                      secondary={
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            {role.description}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            Code: {role.name} • {role.userCount} utilisateurs • {role.permissions.length} permissions
-                          </Typography>
-                        </Box>
-                      }
-                    />
-                    <ListItemSecondaryAction>
-                      <IconButton 
-                        edge="end" 
-                        aria-label="edit"
-                        onClick={() => openRoleDialog(role)}
-                        sx={{ mr: 1 }}
-                        disabled={!canEditUserManagement}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton 
-                        edge="end" 
-                        aria-label="delete"
-                        onClick={() => deleteRole(role.id)}
-                        color="error"
-                        disabled={!canEditUserManagement}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                ))}
-              </List>
-            </>
+            <RoleManagerPanel canEdit={canEditUserManagement} />
           )}
 
           {/* Branches Tab */}
@@ -2779,127 +2629,6 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
       </Dialog>
 
       {/* Role Dialog */}
-      <Dialog open={roleDialogOpen} onClose={closeRoleDialog} maxWidth="sm" fullWidth>
-        <DialogHeader
-          title={selectedRole ? `Rôle — ${selectedRole.label}` : 'Nouveau Rôle'}
-          icon={<RoleIcon sx={{ fontSize: 17 }} />}
-          onClose={closeRoleDialog}
-        />
-        <DialogContent>
-          {roleDialogError && (
-            <Alert severity="error" onClose={() => setRoleDialogError(null)} sx={{ mb: 2 }}>
-              {roleDialogError}
-            </Alert>
-          )}
-          <Grid container spacing={2}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Nom du Rôle"
-                value={roleForm.label}
-                onChange={(e) => setRoleForm({ ...roleForm, label: e.target.value })}
-                required
-                placeholder="ex: Gestionnaire de Crédit"
-                disabled={!canEditUserManagement}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Description"
-                value={roleForm.description}
-                onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
-                multiline
-                rows={3}
-                disabled={!canEditUserManagement}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <Typography variant="subtitle1" sx={{ mb: 2 }}>
-                Permissions
-              </Typography>
-              {PERMISSION_GROUPS.map((group) => (
-                <Box key={group.category} sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" color="primary" sx={{ mt: 1, mb: 0.5, fontWeight: 600 }}>
-                    {group.category}
-                  </Typography>
-                  <FormGroup row>
-                    {group.permissions.map(({ key: permission, label }) => (
-                      <FormControlLabel
-                        key={permission}
-                        sx={{ width: '50%', minWidth: 220 }}
-                        control={
-                          <Checkbox
-                            checked={roleForm.permissions.includes(permission) || roleForm.permissions.includes('*')}
-                            disabled={!canEditUserManagement}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setRoleForm(prev => {
-                                  if (prev.permissions.includes('*')) {
-                                    return { ...prev, permissions: allPermissions };
-                                  }
-                                  if (!prev.permissions.includes(permission)) {
-                                    const newPermissions = [...prev.permissions, permission];
-                                    if (newPermissions.length === allPermissions.length) {
-                                      return { ...prev, permissions: ['*'] };
-                                    }
-                                    return { ...prev, permissions: newPermissions };
-                                  }
-                                  return prev;
-                                });
-                              } else {
-                                setRoleForm(prev => {
-                                  if (prev.permissions.includes('*')) {
-                                    return { ...prev, permissions: allPermissions.filter(p => p !== permission) };
-                                  }
-                                  return { ...prev, permissions: prev.permissions.filter(p => p !== permission) };
-                                });
-                              }
-                            }}
-                          />
-                        }
-                        label={label}
-                      />
-                    ))}
-                  </FormGroup>
-                  <Divider sx={{ mt: 1 }} />
-                </Box>
-              ))}
-            </Grid>
-
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={roleForm.isActive}
-                    onChange={(e) => setRoleForm({ ...roleForm, isActive: e.target.checked })}
-                    disabled={!canEditUserManagement}
-                  />
-                }
-                label="Rôle actif"
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeRoleDialog} startIcon={<CancelIcon />}>
-            Annuler
-          </Button>
-          <Button 
-            onClick={saveRole} 
-            variant="contained" 
-            startIcon={<SaveIcon />}
-            disabled={!canEditUserManagement}
-          >
-            {selectedRole ? 'Modifier' : 'Créer'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
       {/* Branch Dialog */}
       <Dialog open={branchDialogOpen} onClose={closeBranchDialog} maxWidth="sm" fullWidth>
         <DialogHeader
