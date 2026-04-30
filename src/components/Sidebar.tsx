@@ -475,6 +475,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Dashboard */}
         <List disablePadding sx={{ px: 0.5 }}>
           <NavItem id="home" label={t('navigation.home')} icon={DashboardIcon} />
+          {canViewCodir && (
+            <NavItem id="codir-dashboard" label="Tableau de Bord CODIR" icon={InsightsIcon} />
+          )}
         </List>
 
         {/* Processus Crédit — masqué si aucun item accessible */}
@@ -652,16 +655,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
               </List>
             </Collapse>
-          </>
-        )}
-
-        {/* Direction — CODIR */}
-        {canViewCodir && (
-          <>
-            <StaticLabel label="Direction" />
-            <List disablePadding sx={{ px: 0.5 }}>
-              <NavItem id="codir-dashboard" label="Tableau de Bord CODIR" icon={InsightsIcon} />
-            </List>
           </>
         )}
 
