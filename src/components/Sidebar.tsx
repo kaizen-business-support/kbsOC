@@ -123,9 +123,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // ── Permission gates ──────────────────────────────────────────────────────────
   const perms = userState.currentUser?.permissions ?? [];
   const isAdmin              = isRole('admin') || perms.includes('*');
-  const canViewApplications  = (hasPermission('view_applications') || hasPermission('view_own') || isAdmin) && canAccess('applications');
+  const canViewApplications  = (hasPermission('view_applications') || hasPermission('view_own') || isAdmin) && canAccess('credit-application');
   const canViewClients       = (canViewApplications || hasPermission('create_client') || hasPermission('manage_clients')) && canAccess('clients');
-  const canCreateApplication = hasPermission('create_application') && canAccess('applications');
+  const canCreateApplication = hasPermission('create_application') && canAccess('credit-application');
   const canDispatching       = hasPermission('dispatch_applications') && canAccess('dispatching');
   const canViewAnalytics     = hasPermission('analytics') && canAccess('analytics');
   const canFinancialAnalysis = hasPermission('financial_analysis') || hasPermission('analyze_credit');
@@ -142,7 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // au re-seed des permissions, et au cas où une politique tenant n'a pas encore
   // attribué la permission au juridique.
   const isManagement              = isRole('management');
-  const canManageContractTemplates = (hasPermission('manage_contract_templates') || isAdmin || isManagement) && canAccess('contracts');
+  const canManageContractTemplates = (hasPermission('manage_contract_templates') || isAdmin || isManagement) && canAccess('contract-templates');
 
   // ── Sections ─────────────────────────────────────────────────────────────────
 

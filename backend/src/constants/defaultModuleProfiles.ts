@@ -139,11 +139,13 @@ export const DEFAULT_ROLE_PROFILES: Record<string, ModuleProfileData> = {
     defaultScope: 'ALL_BRANCHES',
     allowedBranches: [],
     modules: none({
-      home:                 {},
-      clients:              { actions: ['export'] },
-      'legal-step':         { actions: ['validate','reject'] },
-      'contract-templates': { actions: ['upload','edit','delete'] },
-      approvals:            { actions: ['comment'], sections: ['history'] },
+      home:                  {},
+      'credit-application':  {},
+      clients:               { actions: ['export'] },
+      workflow:              {},
+      'legal-step':          { actions: ['validate','reject'] },
+      'contract-templates':  { actions: ['upload','edit','delete'] },
+      approvals:             { actions: ['comment'], sections: ['history'] },
     }),
   },
   ADMIN: {
