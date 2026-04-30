@@ -6,11 +6,10 @@
  * aucune règle n'est codée en dur dans ce fichier ni ailleurs.
  *
  * Principe :
- *  - Si le dossier est lié à une CreditPolicy active → les étapes viennent de CreditPolicyStep.
- *  - Sinon (rétrocompatibilité) → les étapes viennent de CreditTypeWorkflowStep.
- *  - Chaque étape peut avoir une condition sur le montant (conditionMinAmount/Max).
- *  - Les limites d'approbation sont portées par CreditPolicyStep (approvalMin/Max),
- *    ou par ApprovalLimit pour l'ancien circuit.
+ *  - Les étapes viennent exclusivement de CreditPolicyStep (politique active).
+ *  - Si aucune politique n'est active, buildWorkflowPlan lève une erreur explicite.
+ *  - Les dossiers créés avant l'introduction des politiques (policyId null)
+ *    continuent d'avancer via leurs étapes existantes en base (getNextWorkflowStep).
  */
 
 import { UserRole, PolicyStepType } from '@prisma/client';
@@ -139,46 +138,12 @@ async function buildPlanFromPolicy(
     }));
 }
 
-// ─── Construction du plan (rétrocompatibilité) ────────────────────────────────
-
-async function buildPlanFromCreditType(
-  creditTypeId: string,
-  amount: number
-): Promise<WorkflowStepPlan[]> {
-  const steps = await prisma.creditTypeWorkflowStep.findMany({
-    where: { creditTypeId },
-    orderBy: { order: 'asc' },
-  });
-
-  return steps
-    .filter(s => {
-      if (s.conditionMinAmount !== null && amount < Number(s.conditionMinAmount)) return false;
-      if (s.conditionMaxAmount !== null && amount > Number(s.conditionMaxAmount)) return false;
-      return true;
-    })
-    .map(s => ({
-      order: s.order,
-      stepName: s.stepName,
-      stepLabel: s.stepLabel,
-      role: s.role,
-      stepType: undefined,
-      durationDays: s.durationDays,
-      expectedDurationHours: s.durationDays * 24,
-      maxDurationHours: s.durationDays * 24 * 2,
-      isConditional: s.conditionMinAmount !== null || s.conditionMaxAmount !== null,
-      conditionMinAmount: s.conditionMinAmount ? Number(s.conditionMinAmount) : null,
-      conditionMaxAmount: s.conditionMaxAmount ? Number(s.conditionMaxAmount) : null,
-      approvalMinAmount: null,
-      approvalMaxAmount: null,
-      policyStepId: null,
-    }));
-}
-
 // ─── Fonction principale ──────────────────────────────────────────────────────
 
 /**
- * Construit le plan de workflow dynamique pour une demande de crédit.
- * Utilise la CreditPolicy active si disponible, sinon retombe sur CreditTypeWorkflowStep.
+ * Construit le plan de workflow pour une demande de crédit depuis la CreditPolicy active.
+ * Lève une erreur explicite si aucune politique n'est active ou si aucune étape
+ * n'est applicable pour ce montant/type de crédit.
  */
 export async function buildWorkflowPlan(
   creditTypeId: string,
@@ -194,94 +159,42 @@ export async function buildWorkflowPlan(
     throw new Error(`Type de crédit introuvable : ${creditTypeId}`);
   }
 
-  // Chercher une politique active (filtrée par tenant si companyId fourni)
   const policy = await getActivePolicyForCreditType(creditTypeId, companyId);
 
-  let steps: WorkflowStepPlan[];
-  let allSteps: WorkflowStepPlan[];
+  if (!policy) {
+    throw new Error(
+      'Aucune politique de crédit active. Veuillez activer une politique via le constructeur de workflows avant de soumettre un dossier.'
+    );
+  }
 
-  if (policy) {
-    // Toutes les étapes de la politique (pour affichage UI)
-    const rawAll = await prisma.creditPolicyStep.findMany({
-      where: { policyId: policy.id, isActive: true },
-      orderBy: { order: 'asc' },
-    });
-    allSteps = rawAll.map(s => ({
-      order: s.order,
-      stepName: s.stepName,
-      stepLabel: s.stepLabel,
-      role: s.assignedRole,
-      stepType: s.stepType,
-      durationDays: Math.ceil(s.expectedDurationHours / 24),
-      expectedDurationHours: s.expectedDurationHours,
-      maxDurationHours: s.maxDurationHours,
-      isConditional: s.conditionMinAmount !== null || s.conditionMaxAmount !== null,
-      conditionMinAmount: s.conditionMinAmount ? Number(s.conditionMinAmount) : null,
-      conditionMaxAmount: s.conditionMaxAmount ? Number(s.conditionMaxAmount) : null,
-      approvalMinAmount: s.approvalMinAmount ? Number(s.approvalMinAmount) : null,
-      approvalMaxAmount: s.approvalMaxAmount ? Number(s.approvalMaxAmount) : null,
-      policyStepId: s.id,
-    }));
-    steps = await buildPlanFromPolicy(policy.id, creditTypeId, amount);
+  const rawAll = await prisma.creditPolicyStep.findMany({
+    where: { policyId: policy.id, isActive: true },
+    orderBy: { order: 'asc' },
+  });
 
-    // Si la politique n'a aucune étape applicable (conditions de montant/creditType),
-    // retomber sur le circuit legacy pour ne pas bloquer le dossier.
-    if (steps.length === 0) {
-      const legacySteps = await buildPlanFromCreditType(creditTypeId, amount);
-      const legacyAll = await prisma.creditTypeWorkflowStep.findMany({
-        where: { creditTypeId },
-        orderBy: { order: 'asc' },
-      });
-      return {
-        creditTypeId: creditType.id,
-        creditTypeName: creditType.name,
-        creditTypeCode: creditType.code,
-        amount,
-        policyId: null,   // <-- ne pas lier à la politique
-        policyName: null,
-        steps: legacySteps,
-        allSteps: legacyAll.map(s => ({
-          order: s.order,
-          stepName: s.stepName,
-          stepLabel: s.stepLabel,
-          role: s.role,
-          stepType: undefined,
-          durationDays: s.durationDays,
-          expectedDurationHours: s.durationDays * 24,
-          maxDurationHours: s.durationDays * 24 * 2,
-          isConditional: s.conditionMinAmount !== null || s.conditionMaxAmount !== null,
-          conditionMinAmount: s.conditionMinAmount ? Number(s.conditionMinAmount) : null,
-          conditionMaxAmount: s.conditionMaxAmount ? Number(s.conditionMaxAmount) : null,
-          approvalMinAmount: null,
-          approvalMaxAmount: null,
-          policyStepId: null,
-        })),
-        estimatedDurationDays: legacySteps.reduce((sum, s) => sum + s.durationDays, 0),
-      };
-    }
-  } else {
-    // Rétrocompatibilité : CreditTypeWorkflowStep
-    const rawAll = await prisma.creditTypeWorkflowStep.findMany({
-      where: { creditTypeId },
-      orderBy: { order: 'asc' },
-    });
-    allSteps = rawAll.map(s => ({
-      order: s.order,
-      stepName: s.stepName,
-      stepLabel: s.stepLabel,
-      role: s.role,
-      stepType: undefined,
-      durationDays: s.durationDays,
-      expectedDurationHours: s.durationDays * 24,
-      maxDurationHours: s.durationDays * 24 * 2,
-      isConditional: s.conditionMinAmount !== null || s.conditionMaxAmount !== null,
-      conditionMinAmount: s.conditionMinAmount ? Number(s.conditionMinAmount) : null,
-      conditionMaxAmount: s.conditionMaxAmount ? Number(s.conditionMaxAmount) : null,
-      approvalMinAmount: null,
-      approvalMaxAmount: null,
-      policyStepId: null,
-    }));
-    steps = await buildPlanFromCreditType(creditTypeId, amount);
+  const allSteps: WorkflowStepPlan[] = rawAll.map(s => ({
+    order: s.order,
+    stepName: s.stepName,
+    stepLabel: s.stepLabel,
+    role: s.assignedRole,
+    stepType: s.stepType,
+    durationDays: Math.ceil(s.expectedDurationHours / 24),
+    expectedDurationHours: s.expectedDurationHours,
+    maxDurationHours: s.maxDurationHours,
+    isConditional: s.conditionMinAmount !== null || s.conditionMaxAmount !== null,
+    conditionMinAmount: s.conditionMinAmount ? Number(s.conditionMinAmount) : null,
+    conditionMaxAmount: s.conditionMaxAmount ? Number(s.conditionMaxAmount) : null,
+    approvalMinAmount: s.approvalMinAmount ? Number(s.approvalMinAmount) : null,
+    approvalMaxAmount: s.approvalMaxAmount ? Number(s.approvalMaxAmount) : null,
+    policyStepId: s.id,
+  }));
+
+  const steps = await buildPlanFromPolicy(policy.id, creditTypeId, amount);
+
+  if (steps.length === 0) {
+    throw new Error(
+      `La politique "${policy.name}" ne contient aucune étape applicable pour ce montant ou ce type de crédit. Vérifiez les conditions configurées.`
+    );
   }
 
   const estimatedDurationDays = steps.reduce((sum, s) => sum + s.durationDays, 0);
@@ -291,8 +204,8 @@ export async function buildWorkflowPlan(
     creditTypeName: creditType.name,
     creditTypeCode: creditType.code,
     amount,
-    policyId: policy?.id ?? null,
-    policyName: policy?.name ?? null,
+    policyId: policy.id,
+    policyName: policy.name,
     steps,
     allSteps,
     estimatedDurationDays,
@@ -593,10 +506,9 @@ export async function getNextWorkflowStep(
     return plan.steps[currentIndex + 1];
   }
 
-  // ── Workflow legacy (policyId null) ───────────────────────────────────────
-  // Les étapes ont été créées en bloc dès la soumission avec des noms anciens
-  // (credit_analysis, branch_manager_review, credit_committee_review…).
-  // La politique active ne connaît pas ces noms → on lit la séquence depuis la DB.
+  // ── Dossiers antérieurs à l'introduction des politiques (policyId null) ────
+  // Ces dossiers ont leurs WorkflowStep créés en DB — on avance en lisant
+  // leur ordre de création. CreditTypeWorkflowStep n'est plus consulté.
   const dbSteps = await prisma.workflowStep.findMany({
     where: { applicationId },
     orderBy: { createdAt: 'asc' },

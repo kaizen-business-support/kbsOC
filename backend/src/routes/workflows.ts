@@ -668,11 +668,17 @@ router.post('/fix-prematurely-approved', async (req: Request, res: Response) => 
     for (const application of applications) {
       if (!application.creditTypeId) continue;
 
-      const plan = await buildWorkflowPlan(
-        application.creditTypeId,
-        Number(application.amount),
-        application.companyId ?? undefined
-      );
+      let plan;
+      try {
+        plan = await buildWorkflowPlan(
+          application.creditTypeId,
+          Number(application.amount),
+          application.companyId ?? undefined
+        );
+      } catch {
+        // Aucune politique active pour ce type de crédit — dossier ignoré
+        continue;
+      }
 
       // Vérifier si toutes les étapes requises sont présentes
       const missingSteps = plan.steps.filter(planStep =>

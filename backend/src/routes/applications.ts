@@ -255,7 +255,7 @@ router.post('/', async (req: Request, res: Response) => {
       },
     });
 
-    // Construction dynamique du circuit via la politique active (ou fallback CreditTypeWorkflowStep)
+    // Construction du circuit via la politique de crédit active (obligatoire)
     if (application.creditTypeId) {
       await createWorkflowStepsForApplication(
         application.id,
