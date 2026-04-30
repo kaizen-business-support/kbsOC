@@ -14,7 +14,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import { useUser } from '../../contexts/UserContext';
-import { creditPolicyApi } from '../../services/api';
+import { creditPolicyApi, ApiService } from '../../services/api';
 import {
   CreditPolicyFull, PolicyStep, PolicyStepType, CreditType, STEP_TYPE_CONFIG,
 } from '../../types/creditPolicyBuilder';
@@ -72,6 +72,7 @@ export function WorkflowPolicyBuilder() {
   const [steps, setSteps]                     = useState<PolicyStep[]>([]);
   const [currentVersion, setCurrentVersion]   = useState(1);
   const [creditTypes, setCreditTypes]         = useState<CreditType[]>([]);
+  const [roles, setRoles]                     = useState<{ value: string; label: string }[]>([]);
   const [loading, setLoading]                 = useState(false);
   const [saving, setSaving]                   = useState(false);
   const [snack, setSnack]                     = useState<{ msg: string; sev: 'success'|'error'|'warning'|'info' } | null>(null);
@@ -87,9 +88,10 @@ export function WorkflowPolicyBuilder() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [polRes, ctRes] = await Promise.all([
+    const [polRes, ctRes, rolesRes] = await Promise.all([
       creditPolicyApi.getPolicies(),
       creditPolicyApi.getCreditTypes(),
+      ApiService.getRoles(),
     ]);
     if (polRes.success && polRes.data) {
       setPolicies(polRes.data);
@@ -99,6 +101,9 @@ export function WorkflowPolicyBuilder() {
       if (best) { setSelectedPolicyId(best.id); setSteps(best.steps ?? []); setCurrentVersion(best.version); }
     }
     if (ctRes.success && ctRes.data) setCreditTypes(ctRes.data);
+    if (rolesRes.success && rolesRes.data) {
+      setRoles(rolesRes.data.map((r: any) => ({ value: r.name, label: r.label || r.name })));
+    }
     setLoading(false);
   }, []);
 
@@ -452,6 +457,7 @@ export function WorkflowPolicyBuilder() {
               steps={steps}
               onStepsChange={setSteps}
               creditTypes={creditTypes}
+              roles={roles}
               readOnly={!canEdit || !isDraft}
               selectedStepId={selectedStepId}
               onSelectStep={setSelectedStepId}

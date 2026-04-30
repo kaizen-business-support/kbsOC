@@ -8,12 +8,13 @@ interface Props {
   steps: PolicyStep[];
   onStepsChange: (steps: PolicyStep[]) => void;
   creditTypes: CreditType[];
+  roles?: { value: string; label: string }[];
   readOnly?: boolean;
   selectedStepId?: string | null;
   onSelectStep?: (id: string) => void;
 }
 
-export function StepList({ steps, onStepsChange, creditTypes, readOnly = false, selectedStepId, onSelectStep }: Props) {
+export function StepList({ steps, onStepsChange, creditTypes, roles, readOnly = false, selectedStepId, onSelectStep }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
@@ -100,6 +101,7 @@ export function StepList({ steps, onStepsChange, creditTypes, readOnly = false, 
             onChange={(patch) => updateStep(step.id, patch)}
             onDelete={() => deleteStep(step.id)}
             creditTypes={creditTypes}
+            roles={roles}
             readOnly={readOnly}
           />
         </Box>

@@ -6,7 +6,7 @@ import {
 } from '@mui/material';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { ExpandMore, ExpandLess, Delete as DeleteIcon } from '@mui/icons-material';
-import { PolicyStep, ROLES, STEP_TYPE_CONFIG, CreditType } from '../../types/creditPolicyBuilder';
+import { PolicyStep, ROLES as DEFAULT_ROLES, STEP_TYPE_CONFIG, CreditType } from '../../types/creditPolicyBuilder';
 import { GuardRulesEditor } from './GuardRulesEditor';
 
 interface Props {
@@ -17,6 +17,7 @@ interface Props {
   onChange: (patch: Partial<PolicyStep>) => void;
   onDelete: () => void;
   creditTypes: CreditType[];
+  roles?: { value: string; label: string }[];
   readOnly?: boolean;
 }
 
@@ -28,8 +29,9 @@ const ACTIONS = [
 ];
 
 export function StepConfigPanel({
-  step, index, expanded, onToggle, onChange, onDelete, creditTypes, readOnly = false,
+  step, index, expanded, onToggle, onChange, onDelete, creditTypes, roles, readOnly = false,
 }: Props) {
+  const availableRoles = (roles && roles.length > 0) ? roles : DEFAULT_ROLES;
   const cfg = STEP_TYPE_CONFIG[step.stepType];
   const hasError = !!step._error;
   const actions = step.allowedActions ?? [];
@@ -133,7 +135,7 @@ export function StepConfigPanel({
             <InputLabel>Assignée à</InputLabel>
             <Select value={step.assignedRole} label="Assignée à" disabled={readOnly}
               onChange={(e) => onChange({ assignedRole: e.target.value })}>
-              {ROLES.map((r) => <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>)}
+              {availableRoles.map((r) => <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>)}
             </Select>
           </FormControl>
 
