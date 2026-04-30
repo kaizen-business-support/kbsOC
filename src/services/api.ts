@@ -1976,6 +1976,14 @@ export const moduleProfileApi = {
       return { success: false, error: e.response?.data?.error || 'Erreur mise à jour profil' };
     }
   },
+  async setReadOnly(role: string, isReadOnly: boolean): Promise<any> {
+    try {
+      const r = await api.patch(`/roles/${role}/readonly`, { isReadOnly });
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur mise à jour lecture seule' };
+    }
+  },
   async resetRole(role: string): Promise<any> {
     try {
       const r = await api.post(`/module-profiles/reset/${role}`);

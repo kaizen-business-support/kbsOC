@@ -3,11 +3,12 @@ import {
   Box, Typography, Button, Chip,
   CircularProgress, Alert, Switch, FormControlLabel, Divider,
   Accordion, AccordionSummary, AccordionDetails, Select, MenuItem,
-  FormControl, InputLabel, Tooltip, Snackbar,
+  FormControl, InputLabel, Tooltip, Snackbar, Checkbox,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SaveIcon from '@mui/icons-material/Save';
 import RestoreIcon from '@mui/icons-material/Restore';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import { TENANT_MODULES, ModuleDef } from '../../config/moduleRegistry';
 import { moduleProfileApi } from '../../services/api';
 import { USER_ROLE_LABELS, UserRole } from '../../types';
@@ -29,12 +30,14 @@ interface ModuleState {
 interface Props {
   selectedRole: string;
   userCount?: number;
+  isReadOnly?: boolean;
   onSaved?: () => void;
 }
 
-export const RoleProfileEditor: React.FC<Props> = ({ selectedRole, userCount = 0, onSaved }) => {
+export const RoleProfileEditor: React.FC<Props> = ({ selectedRole, userCount = 0, isReadOnly: isReadOnlyProp = false, onSaved }) => {
   const [modules, setModules] = useState<Record<string, ModuleState>>({});
   const [dataScope, setDataScope] = useState<string>('BRANCH_ONLY');
+  const [readOnly, setReadOnly] = useState(isReadOnlyProp);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [snack, setSnack] = useState<{ open: boolean; msg: string; severity: 'success' | 'error' }>({ open: false, msg: '', severity: 'success' });
@@ -61,6 +64,7 @@ export const RoleProfileEditor: React.FC<Props> = ({ selectedRole, userCount = 0
   };
 
   useEffect(() => { load(selectedRole as UserRole); }, [selectedRole]);
+  useEffect(() => { setReadOnly(isReadOnlyProp); }, [isReadOnlyProp]);
 
   const toggleVisible = (key: string) =>
     setModules(prev => ({ ...prev, [key]: { ...prev[key], visible: !prev[key].visible } }));
@@ -85,17 +89,20 @@ export const RoleProfileEditor: React.FC<Props> = ({ selectedRole, userCount = 0
 
   const save = async () => {
     setSaving(true);
-    const res = await moduleProfileApi.updateRole(selectedRole, {
-      modules,
-      defaultScope: dataScope,
-      label: (USER_ROLE_LABELS as Record<string, string>)[selectedRole] ?? selectedRole,
-    });
+    const [profileRes, roRes] = await Promise.all([
+      moduleProfileApi.updateRole(selectedRole, {
+        modules,
+        defaultScope: dataScope,
+        label: (USER_ROLE_LABELS as Record<string, string>)[selectedRole] ?? selectedRole,
+      }),
+      moduleProfileApi.setReadOnly(selectedRole, readOnly),
+    ]);
     setSaving(false);
-    if (res.success) {
+    if (profileRes.success && roRes.success) {
       setSnack({ open: true, msg: 'Profil sauvegardé', severity: 'success' });
       onSaved?.();
     } else {
-      setSnack({ open: true, msg: res.error || 'Erreur', severity: 'error' });
+      setSnack({ open: true, msg: profileRes.error || roRes.error || 'Erreur', severity: 'error' });
     }
   };
 
@@ -115,7 +122,7 @@ export const RoleProfileEditor: React.FC<Props> = ({ selectedRole, userCount = 0
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
         <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel>Périmètre de données</InputLabel>
           <Select
@@ -128,6 +135,26 @@ export const RoleProfileEditor: React.FC<Props> = ({ selectedRole, userCount = 0
             ))}
           </Select>
         </FormControl>
+
+        <Tooltip title="Le rôle peut consulter les modules visibles mais ne peut effectuer aucune action d'écriture">
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={readOnly}
+                onChange={e => setReadOnly(e.target.checked)}
+                size="small"
+                color="warning"
+                icon={<VisibilityIcon fontSize="small" />}
+                checkedIcon={<VisibilityIcon fontSize="small" />}
+              />
+            }
+            label={
+              <Typography variant="body2" color={readOnly ? 'warning.main' : 'text.secondary'} fontWeight={readOnly ? 600 : 400}>
+                Accès lecture seule
+              </Typography>
+            }
+          />
+        </Tooltip>
 
         <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
           <Tooltip title="Réinitialiser aux valeurs par défaut">
@@ -155,6 +182,12 @@ export const RoleProfileEditor: React.FC<Props> = ({ selectedRole, userCount = 0
           </Button>
         </Box>
       </Box>
+
+      {readOnly && (
+        <Alert severity="warning" sx={{ mb: 2, py: 0.5 }} icon={<VisibilityIcon />}>
+          Mode lecture seule activé — les utilisateurs de ce rôle peuvent consulter les modules visibles mais ne peuvent effectuer aucune action.
+        </Alert>
+      )}
 
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
@@ -197,7 +230,7 @@ export const RoleProfileEditor: React.FC<Props> = ({ selectedRole, userCount = 0
                     {mod.actions.length > 0 && (
                       <Box sx={{ mb: mod.sections.length > 0 ? 1.5 : 0 }}>
                         <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                          Actions autorisées
+                          Actions autorisées {readOnly && <em>(désactivées — mode lecture seule)</em>}
                         </Typography>
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
                           {mod.actions.map(a => (
@@ -205,10 +238,11 @@ export const RoleProfileEditor: React.FC<Props> = ({ selectedRole, userCount = 0
                               key={a.key}
                               label={a.label}
                               size="small"
-                              onClick={() => toggleAction(mod.key, a.key)}
-                              color={state.actions.includes(a.key) ? 'primary' : 'default'}
-                              variant={state.actions.includes(a.key) ? 'filled' : 'outlined'}
-                              sx={{ cursor: 'pointer', fontSize: '0.72rem' }}
+                              onClick={readOnly ? undefined : () => toggleAction(mod.key, a.key)}
+                              color={!readOnly && state.actions.includes(a.key) ? 'primary' : 'default'}
+                              variant={!readOnly && state.actions.includes(a.key) ? 'filled' : 'outlined'}
+                              disabled={readOnly}
+                              sx={{ cursor: readOnly ? 'default' : 'pointer', fontSize: '0.72rem' }}
                             />
                           ))}
                         </Box>

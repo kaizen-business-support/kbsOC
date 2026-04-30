@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   Box, List, ListItem, ListItemButton, ListItemText, ListItemAvatar,
   Avatar, Typography, TextField, InputAdornment, Button, Divider,
-  CircularProgress,
+  CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions,
+  DialogContentText,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
@@ -28,17 +29,30 @@ interface Role {
   name: string;
   label: string;
   userCount?: number;
+  isReadOnly?: boolean;
 }
 
 interface Props {
   canEdit: boolean;
 }
 
+interface CreateForm {
+  role: string;
+  label: string;
+  description: string;
+}
+
+const EMPTY_FORM: CreateForm = { role: '', label: '', description: '' };
+
 export const RoleManagerPanel: React.FC<Props> = ({ canEdit }) => {
   const [roles, setRoles] = useState<Role[]>([]);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState<CreateForm>(EMPTY_FORM);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -58,6 +72,31 @@ export const RoleManagerPanel: React.FC<Props> = ({ canEdit }) => {
   );
 
   const selectedRoleData = roles.find(r => r.name === selectedRole);
+
+  const openCreate = () => { setForm(EMPTY_FORM); setCreateError(null); setCreateOpen(true); };
+
+  const handleCreate = async () => {
+    if (!form.role.trim() || !form.label.trim()) {
+      setCreateError('Le nom du rôle et le libellé sont obligatoires.');
+      return;
+    }
+    setCreating(true);
+    setCreateError(null);
+    const res = await ApiService.createRole({
+      role: form.role.trim(),
+      label: form.label.trim(),
+      description: form.description.trim(),
+      permissions: [],
+    });
+    setCreating(false);
+    if (res.success) {
+      setCreateOpen(false);
+      await load();
+      setSelectedRole(form.role.trim().toUpperCase().replace(/\s+/g, '_'));
+    } else {
+      setCreateError(res.error || 'Erreur lors de la création du rôle.');
+    }
+  };
 
   return (
     <Box sx={{ display: 'flex', gap: 0, height: '100%', minHeight: 600 }}>
@@ -104,9 +143,18 @@ export const RoleManagerPanel: React.FC<Props> = ({ canEdit }) => {
                         </Typography>
                       }
                       secondary={
-                        role.userCount !== undefined
-                          ? `${role.userCount} utilisateur${role.userCount !== 1 ? 's' : ''}`
-                          : undefined
+                        <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          {role.userCount !== undefined && (
+                            <Typography variant="caption" color="text.secondary">
+                              {role.userCount} utilisateur{role.userCount !== 1 ? 's' : ''}
+                            </Typography>
+                          )}
+                          {role.isReadOnly && (
+                            <Typography variant="caption" color="warning.main" fontWeight={600}>
+                              · lecture seule
+                            </Typography>
+                          )}
+                        </Box>
                       }
                     />
                   </ListItemButton>
@@ -124,8 +172,7 @@ export const RoleManagerPanel: React.FC<Props> = ({ canEdit }) => {
               variant="outlined"
               size="small"
               startIcon={<AddIcon />}
-              disabled
-              title="Fonctionnalité à venir"
+              onClick={openCreate}
             >
               Ajouter un rôle
             </Button>
@@ -139,6 +186,7 @@ export const RoleManagerPanel: React.FC<Props> = ({ canEdit }) => {
           <RoleProfileEditor
             selectedRole={selectedRole}
             userCount={selectedRoleData?.userCount ?? 0}
+            isReadOnly={selectedRoleData?.isReadOnly ?? false}
             onSaved={load}
           />
         ) : (
@@ -147,6 +195,60 @@ export const RoleManagerPanel: React.FC<Props> = ({ canEdit }) => {
           </Box>
         )}
       </Box>
+
+      {/* Dialog création de rôle */}
+      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Créer un nouveau rôle</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2, fontSize: 13 }}>
+            Le nom du rôle sera automatiquement mis en majuscules (ex : ANALYSTE_SENIOR).
+          </DialogContentText>
+          <TextField
+            label="Nom du rôle *"
+            fullWidth
+            size="small"
+            sx={{ mb: 2 }}
+            value={form.role}
+            onChange={e => setForm(p => ({ ...p, role: e.target.value }))}
+            placeholder="ANALYSTE_SENIOR"
+            helperText="Lettres, chiffres et underscores uniquement"
+          />
+          <TextField
+            label="Libellé d'affichage *"
+            fullWidth
+            size="small"
+            sx={{ mb: 2 }}
+            value={form.label}
+            onChange={e => setForm(p => ({ ...p, label: e.target.value }))}
+            placeholder="Analyste Senior"
+          />
+          <TextField
+            label="Description (optionnel)"
+            fullWidth
+            size="small"
+            multiline
+            rows={2}
+            value={form.description}
+            onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
+          />
+          {createError && (
+            <Typography color="error" variant="caption" sx={{ mt: 1, display: 'block' }}>
+              {createError}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateOpen(false)} disabled={creating}>Annuler</Button>
+          <Button
+            variant="contained"
+            onClick={handleCreate}
+            disabled={creating || !form.role.trim() || !form.label.trim()}
+            startIcon={creating ? <CircularProgress size={14} /> : <AddIcon />}
+          >
+            Créer
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
