@@ -32,7 +32,12 @@ router.get('/dashboard', authorize(['codir_dashboard']), asyncHandler(async (req
       },
     },
     include: {
-      application: { include: { client: { select: { companyName: true } } } },
+      application: {
+        include: {
+          client: { select: { companyName: true } },
+          creator: { select: { branch: true } },
+        },
+      },
       assignee: { select: { id: true, name: true } },
       policyStep: { select: { stepLabel: true } },
     },
@@ -93,6 +98,8 @@ router.get('/dashboard', authorize(['codir_dashboard']), asyncHandler(async (req
     isEscalated: step.isEscalated,
     escalatedAt: step.escalatedAt?.toISOString() ?? null,
     lastRelancedAt: step.lastRelancedAt?.toISOString() ?? null,
+    clientBranch: (step.application.client as any)?.branch ?? null,
+    creatorBranch: (step.application as any).creator?.branch ?? null,
   }));
 
   res.json({ success: true, data: { kpis, items } });
@@ -254,5 +261,126 @@ router.get('/agents/:role', authorize(['codir_dashboard']), asyncHandler(async (
 
   res.json({ success: true, data: agents });
 }));
+
+// GET /api/codir/timeline
+router.get('/timeline', authorize(['codir_dashboard']), asyncHandler(async (req: Request, res: Response) => {
+  const companyId = req.companyId!;
+
+  const applications = await prisma.creditApplication.findMany({
+    where: {
+      companyId,
+      status: { notIn: ['APPROVED', 'REJECTED', 'DISBURSED'] },
+      workflowSteps: { some: { status: { in: ['PENDING', 'IN_REVIEW'] } } },
+    },
+    include: {
+      client:   { select: { companyName: true, branch: true } },
+      creator:  { select: { name: true, branch: true } },
+      policy: {
+        include: {
+          steps: {
+            orderBy: { order: 'asc' },
+            select: { id: true, stepName: true, stepLabel: true, order: true, maxDurationHours: true },
+            // stepRoles intentionnellement omis — non utilisé par buildStep
+          },
+        },
+      },
+      workflowSteps: {
+        include: { assignee: { select: { name: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const now = Date.now();
+
+  const mappedApps = applications.map((app: any) => {
+    const wfSteps = app.workflowSteps as any[];
+
+    const oldestPendingStep = wfSteps
+      .filter((s: any) => s.status === 'PENDING' || s.status === 'IN_REVIEW')
+      .sort((a: any, b: any) => a.createdAt.getTime() - b.createdAt.getTime())[0];
+    const daysWaiting = oldestPendingStep
+      ? Math.floor((now - oldestPendingStep.createdAt.getTime()) / 86_400_000)
+      : 0;
+    const isOverdue = wfSteps.some((s: any) => s.isOverdue);
+
+    let steps: any[];
+    if (!app.policy) {
+      steps = wfSteps.map((ws: any, idx: number) => buildTimelineStep(ws, null, idx + 1, now));
+    } else {
+      steps = (app.policy.steps as any[]).map((ps: any) => {
+        const ws = wfSteps.find((w: any) => w.policyStepId === ps.id) ?? null;
+        return buildTimelineStep(ws, ps, ps.order, now);
+      });
+    }
+
+    return {
+      applicationId:     app.id,
+      applicationNumber: app.applicationNumber,
+      clientName:        app.client.companyName,
+      clientBranch:      app.client.branch ?? null,
+      amount:            Number(app.amount),
+      currency:          app.currency,
+      creatorName:       app.creator.name,
+      creatorBranch:     app.creator.branch ?? null,
+      isOverdue,
+      daysWaiting,
+      isEscalated:       wfSteps.some((s: any) => s.isEscalated),
+      steps,
+    };
+  });
+
+  // Tri : overdue en premier, puis daysWaiting desc
+  mappedApps.sort((a: any, b: any) => {
+    if (a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1;
+    return b.daysWaiting - a.daysWaiting;
+  });
+
+  const clientBranches = [...new Set(mappedApps.map((a: any) => a.clientBranch).filter(Boolean))] as string[];
+  const caBranches     = [...new Set(mappedApps.map((a: any) => a.creatorBranch).filter(Boolean))] as string[];
+
+  res.json({ success: true, data: { agences: { client: clientBranches, ca: caBranches }, applications: mappedApps } });
+}));
+
+function buildTimelineStep(ws: any | null, ps: any | null, order: number, now: number) {
+  const stepLabel        = ps?.stepLabel ?? ws?.stepName ?? `Étape ${order}`;
+  const stepName         = ps?.stepName  ?? ws?.stepName ?? `step_${order}`;
+  const maxDurationHours = ps?.maxDurationHours ?? 72;
+
+  let status: 'COMPLETED' | 'IN_PROGRESS' | 'PENDING';
+  let durationHours: number | null = null;
+  let isSlaBroken = false;
+
+  if (!ws) {
+    status = 'PENDING';
+  } else if (['COMPLETED', 'APPROVED', 'REJECTED'].includes(ws.status)) {
+    status = 'COMPLETED';
+    if (ws.durationMinutes != null) {
+      durationHours = ws.durationMinutes / 60;
+    } else if (ws.completedAt && ws.startedAt) {
+      durationHours = (ws.completedAt.getTime() - ws.startedAt.getTime()) / 3_600_000;
+    }
+  } else {
+    // WorkflowStep exists but not yet completed → active step, display as IN_PROGRESS
+    // Do NOT confuse with display 'PENDING' which means no WorkflowStep record exists at all
+    status = 'IN_PROGRESS';
+    const from = (ws.startedAt ?? ws.createdAt).getTime();
+    durationHours = (now - from) / 3_600_000;
+    isSlaBroken   = durationHours > maxDurationHours;
+  }
+
+  return {
+    stepName,
+    stepLabel,
+    order,
+    status,
+    agentName:    ws?.assignee?.name ?? null,
+    startedAt:    ws?.startedAt?.toISOString()   ?? null,
+    completedAt:  ws?.completedAt?.toISOString() ?? null,
+    durationHours: durationHours != null ? Math.round(durationHours * 10) / 10 : null,
+    isSlaBroken,
+  };
+}
 
 export default router;
