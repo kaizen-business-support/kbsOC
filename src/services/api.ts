@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import { AnalysisData, FileUploadResult, ApiResponse, ApprovalItem, CodirDashboardData } from '../types';
+import { AnalysisData, FileUploadResult, ApiResponse, ApprovalItem, CodirDashboardData, CodirTimelineData } from '../types';
 
 // API Configuration - Uses same origin as browser (proxied via nginx on port 80)
 const getApiBaseUrl = (): string => {
@@ -256,6 +256,15 @@ export class ApiService {
       return { success: true, data: response.data.data };
     } catch (error: any) {
       return { success: false, error: error.response?.data?.error || 'Erreur chargement agents' };
+    }
+  }
+
+  static async getCodirTimeline(): Promise<ApiResponse<CodirTimelineData>> {
+    try {
+      const response = await api.get('/codir/timeline');
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur chargement timeline CODIR' };
     }
   }
 
