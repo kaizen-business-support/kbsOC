@@ -6,8 +6,8 @@ import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { ApplicationTimeline, TimelineStep } from '../../types';
 
-// Animation pulse pour l'étape en cours
-const pulseKeyframes = `
+// Animation pulse pour l'étape en cours — exported so CodirTimelineTab injects it once
+export const pulseKeyframes = `
   @keyframes codir-pulse {
     0%   { transform: scale(1); opacity: 1; }
     50%  { transform: scale(1.18); opacity: 0.75; }
@@ -74,9 +74,7 @@ export const ApplicationTimelineCard: React.FC<Props> = ({ application }) => {
           creatorName, creatorBranch, isOverdue, daysWaiting, isEscalated } = application;
 
   return (
-    <>
-      <style>{pulseKeyframes}</style>
-      <Card
+    <Card
         variant="outlined"
         sx={{
           mb: 2,
@@ -155,6 +153,5 @@ export const ApplicationTimelineCard: React.FC<Props> = ({ application }) => {
           </Box>
         </CardContent>
       </Card>
-    </>
   );
 };

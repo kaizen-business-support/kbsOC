@@ -34,7 +34,7 @@ router.get('/dashboard', authorize(['codir_dashboard']), asyncHandler(async (req
     include: {
       application: {
         include: {
-          client: { select: { companyName: true } },
+          client: { select: { companyName: true, branch: true } },
           creator: { select: { branch: true } },
         },
       },
@@ -84,7 +84,7 @@ router.get('/dashboard', authorize(['codir_dashboard']), asyncHandler(async (req
     applicationId: step.applicationId,
     applicationNumber: step.application.applicationNumber,
     clientName: step.application.client?.companyName ?? '—',
-    amount: step.application.amount,
+    amount: Number(step.application.amount),
     currency: step.application.currency,
     stepName: step.stepName,
     stepLabel: step.policyStep?.stepLabel ?? step.stepName,

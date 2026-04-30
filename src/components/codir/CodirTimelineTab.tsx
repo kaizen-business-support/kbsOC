@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Typography, Chip } from '@mui/material';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import { ApplicationTimeline } from '../../types';
-import { ApplicationTimelineCard } from './ApplicationTimelineCard';
+import { ApplicationTimelineCard, pulseKeyframes } from './ApplicationTimelineCard';
 
 interface Props {
   applications: ApplicationTimeline[];
@@ -21,6 +21,7 @@ export const CodirTimelineTab: React.FC<Props> = ({ applications, agenceType, ag
 
   return (
     <Box>
+      <style>{pulseKeyframes}</style>
       {/* En-tête */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
         <Typography variant="body2" color="text.secondary">
