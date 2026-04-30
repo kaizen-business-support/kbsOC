@@ -135,6 +135,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canViewPlatformAdmin   = perms.includes('manage_platform');
   const canViewCompanySettings = false; // couvert par platform-admin
   const canViewCreditPolicy    = (hasPermission('policy_configuration') || isAdmin) && canAccess('credit-policy');
+  const canViewCodir           = (hasPermission('codir_dashboard') || isAdmin) && canAccess('codir-dashboard');
   const canViewSimulator       = canCreateApplication || canFinancialAnalysis || isAdmin;
   // Le juridique est mappé sur 'management' côté frontend (cf. LoginPage.tsx).
   // On accepte aussi le rôle 'management' pour être tolérant aux sessions antérieures
@@ -651,6 +652,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
               </List>
             </Collapse>
+          </>
+        )}
+
+        {/* Direction — CODIR */}
+        {canViewCodir && (
+          <>
+            <StaticLabel label="Direction" />
+            <List disablePadding sx={{ px: 0.5 }}>
+              <NavItem id="codir-dashboard" label="Tableau de Bord CODIR" icon={InsightsIcon} />
+            </List>
           </>
         )}
 
