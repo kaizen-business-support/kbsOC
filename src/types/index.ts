@@ -380,9 +380,43 @@ export interface PendingDecisionItem {
   isEscalated: boolean;
   escalatedAt: string | null;
   lastRelancedAt: string | null;
+  clientBranch?: string | null;
+  creatorBranch?: string | null;
 }
 
 export interface CodirDashboardData {
   kpis: StepKpi[];
   items: PendingDecisionItem[];
+}
+
+export interface TimelineStep {
+  stepName: string;
+  stepLabel: string;
+  order: number;
+  status: 'COMPLETED' | 'IN_PROGRESS' | 'PENDING';
+  agentName: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  durationHours: number | null;
+  isSlaBroken: boolean;
+}
+
+export interface ApplicationTimeline {
+  applicationId: string;
+  applicationNumber: string;
+  clientName: string;
+  clientBranch: string | null;
+  amount: number;
+  currency: string;
+  creatorName: string;
+  creatorBranch: string | null;
+  isOverdue: boolean;
+  daysWaiting: number;
+  isEscalated: boolean;
+  steps: TimelineStep[];
+}
+
+export interface CodirTimelineData {
+  agences: { client: string[]; ca: string[] };
+  applications: ApplicationTimeline[];
 }
