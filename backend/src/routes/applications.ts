@@ -193,10 +193,10 @@ router.post('/', async (req: Request, res: Response) => {
     } = req.body;
 
     // Validate required fields
-    if (!clientId || !amount || !purpose || !createdBy) {
+    if (!clientId || !amount || !purpose || !createdBy || !creditTypeId) {
       return res.status(400).json({
         success: false,
-        error: 'Les champs clientId, amount, purpose et createdBy sont obligatoires'
+        error: 'Les champs clientId, amount, purpose, createdBy et creditTypeId sont obligatoires'
       });
     }
 

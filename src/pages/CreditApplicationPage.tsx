@@ -286,7 +286,7 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
 
   const isStepComplete = (step: number): boolean => {
     if (step === 0) return !!selectedClientId;
-    if (step === 1) return !!(creditRequest.amount > 0 && creditRequest.purpose);
+    if (step === 1) return !!(creditRequest.amount > 0 && creditRequest.purpose && creditRequest.creditTypeId);
     return true;
   };
 
@@ -548,6 +548,11 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
                   </Grid>
                 ))}
               </Grid>
+              {!creditRequest.creditTypeId && (
+                <Typography variant="caption" color="error" sx={{ mt: 1.5, display: 'block', fontWeight: 600 }}>
+                  Sélectionnez un type de financement pour continuer — il détermine le circuit d'approbation applicable.
+                </Typography>
+              )}
             </SectionCard>
 
             <SectionCard

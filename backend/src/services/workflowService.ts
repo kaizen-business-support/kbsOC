@@ -300,6 +300,8 @@ export async function createWorkflowStepsForApplication(
   }
 
   // Créer l'étape "création du dossier" si elle n'existe pas encore
+  // et la lier au CreditPolicyStep correspondant pour que la timeline CODIR puisse la retrouver.
+  const creationPolicyStep = plan.steps.find(s => s.stepName === 'application_created');
   const hasCreationStep = await prisma.workflowStep.findFirst({
     where: { applicationId, stepName: 'application_created' },
   });
@@ -314,7 +316,14 @@ export async function createWorkflowStepsForApplication(
         completedAt: new Date(),
         deadline: new Date(),
         comments: 'Dossier créé',
+        policyStepId: creationPolicyStep?.policyStepId ?? undefined,
       },
+    });
+  } else if (creationPolicyStep?.policyStepId && !hasCreationStep.policyStepId) {
+    // Rétrospectivement lier l'étape existante à la politique (dossiers créés avant la politique)
+    await prisma.workflowStep.update({
+      where: { id: hasCreationStep.id },
+      data: { policyStepId: creationPolicyStep.policyStepId },
     });
   }
 
