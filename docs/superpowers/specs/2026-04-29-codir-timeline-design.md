@@ -105,9 +105,10 @@ const applications = await prisma.creditApplication.findMany({
       orderBy: { createdAt: 'asc' },
     },
   },
-  orderBy: [
-    // overdue en premier, puis ancienneté
-  ],
+  orderBy: [{ createdAt: 'asc' }],
+  // Note: le tri final "overdue en premier, puis daysWaiting desc" s'applique
+  // en application code après construction du tableau, car isOverdue et daysWaiting
+  // sont des champs calculés — pas des colonnes DB.
 });
 ```
 
