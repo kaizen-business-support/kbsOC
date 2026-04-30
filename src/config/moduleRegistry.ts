@@ -252,6 +252,16 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     sections: [],
     superAdminOnly: true,
   },
+  {
+    key: 'codir-dashboard',
+    label: 'Tableau de Bord CODIR',
+    actions: [
+      { key: 'relance',  label: 'Relancer un agent' },
+      { key: 'reassign', label: 'Réaffecter un dossier' },
+      { key: 'escalade', label: 'Escalader un dossier' },
+    ],
+    sections: [],
+  },
 ];
 
 export const TENANT_MODULES = MODULE_REGISTRY.filter(m => !m.superAdminOnly);
