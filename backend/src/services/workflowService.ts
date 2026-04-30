@@ -223,6 +223,42 @@ export async function buildWorkflowPlan(
       policyStepId: s.id,
     }));
     steps = await buildPlanFromPolicy(policy.id, creditTypeId, amount);
+
+    // Si la politique n'a aucune étape applicable (conditions de montant/creditType),
+    // retomber sur le circuit legacy pour ne pas bloquer le dossier.
+    if (steps.length === 0) {
+      const legacySteps = await buildPlanFromCreditType(creditTypeId, amount);
+      const legacyAll = await prisma.creditTypeWorkflowStep.findMany({
+        where: { creditTypeId },
+        orderBy: { order: 'asc' },
+      });
+      return {
+        creditTypeId: creditType.id,
+        creditTypeName: creditType.name,
+        creditTypeCode: creditType.code,
+        amount,
+        policyId: null,   // <-- ne pas lier à la politique
+        policyName: null,
+        steps: legacySteps,
+        allSteps: legacyAll.map(s => ({
+          order: s.order,
+          stepName: s.stepName,
+          stepLabel: s.stepLabel,
+          role: s.role,
+          stepType: undefined,
+          durationDays: s.durationDays,
+          expectedDurationHours: s.durationDays * 24,
+          maxDurationHours: s.durationDays * 24 * 2,
+          isConditional: s.conditionMinAmount !== null || s.conditionMaxAmount !== null,
+          conditionMinAmount: s.conditionMinAmount ? Number(s.conditionMinAmount) : null,
+          conditionMaxAmount: s.conditionMaxAmount ? Number(s.conditionMaxAmount) : null,
+          approvalMinAmount: null,
+          approvalMaxAmount: null,
+          policyStepId: null,
+        })),
+        estimatedDurationDays: legacySteps.reduce((sum, s) => sum + s.durationDays, 0),
+      };
+    }
   } else {
     // Rétrocompatibilité : CreditTypeWorkflowStep
     const rawAll = await prisma.creditTypeWorkflowStep.findMany({
@@ -509,11 +545,37 @@ export async function getNextWorkflowStep(
   // ── Workflow moderne (policyId renseigné) ─────────────────────────────────
   // Le plan est construit depuis la politique active — les noms d'étapes correspondent.
   if (application.policyId) {
+    // Trouver le WorkflowStep DB qui vient d'être complété (policyStepId portant l'order)
+    const completedDbStep = await prisma.workflowStep.findFirst({
+      where: {
+        applicationId,
+        stepName: completedStepName,
+        completedAt: { not: null },
+      },
+      orderBy: { completedAt: 'desc' },
+      select: { policyStepId: true },
+    });
+
     const plan = await buildWorkflowPlan(
       application.creditTypeId,
       Number(application.amount),
       application.companyId ?? undefined
     );
+
+    if (completedDbStep?.policyStepId) {
+      // Obtenir l'order de l'étape complétée
+      const completedPolicyStep = await prisma.creditPolicyStep.findUnique({
+        where: { id: completedDbStep.policyStepId },
+        select: { order: true },
+      });
+      if (completedPolicyStep) {
+        // Trouver la prochaine étape applicable par order croissant
+        const next = plan.steps.find(s => s.order > completedPolicyStep.order);
+        return next ?? null;
+      }
+    }
+
+    // Fallback: recherche par stepName (étapes sans policyStepId)
     const currentIndex = plan.steps.findIndex(s => s.stepName === completedStepName);
     if (currentIndex === -1 || currentIndex >= plan.steps.length - 1) return null;
     return plan.steps[currentIndex + 1];

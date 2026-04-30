@@ -446,13 +446,27 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
     // Calculer la durée de traitement et mettre à jour l'étape
     const durationMinutes = await finalizeStepDuration(currentStep.id);
 
+    // Mapper decision vers un StepStatus valide (REQUEST_INFO et TRANSFER ne sont pas dans l'enum)
+    const DECISION_TO_STATUS: Record<string, string> = {
+      APPROVED:     'APPROVED',
+      REJECTED:     'REJECTED',
+      REQUEST_INFO: 'IN_REVIEW',  // reste en cours, info demandée
+      TRANSFER:     'COMPLETED',  // transféré = complété pour cet agent
+    };
+    const stepStatus = DECISION_TO_STATUS[decision] ?? 'COMPLETED';
+
     await prisma.workflowStep.update({
       where: { id: currentStep.id },
       data: {
-        status: decision,
+        status: stepStatus as any,
         assigneeId: userId,
         durationMinutes: durationMinutes ?? undefined,
-        comments: comments || `Décision: ${decision === 'APPROVED' ? 'Approuvé' : 'Rejeté'} par ${user.name}`
+        comments: comments || `Décision: ${
+          decision === 'APPROVED' ? 'Approuvé' :
+          decision === 'REJECTED' ? 'Rejeté' :
+          decision === 'REQUEST_INFO' ? 'Informations complémentaires demandées' :
+          decision === 'TRANSFER' ? 'Transféré' : decision
+        } par ${user.name}`
       }
     });
 
