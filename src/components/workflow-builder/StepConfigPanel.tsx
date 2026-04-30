@@ -108,7 +108,7 @@ export function StepConfigPanel({
             value={step.stepLabel}
             onChange={(e) => onChange({
               stepLabel: e.target.value,
-              stepName: e.target.value.toLowerCase().replace(/\s+/g, '_'),
+              stepName: e.target.value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''),
             })}
           />
 

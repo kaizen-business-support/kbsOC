@@ -122,7 +122,7 @@ router.get('/preview', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'creditTypeId et amount sont requis' });
     }
 
-    const plan = await buildWorkflowPlan(String(creditTypeId), Number(amount));
+    const plan = await buildWorkflowPlan(String(creditTypeId), Number(amount), req.companyId);
     res.json({ success: true, data: plan });
   } catch (error: any) {
     console.error('[credit-policy] GET /preview', error);
@@ -286,7 +286,7 @@ router.put('/:id', async (req: Request, res: Response) => {
         await prisma.creditPolicyStep.createMany({
           data: steps.map((s: any, idx: number) => ({
             policyId: req.params.id,
-            stepName: s.stepName || s.stepLabel?.toLowerCase().replace(/\s+/g, '_') || `step_${idx + 1}`,
+            stepName: s.stepName || (s.stepLabel ? s.stepLabel.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') : null) || `step_${idx + 1}`,
             stepLabel: s.stepLabel,
             order: s.order ?? idx + 1,
             stepType: s.stepType,
@@ -384,6 +384,17 @@ router.post('/:id/steps', async (req: Request, res: Response) => {
     }
     if (approvalMinAmount != null && approvalMaxAmount != null && Number(approvalMinAmount) > Number(approvalMaxAmount)) {
       return res.status(400).json({ success: false, error: 'approvalMinAmount doit être ≤ approvalMaxAmount' });
+    }
+
+    // Vérifier l'unicité du stepName dans cette politique
+    const duplicate = await prisma.creditPolicyStep.findFirst({
+      where: { policyId: req.params.id, stepName },
+    });
+    if (duplicate) {
+      return res.status(409).json({
+        success: false,
+        error: `Une étape avec le nom "${stepName}" existe déjà dans cette politique`,
+      });
     }
 
     // Calculer l'ordre si non fourni

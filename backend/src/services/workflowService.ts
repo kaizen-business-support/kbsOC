@@ -318,12 +318,15 @@ export async function createWorkflowStepsForApplication(
   });
   const plan = await buildWorkflowPlan(creditTypeId, amount, app?.companyId ?? undefined);
 
-  // Supprimer les étapes non-commencées avant de recréer
+  // Supprimer uniquement les étapes legacy (sans policyStepId) non-commencées.
+  // Les étapes de politique déjà créées (policyStepId non-null) sont préservées
+  // pour éviter de casser les étapes en attente de démarrage.
   await prisma.workflowStep.deleteMany({
     where: {
       applicationId,
       status: 'PENDING',
       assigneeId: null,
+      policyStepId: null,
     },
   });
 
@@ -363,10 +366,19 @@ export async function createWorkflowStepsForApplication(
     });
   }
 
-  // Créer les étapes du plan en PENDING
-  // Exclure 'application_created' : cette étape est toujours créée COMPLETED
-  // par l'endpoint POST /api/applications — la dupliquer provoquerait un blocage workflow.
+  // Créer les étapes du plan en PENDING.
+  // Exclure 'application_created' (toujours COMPLETED dès la soumission).
+  // Ne pas recréer une étape si elle existe déjà (même policyStepId ou même stepName en cours).
   for (const step of plan.steps.filter(s => s.stepName !== 'application_created')) {
+    const existing = step.policyStepId
+      ? await prisma.workflowStep.findFirst({
+          where: { applicationId, policyStepId: step.policyStepId },
+        })
+      : await prisma.workflowStep.findFirst({
+          where: { applicationId, stepName: step.stepName, status: { in: ['PENDING', 'IN_REVIEW'] } },
+        });
+    if (existing) continue;
+
     await prisma.workflowStep.create({
       data: {
         applicationId,

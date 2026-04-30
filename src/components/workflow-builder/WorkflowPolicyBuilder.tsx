@@ -31,11 +31,16 @@ function generateTempId() {
   return `new_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
-function createStep(type: PolicyStepType, order: number): PolicyStep {
+function createStep(type: PolicyStepType, order: number, existingSteps: PolicyStep[] = []): PolicyStep {
   const cfg = STEP_TYPE_CONFIG[type];
+  const baseName = type.toLowerCase();
+  const baseLabel = cfg.label;
+  const sameTypeCount = existingSteps.filter(s => s.stepType === type).length;
+  const stepName  = sameTypeCount === 0 ? baseName  : `${baseName}_${sameTypeCount + 1}`;
+  const stepLabel = sameTypeCount === 0 ? baseLabel : `${baseLabel} ${sameTypeCount + 1}`;
   return {
     id: generateTempId(), policyId: '',
-    stepName: type.toLowerCase(), stepLabel: cfg.label,
+    stepName, stepLabel,
     order, stepType: type, assignedRole: 'CHARGE_AFFAIRES',
     conditionMinAmount: null, conditionMaxAmount: null,
     expectedDurationHours: 24, maxDurationHours: 72,
@@ -110,7 +115,7 @@ export function WorkflowPolicyBuilder() {
 
   const handleAddStep = (type: PolicyStepType) => {
     if (!canEdit || !isDraft) return;
-    const s = createStep(type, steps.length + 1);
+    const s = createStep(type, steps.length + 1, steps);
     setSteps((prev) => [...prev, s]);
     setSelectedStepId(s.id);
     if (!configOpen) setConfigOpen(true);

@@ -443,30 +443,54 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       await startWorkflowStep(currentStep.id, userId);
     }
 
+    // REQUEST_INFO : l'étape reste IN_REVIEW, le workflow ne progresse pas
+    if (decision === 'REQUEST_INFO') {
+      await prisma.workflowStep.update({
+        where: { id: currentStep.id },
+        data: {
+          assigneeId: userId,
+          comments: comments || `Informations complémentaires demandées par ${user.name}`,
+        },
+      });
+      triggerNotification('STEP_INFO_REQUESTED', applicationId);
+      return res.json({
+        success: true,
+        message: 'Informations complémentaires demandées',
+        status: 'UNDER_REVIEW',
+        decision: 'REQUEST_INFO',
+      });
+    }
+
+    // TRANSFER : réinitialiser l'étape pour qu'un autre agent puisse la reprendre
+    if (decision === 'TRANSFER') {
+      await prisma.workflowStep.update({
+        where: { id: currentStep.id },
+        data: {
+          status: 'PENDING',
+          assigneeId: null,
+          startedAt: null,
+          comments: comments || `Transféré par ${user.name}`,
+        },
+      });
+      triggerNotification('STEP_ASSIGNED', applicationId);
+      return res.json({
+        success: true,
+        message: 'Étape transférée',
+        status: 'UNDER_REVIEW',
+        decision: 'TRANSFER',
+      });
+    }
+
     // Calculer la durée de traitement et mettre à jour l'étape
     const durationMinutes = await finalizeStepDuration(currentStep.id);
-
-    // Mapper decision vers un StepStatus valide (REQUEST_INFO et TRANSFER ne sont pas dans l'enum)
-    const DECISION_TO_STATUS: Record<string, string> = {
-      APPROVED:     'APPROVED',
-      REJECTED:     'REJECTED',
-      REQUEST_INFO: 'IN_REVIEW',  // reste en cours, info demandée
-      TRANSFER:     'COMPLETED',  // transféré = complété pour cet agent
-    };
-    const stepStatus = DECISION_TO_STATUS[decision] ?? 'COMPLETED';
 
     await prisma.workflowStep.update({
       where: { id: currentStep.id },
       data: {
-        status: stepStatus as any,
+        status: decision as any,  // APPROVED ou REJECTED (valeurs valides de l'enum)
         assigneeId: userId,
         durationMinutes: durationMinutes ?? undefined,
-        comments: comments || `Décision: ${
-          decision === 'APPROVED' ? 'Approuvé' :
-          decision === 'REJECTED' ? 'Rejeté' :
-          decision === 'REQUEST_INFO' ? 'Informations complémentaires demandées' :
-          decision === 'TRANSFER' ? 'Transféré' : decision
-        } par ${user.name}`
+        comments: comments || `${decision === 'APPROVED' ? 'Approuvé' : 'Rejeté'} par ${user.name}`,
       }
     });
 
@@ -646,7 +670,8 @@ router.post('/fix-prematurely-approved', async (req: Request, res: Response) => 
 
       const plan = await buildWorkflowPlan(
         application.creditTypeId,
-        Number(application.amount)
+        Number(application.amount),
+        application.companyId ?? undefined
       );
 
       // Vérifier si toutes les étapes requises sont présentes
