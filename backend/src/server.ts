@@ -43,6 +43,7 @@ import moduleProfileRoutes from './routes/module-profiles';
 import scopeDelegateRoutes from './routes/scope-delegates';
 import companyRoutes from './routes/companies';
 import platformRoutes from './routes/platform';
+import codirRoutes from './routes/codir';
 import { startScheduler } from './services/schedulerService';
 import { expireStaleActiveDelegations } from './services/delegationService';
 
@@ -219,6 +220,7 @@ app.use('/api/credit-types', authenticate, creditTypeRoutes);
 app.use('/api/roles', authenticate, roleRoutes);
 app.use('/api/module-profiles', authenticate, moduleProfileRoutes);
 app.use('/api/scope-delegates', authenticate, scopeDelegateRoutes);
+app.use('/api/codir', codirRoutes);
 app.use('/api/auth/2fa', authenticate, twoFactorRoutes);
 app.use('/api/otp', authenticate, otpRoutes);
 app.use('/api/backup', authenticate, backupRoutes);
