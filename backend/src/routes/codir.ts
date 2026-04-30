@@ -307,11 +307,26 @@ router.get('/timeline', authorize(['codir_dashboard']), asyncHandler(async (req:
 
     let steps: any[];
     if (!app.policy) {
-      steps = wfSteps.map((ws: any, idx: number) => buildTimelineStep(ws, null, idx + 1, now));
+      // Pas de politique liée : on n'affiche que les WorkflowStep réels.
+      // Une seule étape est "active" à la fois : la première PENDING/IN_REVIEW.
+      let activeFound = false;
+      steps = wfSteps.map((ws: any, idx: number) => {
+        const completed = ['COMPLETED', 'APPROVED', 'REJECTED'].includes(ws.status);
+        const isActive = !completed && !activeFound;
+        if (isActive) activeFound = true;
+        return buildTimelineStep(ws, null, idx + 1, now, isActive);
+      });
     } else {
+      // Politique liée : on affiche TOUTES les étapes de la politique.
+      // L'étape active est la première étape non-terminée (par ordre).
+      // Les suivantes sont "en attente future" même si leur WorkflowStep existe déjà.
+      let activeFound = false;
       steps = (app.policy.steps as any[]).map((ps: any) => {
         const ws = wfSteps.find((w: any) => w.policyStepId === ps.id) ?? null;
-        return buildTimelineStep(ws, ps, ps.order, now);
+        const completed = ws && ['COMPLETED', 'APPROVED', 'REJECTED'].includes(ws.status);
+        const isActive = !completed && !activeFound;
+        if (isActive) activeFound = true;
+        return buildTimelineStep(ws, ps, ps.order, now, isActive);
       });
     }
 
@@ -343,7 +358,17 @@ router.get('/timeline', authorize(['codir_dashboard']), asyncHandler(async (req:
   res.json({ success: true, data: { agences: { client: clientBranches, ca: caBranches }, applications: mappedApps } });
 }));
 
-function buildTimelineStep(ws: any | null, ps: any | null, order: number, now: number) {
+/**
+ * Construit une étape de timeline.
+ *
+ * isActive = true  → cette étape est la seule vraiment en cours (la première non-terminée).
+ * isActive = false + ws PENDING → étape future (créée en avance), affichée comme "en attente".
+ *
+ * Règle : dans un workflow linéaire, une seule étape peut être IN_PROGRESS à la fois.
+ * Les WorkflowStep créées à l'avance avec status=PENDING ne doivent PAS apparaître
+ * comme IN_PROGRESS — elles sont des étapes futures.
+ */
+function buildTimelineStep(ws: any | null, ps: any | null, order: number, now: number, isActive: boolean) {
   const stepLabel        = ps?.stepLabel ?? ws?.stepName ?? `Étape ${order}`;
   const stepName         = ps?.stepName  ?? ws?.stepName ?? `step_${order}`;
   const maxDurationHours = ps?.maxDurationHours ?? 72;
@@ -352,22 +377,25 @@ function buildTimelineStep(ws: any | null, ps: any | null, order: number, now: n
   let durationHours: number | null = null;
   let isSlaBroken = false;
 
-  if (!ws) {
-    status = 'PENDING';
-  } else if (['COMPLETED', 'APPROVED', 'REJECTED'].includes(ws.status)) {
+  if (ws && ['COMPLETED', 'APPROVED', 'REJECTED'].includes(ws.status)) {
+    // Étape terminée — toujours COMPLETED quelle que soit la position
     status = 'COMPLETED';
     if (ws.durationMinutes != null) {
       durationHours = ws.durationMinutes / 60;
     } else if (ws.completedAt && ws.startedAt) {
       durationHours = (ws.completedAt.getTime() - ws.startedAt.getTime()) / 3_600_000;
     }
-  } else {
-    // WorkflowStep exists but not yet completed → active step, display as IN_PROGRESS
-    // Do NOT confuse with display 'PENDING' which means no WorkflowStep record exists at all
+  } else if (isActive) {
+    // Étape courante (première non-terminée) — IN_PROGRESS
     status = 'IN_PROGRESS';
-    const from = (ws.startedAt ?? ws.createdAt).getTime();
-    durationHours = (now - from) / 3_600_000;
-    isSlaBroken   = durationHours > maxDurationHours;
+    if (ws) {
+      const from = (ws.startedAt ?? ws.createdAt).getTime();
+      durationHours = (now - from) / 3_600_000;
+      isSlaBroken   = durationHours > maxDurationHours;
+    }
+  } else {
+    // Étape future : pas encore active même si un WorkflowStep existe déjà en base
+    status = 'PENDING';
   }
 
   return {
@@ -375,12 +403,75 @@ function buildTimelineStep(ws: any | null, ps: any | null, order: number, now: n
     stepLabel,
     order,
     status,
-    agentName:    ws?.assignee?.name ?? null,
-    startedAt:    ws?.startedAt?.toISOString()   ?? null,
-    completedAt:  ws?.completedAt?.toISOString() ?? null,
+    agentName:     isActive || (ws && ['COMPLETED', 'APPROVED', 'REJECTED'].includes(ws.status))
+                   ? (ws?.assignee?.name ?? null)
+                   : null,
+    startedAt:     ws?.startedAt?.toISOString()   ?? null,
+    completedAt:   ws?.completedAt?.toISOString() ?? null,
     durationHours: durationHours != null ? Math.round(durationHours * 10) / 10 : null,
     isSlaBroken,
   };
 }
+
+// POST /api/codir/relink-policy/:applicationId
+// Relie un dossier sans policyId à la politique active et recréé les étapes manquantes.
+router.post('/relink-policy/:applicationId', authorize(['codir_dashboard']), asyncHandler(async (req: Request, res: Response) => {
+  const { applicationId } = req.params;
+  const companyId = req.companyId!;
+
+  const app = await prisma.creditApplication.findFirst({
+    where: { id: applicationId, companyId },
+    select: { id: true, applicationNumber: true, policyId: true, creditTypeId: true, amount: true },
+  });
+  if (!app) throw new AppError('Dossier introuvable', 404, 'NOT_FOUND');
+  if (app.policyId) throw new AppError('Ce dossier est déjà lié à une politique', 400, 'ALREADY_LINKED');
+  if (!app.creditTypeId) throw new AppError('Le dossier n\'a pas de type de crédit — impossible de trouver une politique', 400, 'NO_CREDIT_TYPE');
+
+  // Trouver la politique active applicable
+  const now = new Date();
+  const policy = await prisma.creditPolicy.findFirst({
+    where: {
+      companyId,
+      isActive: true,
+      validFrom: { lte: now },
+      OR: [{ validTo: null }, { validTo: { gte: now } }],
+    },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      steps: { where: { isActive: true }, orderBy: { order: 'asc' } },
+    },
+  });
+  if (!policy) throw new AppError('Aucune politique de crédit active trouvée pour ce tenant', 404, 'NO_ACTIVE_POLICY');
+
+  const amount = Number(app.amount);
+
+  // Filtrer les étapes applicables (conditions montant + type de crédit)
+  const applicableSteps = policy.steps.filter(s => {
+    if (s.creditTypeIds.length > 0 && !s.creditTypeIds.includes(app.creditTypeId!)) return false;
+    if (s.conditionMinAmount !== null && amount < Number(s.conditionMinAmount)) return false;
+    if (s.conditionMaxAmount !== null && amount > Number(s.conditionMaxAmount)) return false;
+    return true;
+  });
+
+  // Relier le dossier à la politique
+  await prisma.creditApplication.update({
+    where: { id: applicationId },
+    data: { policyId: policy.id },
+  });
+
+  // Relier les WorkflowStep existants aux CreditPolicyStep correspondants (par stepName)
+  for (const ps of applicableSteps) {
+    await prisma.workflowStep.updateMany({
+      where: { applicationId, stepName: ps.stepName, policyStepId: null },
+      data: { policyStepId: ps.id },
+    });
+  }
+
+  res.json({
+    success: true,
+    message: `Dossier ${app.applicationNumber} lié à la politique "${policy.name}"`,
+    data: { policyId: policy.id, policyName: policy.name, linkedSteps: applicableSteps.length },
+  });
+}));
 
 export default router;
