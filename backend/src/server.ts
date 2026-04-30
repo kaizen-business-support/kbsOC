@@ -46,6 +46,7 @@ import platformRoutes from './routes/platform';
 import codirRoutes from './routes/codir';
 import { startScheduler } from './services/schedulerService';
 import { expireStaleActiveDelegations } from './services/delegationService';
+import { syncAllRolePermissionsOnStartup } from './services/moduleProfileService';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -297,6 +298,12 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   expireStaleActiveDelegations()
     .then(n => { if (n > 0) console.log(`[delegation] ${n} délégation(s) expirée(s) au démarrage`); })
     .catch(err => console.error('[delegation] expiration error:', err));
+
+  // Resynchroniser les permissions de tous les rôles — garantit la cohérence
+  // après toute modification des profils par défaut dans le code
+  syncAllRolePermissionsOnStartup()
+    .then(() => console.log('[permissions] Permissions rôles synchronisées'))
+    .catch(err => console.error('[permissions] Erreur sync permissions:', err));
 });
 
 // Ne pas tuer le processus sur une promesse non gérée — loguer seulement.

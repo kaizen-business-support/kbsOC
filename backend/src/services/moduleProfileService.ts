@@ -173,6 +173,29 @@ export async function syncPermissionsForRole(
   await invalidateRoleProfileCache(companyId, role, prismaClient);
 }
 
+export async function syncAllRolePermissionsOnStartup(): Promise<void> {
+  try {
+    const companies = await prisma.company.findMany({ select: { id: true } });
+    for (const company of companies) {
+      for (const [roleKey, def] of Object.entries(DEFAULT_ROLE_PROFILES)) {
+        const profile = await prisma.moduleProfile.findUnique({
+          where: { companyId_role: { companyId: company.id, role: roleKey as any } },
+        });
+        const dbModules = (profile?.modules as unknown as Record<string, MappingModuleAccess> | null) ?? null;
+        const freshDefaults = def.modules as Record<string, MappingModuleAccess>;
+        const backfilled: Record<string, MappingModuleAccess> = dbModules
+          ? { ...freshDefaults, ...dbModules }
+          : freshDefaults;
+        const defaultScope = (profile?.defaultScope ?? def.defaultScope) as string;
+        await syncPermissionsForRole(roleKey, backfilled, defaultScope, company.id, prisma);
+      }
+    }
+  } catch (err) {
+    // Non-fatal at startup — log and continue
+    logger.warn('syncAllRolePermissionsOnStartup failed:', err);
+  }
+}
+
 export async function seedDefaultProfiles(companyId: string, createdById: string) {
   for (const [roleKey, def] of Object.entries(DEFAULT_ROLE_PROFILES)) {
     await prisma.moduleProfile.upsert({
