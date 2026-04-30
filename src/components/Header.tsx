@@ -99,6 +99,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onPage
     'approvals':         'Mes Approbations',
     'contract-templates': 'Modèles de contrats',
     'legal-step':         'Étape juridique',
+    'codir-dashboard':    'Tableau de Bord CODIR',
   };
 
   const handleUserMenuClick = (event: React.MouseEvent<HTMLElement>) => {
