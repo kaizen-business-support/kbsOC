@@ -104,8 +104,11 @@ export async function getMergedProfile(userId: string, companyId: string) {
   }
 
   const baseModules = roleProfile.modules as unknown as Record<string, ModuleAccess>;
+  // Remplir les modules ajoutés après création du profil — les valeurs DB ont priorité
+  const freshDefaults = (DEFAULT_ROLE_PROFILES[roleKey]?.modules ?? {}) as Record<string, ModuleAccess>;
+  const baseWithDefaults = { ...freshDefaults, ...baseModules };
   const overrideModules = (userOverride?.modules as unknown as Record<string, ModuleAccess> | null) ?? null;
-  const finalModules = mergeModuleProfile(baseModules, overrideModules);
+  const finalModules = mergeModuleProfile(baseWithDefaults, overrideModules);
 
   return {
     role: roleKey,

@@ -34,6 +34,7 @@ const ALL_MODULES: Record<string, ModuleAccess> = {
   'bank-holidays-admin': { visible: true, actions: ['create','edit','delete'], sections: [] },
   'notifications-config':{ visible: true, actions: ['edit'], sections: [] },
   announcements:         { visible: true, actions: ['create','edit','delete'], sections: [] },
+  'codir-dashboard':     { visible: true, actions: [], sections: [] },
 };
 
 function none(overrides: Partial<Record<string, Partial<ModuleAccess>>> = {}): Record<string, ModuleAccess> {
