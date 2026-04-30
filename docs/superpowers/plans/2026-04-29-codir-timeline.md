@@ -64,13 +64,16 @@ cd backend && npx prisma generate
 
 Attendu : `✔ Generated Prisma Client`
 
-- [ ] **Step 4: Appliquer la migration**
+- [ ] **Step 4: Appliquer la migration (environnement de développement)**
+
+> `prisma migrate deploy` est réservé à la production. En dev, appliquer directement le SQL puis marquer la migration comme appliquée :
 
 ```bash
-cd backend && npx prisma migrate deploy
+cd backend && npx prisma db execute --file prisma/migrations/20260430000000_add_client_branch/migration.sql --schema prisma/schema.prisma
+cd backend && npx prisma migrate resolve --applied 20260430000000_add_client_branch
 ```
 
-Attendu : `1 migration applied successfully`
+Attendu : aucune erreur — la colonne `branch` existe maintenant dans `clients`.
 
 - [ ] **Step 5: Vérifier TypeScript backend**
 
@@ -99,9 +102,11 @@ git commit -m "feat(db): ajouter champ branch sur les clients"
 Lire `src/types/index.ts`. Trouver l'interface `PendingDecisionItem`. Ajouter après `lastRelancedAt`:
 
 ```ts
-  clientBranch: string | null;
-  creatorBranch: string | null;
+  clientBranch?: string | null;
+  creatorBranch?: string | null;
 ```
+
+> Ces champs sont **optionnels** (`?`) pour éviter une rupture de contrat TypeScript entre le moment où les types sont mis à jour (Task 2) et celui où le backend les retourne (Task 3). Une fois Task 3 déployé, les deux champs seront toujours présents — mais ils resteront optionnels dans le type car cela n'affecte pas la sécurité du filtre (la vérification `=== agenceValue` retourne `false` si le champ est `undefined`, comportement correct).
 
 - [ ] **Step 2: Ajouter les 3 nouveaux interfaces en bas du fichier**
 
@@ -165,22 +170,24 @@ git commit -m "feat(types): ajouter TimelineStep, ApplicationTimeline, CodirTime
 
 Lire `backend/src/routes/codir.ts`. Trouver le handler `GET /dashboard`.
 
-Dans le `include` de `prisma.workflowStep.findMany`, ajouter `creator` sur l'application :
+La requête existante est un `prisma.workflowStep.findMany` avec `application.include.client`. Il faut y ajouter `creator` dans le même `application.include` :
 
 ```ts
 application: {
   include: {
-    client: { select: { name: true } },   // déjà présent — companyName dans le vrai schéma
-    creator: { select: { branch: true } }, // ajouter
+    client: { select: { name: true } },    // déjà présent — companyName dans le vrai schéma
+    creator: { select: { branch: true } }, // ajouter ici
   }
 },
 ```
+
+> Note : le `creator` est nested sous `application`, pas au niveau de `workflowStep`. Le type retourné par Prisma pour cette include combinée n'inclut pas `creator` dans le type statique — utiliser `(step.application as any).creator` pour éviter l'erreur TypeScript (pattern déjà en place dans ce fichier via `as any` pour d'autres champs).
 
 Dans le `items.map`, ajouter les deux champs :
 
 ```ts
     clientBranch: (step.application.client as any)?.branch ?? null,
-    creatorBranch: (step.application.creator as any)?.branch ?? null,
+    creatorBranch: (step.application as any).creator?.branch ?? null,
 ```
 
 - [ ] **Step 2: Ajouter le endpoint `GET /timeline`**
@@ -206,6 +213,7 @@ router.get('/timeline', authorize(['codir_dashboard']), asyncHandler(async (req:
           steps: {
             orderBy: { order: 'asc' },
             select: { id: true, stepName: true, stepLabel: true, order: true, maxDurationHours: true },
+            // stepRoles intentionnellement omis — non utilisé par buildStep
           },
         },
       },
@@ -293,7 +301,8 @@ function buildStep(ws: any | null, ps: any | null, order: number, now: number) {
       durationHours = (ws.completedAt.getTime() - ws.startedAt.getTime()) / 3_600_000;
     }
   } else {
-    // IN_REVIEW ou PENDING actif
+    // WorkflowStep existe mais pas encore complété → étape active, afficher comme IN_PROGRESS
+    // Ne pas confondre avec le display 'PENDING' qui signifie qu'aucun WorkflowStep n'existe du tout
     status = 'IN_PROGRESS';
     const from = (ws.startedAt ?? ws.createdAt).getTime();
     durationHours = (now - from) / 3_600_000;
@@ -581,7 +590,8 @@ export const ApplicationTimelineCard: React.FC<Props> = ({ application }) => {
             <Box sx={{ display: 'flex', alignItems: 'flex-start', minWidth: steps.length * 140 }}>
               {steps.map((step, idx) => (
                 <React.Fragment key={step.stepName}>
-                  <Grow in timeout={300 + idx * 80}>
+                  {/* timeout = durée de l'animation ; transitionDelay = délai avant départ (effet séquentiel) */}
+                  <Grow in timeout={300} style={{ transitionDelay: `${idx * 80}ms` }}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 120, px: 0.5 }}>
                       {/* Icône + connecteur horizontal */}
                       <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
@@ -959,7 +969,14 @@ Démarrer le backend et le frontend en dev, se connecter avec un rôle `codir_da
 - [ ] Changer de type d'agence → dropdown revient à "Toutes les agences"
 - [ ] Refresh countdown → auto-refresh toutes les 60s sans loader visible
 
-- [ ] **Step 6: Commit final si ajustements**
+- [ ] **Step 6: Tester l'état dégradé du filtre agence**
+
+Simuler un échec du chargement timeline (couper le backend momentanément) :
+- Le filtre agence doit afficher uniquement "Toutes les agences" sans erreur visible dans le dropdown
+- L'`Alert` d'erreur en haut de page doit s'afficher
+- L'onglet Tableau doit rester fonctionnel si `/dashboard` a répondu correctement
+
+- [ ] **Step 7: Commit final si ajustements**
 
 ```bash
 git add -p && git commit -m "fix(codir): ajustements suite aux tests timeline"
