@@ -380,75 +380,15 @@ router.put('/:id', async (req: Request, res: Response) => {
       }
     });
 
-    // If analyst scores are provided, complete the credit_analysis workflow step
+    // Si des scores d'analyste sont fournis, compléter l'étape credit_analysis
+    // en cours, puis laisser la politique piloter la suite (pas de step hardcodé).
     if (analystScore !== undefined || financialScore !== undefined || overallScore !== undefined) {
       const now = new Date();
 
-      // Define the workflow step order
-      const WORKFLOW_STEP_ORDER = [
-        { name: 'application_created', role: 'CHARGE_AFFAIRES' },
-        { name: 'credit_analysis', role: 'ANALYSTE_RISQUES' }
-      ];
-
-      // Get existing workflow steps
-      const existingSteps = new Map(
-        application.workflowSteps.map(step => [step.stepName, step])
+      // Trouver l'étape credit_analysis active (PENDING ou IN_REVIEW)
+      const creditAnalysisStep = application.workflowSteps.find(
+        s => s.stepName === 'credit_analysis' && s.status !== 'COMPLETED'
       );
-
-      // Find the credit_analysis step index
-      const creditAnalysisIndex = WORKFLOW_STEP_ORDER.findIndex(s => s.name === 'credit_analysis');
-
-      // Create and complete all prior steps if they don't exist
-      for (let i = 0; i < creditAnalysisIndex; i++) {
-        const stepConfig = WORKFLOW_STEP_ORDER[i];
-
-        if (!existingSteps.has(stepConfig.name)) {
-          console.log(`📝 Creating missing workflow step: ${stepConfig.name}`);
-          await prisma.workflowStep.create({
-            data: {
-              applicationId: application.id,
-              stepName: stepConfig.name,
-              role: stepConfig.role as any,
-              assigneeId: application.createdBy,
-              status: 'COMPLETED',
-              completedAt: now
-            }
-          });
-        } else {
-          // Mark existing prior steps as completed if not already
-          const existingStep = existingSteps.get(stepConfig.name)!;
-          if (existingStep.status !== 'COMPLETED') {
-            console.log(`✅ Completing prior workflow step: ${stepConfig.name}`);
-            await prisma.workflowStep.update({
-              where: { id: existingStep.id },
-              data: {
-                status: 'COMPLETED',
-                completedAt: now
-              }
-            });
-          }
-        }
-      }
-
-      // Trouver OU créer l'étape credit_analysis, puis la compléter
-      let creditAnalysisStep = application.workflowSteps.find(
-        step => step.stepName === 'credit_analysis' && step.status !== 'COMPLETED'
-      );
-
-      // Si elle n'existe pas encore, la créer maintenant (cas sans analyste assigné)
-      if (!creditAnalysisStep && !existingSteps.has('credit_analysis')) {
-        console.log('📝 Creating missing credit_analysis step on-the-fly');
-        const created = await prisma.workflowStep.create({
-          data: {
-            applicationId: application.id,
-            stepName: 'credit_analysis',
-            role: 'ANALYSTE_RISQUES',
-            assigneeId: application.createdBy,
-            status: 'PENDING'
-          }
-        });
-        creditAnalysisStep = created as any;
-      }
 
       if (creditAnalysisStep) {
         await prisma.workflowStep.update({
@@ -456,36 +396,19 @@ router.put('/:id', async (req: Request, res: Response) => {
           data: {
             status: 'COMPLETED',
             completedAt: now,
-            comments: 'Analyse de crédit complétée avec succès'
-          }
+            comments: 'Analyse de crédit complétée avec succès',
+          },
         });
-        console.log('✅ Credit analysis workflow step marked as COMPLETED');
+      }
 
-        // Vérifier que branch_manager_review n'existe pas déjà
-        const alreadyHasBranchStep = application.workflowSteps.some(
-          s => s.stepName === 'branch_manager_review'
-        );
-
-        if (!alreadyHasBranchStep) {
-          const branchManagerLimit = await prisma.approvalLimit.findFirst({
-            where: { role: 'RESPONSABLE_ENGAGEMENTS', isActive: true }
-          });
-
-          if (branchManagerLimit) {
-            await prisma.workflowStep.create({
-              data: {
-                applicationId: application.id,
-                stepName: 'branch_manager_review',
-                role: 'RESPONSABLE_ENGAGEMENTS' as any,
-                status: 'PENDING',
-                createdAt: now
-              }
-            });
-            console.log('✅ Created branch_manager_review workflow step');
-          } else {
-            console.warn('⚠️ No branch manager approval limit found');
-          }
-        }
+      // Si le dossier n'a pas encore d'étapes de politique créées, les générer maintenant.
+      // Cela rattrape les dossiers soumis avant qu'une politique soit active.
+      const app = await prisma.creditApplication.findUnique({
+        where: { id },
+        select: { policyId: true, creditTypeId: true, amount: true },
+      });
+      if (!app?.policyId && app?.creditTypeId) {
+        await createWorkflowStepsForApplication(id, app.creditTypeId, Number(app.amount));
       }
     }
 
