@@ -249,6 +249,10 @@ model WorkflowStep {
   isOverdue       Boolean           @default(false) @map("is_overdue")
   overdueAt       DateTime?         @map("overdue_at")       // Quand le délai max a été dépassé
   notifiedAt      DateTime?         @map("notified_at")      // Quand la notif a été envoyée
+  isEscalated     Boolean           @default(false) @map("is_escalated")
+  escalatedAt     DateTime?         @map("escalated_at")
+  escalatedById   String?           @map("escalated_by_id")
+  lastRelancedAt  DateTime?         @map("last_relanced_at")
   createdAt       DateTime          @default(now()) @map("created_at")
   application     CreditApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   assignee        User?             @relation("UserAssignedSteps", fields: [assigneeId], references: [id])

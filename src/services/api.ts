@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import { AnalysisData, FileUploadResult, ApiResponse, ApprovalItem } from '../types';
+import { AnalysisData, FileUploadResult, ApiResponse, ApprovalItem, CodirDashboardData } from '../types';
 
 // API Configuration - Uses same origin as browser (proxied via nginx on port 80)
 const getApiBaseUrl = (): string => {
@@ -209,6 +209,53 @@ export class ApiService {
       return { success: true, data: { count: response.data.count ?? 0 } };
     } catch (error: any) {
       return { success: false, error: error.response?.data?.error || 'Erreur comptage' };
+    }
+  }
+
+  // ── CODIR Dashboard ───────────────────────────────────────────────────────
+
+  static async getCodirDashboard(): Promise<ApiResponse<CodirDashboardData>> {
+    try {
+      const response = await api.get('/codir/dashboard');
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur chargement dashboard CODIR' };
+    }
+  }
+
+  static async codirRelance(stepId: string, message: string): Promise<ApiResponse<void>> {
+    try {
+      await api.post(`/codir/relance/${stepId}`, { message });
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur relance' };
+    }
+  }
+
+  static async codirEscalade(stepId: string): Promise<ApiResponse<void>> {
+    try {
+      await api.post(`/codir/escalade/${stepId}`);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur escalade' };
+    }
+  }
+
+  static async codirReassign(stepId: string, newAssigneeId: string, comment?: string): Promise<ApiResponse<void>> {
+    try {
+      await api.put(`/codir/reassign/${stepId}`, { newAssigneeId, comment });
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur réaffectation' };
+    }
+  }
+
+  static async codirGetAgents(role: string): Promise<ApiResponse<Array<{ id: string; name: string; role: string }>>> {
+    try {
+      const response = await api.get(`/codir/agents/${role}`);
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur chargement agents' };
     }
   }
 

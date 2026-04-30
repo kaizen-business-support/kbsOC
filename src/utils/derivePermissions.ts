@@ -62,6 +62,10 @@ export const MODULE_ACTION_TO_PERMISSIONS: Record<string, string[]> = {
   'contract-templates.actions.upload': ['manage_contract_templates', 'generate_contracts'],
   'contract-templates.actions.edit':   ['manage_contract_templates', 'generate_contracts'],
   'contract-templates.actions.delete': ['manage_contract_templates'],
+  'codir-dashboard.visible':           ['codir_dashboard'],
+  'codir-dashboard.actions.relance':   ['codir_relance'],
+  'codir-dashboard.actions.reassign':  ['codir_reassign'],
+  'codir-dashboard.actions.escalade':  ['codir_escalade'],
 };
 
 export const SCOPE_TO_PERMISSIONS: Record<string, string[]> = {

@@ -24,6 +24,10 @@ export const MODULE_ACTION_TO_PERMISSIONS: Record<string, string[]> = {
   'announcements.visible':         ['manage_announcements'],
   'contract-templates.visible':    ['view_contracts'],
   'legal-step.visible':            ['view_contracts'],
+  'codir-dashboard.visible':           ['codir_dashboard'],
+  'codir-dashboard.actions.relance':   ['codir_relance'],
+  'codir-dashboard.actions.reassign':  ['codir_reassign'],
+  'codir-dashboard.actions.escalade':  ['codir_escalade'],
 
   // ── Actions clients ───────────────────────────────────────────────────
   'clients.actions.create':        ['create_client'],
