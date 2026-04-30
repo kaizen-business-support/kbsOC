@@ -20,13 +20,14 @@ export interface User {
 }
 
 export type UserRole =
-  | 'account_manager'     // Chargé d'Affaires
-  | 'credit_analyst'      // Analyste Crédit
-  | 'analyst_supervisor'  // Responsable Analyste
-  | 'branch_manager'      // Directeur d'Agence
-  | 'credit_committee'    // Membre Comité de Crédit
-  | 'management'          // Direction Générale
-  | 'admin';              // Administrateur Système
+  // Anciennes valeurs DB @map (legacy — conservées pour compatibilité)
+  | 'account_manager' | 'credit_analyst' | 'analyst_supervisor'
+  | 'branch_manager' | 'credit_committee' | 'management' | 'admin'
+  | 'super_admin' | 'back_office' | 'direction_juridique'
+  // Nouvelles clés Prisma TypeScript (valeur réelle retournée par l'API)
+  | 'CHARGE_AFFAIRES' | 'ANALYSTE_RISQUES' | 'RESPONSABLE_RISQUES'
+  | 'RESPONSABLE_ENGAGEMENTS' | 'COMITE_CREDIT' | 'DIRECTION_GENERALE'
+  | 'ADMIN' | 'SUPER_ADMIN' | 'BACK_OFFICE' | 'DIRECTION_JURIDIQUE';
 
 export interface UserState {
   currentUser: User | null;
@@ -287,20 +288,27 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   };
 
   const isRole = (role: UserRole): boolean => {
-    return state.currentUser?.role === role;
+    const current = state.currentUser?.role;
+    if (!current) return false;
+    // Compare insensible à la casse pour gérer les deux formats de rôle
+    // (ancien @map lowercase: 'admin', nouveau Prisma key uppercase: 'ADMIN')
+    return current.toLowerCase() === role.toLowerCase();
   };
 
   const getRoleLabel = (role: UserRole): string => {
-    const roleLabels: Record<UserRole, string> = {
-      account_manager: 'Chargé d\'Affaires',
-      credit_analyst: 'Analyste Crédit',
-      analyst_supervisor: 'Responsable Analyste',
-      branch_manager: 'Directeur d\'Agence',
-      credit_committee: 'Comité de Crédit',
-      management: 'Direction Générale',
-      admin: 'Administrateur'
+    const roleLabels: Partial<Record<UserRole, string>> = {
+      account_manager: 'Chargé d\'Affaires', CHARGE_AFFAIRES: 'Chargé d\'Affaires',
+      credit_analyst: 'Analyste Crédit', ANALYSTE_RISQUES: 'Analyste Risques',
+      analyst_supervisor: 'Responsable Risques', RESPONSABLE_RISQUES: 'Responsable Risques',
+      branch_manager: 'Responsable Engagements', RESPONSABLE_ENGAGEMENTS: 'Responsable Engagements',
+      credit_committee: 'Comité de Crédit', COMITE_CREDIT: 'Comité de Crédit',
+      management: 'Direction Générale', DIRECTION_GENERALE: 'Direction Générale',
+      admin: 'Administrateur', ADMIN: 'Administrateur',
+      super_admin: 'Super Administrateur', SUPER_ADMIN: 'Super Administrateur',
+      back_office: 'Back Office', BACK_OFFICE: 'Back Office',
+      direction_juridique: 'Direction Juridique', DIRECTION_JURIDIQUE: 'Direction Juridique',
     };
-    return roleLabels[role];
+    return roleLabels[role] ?? role;
   };
 
   const clearError = () => {

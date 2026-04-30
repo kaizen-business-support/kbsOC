@@ -606,8 +606,8 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
   const handleAuditFilterChange = (field: string, value: string) => setAuditFilters(prev => ({ ...prev, [field]: value }));
 
   // Check if user has access to user management
-  const canViewUserManagement = isRole('admin') || isRole('management');
-  const canEditUserManagement = isRole('admin');
+  const canViewUserManagement = isRole('admin') || isRole('super_admin') || isRole('management');
+  const canEditUserManagement = isRole('admin') || isRole('super_admin');
 
   useEffect(() => {
     if (!canViewUserManagement) return;
