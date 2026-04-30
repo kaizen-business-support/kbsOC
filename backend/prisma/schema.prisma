@@ -126,6 +126,7 @@ model Announcement {
 model Client {
   id              String              @id @default(cuid())
   companyName     String              @map("company_name")
+  branch          String?             @map("branch")
   rccm            String?
   ninea           String?
   cofi            String?
