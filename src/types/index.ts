@@ -111,7 +111,7 @@ export interface FileUploadResult {
 }
 
 // Navigation Types
-export type PageType = 'home' | 'configuration' | 'data-input' | 'upload' | 'manual-input' | 'analysis' | 'reports' | 'settings' | 'documentation' | 'clients' | 'credit-scoring' | 'credit-application' | 'workflow' | 'analytics' | 'bank-holidays-admin' | 'user-management' | 'approval-limits' | 'credit-simulation' | 'credit-types' | 'profile' | 'backup' | 'announcements' | 'notifications-config' | 'dispatching' | 'credit-policy' | 'workflow-builder' | 'company-settings' | 'platform-admin' | 'raci-matrix' | 'approvals' | 'contract-templates' | 'legal-step';
+export type PageType = 'home' | 'configuration' | 'data-input' | 'upload' | 'manual-input' | 'analysis' | 'reports' | 'settings' | 'documentation' | 'clients' | 'credit-scoring' | 'credit-application' | 'workflow' | 'analytics' | 'bank-holidays-admin' | 'user-management' | 'approval-limits' | 'credit-simulation' | 'credit-types' | 'profile' | 'backup' | 'announcements' | 'notifications-config' | 'dispatching' | 'credit-policy' | 'workflow-builder' | 'company-settings' | 'platform-admin' | 'raci-matrix' | 'approvals' | 'contract-templates' | 'legal-step' | 'codir-dashboard';
 
 // Report Types
 export interface ReportData {
@@ -350,3 +350,73 @@ export const USER_ROLE_LABELS: Record<UserRole, string> = {
   BACK_OFFICE:             'Back Office',
   DIRECTION_JURIDIQUE:     'Direction Juridique',
 };
+
+// CODIR Dashboard Types
+export interface StepKpi {
+  stepName: string;
+  stepLabel: string;
+  role: string;
+  count: number;
+  overdueCount: number;
+  avgWaitHours: number;
+}
+
+export interface PendingDecisionItem {
+  stepId: string;
+  applicationId: string;
+  applicationNumber: string;
+  clientName: string;
+  amount: number;
+  currency: string;
+  stepName: string;
+  stepLabel: string;
+  assignedRole: string;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  createdAt: string;
+  deadline: string | null;
+  isOverdue: boolean;
+  daysWaiting: number;
+  isEscalated: boolean;
+  escalatedAt: string | null;
+  lastRelancedAt: string | null;
+  clientBranch?: string | null;
+  creatorBranch?: string | null;
+}
+
+export interface CodirDashboardData {
+  kpis: StepKpi[];
+  items: PendingDecisionItem[];
+}
+
+export interface TimelineStep {
+  stepName: string;
+  stepLabel: string;
+  order: number;
+  status: 'COMPLETED' | 'IN_PROGRESS' | 'PENDING';
+  agentName: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  durationHours: number | null;
+  isSlaBroken: boolean;
+}
+
+export interface ApplicationTimeline {
+  applicationId: string;
+  applicationNumber: string;
+  clientName: string;
+  clientBranch: string | null;
+  amount: number;
+  currency: string;
+  creatorName: string;
+  creatorBranch: string | null;
+  isOverdue: boolean;
+  daysWaiting: number;
+  isEscalated: boolean;
+  steps: TimelineStep[];
+}
+
+export interface CodirTimelineData {
+  agences: { client: string[]; ca: string[] };
+  applications: ApplicationTimeline[];
+}

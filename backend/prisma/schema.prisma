@@ -126,6 +126,7 @@ model Announcement {
 model Client {
   id              String              @id @default(cuid())
   companyName     String              @map("company_name")
+  branch          String?             @map("branch")
   rccm            String?
   ninea           String?
   cofi            String?
@@ -249,6 +250,10 @@ model WorkflowStep {
   isOverdue       Boolean           @default(false) @map("is_overdue")
   overdueAt       DateTime?         @map("overdue_at")       // Quand le délai max a été dépassé
   notifiedAt      DateTime?         @map("notified_at")      // Quand la notif a été envoyée
+  isEscalated     Boolean           @default(false) @map("is_escalated")
+  escalatedAt     DateTime?         @map("escalated_at")
+  escalatedById   String?           @map("escalated_by_id")
+  lastRelancedAt  DateTime?         @map("last_relanced_at")
   createdAt       DateTime          @default(now()) @map("created_at")
   application     CreditApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   assignee        User?             @relation("UserAssignedSteps", fields: [assigneeId], references: [id])
@@ -518,6 +523,7 @@ model RolePermission {
   description       String?
   permissions       Json     // Array of permission strings
   twoFactorRequired Boolean  @default(false) @map("two_factor_required") // admin forces 2FA for all users of this role
+  isReadOnly        Boolean  @default(false) @map("is_read_only")         // lecture seule : aucune action d'écriture autorisée
   isActive          Boolean  @default(true) @map("is_active")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")

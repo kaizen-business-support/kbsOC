@@ -13,6 +13,35 @@ const GROUP_LABELS: Record<string, string> = {
   meta: 'Méta',
 };
 
+const FIELD_LABELS: Record<string, string> = {
+  // client
+  companyName: 'Raison sociale',
+  rccm: 'RCCM',
+  ninea: 'NINEA',
+  legalForm: 'Forme juridique',
+  headquarters: 'Siège social',
+  contactPerson: 'Personne de contact',
+  phone: 'Téléphone',
+  email: 'E-mail',
+  // application
+  applicationNumber: 'Numéro de dossier',
+  amount: 'Montant',
+  amountInWords: 'Montant en lettres',
+  currency: 'Devise',
+  purpose: 'Objet du crédit',
+  durationMonths: 'Durée (mois)',
+  proposedRate: 'Taux proposé',
+  collateralType: 'Type de garantie',
+  collateralValue: 'Valeur de la garantie',
+  repaymentSchedule: 'Plan de remboursement',
+  // bank
+  name: 'Nom de la banque',
+  legalRepresentative: 'Représentant légal',
+  // meta
+  generatedAt: 'Date de génération',
+  creditType: 'Type de crédit',
+};
+
 export function VariableCatalogPanel() {
   const [groups, setGroups] = useState<Record<string, string[]>>({});
   const [snack, setSnack] = useState<string | null>(null);
@@ -51,9 +80,9 @@ export function VariableCatalogPanel() {
               <Tooltip key={f} title={`{{${g}.${f}}}`}>
                 <Chip
                   size="small"
-                  label={f}
+                  label={FIELD_LABELS[f] ?? f}
                   onClick={() => copy(g, f)}
-                  sx={{ cursor: 'pointer', fontFamily: 'monospace', fontSize: 11 }}
+                  sx={{ cursor: 'pointer', fontSize: 11 }}
                 />
               </Tooltip>
             ))}

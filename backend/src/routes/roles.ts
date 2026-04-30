@@ -18,30 +18,11 @@ const router = express.Router();
 
 // Middleware to check admin permission
 const requireAdmin = (req: Request, res: Response, next: express.NextFunction) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({
-      success: false,
-      error: 'Authentication required'
-    });
+  const role = req.user?.role;
+  if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
+    return res.status(403).json({ success: false, error: 'Admin access required' });
   }
-
-  const token = authHeader.substring(7);
-  try {
-    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-    if (payload.role !== 'ADMIN') {
-      return res.status(403).json({
-        success: false,
-        error: 'Admin access required'
-      });
-    }
-    next();
-  } catch (error) {
-    return res.status(401).json({
-      success: false,
-      error: 'Invalid token'
-    });
-  }
+  next();
 };
 
 // GET /api/roles - Get all roles with their permissions
@@ -62,7 +43,8 @@ router.get('/',
       label: role.label,
       description: role.description,
       permissions: role.permissions as string[],
-      twoFactorRequired: (role as any).twoFactorRequired ?? false,
+      twoFactorRequired: role.twoFactorRequired ?? false,
+      isReadOnly: role.isReadOnly ?? false,
       userCount: countByRole.get(role.role as any) ?? 0,
       isActive: role.isActive,
       createdAt: role.createdAt.toISOString(),
@@ -118,6 +100,25 @@ router.put('/:role',
       message: 'Cette route est dépréciée. Utilisez PUT /api/module-profiles/:role pour modifier les permissions.',
     });
   }
+);
+
+// PATCH /api/roles/:role/readonly - Toggle lecture seule pour un rôle
+router.patch('/:role/readonly',
+  requireAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { role } = req.params;
+    const { isReadOnly } = req.body;
+    if (typeof isReadOnly !== 'boolean') {
+      throw new AppError('isReadOnly (boolean) requis', 400, 'MISSING_FIELDS');
+    }
+
+    const updated = await prisma.rolePermission.update({
+      where: { role },
+      data: { isReadOnly },
+    });
+
+    res.json({ success: true, data: { role: updated.role, isReadOnly: updated.isReadOnly } });
+  })
 );
 
 // DELETE /api/roles/:id - Delete role (admin only)

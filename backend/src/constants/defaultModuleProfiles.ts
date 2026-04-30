@@ -34,6 +34,7 @@ const ALL_MODULES: Record<string, ModuleAccess> = {
   'bank-holidays-admin': { visible: true, actions: ['create','edit','delete'], sections: [] },
   'notifications-config':{ visible: true, actions: ['edit'], sections: [] },
   announcements:         { visible: true, actions: ['create','edit','delete'], sections: [] },
+  'codir-dashboard':     { visible: true, actions: [], sections: [] },
 };
 
 function none(overrides: Partial<Record<string, Partial<ModuleAccess>>> = {}): Record<string, ModuleAccess> {
@@ -138,11 +139,13 @@ export const DEFAULT_ROLE_PROFILES: Record<string, ModuleProfileData> = {
     defaultScope: 'ALL_BRANCHES',
     allowedBranches: [],
     modules: none({
-      home:                 {},
-      clients:              { actions: ['export'] },
-      'legal-step':         { actions: ['validate','reject'] },
-      'contract-templates': { actions: ['upload','edit','delete'] },
-      approvals:            { actions: ['comment'], sections: ['history'] },
+      home:                  {},
+      'credit-application':  {},
+      clients:               { actions: ['export'] },
+      workflow:              {},
+      'legal-step':          { actions: ['validate','reject'] },
+      'contract-templates':  { actions: ['upload','edit','delete'] },
+      approvals:             { actions: ['comment'], sections: ['history'] },
     }),
   },
   ADMIN: {

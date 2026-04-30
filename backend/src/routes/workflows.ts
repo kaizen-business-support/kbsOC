@@ -80,7 +80,7 @@ router.get('/', async (req: Request, res: Response) => {
     // Role-based filtering: Show only applications pending review for the user's role
     let filteredWorkflows = workflows;
 
-    if (userRole && userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN') {
+    if (userRole && userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN' && userRole !== 'DIRECTION_GENERALE' && userRole !== 'DIRECTION_JURIDIQUE') {
       const role = userRole;
 
       filteredWorkflows = workflows.filter(workflow => {

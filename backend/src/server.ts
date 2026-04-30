@@ -43,8 +43,10 @@ import moduleProfileRoutes from './routes/module-profiles';
 import scopeDelegateRoutes from './routes/scope-delegates';
 import companyRoutes from './routes/companies';
 import platformRoutes from './routes/platform';
+import codirRoutes from './routes/codir';
 import { startScheduler } from './services/schedulerService';
 import { expireStaleActiveDelegations } from './services/delegationService';
+import { syncAllRolePermissionsOnStartup } from './services/moduleProfileService';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -219,6 +221,7 @@ app.use('/api/credit-types', authenticate, creditTypeRoutes);
 app.use('/api/roles', authenticate, roleRoutes);
 app.use('/api/module-profiles', authenticate, moduleProfileRoutes);
 app.use('/api/scope-delegates', authenticate, scopeDelegateRoutes);
+app.use('/api/codir', codirRoutes);
 app.use('/api/auth/2fa', authenticate, twoFactorRoutes);
 app.use('/api/otp', authenticate, otpRoutes);
 app.use('/api/backup', authenticate, backupRoutes);
@@ -295,6 +298,12 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   expireStaleActiveDelegations()
     .then(n => { if (n > 0) console.log(`[delegation] ${n} délégation(s) expirée(s) au démarrage`); })
     .catch(err => console.error('[delegation] expiration error:', err));
+
+  // Resynchroniser les permissions de tous les rôles — garantit la cohérence
+  // après toute modification des profils par défaut dans le code
+  syncAllRolePermissionsOnStartup()
+    .then(() => console.log('[permissions] Permissions rôles synchronisées'))
+    .catch(err => console.error('[permissions] Erreur sync permissions:', err));
 });
 
 // Ne pas tuer le processus sur une promesse non gérée — loguer seulement.
