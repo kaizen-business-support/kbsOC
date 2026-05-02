@@ -173,12 +173,15 @@ router.get('/pending-approvals', async (req: Request, res: Response) => {
 
     const steps = await prisma.workflowStep.findMany({
       where: {
-        status: 'PENDING',
         completedAt: null,
         application: { companyId: req.companyId },
         OR: [
-          { role: userRole },
-          { assigneeId: userId },
+          // Étapes PENDING pour mon rôle (non assignées ou assignées à moi)
+          { status: 'PENDING', role: userRole },
+          // Étapes PENDING directement assignées à moi
+          { status: 'PENDING', assigneeId: userId },
+          // Étapes IN_REVIEW assignées à moi (ex: après REQUEST_INFO)
+          { status: 'IN_REVIEW', assigneeId: userId },
         ],
       },
       include: {
@@ -246,12 +249,12 @@ router.get('/pending-approvals/count', async (req: Request, res: Response) => {
 
     const count = await prisma.workflowStep.count({
       where: {
-        status: 'PENDING',
         completedAt: null,
         application: { companyId: req.companyId },
         OR: [
-          { role: userRole },
-          { assigneeId: userId },
+          { status: 'PENDING', role: userRole },
+          { status: 'PENDING', assigneeId: userId },
+          { status: 'IN_REVIEW', assigneeId: userId },
         ],
       },
     });
@@ -355,7 +358,7 @@ router.post('/:applicationId/start-step/:stepId', async (req: Request, res: Resp
 router.post('/:applicationId/approve', async (req: Request, res: Response) => {
   try {
     const { applicationId } = req.params;
-    const { userId, decision, comments, stepName } = req.body;
+    const { userId, decision, comments, stepId, stepName } = req.body;
 
     if (!userId || !decision) {
       return res.status(400).json({
@@ -403,15 +406,13 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       });
     }
 
-    // Trouver l'étape courante :
-    // 1. Si stepName fourni par le frontend → chercher cette étape précise (PENDING ou IN_REVIEW)
-    // 2. Sinon → première étape non complétée (comportement historique)
-    // Cela évite l'erreur "rôle requis X, rôle actuel Y" quand plusieurs étapes
-    // sont PENDING simultanément (workflows legacy ou parallèles).
+    // Trouver l'étape courante — priorité : stepId (exact) > stepName > première non complétée
     const pendingSteps = application.workflowSteps.filter(s => !s.completedAt);
-    const currentStep = stepName
-      ? (pendingSteps.find(s => s.stepName === stepName) ?? pendingSteps[0])
-      : pendingSteps[0];
+    const currentStep = stepId
+      ? (pendingSteps.find(s => s.id === stepId) ?? pendingSteps.find(s => s.stepName === stepName) ?? pendingSteps[0])
+      : stepName
+        ? (pendingSteps.find(s => s.stepName === stepName) ?? pendingSteps[0])
+        : pendingSteps[0];
 
     if (!currentStep) {
       return res.status(400).json({

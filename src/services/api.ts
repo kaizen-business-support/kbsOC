@@ -184,7 +184,7 @@ export class ApiService {
   // ── Workflow approval ───────────────────────────────────────────────────────
   static async approveWorkflow(
     applicationId: string,
-    payload: { userId: string; decision: 'APPROVED' | 'REJECTED' | 'REQUEST_INFO' | 'TRANSFER'; comments?: string; stepName?: string }
+    payload: { userId: string; decision: 'APPROVED' | 'REJECTED' | 'REQUEST_INFO' | 'TRANSFER'; comments?: string; stepId?: string; stepName?: string }
   ): Promise<{ success: boolean; message?: string; status?: string; error?: string }> {
     try {
       const response = await api.post(`/workflows/${applicationId}/approve`, payload);
