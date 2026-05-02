@@ -51,8 +51,25 @@ function urgencyLabel(days: number) {
   return `${days} jours`;
 }
 
-interface Analyst {
-  id: string; name: string; email: string; department?: string; jobTitle?: string;
+const ROLE_LABELS: Record<string, string> = {
+  ANALYSTE_RISQUES: 'Analyste Risques',
+  RESPONSABLE_RISQUES: 'Resp. Risques',
+  RESPONSABLE_ENGAGEMENTS: 'Resp. Engagements',
+  COMITE_CREDIT: 'Comité Crédit',
+  DIRECTION_GENERALE: 'Direction Générale',
+  BACK_OFFICE: 'Back Office',
+  DIRECTION_JURIDIQUE: 'Direction Juridique',
+  CHARGE_AFFAIRES: 'Chargé d\'Affaires',
+  ADMIN: 'Admin',
+};
+
+function roleLabel(role: string): string {
+  return ROLE_LABELS[role] || role;
+}
+
+interface Agent {
+  id: string; name: string; email: string; role: string;
+  department?: string; jobTitle?: string;
   activeCount: number; pendingCount: number; inReviewCount: number;
   overdueCount: number; workloadScore: number;
   activeDossiers?: any[];
@@ -63,13 +80,18 @@ interface Application {
   branch?: string; amount: number; currency: string; purpose: string;
   durationMonths?: number; status: string; createdAt: string; submittedAt?: string;
   daysPending: number; accountManager: string; creditType?: string;
+  currentStepId?: string | null;
+  currentStepRole?: string | null;
+  currentStepName?: string | null;
+  currentStepLabel?: string | null;
 }
 
 interface HistoryItem {
   stepId: string; applicationId: string; applicationNumber: string;
   clientName: string; amount: number; currency: string;
   status: string; appStatus: string;
-  assignedTo: { id: string; name: string; department?: string; jobTitle?: string } | null;
+  stepRole?: string; stepName?: string;
+  assignedTo: { id: string; name: string; role?: string; department?: string; jobTitle?: string } | null;
   accountManager: string; branch?: string;
   assignedAt: string; deadline?: string; comments?: string;
 }
@@ -77,15 +99,16 @@ interface HistoryItem {
 interface AssignDialog {
   open: boolean;
   app: Application | HistoryItem | null;
-  suggestedAnalyst: Analyst | null;
-  selectedAnalystId: string;
+  neededRole: string | null;
+  suggestedAgent: Agent | null;
+  selectedAgentId: string;
   comment: string;
   loading: boolean;
   isReassign: boolean;
 }
 
 export const DispatchingPage: React.FC = () => {
-  const [analysts, setAnalysts]       = useState<Analyst[]>([]);
+  const [agents, setAgents]           = useState<Agent[]>([]);
   const [pending, setPending]         = useState<Application[]>([]);
   const [history, setHistory]         = useState<HistoryItem[]>([]);
   const [loadingData, setLoadingData] = useState(true);
@@ -98,8 +121,8 @@ export const DispatchingPage: React.FC = () => {
   const lastReloadRef                 = useRef(Date.now());
 
   const [dialog, setDialog] = useState<AssignDialog>({
-    open: false, app: null, suggestedAnalyst: null,
-    selectedAnalystId: '', comment: '', loading: false, isReassign: false,
+    open: false, app: null, neededRole: null, suggestedAgent: null,
+    selectedAgentId: '', comment: '', loading: false, isReassign: false,
   });
 
   const reload = useCallback(async (silent = false) => {
@@ -111,7 +134,7 @@ export const DispatchingPage: React.FC = () => {
         dispatchingApi.getPendingApplications(),
         dispatchingApi.getHistory(),
       ]);
-      if (wRes.success) setAnalysts(wRes.data || []);
+      if (wRes.success) setAgents(wRes.data || []);
       if (pRes.success) setPending(pRes.data || []);
       if (hRes.success) setHistory(hRes.data || []);
       if (!wRes.success) setError(wRes.error || 'Erreur chargement');
@@ -121,32 +144,30 @@ export const DispatchingPage: React.FC = () => {
     }
   }, []);
 
-  // Chargement initial
   useEffect(() => { reload(); }, [reload]);
 
-  // Auto-refresh toutes les 30s
   useEffect(() => {
     const interval = setInterval(() => reload(true), REFRESH_INTERVAL * 1000);
     return () => clearInterval(interval);
   }, [reload]);
 
-  // Countdown
   useEffect(() => {
     setCountdown(REFRESH_INTERVAL);
     const timer = setInterval(() => {
       setCountdown(c => c <= 1 ? REFRESH_INTERVAL : c - 1);
     }, 1000);
     return () => clearInterval(timer);
-  }, [analysts, pending]); // remet à 30 après chaque reload réel
+  }, [agents, pending]);
 
   const openAssignDialog = async (app: Application, isReassign = false) => {
     setAutoLoading(p => ({ ...p, [app.id]: true }));
     const suggestRes = await dispatchingApi.suggestAnalyst(app.id);
     setAutoLoading(p => ({ ...p, [app.id]: false }));
     const suggested = suggestRes.success ? suggestRes.data?.suggested : null;
+    const neededRole = suggestRes.data?.neededRole ?? app.currentStepRole ?? null;
     setDialog({
-      open: true, app, suggestedAnalyst: suggested,
-      selectedAnalystId: suggested?.id || '',
+      open: true, app, neededRole, suggestedAgent: suggested,
+      selectedAgentId: suggested?.id || '',
       comment: '', loading: false, isReassign,
     });
   };
@@ -156,25 +177,26 @@ export const DispatchingPage: React.FC = () => {
     const suggestRes = await dispatchingApi.suggestAnalyst(item.applicationId);
     setAutoLoading(p => ({ ...p, [item.applicationId]: false }));
     const suggested = suggestRes.success ? suggestRes.data?.suggested : null;
+    const neededRole = suggestRes.data?.neededRole ?? item.stepRole ?? null;
     setDialog({
       open: true,
       app: { ...item, id: item.applicationId } as any,
-      suggestedAnalyst: suggested,
-      selectedAnalystId: item.assignedTo?.id || suggested?.id || '',
+      neededRole,
+      suggestedAgent: suggested,
+      selectedAgentId: item.assignedTo?.id || suggested?.id || '',
       comment: '', loading: false, isReassign: true,
     });
   };
 
   const handleAssign = async () => {
-    if (!dialog.app || !dialog.selectedAnalystId) return;
+    if (!dialog.app || !dialog.selectedAgentId) return;
     setDialog(d => ({ ...d, loading: true }));
     const appId = (dialog.app as any).id || (dialog.app as any).applicationId;
     const res = await dispatchingApi.assignAnalyst(
-      appId, dialog.selectedAnalystId, dialog.comment, dialog.isReassign
+      appId, dialog.selectedAgentId, dialog.comment, dialog.isReassign
     );
     if (res.success) {
       setSuccess(res.data?.message || (dialog.isReassign ? 'Ré-affectation validée' : 'Affectation validée'));
-      // Mise à jour optimiste : retirer du pending si affectation initiale
       if (!dialog.isReassign) {
         setPending(prev => prev.filter(p => p.id !== appId));
       }
@@ -186,16 +208,19 @@ export const DispatchingPage: React.FC = () => {
     }
   };
 
-  // Branches disponibles pour le filtre
   const branches = ['all', ...Array.from(new Set(pending.map(p => p.branch).filter(Boolean) as string[]))];
   const filteredPending = branchFilter === 'all'
     ? pending
     : pending.filter(p => p.branch === branchFilter);
 
-  // Stats globales
-  const totalActive = analysts.reduce((s, a) => s + a.activeCount, 0);
-  const avgLoad = analysts.length ? (totalActive / analysts.length) : 0;
-  const overdueTotal = analysts.reduce((s, a) => s + a.overdueCount, 0);
+  // Agents filtrés par le rôle nécessaire dans la dialog
+  const dialogAgents = dialog.neededRole
+    ? agents.filter(a => a.role === dialog.neededRole)
+    : agents;
+
+  const totalActive = agents.reduce((s, a) => s + a.activeCount, 0);
+  const avgLoad = agents.length ? (totalActive / agents.length) : 0;
+  const overdueTotal = agents.reduce((s, a) => s + a.overdueCount, 0);
   const todayHistory = history.filter(h => {
     const d = new Date(h.assignedAt);
     const today = new Date();
@@ -214,7 +239,7 @@ export const DispatchingPage: React.FC = () => {
       }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
           <Box>
-            <Typography variant="h5" fontWeight={800}>Dispatching des Dossiers</Typography>
+            <Typography variant="h5" fontWeight={800}>Affectation de Dossiers</Typography>
             <Typography variant="body2" sx={{ opacity: 0.8, mt: 0.3 }}>
               Affectation intelligente par charge de travail — Responsable Analyste
             </Typography>
@@ -234,10 +259,10 @@ export const DispatchingPage: React.FC = () => {
         {/* KPI bar */}
         <Grid container spacing={1.5}>
           {[
-            { label: 'À dispatcher', value: pending.length, icon: <AssignIcon sx={{ fontSize: 18 }} />, color: pending.length > 0 ? '#ffd740' : '#69f0ae' },
-            { label: 'Analystes actifs', value: analysts.length, icon: <PersonIcon sx={{ fontSize: 18 }} />, color: '#fff' },
+            { label: 'À affecter', value: pending.length, icon: <AssignIcon sx={{ fontSize: 18 }} />, color: pending.length > 0 ? '#ffd740' : '#69f0ae' },
+            { label: 'Responsables actifs', value: agents.length, icon: <PersonIcon sx={{ fontSize: 18 }} />, color: '#fff' },
             { label: 'Dossiers actifs', value: totalActive, icon: <TrendingUpIcon sx={{ fontSize: 18 }} />, color: '#fff' },
-            { label: 'Moy. / analyste', value: avgLoad.toFixed(1), icon: <TrendingUpIcon sx={{ fontSize: 18 }} />, color: avgLoad > 4 ? '#ffd740' : '#fff' },
+            { label: 'Moy. / responsable', value: avgLoad.toFixed(1), icon: <TrendingUpIcon sx={{ fontSize: 18 }} />, color: avgLoad > 4 ? '#ffd740' : '#fff' },
             { label: 'Affectés auj.', value: todayHistory.length, icon: <CheckIcon sx={{ fontSize: 18 }} />, color: '#69f0ae' },
             { label: 'En retard', value: overdueTotal, icon: <WarningIcon sx={{ fontSize: 18 }} />, color: overdueTotal > 0 ? '#ff5252' : '#69f0ae' },
           ].map(k => (
@@ -261,14 +286,14 @@ export const DispatchingPage: React.FC = () => {
         ) : (
           <Grid container spacing={2}>
 
-            {/* ── Colonne gauche : charge des analystes ── */}
+            {/* ── Colonne gauche : charge des responsables ── */}
             <Grid item xs={12} md={3}>
               <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5, color: '#374151', display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <PersonIcon sx={{ fontSize: 16 }} />
-                Analystes ({analysts.length})
+                Responsables ({agents.length})
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {analysts.map((a, idx) => (
+                {agents.map((a, idx) => (
                   <Card key={a.id} variant="outlined" sx={{
                     borderRadius: 2,
                     borderLeft: `3px solid ${workloadColor(a.workloadScore)}`,
@@ -287,7 +312,7 @@ export const DispatchingPage: React.FC = () => {
                         </Badge>
                         <Box sx={{ flex: 1, minWidth: 0 }}>
                           <Typography variant="caption" fontWeight={700} noWrap display="block">{a.name}</Typography>
-                          <Typography sx={{ fontSize: 10 }} color="text.secondary" noWrap>{a.jobTitle || a.department || 'Analyste Crédit'}</Typography>
+                          <Typography sx={{ fontSize: 10 }} color="text.secondary" noWrap>{a.jobTitle || roleLabel(a.role) || a.department}</Typography>
                         </Box>
                         <Chip
                           label={`${a.activeCount}`}
@@ -314,8 +339,8 @@ export const DispatchingPage: React.FC = () => {
                     </CardContent>
                   </Card>
                 ))}
-                {analysts.length === 0 && (
-                  <Alert severity="info" sx={{ borderRadius: 2, fontSize: '0.78rem' }}>Aucun analyste crédit actif trouvé</Alert>
+                {agents.length === 0 && (
+                  <Alert severity="info" sx={{ borderRadius: 2, fontSize: '0.78rem' }}>Aucun responsable actif trouvé</Alert>
                 )}
               </Box>
             </Grid>
@@ -330,7 +355,7 @@ export const DispatchingPage: React.FC = () => {
                   <Tab label={
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                       <AssignIcon sx={{ fontSize: 15 }} />
-                      À dispatcher
+                      À affecter
                       {filteredPending.length > 0 && (
                         <Chip label={filteredPending.length} size="small"
                           sx={{ bgcolor: ACCENT, color: '#fff', fontWeight: 800, height: 18, fontSize: 10, ml: 0.5 }} />
@@ -350,10 +375,9 @@ export const DispatchingPage: React.FC = () => {
                 </Tabs>
               </Box>
 
-              {/* ── Tab 0 : À dispatcher ── */}
+              {/* ── Tab 0 : À affecter ── */}
               {tab === 0 && (
                 <>
-                  {/* Filtre agence */}
                   {branches.length > 2 && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                       <FilterIcon sx={{ fontSize: 16, color: '#64748b' }} />
@@ -373,17 +397,18 @@ export const DispatchingPage: React.FC = () => {
                     <Card variant="outlined" sx={{ borderRadius: 2.5, textAlign: 'center', py: 7 }}>
                       <CheckIcon sx={{ fontSize: 44, color: '#16a34a', mb: 1 }} />
                       <Typography variant="h6" fontWeight={700} color="#16a34a">Tous les dossiers sont affectés</Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Aucun dossier en attente de dispatching.</Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Aucun dossier en attente d'affectation.</Typography>
                     </Card>
                   ) : (
                     <Paper variant="outlined" sx={{ borderRadius: 2.5, overflow: 'hidden' }}>
                       <Box sx={{ overflowX: 'auto' }}>
-                      <Table size="small" sx={{ minWidth: 560 }}>
+                      <Table size="small" sx={{ minWidth: 580 }}>
                         <TableHead>
                           <TableRow sx={{ bgcolor: '#f8fafc' }}>
                             <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>Dossier</TableCell>
                             <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Client</TableCell>
                             <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>Montant</TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>Étape requise</TableCell>
                             <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>Ancienneté</TableCell>
                             <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }} align="right">Action</TableCell>
                           </TableRow>
@@ -415,6 +440,15 @@ export const DispatchingPage: React.FC = () => {
                                 )}
                               </TableCell>
                               <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                                {app.currentStepRole ? (
+                                  <Chip
+                                    label={app.currentStepLabel || roleLabel(app.currentStepRole)}
+                                    size="small"
+                                    sx={{ bgcolor: ACCENT + '14', color: ACCENT, fontWeight: 700, fontSize: 10, height: 20 }}
+                                  />
+                                ) : <Typography variant="caption" color="text.secondary">—</Typography>}
+                              </TableCell>
+                              <TableCell sx={{ whiteSpace: 'nowrap' }}>
                                 <Chip
                                   label={urgencyLabel(app.daysPending)}
                                   size="small"
@@ -433,7 +467,7 @@ export const DispatchingPage: React.FC = () => {
                                   variant="contained"
                                   startIcon={autoLoading[app.id] ? <CircularProgress size={11} color="inherit" /> : <AutoIcon sx={{ fontSize: 13 }} />}
                                   onClick={() => openAssignDialog(app)}
-                                  disabled={!!autoLoading[app.id] || analysts.length === 0}
+                                  disabled={!!autoLoading[app.id] || agents.length === 0}
                                   sx={{
                                     fontSize: '0.72rem', px: 2, borderRadius: 1.5, minWidth: 90,
                                     bgcolor: ACCENT, '&:hover': { bgcolor: '#4527a0' },
@@ -471,7 +505,7 @@ export const DispatchingPage: React.FC = () => {
                             <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>Dossier</TableCell>
                             <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Client</TableCell>
                             <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>Montant</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Analyste affecté</TableCell>
+                            <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b' }}>Responsable affecté</TableCell>
                             <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>Statut / Date</TableCell>
                             <TableCell />
                           </TableRow>
@@ -481,6 +515,9 @@ export const DispatchingPage: React.FC = () => {
                             <TableRow key={item.stepId} sx={{ '&:hover td': { bgcolor: '#f8fafc' } }}>
                               <TableCell>
                                 <Typography variant="caption" fontWeight={800} sx={{ color: ACCENT }}>{item.applicationNumber}</Typography>
+                                {item.stepRole && (
+                                  <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: 10 }}>{roleLabel(item.stepRole)}</Typography>
+                                )}
                               </TableCell>
                               <TableCell>
                                 <Typography variant="caption" fontWeight={600} display="block" noWrap sx={{ maxWidth: 120 }}>{item.clientName}</Typography>
@@ -495,7 +532,12 @@ export const DispatchingPage: React.FC = () => {
                                     <Avatar sx={{ width: 24, height: 24, bgcolor: '#e2e8f0', color: '#475569', fontSize: '0.65rem', fontWeight: 700 }}>
                                       {item.assignedTo.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                                     </Avatar>
-                                    <Typography variant="caption" fontWeight={600} noWrap sx={{ maxWidth: 100 }}>{item.assignedTo.name}</Typography>
+                                    <Box>
+                                      <Typography variant="caption" fontWeight={600} noWrap sx={{ maxWidth: 100 }}>{item.assignedTo.name}</Typography>
+                                      {item.assignedTo.role && (
+                                        <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: 10 }}>{roleLabel(item.assignedTo.role)}</Typography>
+                                      )}
+                                    </Box>
                                   </Box>
                                 ) : <Typography variant="caption" color="text.secondary">—</Typography>}
                               </TableCell>
@@ -515,7 +557,7 @@ export const DispatchingPage: React.FC = () => {
                                   <span>
                                     <IconButton
                                       size="small"
-                                      disabled={!!autoLoading[item.applicationId] || analysts.length === 0}
+                                      disabled={!!autoLoading[item.applicationId] || agents.length === 0}
                                       onClick={() => openReassignDialog(item)}
                                       sx={{ color: ACCENT, '&:hover': { bgcolor: ACCENT + '12' } }}
                                     >
@@ -572,6 +614,15 @@ export const DispatchingPage: React.FC = () => {
                 {(dialog.app as any).purpose ? ` · ${(dialog.app as any).purpose}` : ''}
                 {(dialog.app as any).durationMonths ? ` · ${(dialog.app as any).durationMonths} mois` : ''}
               </Typography>
+              {dialog.neededRole && (
+                <Box sx={{ mt: 0.75 }}>
+                  <Chip
+                    label={`Étape : ${roleLabel(dialog.neededRole)}`}
+                    size="small"
+                    sx={{ bgcolor: ACCENT + '14', color: ACCENT, fontWeight: 700, fontSize: 10, height: 20 }}
+                  />
+                </Box>
+              )}
               {dialog.isReassign && (dialog.app as any).assignedTo && (
                 <Box sx={{ mt: 0.75, display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <Typography variant="caption" color="text.secondary">Actuellement affecté à :</Typography>
@@ -582,38 +633,47 @@ export const DispatchingPage: React.FC = () => {
           )}
 
           {/* Suggestion auto */}
-          {dialog.suggestedAnalyst && (
+          {dialog.suggestedAgent && (
             <Box sx={{ mb: 2, p: 1.5, bgcolor: '#eff6ff', borderRadius: 2, border: '1px solid #bfdbfe' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
                 <AutoIcon sx={{ fontSize: 14, color: '#1565c0' }} />
                 <Typography variant="caption" fontWeight={700} color="#1565c0">Suggestion automatique — charge minimale</Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Avatar sx={{ width: 26, height: 26, bgcolor: workloadColor(dialog.suggestedAnalyst.workloadScore), color: '#fff', fontSize: '0.7rem', fontWeight: 700 }}>
-                  {dialog.suggestedAnalyst.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                <Avatar sx={{ width: 26, height: 26, bgcolor: workloadColor(dialog.suggestedAgent.workloadScore), color: '#fff', fontSize: '0.7rem', fontWeight: 700 }}>
+                  {dialog.suggestedAgent.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
                 </Avatar>
                 <Box>
-                  <Typography variant="body2" fontWeight={700}>{dialog.suggestedAnalyst.name}</Typography>
-                  <Typography variant="caption" color="text.secondary">{dialog.suggestedAnalyst.activeCount} dossier(s) actif(s)</Typography>
+                  <Typography variant="body2" fontWeight={700}>{dialog.suggestedAgent.name}</Typography>
+                  <Typography variant="caption" color="text.secondary">{dialog.suggestedAgent.activeCount} dossier(s) actif(s)</Typography>
                 </Box>
               </Box>
             </Box>
           )}
 
           <Divider sx={{ mb: 1.5 }} />
-          <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Choisir l'analyste :</Typography>
+          <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+            Choisir le responsable
+            {dialog.neededRole ? ` — ${roleLabel(dialog.neededRole)}` : ''} :
+          </Typography>
+
+          {dialogAgents.length === 0 && dialog.neededRole && (
+            <Alert severity="warning" sx={{ mb: 1.5, fontSize: '0.78rem', borderRadius: 2 }}>
+              Aucun responsable actif avec le rôle «{roleLabel(dialog.neededRole)}» trouvé.
+            </Alert>
+          )}
 
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mb: 2, maxHeight: 280, overflowY: 'auto' }}>
-            {analysts.map(a => (
+            {dialogAgents.map(a => (
               <Box
                 key={a.id}
-                onClick={() => setDialog(d => ({ ...d, selectedAnalystId: a.id }))}
+                onClick={() => setDialog(d => ({ ...d, selectedAgentId: a.id }))}
                 sx={{
                   display: 'flex', alignItems: 'center', gap: 1.25,
                   p: 1.25, borderRadius: 2, cursor: 'pointer',
                   border: '2px solid',
-                  borderColor: dialog.selectedAnalystId === a.id ? ACCENT : '#e2e8f0',
-                  bgcolor: dialog.selectedAnalystId === a.id ? ACCENT + '08' : 'transparent',
+                  borderColor: dialog.selectedAgentId === a.id ? ACCENT : '#e2e8f0',
+                  bgcolor: dialog.selectedAgentId === a.id ? ACCENT + '08' : 'transparent',
                   transition: 'all .15s',
                   '&:hover': { borderColor: ACCENT, bgcolor: ACCENT + '05' }
                 }}
@@ -623,7 +683,7 @@ export const DispatchingPage: React.FC = () => {
                 </Avatar>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography variant="body2" fontWeight={700} noWrap>{a.name}</Typography>
-                  <Typography variant="caption" color="text.secondary" noWrap>{a.jobTitle || a.department || 'Analyste Crédit'}</Typography>
+                  <Typography variant="caption" color="text.secondary" noWrap>{a.jobTitle || a.department || roleLabel(a.role)}</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.25 }}>
                   <Chip label={`${a.activeCount} actif${a.activeCount !== 1 ? 's' : ''}`} size="small"
@@ -632,7 +692,7 @@ export const DispatchingPage: React.FC = () => {
                     <Typography variant="caption" sx={{ color: '#dc2626', fontSize: 10 }}>{a.overdueCount} en retard</Typography>
                   )}
                 </Box>
-                {dialog.selectedAnalystId === a.id && <CheckIcon sx={{ color: ACCENT, fontSize: 18, flexShrink: 0 }} />}
+                {dialog.selectedAgentId === a.id && <CheckIcon sx={{ color: ACCENT, fontSize: 18, flexShrink: 0 }} />}
               </Box>
             ))}
           </Box>
@@ -640,7 +700,7 @@ export const DispatchingPage: React.FC = () => {
           <TextField
             fullWidth size="small"
             label="Commentaire (optionnel)"
-            placeholder={dialog.isReassign ? 'Motif de la ré-affectation...' : 'Motif de l\'affectation...'}
+            placeholder={dialog.isReassign ? 'Motif de la ré-affectation...' : "Motif de l'affectation..."}
             value={dialog.comment}
             onChange={e => setDialog(d => ({ ...d, comment: e.target.value }))}
             multiline rows={2}
@@ -655,7 +715,7 @@ export const DispatchingPage: React.FC = () => {
           <Button
             variant="contained"
             onClick={handleAssign}
-            disabled={!dialog.selectedAnalystId || dialog.loading}
+            disabled={!dialog.selectedAgentId || dialog.loading}
             startIcon={dialog.loading ? <CircularProgress size={14} color="inherit" /> : (dialog.isReassign ? <ReassignIcon /> : <CheckIcon />)}
             sx={{
               borderRadius: 2,
@@ -664,7 +724,7 @@ export const DispatchingPage: React.FC = () => {
               textTransform: 'none', fontWeight: 700, px: 3
             }}
           >
-            {dialog.loading ? 'En cours...' : (dialog.isReassign ? 'Valider la ré-affectation' : 'Valider l\'affectation')}
+            {dialog.loading ? 'En cours...' : (dialog.isReassign ? 'Valider la ré-affectation' : "Valider l'affectation")}
           </Button>
         </DialogActions>
       </Dialog>

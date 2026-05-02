@@ -12,7 +12,6 @@ const requireSupervisorOrDelegate = async (req: Request, res: Response, next: an
 
   if (['RESPONSABLE_RISQUES', 'ADMIN'].includes(user.role)) return next();
 
-  // Vérifier si délégué avec droit DISPATCH_APPLICATION
   const userId = user?.userId || user?.id;
   const delegation = await resolveDelegation(userId, 'DISPATCH_APPLICATION');
   if (delegation && ['RESPONSABLE_RISQUES', 'ADMIN'].includes(delegation.delegatorRole)) {
@@ -23,18 +22,32 @@ const requireSupervisorOrDelegate = async (req: Request, res: Response, next: an
   return res.status(403).json({ success: false, error: 'Accès réservé au Responsable Analyste' });
 };
 
-// Appliquer le middleware sur toutes les routes
 router.use(requireSupervisorOrDelegate);
+
+// Rôles distincts de la politique active (fallback = ANALYSTE_RISQUES si pas de politique)
+async function getActivePolicyRoles(companyId: string | undefined): Promise<string[]> {
+  if (!companyId) return ['ANALYSTE_RISQUES'];
+  const policy = await prisma.creditPolicy.findFirst({
+    where: { companyId, status: 'ACTIVE' as any, isActive: true },
+    include: { steps: { select: { assignedRole: true } } },
+  });
+  if (!policy || policy.steps.length === 0) return ['ANALYSTE_RISQUES'];
+  return [...new Set(policy.steps.map(s => s.assignedRole as string))];
+}
 
 // ─── GET /api/dispatching/workload ─────────────────────────────────────────────
 router.get('/workload', async (req: Request, res: Response) => {
   try {
-    const analysts = await prisma.user.findMany({
-      where: { role: 'ANALYSTE_RISQUES', isActive: true },
+    const companyId = (req as any).companyId as string | undefined;
+    const policyRoles = await getActivePolicyRoles(companyId);
+
+    const agents = await prisma.user.findMany({
+      where: { role: { in: policyRoles as any[] }, isActive: true },
       select: {
         id: true,
         name: true,
         email: true,
+        role: true,
         department: true,
         jobTitle: true,
         assignedSteps: {
@@ -59,22 +72,23 @@ router.get('/workload', async (req: Request, res: Response) => {
       }
     });
 
-    const workload = analysts.map(analyst => {
-      const overdueCount = analyst.assignedSteps.filter(
+    const workload = agents.map(agent => {
+      const overdueCount = agent.assignedSteps.filter(
         s => s.deadline && new Date(s.deadline) < new Date()
       ).length;
 
       return {
-        id: analyst.id,
-        name: analyst.name,
-        email: analyst.email,
-        department: analyst.department,
-        jobTitle: analyst.jobTitle,
-        activeCount: analyst.assignedSteps.length,
-        pendingCount: analyst.assignedSteps.filter(s => s.status === 'PENDING').length,
-        inReviewCount: analyst.assignedSteps.filter(s => s.status === 'IN_REVIEW').length,
+        id: agent.id,
+        name: agent.name,
+        email: agent.email,
+        role: agent.role,
+        department: agent.department,
+        jobTitle: agent.jobTitle,
+        activeCount: agent.assignedSteps.length,
+        pendingCount: agent.assignedSteps.filter(s => s.status === 'PENDING').length,
+        inReviewCount: agent.assignedSteps.filter(s => s.status === 'IN_REVIEW').length,
         overdueCount,
-        activeDossiers: analyst.assignedSteps.map(s => ({
+        activeDossiers: agent.assignedSteps.map(s => ({
           stepId: s.id,
           applicationId: s.application.id,
           applicationNumber: s.application.applicationNumber,
@@ -85,8 +99,7 @@ router.get('/workload', async (req: Request, res: Response) => {
           stepStatus: s.status,
           deadline: s.deadline
         })),
-        // Score = nombre actifs + pénalité délai dépassé
-        workloadScore: analyst.assignedSteps.length + overdueCount * 2
+        workloadScore: agent.assignedSteps.length + overdueCount * 2
       };
     });
 
@@ -102,27 +115,34 @@ router.get('/workload', async (req: Request, res: Response) => {
 // ─── GET /api/dispatching/pending ─────────────────────────────────────────────
 router.get('/pending', async (req: Request, res: Response) => {
   try {
+    const companyId = (req as any).companyId as string | undefined;
+
     const applications = await prisma.creditApplication.findMany({
       where: {
+        ...(companyId ? { companyId } : {}),
         status: { in: ['SUBMITTED', 'UNDER_REVIEW'] },
         workflowSteps: {
-          none: {
-            role: 'ANALYSTE_RISQUES',
-            status: { in: ['PENDING', 'IN_REVIEW'] },
-            assigneeId: { not: null }
-          }
+          some: { status: 'PENDING', assigneeId: null }
         }
       },
       include: {
         client: true,
         creator: true,
         creditType: true,
-        workflowSteps: true
+        workflowSteps: {
+          where: { status: 'PENDING', assigneeId: null },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+          include: {
+            policyStep: { select: { stepLabel: true, order: true } }
+          }
+        }
       },
       orderBy: { createdAt: 'asc' }
     });
 
     const data = applications.map(app => {
+      const currentStep = app.workflowSteps[0] ?? null;
       const daysPending = Math.floor(
         (Date.now() - new Date(app.submittedAt || app.createdAt).getTime()) / (1000 * 60 * 60 * 24)
       );
@@ -142,7 +162,11 @@ router.get('/pending', async (req: Request, res: Response) => {
         daysPending,
         accountManager: app.creator.name,
         accountManagerId: app.creator.id,
-        creditType: app.creditType?.name
+        creditType: app.creditType?.name,
+        currentStepId: currentStep?.id ?? null,
+        currentStepRole: currentStep?.role ?? null,
+        currentStepName: currentStep?.stepName ?? null,
+        currentStepLabel: currentStep?.policyStep?.stepLabel ?? currentStep?.stepName ?? null,
       };
     });
 
@@ -158,17 +182,25 @@ router.get('/suggest/:applicationId', async (req: Request, res: Response) => {
   try {
     const { applicationId } = req.params;
 
-    const application = await prisma.creditApplication.findUnique({
-      where: { id: applicationId },
-      include: { client: true, creator: true }
-    });
+    const [application, currentStep] = await Promise.all([
+      prisma.creditApplication.findUnique({
+        where: { id: applicationId },
+        include: { client: true, creator: true }
+      }),
+      prisma.workflowStep.findFirst({
+        where: { applicationId, status: 'PENDING', assigneeId: null },
+        orderBy: { createdAt: 'asc' }
+      })
+    ]);
 
     if (!application) {
       return res.status(404).json({ success: false, error: 'Demande non trouvée' });
     }
 
-    const analysts = await prisma.user.findMany({
-      where: { role: 'ANALYSTE_RISQUES', isActive: true },
+    const neededRole = currentStep?.role ?? 'ANALYSTE_RISQUES';
+
+    const agents = await prisma.user.findMany({
+      where: { role: neededRole as any, isActive: true },
       include: {
         assignedSteps: {
           where: { status: { in: ['PENDING', 'IN_REVIEW'] } }
@@ -176,21 +208,21 @@ router.get('/suggest/:applicationId', async (req: Request, res: Response) => {
       }
     });
 
-    if (analysts.length === 0) {
-      return res.status(404).json({ success: false, error: 'Aucun analyste disponible' });
+    if (agents.length === 0) {
+      return res.status(404).json({ success: false, error: `Aucun responsable disponible avec le rôle ${neededRole}` });
     }
 
-    const ranked = analysts
+    const ranked = agents
       .map(a => {
         const overdueCount = a.assignedSteps.filter(
           s => s.deadline && new Date(s.deadline) < new Date()
         ).length;
-        // Bonus si même agence que le chargé d'affaires
         const sameDeptBonus = a.department === application.creator?.department ? -0.5 : 0;
         return {
           id: a.id,
           name: a.name,
           email: a.email,
+          role: a.role,
           department: a.department,
           jobTitle: a.jobTitle,
           activeCount: a.assignedSteps.length,
@@ -207,6 +239,7 @@ router.get('/suggest/:applicationId', async (req: Request, res: Response) => {
       data: {
         suggested: ranked[0],
         ranked,
+        neededRole,
         applicationId,
         applicationNumber: application.applicationNumber
       }
@@ -218,13 +251,14 @@ router.get('/suggest/:applicationId', async (req: Request, res: Response) => {
 });
 
 // ─── GET /api/dispatching/history ─────────────────────────────────────────────
-// Historique des 30 dernières affectations
 router.get('/history', async (req: Request, res: Response) => {
   try {
+    const companyId = (req as any).companyId as string | undefined;
+
     const steps = await prisma.workflowStep.findMany({
       where: {
-        role: 'ANALYSTE_RISQUES',
-        assigneeId: { not: null }
+        assigneeId: { not: null },
+        ...(companyId ? { application: { companyId } } : {})
       },
       include: {
         application: {
@@ -233,7 +267,7 @@ router.get('/history', async (req: Request, res: Response) => {
             creator: { select: { name: true, department: true } }
           }
         },
-        assignee: { select: { id: true, name: true, department: true, jobTitle: true } }
+        assignee: { select: { id: true, name: true, role: true, department: true, jobTitle: true } }
       },
       orderBy: { createdAt: 'desc' },
       take: 30
@@ -248,6 +282,8 @@ router.get('/history', async (req: Request, res: Response) => {
       currency: (s as any).application.currency,
       status: s.status,
       appStatus: (s as any).application.status,
+      stepRole: s.role,
+      stepName: s.stepName,
       assignedTo: (s as any).assignee,
       accountManager: (s as any).application.creator.name,
       branch: (s as any).application.creator.department,
@@ -264,42 +300,56 @@ router.get('/history', async (req: Request, res: Response) => {
 });
 
 // ─── POST /api/dispatching/assign ─────────────────────────────────────────────
-// Affecter (ou ré-affecter) un analyste à une demande
 router.post('/assign', async (req: Request, res: Response) => {
   try {
-    const { applicationId, analystId, comment, isReassign } = req.body;
+    // Accept userId (new) or analystId (backward compat)
+    const { applicationId, userId, analystId, comment, isReassign } = req.body;
+    const targetUserId = userId || analystId;
     const supervisorId = (req as any).user?.userId || (req as any).user?.id;
 
-    if (!applicationId || !analystId) {
-      return res.status(400).json({ success: false, error: 'applicationId et analystId requis' });
+    if (!applicationId || !targetUserId) {
+      return res.status(400).json({ success: false, error: 'applicationId et userId requis' });
     }
 
-    const [application, analyst] = await Promise.all([
+    const [application, agent] = await Promise.all([
       prisma.creditApplication.findUnique({
         where: { id: applicationId },
         include: {
-          workflowSteps: true,
+          workflowSteps: { orderBy: { createdAt: 'asc' } },
           client: { select: { companyName: true } },
           creator: { select: { branch: true, department: true } }
         }
       }),
-      prisma.user.findUnique({ where: { id: analystId } })
+      prisma.user.findUnique({ where: { id: targetUserId } })
     ]);
 
     if (!application) return res.status(404).json({ success: false, error: 'Demande non trouvée' });
-    if (!analyst || analyst.role !== 'ANALYSTE_RISQUES') {
-      return res.status(400).json({ success: false, error: 'Analyste invalide' });
+    if (!agent) return res.status(400).json({ success: false, error: 'Utilisateur introuvable' });
+
+    // Find the step to assign: for reassign, first PENDING/IN_REVIEW; for initial, first PENDING unassigned
+    const targetStep = isReassign
+      ? application.workflowSteps.find(s => ['PENDING', 'IN_REVIEW'].includes(s.status))
+      : application.workflowSteps.find(s => s.status === 'PENDING' && !s.assigneeId);
+
+    if (!targetStep) {
+      return res.status(400).json({ success: false, error: 'Aucune étape en attente pour ce dossier' });
+    }
+
+    // Validate the agent's role matches the step's role
+    if (agent.role !== targetStep.role) {
+      return res.status(400).json({
+        success: false,
+        error: `Cette étape requiert un responsable avec le rôle "${targetStep.role}". L'utilisateur sélectionné a le rôle "${agent.role}".`
+      });
     }
 
     const supervisorUser = await prisma.user.findUnique({
       where: { id: supervisorId },
       select: { name: true, role: true, branch: true, department: true }
     });
-    const supervisorName = supervisorUser?.name || 'Responsable Analyste';
+    const supervisorName = supervisorUser?.name || 'Responsable';
 
-    // ── Guard agence : un superviseur ne peut dispatcher que les dossiers de son agence.
-    // Si l'acteur est un délégué, utiliser la branche du délégant.
-    // Les rôles globaux (Admin, DG) peuvent dispatcher tous les dossiers.
+    // ── Guard agence ──────────────────────────────────────────────────────────
     const GLOBAL_ROLES = ['RESPONSABLE_RISQUES', 'DIRECTION_GENERALE', 'ADMIN'];
     const delegCtx = (req as any).delegationContext as {
       delegatorBranch: string | null;
@@ -317,48 +367,31 @@ router.post('/assign', async (req: Request, res: Response) => {
       if (effectiveBranch && creatorBranch && effectiveBranch !== creatorBranch) {
         return res.status(403).json({
           success: false,
-          error: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez dispatcher que les dossiers de votre agence ("${effectiveBranch}").`,
+          error: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez affecter que les dossiers de votre agence ("${effectiveBranch}").`,
         });
       }
-      // L'analyste assigné doit aussi appartenir à la même agence
-      const analystBranch = (analyst as any).branch || (analyst as any).department;
-      if (effectiveBranch && analystBranch && analystBranch !== effectiveBranch) {
+      const agentBranch = (agent as any).branch || (agent as any).department;
+      if (effectiveBranch && agentBranch && agentBranch !== effectiveBranch) {
         return res.status(403).json({
           success: false,
-          error: `L'analyste "${analyst.name}" n'appartient pas à votre agence ("${effectiveBranch}").`,
+          error: `Le responsable "${agent.name}" n'appartient pas à votre agence ("${effectiveBranch}").`,
         });
       }
     }
+
     const dateStr = new Date().toLocaleDateString('fr-FR');
 
-    // Chercher un step ANALYSTE_RISQUES existant (assigné ou non)
-    const existingStep = application.workflowSteps.find(s => s.role === 'ANALYSTE_RISQUES');
-
-    if (existingStep) {
-      await prisma.workflowStep.update({
-        where: { id: existingStep.id },
-        data: {
-          assigneeId: analystId,
-          status: 'PENDING',
-          comments: comment ||
-            (isReassign
-              ? `Ré-affecté à ${analyst.name} par ${supervisorName} le ${dateStr}`
-              : `Affecté à ${analyst.name} par ${supervisorName} le ${dateStr}`)
-        }
-      });
-    } else {
-      await prisma.workflowStep.create({
-        data: {
-          applicationId,
-          stepName: 'credit_analysis',
-          role: 'ANALYSTE_RISQUES',
-          assigneeId: analystId,
-          status: 'PENDING',
-          deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          comments: comment || `Affecté à ${analyst.name} par ${supervisorName} le ${dateStr}`
-        }
-      });
-    }
+    await prisma.workflowStep.update({
+      where: { id: targetStep.id },
+      data: {
+        assigneeId: targetUserId,
+        status: 'PENDING',
+        comments: comment ||
+          (isReassign
+            ? `Ré-affecté à ${agent.name} par ${supervisorName} le ${dateStr}`
+            : `Affecté à ${agent.name} par ${supervisorName} le ${dateStr}`)
+      }
+    });
 
     if (application.status === 'SUBMITTED') {
       await prisma.creditApplication.update({
@@ -367,13 +400,12 @@ router.post('/assign', async (req: Request, res: Response) => {
       });
     }
 
-    // Notifier directement l'analyste assigné
     const clientName = (application as any).client?.companyName ?? 'Client';
-    await createInAppNotification(analystId, {
+    await createInAppNotification(targetUserId, {
       title: isReassign
         ? `Dossier ré-affecté — ${application.applicationNumber}`
-        : `Nouveau dossier à analyser — ${application.applicationNumber}`,
-      message: `Le dossier de ${clientName} (${application.applicationNumber}) vous a été ${isReassign ? 'ré-affecté' : 'affecté'} par ${supervisorName}. Veuillez procéder à l'analyse crédit.`,
+        : `Nouveau dossier à traiter — ${application.applicationNumber}`,
+      message: `Le dossier de ${clientName} (${application.applicationNumber}) vous a été ${isReassign ? 'ré-affecté' : 'affecté'} par ${supervisorName}. Veuillez procéder au traitement.`,
       type: 'ACTION_REQUIRED',
       relatedType: 'application',
       relatedId: applicationId,
@@ -383,13 +415,13 @@ router.post('/assign', async (req: Request, res: Response) => {
     res.json({
       success: true,
       message: isReassign
-        ? `Dossier ${application.applicationNumber} ré-affecté à ${analyst.name}`
-        : `Dossier ${application.applicationNumber} affecté à ${analyst.name}`,
-      data: { applicationId, analystId, analystName: analyst.name }
+        ? `Dossier ${application.applicationNumber} ré-affecté à ${agent.name}`
+        : `Dossier ${application.applicationNumber} affecté à ${agent.name}`,
+      data: { applicationId, userId: targetUserId, agentName: agent.name }
     });
   } catch (error) {
     console.error('Assign error:', error);
-    res.status(500).json({ success: false, error: 'Erreur lors de l\'affectation' });
+    res.status(500).json({ success: false, error: "Erreur lors de l'affectation" });
   }
 });
 

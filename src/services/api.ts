@@ -1586,9 +1586,9 @@ export const dispatchingApi = {
     }
   },
 
-  async assignAnalyst(applicationId: string, analystId: string, comment?: string, isReassign = false): Promise<ApiResponse<any>> {
+  async assignAnalyst(applicationId: string, userId: string, comment?: string, isReassign = false): Promise<ApiResponse<any>> {
     try {
-      const res = await api.post('/dispatching/assign', { applicationId, analystId, comment, isReassign });
+      const res = await api.post('/dispatching/assign', { applicationId, userId, comment, isReassign });
       return { success: true, data: res.data };
     } catch (e: any) {
       return { success: false, error: e.response?.data?.error || 'Erreur affectation' };
