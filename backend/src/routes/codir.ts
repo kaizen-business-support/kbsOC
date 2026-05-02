@@ -275,17 +275,11 @@ router.get('/timeline', authorize(['codir_dashboard']), asyncHandler(async (req:
     include: {
       client:   { select: { companyName: true, branch: true } },
       creator:  { select: { name: true, branch: true } },
-      policy: {
-        include: {
-          steps: {
-            orderBy: { order: 'asc' },
-            select: { id: true, stepName: true, stepLabel: true, order: true, maxDurationHours: true },
-            // stepRoles intentionnellement omis — non utilisé par buildStep
-          },
-        },
-      },
       workflowSteps: {
-        include: { assignee: { select: { name: true } } },
+        include: {
+          assignee:   { select: { name: true } },
+          policyStep: { select: { id: true, stepName: true, stepLabel: true, order: true, maxDurationHours: true } },
+        },
         orderBy: { createdAt: 'asc' },
       },
     },
@@ -305,30 +299,21 @@ router.get('/timeline', authorize(['codir_dashboard']), asyncHandler(async (req:
       : 0;
     const isOverdue = wfSteps.some((s: any) => s.isOverdue);
 
-    let steps: any[];
-    if (!app.policy) {
-      // Pas de politique liée : on n'affiche que les WorkflowStep réels.
-      // Une seule étape est "active" à la fois : la première PENDING/IN_REVIEW.
-      let activeFound = false;
-      steps = wfSteps.map((ws: any, idx: number) => {
-        const completed = ['COMPLETED', 'APPROVED', 'REJECTED'].includes(ws.status);
-        const isActive = !completed && !activeFound;
-        if (isActive) activeFound = true;
-        return buildTimelineStep(ws, null, idx + 1, now, isActive);
-      });
-    } else {
-      // Politique liée : on affiche TOUTES les étapes de la politique.
-      // L'étape active est la première étape non-terminée (par ordre).
-      // Les suivantes sont "en attente future" même si leur WorkflowStep existe déjà.
-      let activeFound = false;
-      steps = (app.policy.steps as any[]).map((ps: any) => {
-        const ws = wfSteps.find((w: any) => w.policyStepId === ps.id) ?? null;
-        const completed = ws && ['COMPLETED', 'APPROVED', 'REJECTED'].includes(ws.status);
-        const isActive = !completed && !activeFound;
-        if (isActive) activeFound = true;
-        return buildTimelineStep(ws, ps, ps.order, now, isActive);
-      });
-    }
+    // Source of truth: wfSteps (created at submission, already filtered by amount conditions).
+    // Sort by policyStep.order first, then createdAt for legacy steps without policyStepId.
+    const ordered = [...wfSteps].sort((a: any, b: any) => {
+      const oA = a.policyStep?.order ?? 999;
+      const oB = b.policyStep?.order ?? 999;
+      return oA !== oB ? oA - oB : a.createdAt.getTime() - b.createdAt.getTime();
+    });
+    let activeFound = false;
+    const steps = ordered.map((ws: any, idx: number) => {
+      const ps = ws.policyStep ?? null;
+      const completed = ['COMPLETED', 'APPROVED', 'REJECTED'].includes(ws.status);
+      const isActive = !completed && !activeFound;
+      if (isActive) activeFound = true;
+      return buildTimelineStep(ws, ps, ps?.order ?? idx + 1, now, isActive);
+    });
 
     return {
       applicationId:     app.id,
@@ -403,9 +388,7 @@ function buildTimelineStep(ws: any | null, ps: any | null, order: number, now: n
     stepLabel,
     order,
     status,
-    agentName:     isActive || (ws && ['COMPLETED', 'APPROVED', 'REJECTED'].includes(ws.status))
-                   ? (ws?.assignee?.name ?? null)
-                   : null,
+    agentName:     ws?.assignee?.name ?? null,
     startedAt:     ws?.startedAt?.toISOString()   ?? null,
     completedAt:   ws?.completedAt?.toISOString() ?? null,
     durationHours: durationHours != null ? Math.round(durationHours * 10) / 10 : null,
