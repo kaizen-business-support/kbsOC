@@ -58,18 +58,14 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'name et code sont obligatoires' });
     }
 
-    // Désactiver les autres politiques actives avant d'en créer une nouvelle active
-    await prisma.creditPolicy.updateMany({
-      where: { isActive: true, companyId: req.companyId },
-      data: { isActive: false },
-    });
-
+    // Toute nouvelle politique commence en DRAFT inactif.
+    // L'activation passe exclusivement par POST /:id/activate.
     const policy = await prisma.creditPolicy.create({
       data: {
         name,
         code,
         description,
-        isActive: true,
+        isActive: false,
         validFrom: validFrom ? new Date(validFrom) : new Date(),
         validTo: validTo ? new Date(validTo) : null,
         companyId: req.companyId,
@@ -254,7 +250,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const { name, description, isActive, validFrom, validTo, steps, expectedVersion } = req.body;
+    const { name, description, validFrom, validTo, steps, expectedVersion } = req.body;
 
     // Vérification companyId + optimistic locking
     const current = await prisma.creditPolicy.findUnique({
@@ -263,19 +259,14 @@ router.put('/:id', async (req: Request, res: Response) => {
     });
     if (!current) return res.status(404).json({ success: false, error: 'Politique introuvable' });
     if (current.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
+    if (current.status === 'ARCHIVED') {
+      return res.status(422).json({ success: false, error: 'Une politique archivée ne peut pas être modifiée' });
+    }
     if (expectedVersion !== undefined && current.version !== expectedVersion) {
       return res.status(409).json({
         success: false,
         error: 'CONFLICT',
         message: 'La politique a été modifiée par quelqu\'un d\'autre. Veuillez recharger avant de sauvegarder.',
-      });
-    }
-
-    // Si on active cette politique, désactiver les autres
-    if (isActive === true) {
-      await prisma.creditPolicy.updateMany({
-        where: { isActive: true, id: { not: req.params.id }, companyId: req.companyId },
-        data: { isActive: false },
       });
     }
 
@@ -314,7 +305,6 @@ router.put('/:id', async (req: Request, res: Response) => {
       data: {
         ...(name !== undefined && { name }),
         ...(description !== undefined && { description }),
-        ...(isActive !== undefined && { isActive }),
         ...(validFrom && { validFrom: new Date(validFrom) }),
         ...(validTo && { validTo: new Date(validTo) }),
         version: { increment: 1 },
@@ -333,14 +323,21 @@ router.put('/:id', async (req: Request, res: Response) => {
 
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    await prisma.creditPolicy.update({
+    const policy = await prisma.creditPolicy.findUnique({
       where: { id: req.params.id },
-      data: { isActive: false },
+      select: { companyId: true, status: true },
     });
-    res.json({ success: true, message: 'Politique désactivée' });
+    if (!policy) return res.status(404).json({ success: false, error: 'Politique introuvable' });
+    if (policy.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
+
+    await (prisma as any).creditPolicy.update({
+      where: { id: req.params.id },
+      data: { status: 'ARCHIVED', isActive: false },
+    });
+    res.json({ success: true, message: 'Politique archivée' });
   } catch (error) {
     console.error('[credit-policy] DELETE /:id', error);
-    res.status(500).json({ success: false, error: 'Erreur lors de la désactivation' });
+    res.status(500).json({ success: false, error: 'Erreur lors de l\'archivage' });
   }
 });
 

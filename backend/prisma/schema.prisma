@@ -380,7 +380,7 @@ model CreditPolicy {
   name        String             // "Politique Générale de Crédit 2024"
   code        String             // "POL-2024-001"
   description String?
-  isActive    Boolean            @default(true) @map("is_active")
+  isActive    Boolean            @default(false) @map("is_active")
   status      PolicyStatus       @default(DRAFT)
   version     Int                @default(1)
   validFrom   DateTime           @default(now()) @map("valid_from")

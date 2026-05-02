@@ -82,6 +82,7 @@ export async function getActivePolicyForCreditType(
 
   const policy = await prisma.creditPolicy.findFirst({
     where: {
+      status: 'ACTIVE' as any,
       isActive: true,
       validFrom: { lte: now },
       OR: [{ validTo: null }, { validTo: { gte: now } }],
