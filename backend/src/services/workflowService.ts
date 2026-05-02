@@ -562,7 +562,8 @@ export async function canApproveStep(
   userId: string,
   applicationId: string,
   stepName: string,
-  action: StepAction = 'approve'
+  action: StepAction = 'approve',
+  stepId?: string,
 ): Promise<{
   allowed: boolean;
   reason?: string;
@@ -582,9 +583,12 @@ export async function canApproveStep(
         creator: { select: { branch: true, department: true, name: true } },
       },
     }),
-    prisma.workflowStep.findFirst({
-      where: { applicationId, stepName, status: { in: ['PENDING', 'IN_REVIEW'] } },
-    }),
+    stepId
+      ? prisma.workflowStep.findUnique({ where: { id: stepId } })
+      : prisma.workflowStep.findFirst({
+          where: { applicationId, stepName, status: { in: ['PENDING', 'IN_REVIEW'] } },
+          orderBy: { createdAt: 'desc' },
+        }),
   ]);
 
   if (!user) return { allowed: false, reason: 'Utilisateur introuvable' };

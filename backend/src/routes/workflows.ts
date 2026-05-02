@@ -431,7 +431,7 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
     }
 
     // Vérifier que l'approbateur a le droit d'approuver cette étape et ce montant
-    const authCheck = await canApproveStep(userId, applicationId, currentStep.stepName, stepAction);
+    const authCheck = await canApproveStep(userId, applicationId, currentStep.stepName, stepAction, currentStep.id);
     if (!authCheck.allowed) {
       return res.status(403).json({
         success: false,
