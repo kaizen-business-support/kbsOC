@@ -37,6 +37,13 @@ export function ContractTemplateEditDialog({ template, onClose, onSaved }: Props
     });
   }, []);
 
+  useEffect(() => {
+    if (template.fileFormat !== 'RICH_TEXT') return;
+    const q = quillRef.current?.getEditor();
+    if (!q || !template.htmlContent) return;
+    deserializeHtmlToQuill(template.htmlContent, q);
+  }, []);
+
   const updateCF = (i: number, patch: Partial<ContractCustomField>) => {
     setCustomFields((prev) => prev.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
   };
