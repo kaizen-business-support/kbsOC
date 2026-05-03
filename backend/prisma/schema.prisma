@@ -811,9 +811,10 @@ model ContractTemplate {
   documentType      String   @map("document_type")
   description       String?
   fileFormat        ContractFileFormat @map("file_format")
-  filePath          String   @map("file_path")
-  fileSize          Int      @map("file_size")
-  originalName      String   @map("original_name")
+  filePath          String?  @map("file_path")
+  fileSize          Int?     @map("file_size")
+  originalName      String?  @map("original_name")
+  htmlContent       String?  @map("html_content")
   creditTypeIds     String[] @default([]) @map("credit_type_ids")
   customFields      Json     @default("[]") @map("custom_fields")
   detectedVariables Json     @default("[]") @map("detected_variables")
@@ -830,8 +831,9 @@ model ContractTemplate {
 }
 
 enum ContractFileFormat {
-  DOCX @map("docx")
-  PDF  @map("pdf")
+  DOCX      @map("docx")
+  PDF       @map("pdf")
+  RICH_TEXT @map("rich_text")
 
   @@map("contract_file_format")
 }

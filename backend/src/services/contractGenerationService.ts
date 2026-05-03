@@ -109,7 +109,7 @@ export async function generateContract(opts: GenerateOptions) {
   let outPath: string;
 
   if (template.fileFormat === 'DOCX') {
-    const data = fs.readFileSync(template.filePath);
+    const data = fs.readFileSync(template.filePath!);
     const zip = new PizZip(data);
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
@@ -125,7 +125,7 @@ export async function generateContract(opts: GenerateOptions) {
   } else {
     outFilename = `${contractId}.pdf`;
     outPath = path.join(outDir, outFilename);
-    fs.copyFileSync(template.filePath, outPath);
+    fs.copyFileSync(template.filePath!, outPath);
   }
 
   const document = await prisma.document.create({

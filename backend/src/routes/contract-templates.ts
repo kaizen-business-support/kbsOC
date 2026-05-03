@@ -179,6 +179,7 @@ router.get('/:id/download', async (req: Request, res: Response) => {
     where: { id: req.params.id, companyId: req.companyId },
   });
   if (!tpl) return res.status(404).json({ success: false, error: 'Modèle introuvable' });
+  if (!tpl.filePath || !tpl.originalName) return res.status(400).json({ success: false, error: 'Ce modèle ne possède pas de fichier téléchargeable' });
   res.download(tpl.filePath, tpl.originalName);
 });
 
