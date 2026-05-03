@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Accordion, AccordionSummary, AccordionDetails,
-  Chip, Tooltip, Snackbar,
+  Chip, Tooltip, Snackbar, Button,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { contractTemplateApi } from '../../services/api';
@@ -42,7 +42,11 @@ const FIELD_LABELS: Record<string, string> = {
   creditType: 'Type de crédit',
 };
 
-export function VariableCatalogPanel() {
+interface Props {
+  onInsert?: (variable: string, label: string, group: string) => void;
+}
+
+export function VariableCatalogPanel({ onInsert }: Props = {}) {
   const [groups, setGroups] = useState<Record<string, string[]>>({});
   const [snack, setSnack] = useState<string | null>(null);
 
@@ -77,14 +81,26 @@ export function VariableCatalogPanel() {
           </AccordionSummary>
           <AccordionDetails sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
             {fields.map((f) => (
-              <Tooltip key={f} title={`{{${g}.${f}}}`}>
-                <Chip
-                  size="small"
-                  label={FIELD_LABELS[f] ?? f}
-                  onClick={() => copy(g, f)}
-                  sx={{ cursor: 'pointer', fontSize: 11 }}
-                />
-              </Tooltip>
+              <Box key={f} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Tooltip title={`{{${g}.${f}}}`}>
+                  <Chip
+                    size="small"
+                    label={FIELD_LABELS[f] ?? f}
+                    onClick={() => copy(g, f)}
+                    sx={{ cursor: 'pointer', fontSize: 11 }}
+                  />
+                </Tooltip>
+                {onInsert && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    sx={{ minWidth: 0, px: 1, fontSize: 11, py: 0 }}
+                    onClick={() => onInsert(`{{${g}.${f}}}`, FIELD_LABELS[f] ?? f, g)}
+                  >
+                    Insérer
+                  </Button>
+                )}
+              </Box>
             ))}
           </AccordionDetails>
         </Accordion>
