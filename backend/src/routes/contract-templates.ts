@@ -181,7 +181,7 @@ router.put('/:id', authorize(['manage_contract_templates']), async (req: Request
       const { custom } = classifyVariables(vars);
       updateData.htmlContent = htmlContent;
       updateData.detectedVariables = vars;
-      updateData.customFields = reconcileCustomFields(customFields ?? [], custom);
+      updateData.customFields = reconcileCustomFields((existing.customFields as any[]) ?? [], custom);
     } else if (customFields !== undefined) {
       updateData.customFields = customFields;
     }
