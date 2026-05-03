@@ -4,8 +4,11 @@ import crypto from 'crypto';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import { prisma } from '../prismaClient';
+import sanitizeHtml from 'sanitize-html';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const writtenNumber = require('written-number');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const htmlPdf = require('html-pdf-node');
 
 type LoadedApplication = {
   id: string;
@@ -127,8 +130,44 @@ export async function generateContract(opts: GenerateOptions) {
     outPath = path.join(outDir, outFilename);
     fs.copyFileSync(template.filePath!, outPath);
   } else {
-    // RICH_TEXT: implemented in Task 3
-    throw new Error(`generateContract: RICH_TEXT generation not yet implemented (templateId=${template.id})`);
+    // RICH_TEXT: generate PDF from HTML content
+    const ctx = buildMergeContext(app, opts.customValues);
+    const flat = flattenContext(ctx);
+    let html = template.htmlContent!;
+    // Replace {{variables}} with their values
+    html = html.replace(/\{\{\s*([\w][\w.]*)\s*\}\}/g, (_, key) =>
+      flat[key] !== undefined ? String(flat[key]) : '',
+    );
+    // Sanitize before PDF rendering
+    const clean = sanitizeHtml(html, {
+      allowedTags: [
+        'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'ul', 'ol', 'li', 'strong', 'em', 'u', 's',
+        'table', 'thead', 'tbody', 'tr', 'td', 'th',
+        'br', 'hr', 'blockquote', 'pre', 'code', 'span', 'div',
+      ],
+      allowedAttributes: {
+        '*': ['style', 'class'],
+        'a': ['href'],
+        'td': ['colspan', 'rowspan'],
+        'th': ['colspan', 'rowspan'],
+      },
+      allowedSchemes: ['http', 'https'],
+    });
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  body { font-family: Arial, sans-serif; font-size: 12pt; margin: 40px; color: #111; }
+  h1, h2, h3 { color: #1e3a5f; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; }
+  p { margin: 0.5em 0; line-height: 1.6; }
+</style></head><body>${clean}</body></html>`;
+    const file = { content: fullHtml };
+    const options = { format: 'A4', margin: { top: '20mm', bottom: '20mm', left: '20mm', right: '20mm' } };
+    const pdfBuffer: Buffer = await htmlPdf.generatePdf(file, options);
+    outFilename = `${contractId}.pdf`;
+    outPath = path.join(outDir, outFilename);
+    fs.writeFileSync(outPath, pdfBuffer);
   }
 
   const document = await prisma.document.create({
