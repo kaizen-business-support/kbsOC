@@ -122,10 +122,13 @@ export async function generateContract(opts: GenerateOptions) {
     outFilename = `${contractId}.docx`;
     outPath = path.join(outDir, outFilename);
     fs.writeFileSync(outPath, buf);
-  } else {
+  } else if (template.fileFormat === 'PDF') {
     outFilename = `${contractId}.pdf`;
     outPath = path.join(outDir, outFilename);
     fs.copyFileSync(template.filePath!, outPath);
+  } else {
+    // RICH_TEXT: implemented in Task 3
+    throw new Error(`generateContract: RICH_TEXT generation not yet implemented (templateId=${template.id})`);
   }
 
   const document = await prisma.document.create({
