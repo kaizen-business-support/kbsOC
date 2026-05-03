@@ -38,3 +38,20 @@ export function validateMagicBytes(buf: Buffer, format: 'DOCX' | 'PDF'): boolean
   }
   return false;
 }
+
+export function extractVariablesFromHtml(html: string): string[] {
+  // Defensive pass: extract data-variable if un-serialized chips arrive
+  const withInlined = html.replace(/data-variable="(\{\{[^"]+\}\})"/g, ' $1 ');
+  const text = withInlined.replace(/<[^>]+>/g, ' ');
+  return extractVariablesFromText(text);
+}
+
+export function reconcileCustomFields(
+  existing: Array<{ name: string; label: string; type: string; required: boolean }>,
+  detectedCustomNames: string[],
+): Array<{ name: string; label: string; type: string; required: boolean }> {
+  const existingMap = new Map(existing.map((f) => [f.name, f]));
+  return detectedCustomNames.map((name) =>
+    existingMap.get(name) ?? { name, label: name, type: 'text', required: false },
+  );
+}
