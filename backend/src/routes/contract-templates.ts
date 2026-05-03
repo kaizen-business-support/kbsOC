@@ -18,7 +18,8 @@ import crypto from 'crypto';
 import { prisma } from '../prismaClient';
 import { authenticate, authorize, requireCompany } from '../middleware/auth';
 import {
-  extractVariablesFromDocx, classifyVariables, validateMagicBytes,
+  extractVariablesFromDocx, extractVariablesFromHtml,
+  classifyVariables, validateMagicBytes, reconcileCustomFields,
 } from '../services/contractTemplateService';
 import { VARIABLE_CATALOG, flattenedCatalog } from '../constants/contractVariables';
 
@@ -63,6 +64,41 @@ router.get('/:id', async (req: Request, res: Response) => {
   });
   if (!tpl) return res.status(404).json({ success: false, error: 'Modèle introuvable' });
   res.json({ success: true, data: tpl });
+});
+
+// ─── POST /rich-text ──────────────────────────────────────────────────────────
+router.post('/rich-text', authorize(['manage_contract_templates']), async (req: Request, res: Response) => {
+  try {
+    const { name, documentType, description, htmlContent } = req.body;
+    const creditTypeIds = Array.isArray(req.body.creditTypeIds) ? req.body.creditTypeIds : [];
+    if (!name || !documentType || !htmlContent) {
+      return res.status(400).json({ success: false, error: 'name, documentType et htmlContent obligatoires' });
+    }
+    const vars = extractVariablesFromHtml(htmlContent);
+    const { custom } = classifyVariables(vars);
+    const customFields = custom.map((n) => ({ name: n, label: n, type: 'text', required: false }));
+    const tpl = await prisma.contractTemplate.create({
+      data: {
+        companyId: req.companyId!,
+        name,
+        documentType,
+        description: description || null,
+        fileFormat: 'RICH_TEXT',
+        htmlContent,
+        creditTypeIds,
+        customFields,
+        detectedVariables: vars,
+        createdBy: req.user!.id,
+      },
+    });
+    res.status(201).json({ success: true, data: tpl });
+  } catch (e: any) {
+    if (e.code === 'P2002') {
+      return res.status(409).json({ success: false, error: 'Un modèle avec ce nom existe déjà' });
+    }
+    console.error('[contract-templates] POST /rich-text', e);
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 // ─── POST / ───────────────────────────────────────────────────────────────────
@@ -127,21 +163,32 @@ router.post('/', authorize(['manage_contract_templates']), upload.single('file')
 // ─── PUT /:id ─────────────────────────────────────────────────────────────────
 router.put('/:id', authorize(['manage_contract_templates']), async (req: Request, res: Response) => {
   try {
-    const { name, description, creditTypeIds, customFields, isActive } = req.body;
+    const { name, description, creditTypeIds, customFields, isActive, htmlContent } = req.body;
     const existing = await prisma.contractTemplate.findFirst({
       where: { id: req.params.id, companyId: req.companyId },
     });
     if (!existing) return res.status(404).json({ success: false, error: 'Modèle introuvable' });
 
+    const updateData: any = {
+      ...(name !== undefined && { name }),
+      ...(description !== undefined && { description }),
+      ...(creditTypeIds !== undefined && { creditTypeIds }),
+      ...(isActive !== undefined && { isActive }),
+    };
+
+    if (htmlContent !== undefined && existing.fileFormat === 'RICH_TEXT') {
+      const vars = extractVariablesFromHtml(htmlContent);
+      const { custom } = classifyVariables(vars);
+      updateData.htmlContent = htmlContent;
+      updateData.detectedVariables = vars;
+      updateData.customFields = reconcileCustomFields(customFields ?? [], custom);
+    } else if (customFields !== undefined) {
+      updateData.customFields = customFields;
+    }
+
     const tpl = await prisma.contractTemplate.update({
       where: { id: req.params.id },
-      data: {
-        ...(name !== undefined && { name }),
-        ...(description !== undefined && { description }),
-        ...(creditTypeIds !== undefined && { creditTypeIds }),
-        ...(customFields !== undefined && { customFields }),
-        ...(isActive !== undefined && { isActive }),
-      },
+      data: updateData,
     });
     res.json({ success: true, data: tpl });
   } catch (e: any) {
