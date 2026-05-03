@@ -1,12 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button,
   TextField, Select, MenuItem, InputLabel, FormControl, Box, Typography,
   Chip, Stack, Alert, IconButton, Checkbox, FormControlLabel, OutlinedInput, Switch,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import { contractTemplateApi, creditPolicyApi } from '../../services/api';
 import { ContractTemplate, ContractCustomField, CustomFieldType } from '../../types/contracts';
+import { serializeEditorContent, deserializeHtmlToQuill } from './VariableBlot';
+import { QUILL_MODULES } from './quillConfig';
+import { VariableCatalogPanel } from './VariableCatalogPanel';
 
 interface Props {
   template: ContractTemplate;
@@ -23,6 +28,8 @@ export function ContractTemplateEditDialog({ template, onClose, onSaved }: Props
   const [creditTypes, setCreditTypes] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [htmlContent, setHtmlContent] = useState<string>(template.htmlContent ?? '');
+  const quillRef = useRef<ReactQuill>(null);
 
   useEffect(() => {
     creditPolicyApi.getCreditTypes().then((r) => {
@@ -36,9 +43,13 @@ export function ContractTemplateEditDialog({ template, onClose, onSaved }: Props
 
   const handleSave = async () => {
     setError(null); setLoading(true);
-    const r = await contractTemplateApi.update(template.id, {
-      name, description, creditTypeIds, customFields, isActive,
-    });
+    const payload: any = { name, description, creditTypeIds, isActive };
+    if (template.fileFormat === 'RICH_TEXT' && quillRef.current) {
+      payload.htmlContent = serializeEditorContent(quillRef.current.getEditor());
+    } else {
+      payload.customFields = customFields;
+    }
+    const r = await contractTemplateApi.update(template.id, payload);
     setLoading(false);
     if (!r.success) { setError(r.error); return; }
     onSaved();
@@ -87,7 +98,33 @@ export function ContractTemplateEditDialog({ template, onClose, onSaved }: Props
             </Select>
           </FormControl>
 
-          {customFields.length > 0 && (
+          {template.fileFormat === 'RICH_TEXT' && (
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <Box sx={{ flex: 7 }}>
+                <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600 }}>Contenu du contrat</Typography>
+                <ReactQuill
+                  ref={quillRef}
+                  value={htmlContent}
+                  onChange={setHtmlContent}
+                  modules={QUILL_MODULES}
+                  style={{ height: 350, marginBottom: 42 }}
+                />
+              </Box>
+              <Box sx={{ flex: 5 }}>
+                <VariableCatalogPanel
+                  onInsert={(variable, label, group) => {
+                    const q = quillRef.current?.getEditor();
+                    if (!q) return;
+                    const range = q.getSelection(true);
+                    q.insertEmbed(range.index, 'variable', { variable, label, group });
+                    q.setSelection(range.index + 1);
+                  }}
+                />
+              </Box>
+            </Box>
+          )}
+
+          {template.fileFormat !== 'RICH_TEXT' && customFields.length > 0 && (
             <Box>
               <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#7e22ce', mb: 1 }}>
                 Variables personnalisées
