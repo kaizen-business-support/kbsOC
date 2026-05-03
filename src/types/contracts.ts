@@ -1,4 +1,4 @@
-export type ContractFileFormat = 'DOCX' | 'PDF';
+export type ContractFileFormat = 'DOCX' | 'PDF' | 'RICH_TEXT';
 export type ContractStatus = 'DRAFT' | 'PENDING_SIGNATURE' | 'SIGNED' | 'ARCHIVED' | 'CANCELLED';
 export type SignatureMode = 'MANUAL' | 'EXTERNAL';
 export type SignatoryParty = 'BANK' | 'CLIENT';
@@ -19,8 +19,10 @@ export interface ContractTemplate {
   documentType: string;
   description: string | null;
   fileFormat: ContractFileFormat;
-  fileSize: number;
-  originalName: string;
+  filePath: string | null;
+  fileSize: number | null;
+  originalName: string | null;
+  htmlContent: string | null;
   creditTypeIds: string[];
   customFields: ContractCustomField[];
   detectedVariables: string[];

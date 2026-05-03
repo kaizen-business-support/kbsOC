@@ -1811,6 +1811,20 @@ export const contractTemplateApi = {
       return { success: false, error: e.response?.data?.error || 'Erreur création modèle' };
     }
   },
+  async createRichText(payload: {
+    name: string;
+    documentType: string;
+    creditTypeIds: string[];
+    description?: string;
+    htmlContent: string;
+  }): Promise<any> {
+    try {
+      const r = await api.post('/contract-templates/rich-text', payload);
+      return { success: true, data: r.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur création modèle éditeur' };
+    }
+  },
   async update(id: string, data: any): Promise<any> {
     try {
       const r = await api.put(`/contract-templates/${id}`, data);
