@@ -1,9 +1,7 @@
-// @ts-ignore - type import shadowed by const below
-import type Quill from 'quill';  // type only — for function parameter annotations
 import ReactQuill from 'react-quill';
 
-const Quill = (ReactQuill as any).Quill;
-const Embed = Quill.import('blots/embed') as any;
+const QuillInstance = (ReactQuill as any).Quill;
+const Embed = QuillInstance.import('blots/embed') as any;
 
 const GROUP_COLORS: Record<string, string> = {
   client:      '#3b82f6',
@@ -49,9 +47,9 @@ export class VariableBlot extends Embed {
   }
 }
 
-Quill.register(VariableBlot);
+QuillInstance.register(VariableBlot);
 
-export function serializeEditorContent(quill: Quill): string {
+export function serializeEditorContent(quill: any): string {
   const container = quill.root.cloneNode(true) as HTMLElement;
   container.querySelectorAll<HTMLElement>('.ql-variable-chip').forEach((chip) => {
     const variable = chip.getAttribute('data-variable') || '';
@@ -61,7 +59,7 @@ export function serializeEditorContent(quill: Quill): string {
   return container.innerHTML;
 }
 
-export function deserializeHtmlToQuill(html: string, quill: Quill): void {
+export function deserializeHtmlToQuill(html: string, quill: any): void {
   const markedHtml = html.replace(
     /\{\{\s*([\w][\w.]*)\s*\}\}/g,
     (_, v) => `<span class="ql-variable-chip" data-variable="{{${v}}}" data-group="${v.split('.')[0]}">${v}</span>`,
