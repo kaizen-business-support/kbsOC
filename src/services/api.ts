@@ -1954,6 +1954,22 @@ export const contractApi = {
     const qs = params.toString();
     return `${API_BASE_URL}/contracts/${id}/download${qs ? `?${qs}` : ''}`;
   },
+  async download(id: string, signed = false): Promise<void> {
+    const params: Record<string, string> = {};
+    if (signed) params['signed'] = '1';
+    const r = await api.get(`/contracts/${id}/download`, { params, responseType: 'blob' });
+    const cd: string = (r.headers['content-disposition'] as string) || '';
+    const m = cd.match(/filename[^;=\n]*=(["']?)([^"';\n]+)\1/);
+    const filename = m ? m[2].trim() : 'contrat';
+    const url = URL.createObjectURL(r.data as Blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
 };
 
 // ─── Module Profiles API ─────────────────────────────────────────────────────

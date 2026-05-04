@@ -39,6 +39,7 @@ export function ContractTemplateEditDialog({ template, onClose, onSaved }: Props
 
   useEffect(() => {
     if (template.fileFormat !== 'RICH_TEXT' || !template.htmlContent || quillInitialized.current) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const init = () => {
       const q = quillRef.current?.getEditor();
       if (!q) return false;
@@ -47,9 +48,12 @@ export function ContractTemplateEditDialog({ template, onClose, onSaved }: Props
       return true;
     };
     if (!init()) {
-      const t = setTimeout(init, 100);
-      return () => clearTimeout(t);
+      timer = setTimeout(init, 100);
     }
+    return () => {
+      clearTimeout(timer);
+      quillInitialized.current = false;
+    };
   }, []);
 
   const updateCF = (i: number, patch: Partial<ContractCustomField>) => {

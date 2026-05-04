@@ -33,6 +33,23 @@ export function ContractsListOnApplication({ contracts, applicationDefaults, ext
     return <Alert severity="info">Aucun contrat généré pour ce dossier.</Alert>;
   }
 
+  const handleDownload = async (contractId: string, signed = false) => {
+    try {
+      await contractApi.download(contractId, signed);
+    } catch (e: any) {
+      let msg = 'Erreur de téléchargement';
+      if (e.response?.data instanceof Blob) {
+        try {
+          const json = JSON.parse(await (e.response.data as Blob).text());
+          msg = json.error || msg;
+        } catch {}
+      } else if (e.message) {
+        msg = e.message;
+      }
+      alert(msg);
+    }
+  };
+
   const handleUploadSigned = async (contractId: string, file: File) => {
     const r = await contractApi.uploadSigned(contractId, file);
     if (r.success) onChanged();
@@ -91,9 +108,7 @@ export function ContractsListOnApplication({ contracts, applicationDefaults, ext
                 <Button
                   size="small"
                   startIcon={<DownloadIcon />}
-                  href={contractApi.downloadUrl(c.id, false)}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  onClick={() => handleDownload(c.id, false)}
                 >
                   Original
                 </Button>
@@ -102,9 +117,7 @@ export function ContractsListOnApplication({ contracts, applicationDefaults, ext
                     size="small"
                     startIcon={<DownloadIcon />}
                     color="success"
-                    href={contractApi.downloadUrl(c.id, true)}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    onClick={() => handleDownload(c.id, true)}
                   >
                     PDF signé
                   </Button>
