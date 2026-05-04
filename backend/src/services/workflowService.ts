@@ -12,7 +12,7 @@
  *    continuent d'avancer via leurs étapes existantes en base (getNextWorkflowStep).
  */
 
-import { UserRole, PolicyStepType } from '@prisma/client';
+import { UserRole, PolicyStepType, PolicyStatus } from '@prisma/client';
 import { prisma } from '../prismaClient';
 import { STEP_NAME_FR } from '../constants/stepNames';
 import { resolveDelegation } from './delegationService';
@@ -82,7 +82,7 @@ export async function getActivePolicyForCreditType(
 
   const policy = await prisma.creditPolicy.findFirst({
     where: {
-      status: 'ACTIVE' as any,
+      status: PolicyStatus.ACTIVE,
       isActive: true,
       validFrom: { lte: now },
       OR: [{ validTo: null }, { validTo: { gte: now } }],

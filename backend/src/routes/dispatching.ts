@@ -1,7 +1,9 @@
 import { Router, Request, Response } from 'express';
+import { PolicyStatus } from '@prisma/client';
 import { prisma } from '../server';
 import { createInAppNotification } from '../services/notificationService';
 import { resolveDelegation } from '../services/delegationService';
+import { createWorkflowStepsForApplication } from '../services/workflowService';
 
 const router = Router();
 
@@ -28,7 +30,7 @@ router.use(requireSupervisorOrDelegate);
 async function getActivePolicyRoles(companyId: string | undefined): Promise<string[]> {
   if (!companyId) return ['ANALYSTE_RISQUES'];
   const policy = await prisma.creditPolicy.findFirst({
-    where: { companyId, status: 'ACTIVE' as any, isActive: true },
+    where: { companyId, status: PolicyStatus.ACTIVE, isActive: true },
     include: { steps: { select: { assignedRole: true } } },
   });
   if (!policy || policy.steps.length === 0) return ['ANALYSTE_RISQUES'];
@@ -121,9 +123,6 @@ router.get('/pending', async (req: Request, res: Response) => {
       where: {
         ...(companyId ? { companyId } : {}),
         status: { in: ['SUBMITTED', 'UNDER_REVIEW'] },
-        workflowSteps: {
-          some: { status: 'PENDING', assigneeId: null }
-        }
       },
       include: {
         client: true,
@@ -167,6 +166,7 @@ router.get('/pending', async (req: Request, res: Response) => {
         currentStepRole: currentStep?.role ?? null,
         currentStepName: currentStep?.stepName ?? null,
         currentStepLabel: currentStep?.policyStep?.stepLabel ?? currentStep?.stepName ?? null,
+        needsCircuit: currentStep === null,
       };
     });
 
@@ -327,12 +327,27 @@ router.post('/assign', async (req: Request, res: Response) => {
     if (!agent) return res.status(400).json({ success: false, error: 'Utilisateur introuvable' });
 
     // Find the step to assign: for reassign, first PENDING/IN_REVIEW; for initial, first PENDING unassigned
-    const targetStep = isReassign
+    let targetStep = isReassign
       ? application.workflowSteps.find(s => ['PENDING', 'IN_REVIEW'].includes(s.status))
       : application.workflowSteps.find(s => s.status === 'PENDING' && !s.assigneeId);
 
+    // Si aucune étape PENDING et que l'application est SUBMITTED, tenter de générer le circuit
+    if (!targetStep && !isReassign && application.creditTypeId) {
+      try {
+        await createWorkflowStepsForApplication(application.id, application.creditTypeId, Number(application.amount));
+        // Recharger les étapes
+        const updated = await prisma.creditApplication.findUnique({
+          where: { id: applicationId },
+          include: { workflowSteps: { orderBy: { createdAt: 'asc' } } },
+        });
+        targetStep = updated?.workflowSteps.find(s => s.status === 'PENDING' && !s.assigneeId) ?? undefined;
+      } catch (circuitErr: any) {
+        console.warn('[dispatching] Circuit non généré :', circuitErr.message);
+      }
+    }
+
     if (!targetStep) {
-      return res.status(400).json({ success: false, error: 'Aucune étape en attente pour ce dossier' });
+      return res.status(400).json({ success: false, error: 'Aucune étape en attente pour ce dossier. Vérifiez qu\'une politique de crédit active est configurée.' });
     }
 
     // Validate the agent's role matches the step's role
