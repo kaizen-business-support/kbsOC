@@ -26,7 +26,7 @@ import {
   AccountBalance as BankIcon,
   BarChart as FinancialIcon,
   FolderOpen as DocumentIcon,
-  RateReview as AnalysisIcon,
+  ManageAccounts as AttributionIcon,
   CheckCircle as CheckCircleIcon,
   ArrowForward as NextIcon,
   ArrowBack as BackIcon,
@@ -50,7 +50,7 @@ const DRAFT_KEY = 'credit_application';
 const BG = '#f7f8fc';
 const CARD_SHADOW = '0 2px 24px rgba(0,0,0,0.07)';
 const CARD_RADIUS = 20;
-const STEP_COLORS = ['#1565c0', '#0277bd', '#00695c', '#4527a0', '#c62828', '#2e7d32'];
+const STEP_COLORS = ['#1565c0', '#0277bd', '#00695c', '#4527a0', '#1976d2', '#2e7d32'];
 
 // ─── Step definitions ──────────────────────────────────────────────────────────
 const STEPS = [
@@ -58,8 +58,8 @@ const STEPS = [
   { label: 'Crédit',        icon: BankIcon,       subtitle: 'Détails du financement' },
   { label: 'États financiers', icon: FinancialIcon, subtitle: 'Données comptables SYSCOHADA' },
   { label: 'Documents',     icon: DocumentIcon,   subtitle: 'Pièces justificatives' },
-  { label: 'Analyse',       icon: AnalysisIcon,   subtitle: 'Évaluation préliminaire' },
-  { label: 'Soumission',    icon: SubmitIcon,     subtitle: 'Récapitulatif & envoi' },
+  { label: 'Attribution',    icon: AttributionIcon, subtitle: 'Affectation de l\'analyste' },
+  { label: 'Soumission',    icon: SubmitIcon,      subtitle: 'Récapitulatif & envoi' },
 ];
 
 interface CreditApplicationPageProps {
@@ -868,24 +868,43 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
           </SectionCard>
         )}
 
-        {/* ── STEP 4 : Analyse préliminaire ────────────────────────────────────── */}
+        {/* ── STEP 4 : Attribution de l'analyste ───────────────────────────────── */}
         {activeStep === 4 && (
           <SectionCard
-            title="Analyse préliminaire du chargé d'affaires"
-            icon={<AnalysisIcon sx={{ fontSize: 18, color: STEP_COLORS[4] }} />}
+            title="Attribution de l'analyste crédit"
+            icon={<AttributionIcon sx={{ fontSize: 18, color: STEP_COLORS[4] }} />}
             accent={STEP_COLORS[4]}
           >
             <Alert severity="info" sx={{ mb: 3, borderRadius: 3, bgcolor: `${STEP_COLORS[4]}0d`, border: `1px solid ${STEP_COLORS[4]}30`, '& .MuiAlert-icon': { color: STEP_COLORS[4] } }}>
-              Cette analyse sera transmise avec le dossier au service crédit. Elle doit contenir votre évaluation
-              initiale du risque, la pertinence du projet et vos recommandations.
+              Sélectionnez l'analyste crédit qui sera chargé de l'analyse approfondie de ce dossier.
             </Alert>
-            <RichTextEditor
-              value={preliminaryAnalysis}
-              onChange={setPreliminaryAnalysis}
-              placeholder="Rédigez votre analyse : évaluation du risque, capacité de remboursement estimée, recommandations…"
-              height={320}
-              label="Analyse et recommandations"
-            />
+            <Grid container spacing={3} alignItems="center">
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Analyste crédit assigné</InputLabel>
+                  <Select value={selectedAnalystId} label="Analyste crédit assigné"
+                    onChange={e => setSelectedAnalystId(e.target.value)}>
+                    <MenuItem value=""><em>Sélectionner un analyste</em></MenuItem>
+                    {analysts.map(a => (
+                      <MenuItem key={a.id} value={a.id}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                          <Avatar sx={{ width: 28, height: 28, fontSize: '0.75rem', bgcolor: STEP_COLORS[2] }}>{a.name?.[0]}</Avatar>
+                          <Box>
+                            <Typography variant="body2" fontWeight={700}>{a.name}</Typography>
+                            <Typography variant="caption" color="text.secondary">{a.department || 'Risques'}</Typography>
+                          </Box>
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Alert severity="info" sx={{ borderRadius: 3 }}>
+                  L'analyste recevra le dossier pour notation approfondie.
+                </Alert>
+              </Grid>
+            </Grid>
           </SectionCard>
         )}
 
@@ -968,55 +987,20 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
               </Box>
             </SectionCard>
 
-            {/* Analyst */}
-            <SectionCard
-              title="Attribution de l'analyste crédit"
-              icon={<CheckCircleIcon sx={{ fontSize: 18, color: '#2e7d32' }} />}
-              accent="#2e7d32"
-            >
-              <Grid container spacing={3} alignItems="center">
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Analyste crédit assigné</InputLabel>
-                    <Select value={selectedAnalystId} label="Analyste crédit assigné"
-                      onChange={e => setSelectedAnalystId(e.target.value)}>
-                      <MenuItem value=""><em>Sélectionner un analyste</em></MenuItem>
-                      {analysts.map(a => (
-                        <MenuItem key={a.id} value={a.id}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                            <Avatar sx={{ width: 28, height: 28, fontSize: '0.75rem', bgcolor: STEP_COLORS[2] }}>{a.name?.[0]}</Avatar>
-                            <Box>
-                              <Typography variant="body2" fontWeight={700}>{a.name}</Typography>
-                              <Typography variant="caption" color="text.secondary">{a.department || 'Risques'}</Typography>
-                            </Box>
-                          </Box>
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Alert severity="info" sx={{ borderRadius: 3 }}>
-                    L'analyste recevra le dossier pour notation approfondie.
-                  </Alert>
-                </Grid>
-              </Grid>
-
-              <Box sx={{
-                mt: 3, p: 3, borderRadius: 3,
-                background: 'linear-gradient(135deg, #e8f5e9, #f0faf4)',
-                border: '1px solid #a5d6a7',
-                display: 'flex', alignItems: 'center', gap: 2,
-              }}>
-                <CheckCircleIcon sx={{ fontSize: 32, color: '#2e7d32' }} />
-                <Box>
-                  <Typography variant="subtitle1" fontWeight={800} color="#1b5e20">Dossier prêt à soumettre</Typography>
-                  <Typography variant="body2" color="#388e3c">
-                    Le workflow d'approbation sera automatiquement initié à la soumission.
-                  </Typography>
-                </Box>
+            <Box sx={{
+              mt: 1, p: 3, borderRadius: 3,
+              background: 'linear-gradient(135deg, #e8f5e9, #f0faf4)',
+              border: '1px solid #a5d6a7',
+              display: 'flex', alignItems: 'center', gap: 2,
+            }}>
+              <CheckCircleIcon sx={{ fontSize: 32, color: '#2e7d32' }} />
+              <Box>
+                <Typography variant="subtitle1" fontWeight={800} color="#1b5e20">Dossier prêt à soumettre</Typography>
+                <Typography variant="body2" color="#388e3c">
+                  Le workflow d'approbation sera automatiquement initié à la soumission.
+                </Typography>
               </Box>
-            </SectionCard>
+            </Box>
           </Box>
         )}
       </Box>
