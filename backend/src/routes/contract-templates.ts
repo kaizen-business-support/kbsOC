@@ -15,6 +15,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import mammoth from 'mammoth';
 import { prisma } from '../prismaClient';
 import { authenticate, authorize, requireCompany } from '../middleware/auth';
 import {
@@ -128,10 +129,29 @@ router.post('/', authorize(['manage_contract_templates']), upload.single('file')
 
     let detected: string[] = [];
     let customFields: any[] = [];
+    let htmlContent: string | null = null;
+    let finalFormat: 'DOCX' | 'PDF' | 'RICH_TEXT' = format;
+
     if (format === 'DOCX') {
       detected = extractVariablesFromDocx(filePath);
       const { custom } = classifyVariables(detected);
       customFields = custom.map((n) => ({ name: n, label: n, type: 'text', required: false }));
+      try {
+        const result = await mammoth.convertToHtml({ buffer: req.file.buffer });
+        htmlContent = result.value || null;
+        if (htmlContent) {
+          const htmlVars = extractVariablesFromHtml(htmlContent);
+          if (htmlVars.length > 0) {
+            const { custom: htmlCustom } = classifyVariables(htmlVars);
+            const allCustom = [...new Set([...customFields.map(c => c.name), ...htmlCustom])];
+            customFields = allCustom.map(n => ({ name: n, label: n, type: 'text', required: false }));
+            detected = [...new Set([...detected, ...htmlVars])];
+          }
+          finalFormat = 'RICH_TEXT';
+        }
+      } catch (convErr) {
+        console.warn('[contract-templates] mammoth conversion failed, keeping DOCX format:', convErr);
+      }
     }
 
     const tpl = await prisma.contractTemplate.create({
@@ -140,10 +160,11 @@ router.post('/', authorize(['manage_contract_templates']), upload.single('file')
         name,
         documentType,
         description: description || null,
-        fileFormat: format,
+        fileFormat: finalFormat,
         filePath,
         fileSize: req.file.size,
         originalName: req.file.originalname,
+        htmlContent,
         creditTypeIds,
         customFields,
         detectedVariables: detected,

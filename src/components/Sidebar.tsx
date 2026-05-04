@@ -96,7 +96,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { t } = useTranslation();
   const { isRole, hasPermission, state: userState } = useUser();
   const { activeCompany } = useCompany();
-  const { canAccess } = useModuleAccess();
+  const { canAccess, canAction } = useModuleAccess();
 
   const [creditExpanded, setCreditExpanded]     = useState(true);
   const [analysisExpanded, setAnalysisExpanded] = useState(true);
@@ -137,12 +137,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canViewCreditPolicy    = (hasPermission('policy_configuration') || isAdmin) && canAccess('credit-policy');
   const canViewCodir           = (hasPermission('codir_dashboard') || isAdmin) && canAccess('codir-dashboard');
   const canViewSimulator       = canCreateApplication || canFinancialAnalysis || isAdmin;
-  // Le juridique est mappé sur 'management' côté frontend (cf. LoginPage.tsx).
-  // On accepte aussi le rôle 'management' pour être tolérant aux sessions antérieures
-  // au re-seed des permissions, et au cas où une politique tenant n'a pas encore
-  // attribué la permission au juridique.
   const isManagement              = isRole('management');
-  const canManageContractTemplates = (hasPermission('manage_contract_templates') || isAdmin || isManagement) && canAccess('contract-templates');
+  // canAction vérifie la visibilité + l'action dans le profil de module — couvre tous les rôles
+  // (DIRECTION_JURIDIQUE, BACK_OFFICE, etc.) sans dépendre du mapping de rôle frontend.
+  const canManageContractTemplates = hasPermission('manage_contract_templates') || isAdmin || isManagement || canAction('contract-templates', 'upload');
 
   // ── Sections ─────────────────────────────────────────────────────────────────
 
