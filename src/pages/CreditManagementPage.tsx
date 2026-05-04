@@ -2,11 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Box, Tabs, Tab, Typography } from '@mui/material';
 import {
   CreditCardOutlined as CreditTypeIcon,
-  RouteOutlined as TreatmentIcon,
   GavelOutlined as LimitsIcon,
 } from '@mui/icons-material';
 import { CreditTypesPage } from './CreditTypesPage';
-import { CreditPolicyPage } from './CreditPolicyPage';
 import { ApprovalLimitsPage } from './ApprovalLimitsPage';
 import { PageType } from '../types';
 
@@ -20,11 +18,6 @@ const TABS = [
     label: 'Types de crédit',
     icon: <CreditTypeIcon sx={{ fontSize: 16 }} />,
     desc: 'Définir et configurer les produits de crédit disponibles',
-  },
-  {
-    label: 'Traitement',
-    icon: <TreatmentIcon sx={{ fontSize: 16 }} />,
-    desc: 'Circuit de validation, étapes et rôles intervenants',
   },
   {
     label: "Limites d'approbation",
@@ -111,8 +104,7 @@ export function CreditManagementPage({ initialTab = 0, onNavigate }: Props) {
       {/* ── Contenu de l'onglet ───────────────────────────────────────────── */}
       <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1400, mx: 'auto' }}>
         {tab === 0 && <CreditTypesPage compact={true} />}
-        {tab === 1 && <CreditPolicyPage initialTab={0} compact={true} />}
-        {tab === 2 && <ApprovalLimitsPage onNavigate={onNavigate ?? (() => {})} compact={true} />}
+        {tab === 1 && <ApprovalLimitsPage onNavigate={onNavigate ?? (() => {})} compact={true} />}
       </Box>
 
     </Box>

@@ -375,14 +375,11 @@ const AppContent: React.FC = () => {
                 element={<ApprovalsPage />}
               />
               <Route path="/codir-dashboard" element={<CodirDashboardPage />} />
-              <Route
-                path="/credit-policy"
-                element={<CreditManagementPage initialTab={1} onNavigate={handlePageChange} />}
-              />
+              <Route path="/credit-policy" element={<Navigate to="/credit-types" replace />} />
               <Route path="/workflow-builder" element={<WorkflowBuilderPage />} />
               <Route
                 path="/approval-limits"
-                element={<CreditManagementPage initialTab={2} onNavigate={handlePageChange} />}
+                element={<CreditManagementPage initialTab={1} onNavigate={handlePageChange} />}
               />
               <Route
                 path="/company-settings"
