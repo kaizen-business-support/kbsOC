@@ -92,6 +92,8 @@ export function ContractsListOnApplication({ contracts, applicationDefaults, ext
                   size="small"
                   startIcon={<DownloadIcon />}
                   href={contractApi.downloadUrl(c.id, false)}
+                  target="_blank"
+                  rel="noopener noreferrer"
                 >
                   Original
                 </Button>
@@ -101,6 +103,8 @@ export function ContractsListOnApplication({ contracts, applicationDefaults, ext
                     startIcon={<DownloadIcon />}
                     color="success"
                     href={contractApi.downloadUrl(c.id, true)}
+                    target="_blank"
+                    rel="noopener noreferrer"
                   >
                     PDF signé
                   </Button>

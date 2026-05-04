@@ -28,8 +28,8 @@ export function ContractTemplateEditDialog({ template, onClose, onSaved }: Props
   const [creditTypes, setCreditTypes] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [htmlContent, setHtmlContent] = useState<string>(template.htmlContent ?? '');
   const quillRef = useRef<ReactQuill>(null);
+  const quillInitialized = useRef(false);
 
   useEffect(() => {
     creditPolicyApi.getCreditTypes().then((r) => {
@@ -38,10 +38,18 @@ export function ContractTemplateEditDialog({ template, onClose, onSaved }: Props
   }, []);
 
   useEffect(() => {
-    if (template.fileFormat !== 'RICH_TEXT') return;
-    const q = quillRef.current?.getEditor();
-    if (!q || !template.htmlContent) return;
-    deserializeHtmlToQuill(template.htmlContent, q);
+    if (template.fileFormat !== 'RICH_TEXT' || !template.htmlContent || quillInitialized.current) return;
+    const init = () => {
+      const q = quillRef.current?.getEditor();
+      if (!q) return false;
+      quillInitialized.current = true;
+      deserializeHtmlToQuill(template.htmlContent!, q);
+      return true;
+    };
+    if (!init()) {
+      const t = setTimeout(init, 100);
+      return () => clearTimeout(t);
+    }
   }, []);
 
   const updateCF = (i: number, patch: Partial<ContractCustomField>) => {
@@ -111,8 +119,6 @@ export function ContractTemplateEditDialog({ template, onClose, onSaved }: Props
                 <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600 }}>Contenu du contrat</Typography>
                 <ReactQuill
                   ref={quillRef}
-                  value={htmlContent}
-                  onChange={setHtmlContent}
                   modules={QUILL_MODULES}
                   style={{ height: 350, marginBottom: 42 }}
                 />

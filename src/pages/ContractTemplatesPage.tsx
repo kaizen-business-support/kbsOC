@@ -112,15 +112,19 @@ export function ContractTemplatesPage() {
                     </TableCell>
                     <TableCell>{t.isActive ? '✓' : '—'}</TableCell>
                     <TableCell align="right">
-                      <Tooltip title="Télécharger">
-                        <IconButton
-                          size="small"
-                          component="a"
-                          href={contractTemplateApi.downloadUrl(t.id)}
-                        >
-                          <DownloadIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                      {t.fileFormat !== 'RICH_TEXT' && (
+                        <Tooltip title="Télécharger le modèle">
+                          <IconButton
+                            size="small"
+                            component="a"
+                            href={contractTemplateApi.downloadUrl(t.id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <DownloadIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                       <Tooltip title="Modifier">
                         <IconButton size="small" onClick={() => setEditing(t)}>
                           <EditIcon fontSize="small" />
