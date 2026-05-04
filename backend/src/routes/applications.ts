@@ -255,18 +255,22 @@ router.post('/', async (req: Request, res: Response) => {
       },
     });
 
-    // Construction du circuit via la politique de crédit active (obligatoire)
+    // Construction du circuit via la politique de crédit active (non-bloquant)
     if (application.creditTypeId) {
-      await createWorkflowStepsForApplication(
-        application.id,
-        application.creditTypeId,
-        Number(amount)
-      );
-      // Le dossier passe en UNDER_REVIEW dès que les étapes sont générées
-      await prisma.creditApplication.update({
-        where: { id: application.id },
-        data: { status: 'UNDER_REVIEW' },
-      });
+      try {
+        await createWorkflowStepsForApplication(
+          application.id,
+          application.creditTypeId,
+          Number(amount)
+        );
+        await prisma.creditApplication.update({
+          where: { id: application.id },
+          data: { status: 'UNDER_REVIEW' },
+        });
+      } catch (workflowErr: any) {
+        console.warn('[applications] Workflow non généré (politique manquante ?) :', workflowErr.message);
+        // L'application est quand même créée; le dispatching gérera l'attribution
+      }
     }
 
     // Trigger notification (non-blocking)
