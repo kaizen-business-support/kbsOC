@@ -37,19 +37,17 @@ export function ContractTemplateEditDialog({ template, onClose, onSaved }: Props
     });
   }, []);
 
-  useEffect(() => {
+  const initEditor = () => {
     if (template.fileFormat !== 'RICH_TEXT' || !template.htmlContent || quillInitialized.current) return;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const init = () => {
-      const q = quillRef.current?.getEditor();
-      if (!q) return false;
-      quillInitialized.current = true;
-      deserializeHtmlToQuill(template.htmlContent!, q);
-      return true;
-    };
-    if (!init()) {
-      timer = setTimeout(init, 100);
-    }
+    const q = quillRef.current?.getEditor();
+    if (!q) return;
+    quillInitialized.current = true;
+    deserializeHtmlToQuill(template.htmlContent!, q);
+  };
+
+  useEffect(() => {
+    if (template.fileFormat !== 'RICH_TEXT' || !template.htmlContent) return;
+    const timer = setTimeout(initEditor, 150);
     return () => {
       clearTimeout(timer);
       quillInitialized.current = false;
@@ -75,7 +73,7 @@ export function ContractTemplateEditDialog({ template, onClose, onSaved }: Props
   };
 
   return (
-    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth TransitionProps={{ onEntered: initEditor }}>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center' }}>
         Modifier le modèle
         <IconButton onClick={onClose} sx={{ ml: 'auto' }}><CloseIcon /></IconButton>
@@ -132,9 +130,10 @@ export function ContractTemplateEditDialog({ template, onClose, onSaved }: Props
                   onInsert={(variable, label, group) => {
                     const q = quillRef.current?.getEditor();
                     if (!q) return;
-                    const range = q.getSelection(true);
+                    q.focus();
+                    const range = q.getSelection() ?? { index: q.getLength() - 1, length: 0 };
                     q.insertEmbed(range.index, 'variable', { variable, label, group });
-                    q.setSelection(range.index + 1);
+                    q.setSelection(range.index + 1, 0);
                   }}
                 />
               </Box>
