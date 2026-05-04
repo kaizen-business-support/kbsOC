@@ -26,7 +26,6 @@ import {
   AccountBalance as BankIcon,
   BarChart as FinancialIcon,
   FolderOpen as DocumentIcon,
-  ManageAccounts as AttributionIcon,
   CheckCircle as CheckCircleIcon,
   ArrowForward as NextIcon,
   ArrowBack as BackIcon,
@@ -50,7 +49,7 @@ const DRAFT_KEY = 'credit_application';
 const BG = '#f7f8fc';
 const CARD_SHADOW = '0 2px 24px rgba(0,0,0,0.07)';
 const CARD_RADIUS = 20;
-const STEP_COLORS = ['#1565c0', '#0277bd', '#00695c', '#4527a0', '#1976d2', '#2e7d32'];
+const STEP_COLORS = ['#1565c0', '#0277bd', '#00695c', '#4527a0', '#2e7d32'];
 
 // ─── Step definitions ──────────────────────────────────────────────────────────
 const STEPS = [
@@ -58,8 +57,7 @@ const STEPS = [
   { label: 'Crédit',        icon: BankIcon,       subtitle: 'Détails du financement' },
   { label: 'États financiers', icon: FinancialIcon, subtitle: 'Données comptables SYSCOHADA' },
   { label: 'Documents',     icon: DocumentIcon,   subtitle: 'Pièces justificatives' },
-  { label: 'Attribution',    icon: AttributionIcon, subtitle: 'Affectation de l\'analyste' },
-  { label: 'Soumission',    icon: SubmitIcon,      subtitle: 'Récapitulatif & envoi' },
+  { label: 'Soumission',    icon: SubmitIcon,     subtitle: 'Récapitulatif & envoi' },
 ];
 
 interface CreditApplicationPageProps {
@@ -186,11 +184,11 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
 
   // Data
   const [clients, setClients] = useState<any[]>([]);
-  const [analysts, setAnalysts] = useState<any[]>([]);
+
   const [creditTypes, setCreditTypes] = useState<any[]>([]);
   const [selectedClient, setSelectedClient] = useState<any | null>(null);
   const [selectedClientId, setSelectedClientId] = useState('');
-  const [selectedAnalystId, setSelectedAnalystId] = useState('');
+
 
   const [clientInfo, setClientInfo] = useState<ClientInfo>(() => {
     const d = loadFormDraft<any>(DRAFT_KEY);
@@ -238,7 +236,6 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
       if (d) {
         if (d.activeStep !== undefined) setActiveStep(d.activeStep);
         if (d.selectedClientId) setSelectedClientId(d.selectedClientId);
-        if (d.selectedAnalystId) setSelectedAnalystId(d.selectedAnalystId);
         setShowDraftBanner(true);
       }
       setDraftRestored(true);
@@ -247,7 +244,7 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
   }, []);
 
   useFormDraft(DRAFT_KEY, {
-    activeStep, selectedClientId, selectedAnalystId,
+    activeStep, selectedClientId,
     clientInfo, creditRequest, preliminaryAnalysis,
     financialData, referenceYear, numberOfYears,
   });
@@ -255,7 +252,6 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
   // ── Load data ────────────────────────────────────────────────────────────────
   useEffect(() => {
     ApiService.getClients().then(r => r.success && setClients(r.data || []));
-    ApiService.getCreditAnalysts().then(r => r.success && setAnalysts(r.data || []));
     ApiService.getCreditTypes().then(r => r.success && setCreditTypes(r.data || []));
   }, []);
 
@@ -311,7 +307,7 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
         repaymentSchedule: creditRequest.repaymentSchedule,
         creditTypeId: creditRequest.creditTypeId || undefined,
         createdBy: userState.currentUser.id,
-        assignedAnalystId: selectedAnalystId || undefined,
+
         analysisResults: {
           preliminaryAnalysis,
           // Wrap each year's flat data into the structure WorkflowDetailsDialog expects:
@@ -868,48 +864,8 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
           </SectionCard>
         )}
 
-        {/* ── STEP 4 : Attribution de l'analyste ───────────────────────────────── */}
+        {/* ── STEP 4 : Récapitulatif & soumission ──────────────────────────────── */}
         {activeStep === 4 && (
-          <SectionCard
-            title="Attribution de l'analyste crédit"
-            icon={<AttributionIcon sx={{ fontSize: 18, color: STEP_COLORS[4] }} />}
-            accent={STEP_COLORS[4]}
-          >
-            <Alert severity="info" sx={{ mb: 3, borderRadius: 3, bgcolor: `${STEP_COLORS[4]}0d`, border: `1px solid ${STEP_COLORS[4]}30`, '& .MuiAlert-icon': { color: STEP_COLORS[4] } }}>
-              Sélectionnez l'analyste crédit qui sera chargé de l'analyse approfondie de ce dossier.
-            </Alert>
-            <Grid container spacing={3} alignItems="center">
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Analyste crédit assigné</InputLabel>
-                  <Select value={selectedAnalystId} label="Analyste crédit assigné"
-                    onChange={e => setSelectedAnalystId(e.target.value)}>
-                    <MenuItem value=""><em>Sélectionner un analyste</em></MenuItem>
-                    {analysts.map(a => (
-                      <MenuItem key={a.id} value={a.id}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                          <Avatar sx={{ width: 28, height: 28, fontSize: '0.75rem', bgcolor: STEP_COLORS[2] }}>{a.name?.[0]}</Avatar>
-                          <Box>
-                            <Typography variant="body2" fontWeight={700}>{a.name}</Typography>
-                            <Typography variant="caption" color="text.secondary">{a.department || 'Risques'}</Typography>
-                          </Box>
-                        </Box>
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Alert severity="info" sx={{ borderRadius: 3 }}>
-                  L'analyste recevra le dossier pour notation approfondie.
-                </Alert>
-              </Grid>
-            </Grid>
-          </SectionCard>
-        )}
-
-        {/* ── STEP 5 : Récapitulatif & soumission ──────────────────────────────── */}
-        {activeStep === 5 && (
           <Box>
             {/* Client */}
             <SectionCard
