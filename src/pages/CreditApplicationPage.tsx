@@ -1017,7 +1017,7 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button
               variant="outlined"
-              onClick={() => onNavigate('clients')}
+              onClick={() => { clearFormDraft(DRAFT_KEY); onNavigate('clients'); }}
               sx={{ borderRadius: 3, borderColor: 'rgba(0,0,0,0.15)', color: 'text.secondary' }}
             >
               Annuler
