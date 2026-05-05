@@ -34,6 +34,7 @@ interface Role {
 
 interface Props {
   canEdit: boolean;
+  onRoleSaved?: () => void;
 }
 
 interface CreateForm {
@@ -44,7 +45,7 @@ interface CreateForm {
 
 const EMPTY_FORM: CreateForm = { role: '', label: '', description: '' };
 
-export const RoleManagerPanel: React.FC<Props> = ({ canEdit }) => {
+export const RoleManagerPanel: React.FC<Props> = ({ canEdit, onRoleSaved }) => {
   const [roles, setRoles] = useState<Role[]>([]);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -92,6 +93,7 @@ export const RoleManagerPanel: React.FC<Props> = ({ canEdit }) => {
     if (res.success) {
       setCreateOpen(false);
       await load();
+      onRoleSaved?.();
       setSelectedRole(form.role.trim().toUpperCase().replace(/\s+/g, '_'));
     } else {
       setCreateError(res.error || 'Erreur lors de la création du rôle.');

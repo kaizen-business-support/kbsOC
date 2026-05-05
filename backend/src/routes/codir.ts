@@ -3,6 +3,7 @@ import { prisma } from '../server';
 import { authenticate, requireCompany, authorize } from '../middleware/auth';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
 import { createInAppNotification } from '../services/notificationService';
+import { STEP_NAME_FR } from '../constants/stepNames';
 
 const router = Router();
 router.use(authenticate);
@@ -51,7 +52,7 @@ router.get('/dashboard', authorize(['codir_dashboard']), asyncHandler(async (req
   }>();
 
   for (const step of steps) {
-    const label = step.policyStep?.stepLabel ?? step.stepName;
+    const label = step.policyStep?.stepLabel ?? STEP_NAME_FR[step.stepName] ?? step.stepName;
     const waitHours = (Date.now() - step.createdAt.getTime()) / 3_600_000;
     const existing = kpiMap.get(step.stepName);
     if (existing) {
@@ -87,7 +88,7 @@ router.get('/dashboard', authorize(['codir_dashboard']), asyncHandler(async (req
     amount: Number(step.application.amount),
     currency: step.application.currency,
     stepName: step.stepName,
-    stepLabel: step.policyStep?.stepLabel ?? step.stepName,
+    stepLabel: step.policyStep?.stepLabel ?? STEP_NAME_FR[step.stepName] ?? step.stepName,
     assignedRole: step.role,
     assigneeId: step.assigneeId,
     assigneeName: step.assignee?.name ?? null,
@@ -354,7 +355,7 @@ router.get('/timeline', authorize(['codir_dashboard']), asyncHandler(async (req:
  * comme IN_PROGRESS — elles sont des étapes futures.
  */
 function buildTimelineStep(ws: any | null, ps: any | null, order: number, now: number, isActive: boolean) {
-  const stepLabel        = ps?.stepLabel ?? ws?.stepName ?? `Étape ${order}`;
+  const stepLabel        = ps?.stepLabel ?? STEP_NAME_FR[ws?.stepName] ?? ws?.stepName ?? `Étape ${order}`;
   const stepName         = ps?.stepName  ?? ws?.stepName ?? `step_${order}`;
   const maxDurationHours = ps?.maxDurationHours ?? 72;
 

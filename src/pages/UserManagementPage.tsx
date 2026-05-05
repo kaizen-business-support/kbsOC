@@ -1917,7 +1917,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
 
           {/* Roles Tab */}
           {activeTab === 2 && (
-            <RoleManagerPanel canEdit={canEditUserManagement} />
+            <RoleManagerPanel canEdit={canEditUserManagement} onRoleSaved={loadRoles} />
           )}
 
           {/* Branches Tab */}
@@ -2463,7 +2463,11 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                   label="Rôle"
                   disabled={!canEditUserManagement}
                 >
-                  {availableRoles.map((role) => (
+                  {(roles.length > 0
+                    ? roles.filter(r => r.isActive && r.name !== 'SUPER_ADMIN')
+                        .map(r => ({ value: r.name, label: r.label || r.name }))
+                    : availableRoles
+                  ).map((role) => (
                     <MenuItem key={role.value} value={role.value}>{role.label}</MenuItem>
                   ))}
                 </Select>
