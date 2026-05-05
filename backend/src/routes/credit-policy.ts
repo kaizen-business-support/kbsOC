@@ -19,6 +19,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { PolicyStatus } from '@prisma/client';
 import { prisma } from '../prismaClient';
 import { buildWorkflowPlan, getApplicationProcessingStats } from '../services/workflowService';
 import { STEP_NAME_FR } from '../constants/stepNames';
@@ -259,7 +260,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     });
     if (!current) return res.status(404).json({ success: false, error: 'Politique introuvable' });
     if (current.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
-    if (current.status === 'ARCHIVED') {
+    if (current.status === PolicyStatus.ARCHIVED) {
       return res.status(422).json({ success: false, error: 'Une politique archivée ne peut pas être modifiée' });
     }
     if (expectedVersion !== undefined && current.version !== expectedVersion) {
@@ -330,9 +331,9 @@ router.delete('/:id', async (req: Request, res: Response) => {
     if (!policy) return res.status(404).json({ success: false, error: 'Politique introuvable' });
     if (policy.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
 
-    await (prisma as any).creditPolicy.update({
+    await prisma.creditPolicy.update({
       where: { id: req.params.id },
-      data: { status: 'ARCHIVED', isActive: false },
+      data: { status: PolicyStatus.ARCHIVED, isActive: false },
     });
     res.json({ success: true, message: 'Politique archivée' });
   } catch (error) {
@@ -561,7 +562,7 @@ router.post('/:id/activate', async (req: Request, res: Response) => {
     });
     if (!policy) return res.status(404).json({ success: false, error: 'Politique non trouvée' });
     if (policy.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
-    if ((policy as any).status === 'ARCHIVED') {
+    if (policy.status === PolicyStatus.ARCHIVED) {
       return res.status(422).json({ success: false, error: 'Une politique archivée ne peut pas être activée' });
     }
 
@@ -576,19 +577,19 @@ router.post('/:id/activate', async (req: Request, res: Response) => {
     }
 
     const oldActive = await prisma.creditPolicy.findFirst({
-      where: { companyId: req.companyId, status: 'ACTIVE', id: { not: req.params.id } } as any,
+      where: { companyId: req.companyId, status: PolicyStatus.ACTIVE, id: { not: req.params.id } },
     });
 
     await prisma.$transaction(async (tx) => {
       if (oldActive) {
-        await (tx as any).creditPolicy.update({
+        await tx.creditPolicy.update({
           where: { id: oldActive.id },
-          data: { status: 'ARCHIVED', isActive: false },
+          data: { status: PolicyStatus.ARCHIVED, isActive: false },
         });
       }
-      await (tx as any).creditPolicy.update({
+      await tx.creditPolicy.update({
         where: { id: req.params.id },
-        data: { status: 'ACTIVE', isActive: true },
+        data: { status: PolicyStatus.ACTIVE, isActive: true },
       });
     });
 
@@ -610,9 +611,9 @@ router.post('/:id/archive', async (req: Request, res: Response) => {
     if (!policy) return res.status(404).json({ success: false, error: 'Politique non trouvée' });
     if (policy.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
 
-    await (prisma as any).creditPolicy.update({
+    await prisma.creditPolicy.update({
       where: { id: req.params.id },
-      data: { status: 'ARCHIVED', isActive: false },
+      data: { status: PolicyStatus.ARCHIVED, isActive: false },
     });
 
     res.json({ success: true, archived: true });
