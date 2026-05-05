@@ -343,6 +343,10 @@ router.post('/assign', async (req: Request, res: Response) => {
         targetStep = updated?.workflowSteps.find(s => s.status === 'PENDING' && !s.assigneeId) ?? undefined;
       } catch (circuitErr: any) {
         console.warn('[dispatching] Circuit non généré :', circuitErr.message);
+        return res.status(400).json({
+          success: false,
+          error: `Circuit non généré : ${circuitErr.message}`,
+        });
       }
     }
 
