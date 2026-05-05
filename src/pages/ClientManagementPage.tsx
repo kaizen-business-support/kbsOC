@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -27,6 +27,9 @@ import {
   DialogActions,
   Chip,
   Avatar,
+  Tooltip,
+  CircularProgress,
+  Alert,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import {
@@ -40,6 +43,8 @@ import {
   Upload as UploadIcon,
   Search as SearchIcon,
   Analytics as AnalysisIcon,
+  PlayArrow as StartIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { ApiService } from '../services/api';
 
@@ -80,6 +85,28 @@ const industries = [
   'Transport et Logistique',
 ];
 
+interface AssignedApplication {
+  id: string;
+  applicationNumber: string;
+  clientName: string;
+  clientId: string;
+  amount: number;
+  currency: string;
+  purpose: string;
+  status: string;
+  deadline?: string;
+  hasAnalysis: boolean;
+  workflowStepId?: string;
+}
+
+const APP_STATUS_FR: Record<string, { label: string; color: 'default' | 'info' | 'warning' | 'success' | 'error' }> = {
+  submitted: { label: 'Soumis', color: 'info' },
+  under_review: { label: 'En cours', color: 'warning' },
+  approved: { label: 'Approuvé', color: 'success' },
+  rejected: { label: 'Rejeté', color: 'error' },
+  pending: { label: 'En attente', color: 'default' },
+};
+
 export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNavigate }) => {
   const { t } = useTranslation();
   const [currentTab, setCurrentTab] = useState(0);
@@ -88,6 +115,62 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
   const [openDialog, setOpenDialog] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // Analyse tab state
+  const [assignedApps, setAssignedApps] = useState<AssignedApplication[]>([]);
+  const [assignedLoading, setAssignedLoading] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+
+  // Load current user once
+  useEffect(() => {
+    ApiService.getCurrentUser().then(user => {
+      if (user) {
+        setCurrentUserId(user.id);
+        setCurrentUserRole(user.role);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const loadAssignedApps = useCallback(async () => {
+    if (!currentUserId) return;
+    setAssignedLoading(true);
+    try {
+      const res = await ApiService.getApplications({ assignedAnalystId: currentUserId });
+      if (res.success && res.data) {
+        const apps: AssignedApplication[] = res.data.map((app: any) => {
+          const analystStep = (app.workflowSteps || []).find(
+            (s: any) => s.role === 'CREDIT_ANALYST' && s.assigneeId === currentUserId
+          );
+          return {
+            id: app.id,
+            applicationNumber: app.applicationNumber || app.id.slice(0, 8).toUpperCase(),
+            clientName: app.clientName,
+            clientId: app.clientId,
+            amount: app.amount,
+            currency: app.currency || 'XOF',
+            purpose: app.purpose || '',
+            status: app.status,
+            deadline: analystStep?.deadline,
+            hasAnalysis: !!(app.analysisResults?.preliminaryAnalysis),
+            workflowStepId: analystStep?.id,
+          };
+        });
+        setAssignedApps(apps);
+      }
+    } catch (e) {
+      console.error('Error loading assigned apps:', e);
+    } finally {
+      setAssignedLoading(false);
+    }
+  }, [currentUserId]);
+
+  // Load assigned apps when Analyse tab becomes active or user loaded
+  useEffect(() => {
+    if (currentTab === 4 && currentUserId) {
+      loadAssignedApps();
+    }
+  }, [currentTab, currentUserId, loadAssignedApps]);
 
   // Load clients from API on mount
   useEffect(() => {
@@ -155,97 +238,17 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
         </Typography>
       </Box>
 
-      {/* Quick Stats */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
-                  <BusinessIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                    {clients.length}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Clients Actifs
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Avatar sx={{ bgcolor: 'success.main', mr: 2 }}>
-                  <BankIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                    87%
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Conformité SYSCOHADA
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Avatar sx={{ bgcolor: 'warning.main', mr: 2 }}>
-                  <PersonIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                    156
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Actionnaires Tracés
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Avatar sx={{ bgcolor: 'info.main', mr: 2 }}>
-                  <UploadIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                    23
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Dossiers en Cours
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
       {/* Main Content */}
       <Card>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={currentTab} onChange={handleTabChange}>
+          <Tabs value={currentTab} onChange={handleTabChange} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
             <Tab label="Liste des Clients" />
             <Tab label="Nouveau Client" />
             <Tab label="Import/Export" />
             <Tab label="Actionnaires" />
+            {(currentUserRole === 'CREDIT_ANALYST' || currentUserRole === 'ANALYST_SUPERVISOR' || currentUserRole === 'ADMIN') && (
+              <Tab label="Analyse" icon={<AnalysisIcon fontSize="small" />} iconPosition="start" />
+            )}
           </Tabs>
         </Box>
 
@@ -273,54 +276,51 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
               </Box>
 
               {/* Client Table */}
-              <TableContainer component={Paper} variant="outlined">
+              <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none' }}>
                 <Table>
                   <TableHead>
-                    <TableRow>
-                      <TableCell>Client</TableCell>
-                      <TableCell>RCCM</TableCell>
-                      <TableCell>NINEA</TableCell>
-                      <TableCell>Secteur</TableCell>
-                      <TableCell>Agence</TableCell>
-                      <TableCell>Chargé d'Affaires</TableCell>
-                      <TableCell>Statut</TableCell>
-                      <TableCell align="center">Actions</TableCell>
+                    <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                      {['Client', 'RCCM', 'NINEA', 'Secteur', 'Agence', "Chargé d'Affaires", 'Statut', 'Actions'].map((col) => (
+                        <TableCell key={col} align={col === 'Actions' ? 'center' : 'left'} sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', borderBottom: '1px solid #e8ecf0', py: 1.5 }}>
+                          {col}
+                        </TableCell>
+                      ))}
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {filteredClients.map((client) => (
-                      <TableRow key={client.id} hover>
-                        <TableCell>
+                      <TableRow
+                        key={client.id}
+                        sx={{
+                          borderBottom: '1px solid #f1f5f9',
+                          '&:last-child': { borderBottom: 'none' },
+                          '&:hover': { bgcolor: 'rgba(31,78,121,0.03)', cursor: 'pointer' },
+                        }}
+                      >
+                        <TableCell sx={{ py: 1.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <Avatar sx={{ bgcolor: 'primary.main', mr: 2, width: 32, height: 32 }}>
+                            <Avatar sx={{ bgcolor: 'primary.main', mr: 2, width: 30, height: 30 }}>
                               <BusinessIcon fontSize="small" />
                             </Avatar>
-                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            <Typography sx={{ fontSize: '13.5px', fontWeight: 500, color: '#374151' }}>
                               {client.name}
                             </Typography>
                           </Box>
                         </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                            {client.rccm}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                            {client.ninea}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>{client.industry}</TableCell>
-                        <TableCell>{client.branch}</TableCell>
-                        <TableCell>{client.relationshipManager}</TableCell>
-                        <TableCell>
+                        <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151', fontFamily: 'monospace' }}>{client.rccm}</TableCell>
+                        <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151', fontFamily: 'monospace' }}>{client.ninea}</TableCell>
+                        <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{client.industry}</TableCell>
+                        <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{client.branch}</TableCell>
+                        <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{client.relationshipManager}</TableCell>
+                        <TableCell sx={{ py: 1.5 }}>
                           <Chip
                             label={client.status}
                             color={getStatusColor(client.status) as any}
                             size="small"
+                            variant="outlined"
                           />
                         </TableCell>
-                        <TableCell align="center">
+                        <TableCell align="center" sx={{ py: 1.5 }}>
                           <IconButton
                             size="small"
                             onClick={() => handleClientClick(client)}
@@ -540,6 +540,135 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                   </Button>
                 </CardContent>
               </Card>
+            </Box>
+          )}
+
+          {currentTab === 4 && (
+            <Box>
+              {/* Header */}
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    Dossiers à analyser
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Demandes de crédit qui vous sont affectées
+                  </Typography>
+                </Box>
+                <Tooltip title="Rafraîchir">
+                  <IconButton onClick={loadAssignedApps} disabled={assignedLoading}>
+                    {assignedLoading ? <CircularProgress size={20} /> : <RefreshIcon />}
+                  </IconButton>
+                </Tooltip>
+              </Box>
+
+              {assignedLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+                  <CircularProgress />
+                </Box>
+              ) : assignedApps.length === 0 ? (
+                <Alert severity="info" sx={{ borderRadius: 2 }}>
+                  Aucun dossier ne vous est actuellement affecté.
+                </Alert>
+              ) : (
+                <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none' }}>
+                  <Table>
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                        {['N° Dossier', 'Client', 'Objet', 'Montant', 'Statut', 'Avancement', 'Actions'].map(col => (
+                          <TableCell
+                            key={col}
+                            align={col === 'Actions' ? 'center' : 'left'}
+                            sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', borderBottom: '1px solid #e8ecf0', py: 1.5 }}
+                          >
+                            {col}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {assignedApps.map(app => {
+                        const statusInfo = APP_STATUS_FR[app.status] || { label: app.status, color: 'default' as const };
+                        const isOverdue = app.deadline && new Date(app.deadline) < new Date();
+                        return (
+                          <TableRow
+                            key={app.id}
+                            sx={{
+                              borderBottom: '1px solid #f1f5f9',
+                              '&:last-child': { borderBottom: 'none' },
+                              '&:hover': { bgcolor: 'rgba(31,78,121,0.03)' },
+                            }}
+                          >
+                            <TableCell sx={{ py: 1.5 }}>
+                              <Typography sx={{ fontSize: '13px', fontWeight: 600, fontFamily: 'monospace', color: 'primary.main' }}>
+                                {app.applicationNumber}
+                              </Typography>
+                              {isOverdue && (
+                                <Typography variant="caption" color="error">
+                                  Délai dépassé
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell sx={{ py: 1.5 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Avatar sx={{ bgcolor: 'primary.main', width: 28, height: 28, fontSize: '12px' }}>
+                                  <BusinessIcon fontSize="small" />
+                                </Avatar>
+                                <Typography sx={{ fontSize: '13.5px', fontWeight: 500, color: '#374151' }}>
+                                  {app.clientName}
+                                </Typography>
+                              </Box>
+                            </TableCell>
+                            <TableCell sx={{ py: 1.5, fontSize: '13px', color: '#374151', maxWidth: 180 }}>
+                              <Typography variant="body2" noWrap title={app.purpose}>
+                                {app.purpose || '—'}
+                              </Typography>
+                            </TableCell>
+                            <TableCell sx={{ py: 1.5 }}>
+                              <Typography sx={{ fontSize: '13.5px', fontWeight: 600, color: '#1f4e79' }}>
+                                {app.amount.toLocaleString('fr-FR')} {app.currency}
+                              </Typography>
+                            </TableCell>
+                            <TableCell sx={{ py: 1.5 }}>
+                              <Chip
+                                label={statusInfo.label}
+                                color={statusInfo.color}
+                                size="small"
+                                variant="outlined"
+                              />
+                            </TableCell>
+                            <TableCell sx={{ py: 1.5 }}>
+                              <Chip
+                                label={app.hasAnalysis ? 'Analyse enregistrée' : 'Non commencé'}
+                                color={app.hasAnalysis ? 'success' : 'default'}
+                                size="small"
+                                variant={app.hasAnalysis ? 'filled' : 'outlined'}
+                              />
+                            </TableCell>
+                            <TableCell align="center" sx={{ py: 1.5 }}>
+                              <Tooltip title={app.hasAnalysis ? "Continuer l'analyse" : "Commencer l'analyse"}>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  color={app.hasAnalysis ? 'success' : 'primary'}
+                                  startIcon={<StartIcon />}
+                                  onClick={() => {
+                                    localStorage.setItem('pending_scoring_app', app.id);
+                                    onNavigate('credit-scoring');
+                                  }}
+                                  sx={{ textTransform: 'none', fontSize: '12px' }}
+                                >
+                                  {app.hasAnalysis ? 'Continuer' : 'Analyser'}
+                                </Button>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
             </Box>
           )}
         </CardContent>

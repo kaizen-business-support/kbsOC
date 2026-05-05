@@ -6,6 +6,18 @@ import App from './App';
 import './index.css';
 import './i18n'; // Initialize i18n
 
+// Reload once when a lazy chunk fails to load (stale cache after deployment)
+window.addEventListener('unhandledrejection', (event) => {
+  const msg = event.reason?.message || '';
+  if (msg.includes('Loading chunk') || msg.includes('ChunkLoadError')) {
+    const key = 'chunk_reload_attempted';
+    if (!sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, '1');
+      window.location.reload();
+    }
+  }
+});
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

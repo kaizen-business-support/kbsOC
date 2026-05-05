@@ -1,6 +1,5 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import LanguageDetector from 'i18next-browser-languagedetector';
 
 // Import translation files
 const frTranslations = require('./locales/fr.json');
@@ -16,21 +15,15 @@ const resources = {
 };
 
 i18n
-  .use(LanguageDetector)
   .use(initReactI18next)
   .init({
     resources,
-    fallbackLng: 'fr', // French as default for Senegal
+    lng: 'fr', // Français forcé par défaut
+    fallbackLng: 'fr',
     debug: process.env.NODE_ENV === 'development',
-    
-    interpolation: {
-      escapeValue: false, // React already escapes by default
-    },
 
-    detection: {
-      order: ['localStorage', 'navigator', 'htmlTag'],
-      caches: ['localStorage'],
-      lookupLocalStorage: 'i18nextLng',
+    interpolation: {
+      escapeValue: false,
     },
   });
 

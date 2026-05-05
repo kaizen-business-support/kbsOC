@@ -48,6 +48,7 @@ import {
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { RichTextEditor } from './RichTextEditor';
+import { OtpVerificationDialog } from './OtpVerificationDialog';
 
 interface WorkflowStep {
   id: string;
@@ -122,6 +123,11 @@ export const ApprovalWorkflow: React.FC<ApprovalWorkflowProps> = ({
   const [branchThreshold, setBranchThreshold] = useState(5000000);
   const [activeStep, setActiveStep] = useState(1);
   const [workflowComments, setWorkflowComments] = useState<string>('');
+  const [otpDialog, setOtpDialog] = useState<{
+    open: boolean;
+    pendingAction: string;
+    pendingStepId: string;
+  }>({ open: false, pendingAction: '', pendingStepId: '' });
 
   // Determine which steps are required based on amount
   const getRequiredSteps = () => {
@@ -171,17 +177,19 @@ export const ApprovalWorkflow: React.FC<ApprovalWorkflowProps> = ({
     return diffDays;
   };
 
-  const handleStepAction = (action: string, stepId: string) => {
+  const executeStepAction = (action: string, stepId: string) => {
     if (onWorkflowAction) {
       onWorkflowAction(action, stepId);
     }
-    
-    // Update local state for demo
-    setWorkflowSteps(prev => prev.map(step => 
-      step.id === stepId 
+    setWorkflowSteps(prev => prev.map(step =>
+      step.id === stepId
         ? { ...step, status: action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : step.status }
         : step
     ));
+  };
+
+  const handleStepAction = (action: string, stepId: string) => {
+    setOtpDialog({ open: true, pendingAction: action, pendingStepId: stepId });
   };
 
   const getCurrentStepInfo = () => {
@@ -206,9 +214,7 @@ export const ApprovalWorkflow: React.FC<ApprovalWorkflowProps> = ({
         <Grid container spacing={2} alignItems="center">
           <Grid item xs={12} md={8}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Avatar sx={{ bgcolor: 'primary.main' }}>
-                <ApprovalIcon />
-              </Avatar>
+              <ApprovalIcon sx={{ color: 'primary.main', fontSize: 28 }} />
               <Box>
                 <Typography variant="h5" sx={{ fontWeight: 600 }}>
                   Workflow d'Approbation
@@ -475,6 +481,17 @@ export const ApprovalWorkflow: React.FC<ApprovalWorkflowProps> = ({
           Générer Rapport
         </Button>
       </Box>
+
+      {/* OTP Verification pour les actions rapides */}
+      <OtpVerificationDialog
+        open={otpDialog.open}
+        actionLabel={otpDialog.pendingAction === 'approve' ? 'Approuver l\'étape' : 'Rejeter l\'étape'}
+        purpose={otpDialog.pendingAction === 'approve' ? 'approve_credit' : 'reject_credit'}
+        onClose={() => setOtpDialog({ open: false, pendingAction: '', pendingStepId: '' })}
+        onVerified={async () => {
+          executeStepAction(otpDialog.pendingAction, otpDialog.pendingStepId);
+        }}
+      />
     </Box>
   );
 };

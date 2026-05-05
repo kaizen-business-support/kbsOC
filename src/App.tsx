@@ -1,43 +1,121 @@
-import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { Box, Container, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, TextField, Alert, IconButton, Tooltip } from '@mui/material';
+import React, { lazy, Suspense, useEffect } from 'react';
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
+import { Box, Container, Dialog, DialogTitle, DialogContent, DialogActions, Button, Typography, TextField, Alert, IconButton, Tooltip, LinearProgress } from '@mui/material';
 import { Lock as LockIcon, Cancel as CancelIcon, Save as SaveIcon } from '@mui/icons-material';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { UserProvider, useUser } from './contexts/UserContext';
+import { CompanyProvider } from './contexts/CompanyContext';
+import { ModuleProfileProvider } from './contexts/ModuleProfileContext';
 import { ApiService } from './services/api';
 import { ThemeWrapper } from './components/ThemeWrapper';
 import { MsalWrapper } from './components/MsalWrapper';
 import { Header } from './components/Header';
-import { Sidebar } from './components/Sidebar';
-import { HomePage } from './pages/HomePage';
-import { UploadPage } from './pages/UploadPage';
-import { AnalysisPage } from './pages/AnalysisPage';
-import { ReportsPage } from './pages/ReportsPage';
-import { SettingsPage } from './pages/SettingsPage';
-import ManualInputPage from './pages/ManualInputPage';
-import DocumentationPage from './pages/DocumentationPage';
-import ConfigurationPage from './pages/ConfigurationPage';
-import DataInputPage from './pages/DataInputPage';
-import { ClientManagementPage } from './pages/ClientManagementPage';
-import { CreditScoringPage } from './pages/CreditScoringPage';
-import { CreditApplicationPage } from './pages/CreditApplicationPage';
-import { WorkflowPage } from './pages/WorkflowPage';
-import { AnalyticsDashboardPage } from './pages/AnalyticsDashboardPage';
-import { BankHolidaysAdminPage } from './pages/BankHolidaysAdminPage';
-import { UserManagementPage } from './pages/UserManagementPage';
-import { ApprovalLimitsPage } from './pages/ApprovalLimitsPage';
-import { CreditSimulationPage } from './pages/CreditSimulationPage';
-import { CreditTypesPage } from './pages/CreditTypesPage';
-import { ProfilePage } from './pages/ProfilePage';
-import { LoginPage } from './pages/LoginPage';
-import { BackupPage } from './pages/BackupPage';
+import { Sidebar, FULL_WIDTH, MINI_WIDTH } from './components/Sidebar';
+import { AnnouncementModal, useAnnouncements } from './components/AnnouncementModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { DialogHeader } from './components/ui/DialogHeader';
+import { SessionTimeoutDialog } from './components/SessionTimeoutDialog';
+
+// ── Lazy-loaded pages (code splitting) ────────────────────────────────────────
+// Each page is a separate JS chunk loaded only when first visited.
+const HomePage              = lazy(() => import('./pages/HomePage').then(m => ({ default: m.HomePage })));
+const LoginPage             = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
+const ResetPasswordPage     = lazy(() => import('./pages/ResetPasswordPage'));
+const UploadPage            = lazy(() => import('./pages/UploadPage').then(m => ({ default: m.UploadPage })));
+const AnalysisPage          = lazy(() => import('./pages/AnalysisPage').then(m => ({ default: m.AnalysisPage })));
+const ReportsPage           = lazy(() => import('./pages/ReportsPage').then(m => ({ default: m.ReportsPage })));
+const SettingsPage          = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const ManualInputPage       = lazy(() => import('./pages/ManualInputPage'));
+const DocumentationPage     = lazy(() => import('./pages/DocumentationPage'));
+const ConfigurationPage     = lazy(() => import('./pages/ConfigurationPage'));
+const DataInputPage         = lazy(() => import('./pages/DataInputPage'));
+const ClientManagementPage  = lazy(() => import('./pages/ClientManagementPage').then(m => ({ default: m.ClientManagementPage })));
+const CreditScoringPage     = lazy(() => import('./pages/CreditScoringPage').then(m => ({ default: m.CreditScoringPage })));
+const CreditApplicationPage = lazy(() => import('./pages/CreditApplicationPage').then(m => ({ default: m.CreditApplicationPage })));
+const WorkflowPage          = lazy(() => import('./pages/WorkflowPage').then(m => ({ default: m.WorkflowPage })));
+const AnalyticsDashboardPage = lazy(() => import('./pages/AnalyticsDashboardPage').then(m => ({ default: m.AnalyticsDashboardPage })));
+const BankHolidaysAdminPage  = lazy(() => import('./pages/BankHolidaysAdminPage').then(m => ({ default: m.BankHolidaysAdminPage })));
+const UserManagementPage    = lazy(() => import('./pages/UserManagementPage').then(m => ({ default: m.UserManagementPage })));
+const CreditSimulationPage  = lazy(() => import('./pages/CreditSimulationPage').then(m => ({ default: m.CreditSimulationPage })));
+const ProfilePage           = lazy(() => import('./pages/ProfilePage').then(m => ({ default: m.ProfilePage })));
+const BackupPage            = lazy(() => import('./pages/BackupPage').then(m => ({ default: m.BackupPage })));
+const AnnouncementsAdminPage = lazy(() => import('./pages/AnnouncementsAdminPage'));
+const NotificationsConfigPage = lazy(() => import('./pages/NotificationsConfigPage'));
+const DispatchingPage        = lazy(() => import('./pages/DispatchingPage').then(m => ({ default: m.DispatchingPage })));
+const ApprovalsPage          = lazy(() => import('./pages/ApprovalsPage').then(m => ({ default: m.ApprovalsPage })));
+const CreditManagementPage   = lazy(() => import('./pages/CreditManagementPage').then(m => ({ default: m.CreditManagementPage })));
+const CreditPolicyPage       = lazy(() => import('./pages/CreditPolicyPage').then(m => ({ default: m.CreditPolicyPage })));
+const WorkflowBuilderPage    = lazy(() => import('./components/workflow-builder/WorkflowPolicyBuilder').then(m => ({ default: m.WorkflowPolicyBuilder })));
+const CompanySettingsPage    = lazy(() => import('./pages/CompanySettingsPage'));
+const PlatformAdminPage      = lazy(() => import('./pages/PlatformAdminPage'));
+const RACIMatrixPage         = lazy(() => import('./pages/RACIMatrixPage'));
+const ContractTemplatesPage  = lazy(() => import('./pages/ContractTemplatesPage').then(m => ({ default: m.ContractTemplatesPage })));
+const LegalStepPage          = lazy(() => import('./pages/LegalStepPage').then(m => ({ default: m.LegalStepPage })));
+const CodirDashboardPage     = lazy(() => import('./pages/CodirDashboardPage').then(m => ({ default: m.CodirDashboardPage })));
+
+// Wrapper pour récupérer l'applicationId depuis l'URL et le passer en prop
+function LegalStepPageWrapper() {
+  const { applicationId } = useParams<{ applicationId: string }>();
+  if (!applicationId) return <Navigate to="/approvals" replace />;
+  return <LegalStepPage applicationId={applicationId} />;
+}
+
+// ── Thin branded progress bar while chunk loads ────────────────────────────
+const PageLoader = () => (
+  <LinearProgress
+    sx={{
+      position:   'fixed',
+      top:        0, left: 0, right: 0,
+      zIndex:     9999,
+      height:     '2.5px',
+      background: 'rgba(58,86,168,0.12)',
+      '& .MuiLinearProgress-bar': {
+        background: 'linear-gradient(90deg, #3A56A8 0%, #2878C8 50%, #28A8E2 100%)',
+      },
+    }}
+  />
+);
+
+// ── Scroll-to-top on every route change ────────────────────────────────────
+const ScrollToTop: React.FC = () => {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+  }, [pathname]);
+  return null;
+};
+
+// ── Page transition wrapper — re-animates on each route change ─────────────
+const PageTransition: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { pathname } = useLocation();
+  // Les pages plein-écran ne doivent pas avoir willChange:transform (casse position:fixed)
+  if (pathname === '/workflow-builder') {
+    return <>{children}</>;
+  }
+  return (
+    <Box
+      key={pathname}
+      className="page-enter"
+      sx={{ width: '100%', willChange: 'opacity, transform' }}
+    >
+      {children}
+    </Box>
+  );
+};
 
 // Main App component with context
 const AppContent: React.FC = () => {
   const { state, navigateTo, hasAnalysisData, resetSession } = useApp();
   const { state: userState } = useUser();
-  const [sidebarOpen, setSidebarOpen] = React.useState(true); // Start open on desktop
+  const { pathname } = useLocation();
+  const [sidebarOpen, setSidebarOpen] = React.useState(true);
+
+  // Replier la sidebar automatiquement sur les pages plein-écran
+  React.useEffect(() => {
+    if (pathname === '/workflow-builder') {
+      setSidebarOpen(false);
+    }
+  }, [pathname]);
   const [showResetDialog, setShowResetDialog] = React.useState(false);
   const [changePasswordDialog, setChangePasswordDialog] = React.useState({
     open: false,
@@ -50,9 +128,15 @@ const AppContent: React.FC = () => {
     severity: 'success' | 'error' | 'info';
   } | null>(null);
 
-  // Show login page if not authenticated
+  const { announcements, modalOpen, handleClose: handleAnnouncementClose } =
+    useAnnouncements(userState.currentUser?.id);
+
+  // Show login page if not authenticated (allow /reset-password without auth)
   if (!userState.isAuthenticated) {
-    return <LoginPage onLogin={() => {}} />;
+    if (window.location.pathname === '/reset-password') {
+      return <Suspense fallback={<PageLoader />}><ResetPasswordPage /></Suspense>;
+    }
+    return <Suspense fallback={<PageLoader />}><LoginPage onLogin={() => {}} /></Suspense>;
   }
 
   const handlePageChange = (page: any) => {
@@ -142,7 +226,6 @@ const AppContent: React.FC = () => {
       <Header
         onMenuClick={() => setSidebarOpen(!sidebarOpen)}
         currentPage={state.currentPage}
-        onReset={handleResetClick}
         onPageChange={handlePageChange}
         onChangePassword={handleOpenChangePassword}
       />
@@ -153,33 +236,35 @@ const AppContent: React.FC = () => {
         currentPage={state.currentPage}
         onPageChange={handlePageChange}
         hasAnalysisData={hasAnalysisData()}
+        onReset={handleResetClick}
       />
 
       <Box
         component="main"
         sx={{
-          flexGrow: 1,
-          bgcolor: 'background.default',
-          pt: { xs: 7, sm: 8 },
-          pl: { xs: 0, md: sidebarOpen ? '240px' : 0 },
-          transition: 'padding-left 0.3s ease',
-          height: '100vh',
-          overflow: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
+          flexGrow:   1,
+          alignSelf:  'flex-start',
+          minWidth:   0,
+          bgcolor:    'transparent',
+          pt:         { xs: 7, sm: 8 },
+          pl:         { xs: 0, md: sidebarOpen ? `${FULL_WIDTH}px` : `${MINI_WIDTH}px` },
+          transition: 'padding-left 0.25s cubic-bezier(0.22,1,0.36,1)',
+          minHeight:  '100vh',
+          width:      '100%',
+          overflowX:  'hidden',
         }}
       >
-        <Container 
-          maxWidth="xl" 
-          sx={{ 
-            py: 3, 
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'visible',
+        <ScrollToTop />
+        <Container
+          maxWidth="xl"
+          sx={{
+            py: { xs: 2, md: 3 },
+            px: { xs: 1.5, sm: 2, md: 3 },
           }}
         >
           <ErrorBoundary>
+            <Suspense fallback={<PageLoader />}>
+            <PageTransition>
             <Routes>
               <Route 
                 path="/" 
@@ -257,17 +342,13 @@ const AppContent: React.FC = () => {
                 path="/user-management" 
                 element={<UserManagementPage onNavigate={handlePageChange} />} 
               />
-              <Route 
-                path="/approval-limits" 
-                element={<ApprovalLimitsPage onNavigate={handlePageChange} />} 
+              <Route
+                path="/credit-types"
+                element={<CreditManagementPage initialTab={0} onNavigate={handlePageChange} />}
               />
               <Route
                 path="/credit-simulation"
                 element={<CreditSimulationPage onNavigate={handlePageChange} />}
-              />
-              <Route
-                path="/credit-types"
-                element={<CreditTypesPage />}
               />
               <Route
                 path="/profile"
@@ -277,13 +358,71 @@ const AppContent: React.FC = () => {
                 path="/backup"
                 element={<BackupPage />}
               />
+              <Route
+                path="/announcements"
+                element={<AnnouncementsAdminPage />}
+              />
+              <Route
+                path="/notifications-config"
+                element={<NotificationsConfigPage />}
+              />
+              <Route
+                path="/dispatching"
+                element={<DispatchingPage />}
+              />
+              <Route
+                path="/approvals"
+                element={<ApprovalsPage />}
+              />
+              <Route path="/codir-dashboard" element={<CodirDashboardPage />} />
+              <Route path="/credit-policy" element={<Navigate to="/credit-types" replace />} />
+              <Route path="/workflow-builder" element={<WorkflowBuilderPage />} />
+              <Route
+                path="/approval-limits"
+                element={<CreditManagementPage initialTab={1} onNavigate={handlePageChange} />}
+              />
+              <Route
+                path="/company-settings"
+                element={(() => {
+                  const p = userState.currentUser?.permissions ?? [];
+                  // ADMIN tenant : a user_management mais PAS manage_platform
+                  const allowed = p.includes('user_management') || (p.includes('*') && !p.includes('manage_platform'));
+                  return allowed ? <CompanySettingsPage /> : <Navigate to="/" replace />;
+                })()}
+              />
+              <Route
+                path="/platform-admin"
+                element={(() => {
+                  // SUPER_ADMIN uniquement : vérifié LITTÉRALEMENT
+                  const allowed = (userState.currentUser?.permissions ?? []).includes('manage_platform');
+                  return allowed ? <PlatformAdminPage /> : <Navigate to="/" replace />;
+                })()}
+              />
+              <Route path="/raci-matrix" element={<RACIMatrixPage />} />
+              {/* Pas de guard React strict ici : l'autorisation est faite par
+                  l'API backend (authorize middleware). Évite les redirections
+                  silencieuses dues à un snapshot de permissions obsolète. */}
+              <Route path="/contract-templates" element={<ContractTemplatesPage />} />
+              <Route path="/legal-step/:applicationId" element={<LegalStepPageWrapper />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </PageTransition>
+            </Suspense>
           </ErrorBoundary>
         </Container>
       </Box>
 
+      {/* Session timeout — avertissement 2 min avant, déconnexion auto à 15 min */}
+      <SessionTimeoutDialog />
+
       {/* Reset Confirmation Dialog */}
+      {/* Announcement Modal */}
+      <AnnouncementModal
+        open={modalOpen}
+        onClose={handleAnnouncementClose}
+        announcements={announcements}
+      />
+
       <Dialog open={showResetDialog} onClose={handleResetCancel}>
         <DialogTitle>Réinitialiser la session</DialogTitle>
         <DialogContent>
@@ -312,46 +451,46 @@ const AppContent: React.FC = () => {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <LockIcon color="primary" />
-            Changer mon mot de passe
-          </Box>
-        </DialogTitle>
+        <DialogHeader
+          title="Changer mon mot de passe"
+          icon={<LockIcon sx={{ fontSize: 17 }} />}
+          onClose={() => setChangePasswordDialog({ open: false, currentPassword: '', newPassword: '', confirmPassword: '' })}
+        />
         <DialogContent>
           {passwordMessage && (
-            <Alert severity={passwordMessage.severity} sx={{ mb: 2 }}>
+            <Alert severity={passwordMessage.severity} sx={{ mb: 1.5 }}>
               {passwordMessage.text}
             </Alert>
           )}
-          <Box sx={{ pt: 2 }}>
-            <TextField
-              fullWidth
-              type="password"
-              label="Mot de passe actuel"
-              value={changePasswordDialog.currentPassword}
-              onChange={(e) => setChangePasswordDialog({ ...changePasswordDialog, currentPassword: e.target.value })}
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              fullWidth
-              type="password"
-              label="Nouveau mot de passe"
-              value={changePasswordDialog.newPassword}
-              onChange={(e) => setChangePasswordDialog({ ...changePasswordDialog, newPassword: e.target.value })}
-              helperText="Au moins 8 caractères avec majuscule, minuscule et chiffre"
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              fullWidth
-              type="password"
-              label="Confirmer le nouveau mot de passe"
-              value={changePasswordDialog.confirmPassword}
-              onChange={(e) => setChangePasswordDialog({ ...changePasswordDialog, confirmPassword: e.target.value })}
-              error={changePasswordDialog.confirmPassword !== '' && changePasswordDialog.newPassword !== changePasswordDialog.confirmPassword}
-              helperText={changePasswordDialog.confirmPassword !== '' && changePasswordDialog.newPassword !== changePasswordDialog.confirmPassword ? 'Les mots de passe ne correspondent pas' : ''}
-            />
-          </Box>
+          <TextField
+            fullWidth
+            size="small"
+            type="password"
+            label="Mot de passe actuel"
+            value={changePasswordDialog.currentPassword}
+            onChange={(e) => setChangePasswordDialog({ ...changePasswordDialog, currentPassword: e.target.value })}
+            sx={{ mb: 1.5 }}
+          />
+          <TextField
+            fullWidth
+            size="small"
+            type="password"
+            label="Nouveau mot de passe"
+            value={changePasswordDialog.newPassword}
+            onChange={(e) => setChangePasswordDialog({ ...changePasswordDialog, newPassword: e.target.value })}
+            helperText="Au moins 8 caractères avec majuscule, minuscule et chiffre"
+            sx={{ mb: 1.5 }}
+          />
+          <TextField
+            fullWidth
+            size="small"
+            type="password"
+            label="Confirmer le nouveau mot de passe"
+            value={changePasswordDialog.confirmPassword}
+            onChange={(e) => setChangePasswordDialog({ ...changePasswordDialog, confirmPassword: e.target.value })}
+            error={changePasswordDialog.confirmPassword !== '' && changePasswordDialog.newPassword !== changePasswordDialog.confirmPassword}
+            helperText={changePasswordDialog.confirmPassword !== '' && changePasswordDialog.newPassword !== changePasswordDialog.confirmPassword ? 'Les mots de passe ne correspondent pas' : ''}
+          />
         </DialogContent>
         <DialogActions>
           <Button
@@ -382,13 +521,17 @@ const AppContent: React.FC = () => {
 function App() {
   return (
     <MsalWrapper>
-      <UserProvider>
-        <AppProvider>
-          <ThemeWrapper>
-            <AppContent />
-          </ThemeWrapper>
-        </AppProvider>
-      </UserProvider>
+      <CompanyProvider>
+        <UserProvider>
+          <AppProvider>
+            <ModuleProfileProvider>
+              <ThemeWrapper>
+                <AppContent />
+              </ThemeWrapper>
+            </ModuleProfileProvider>
+          </AppProvider>
+        </UserProvider>
+      </CompanyProvider>
     </MsalWrapper>
   );
 }

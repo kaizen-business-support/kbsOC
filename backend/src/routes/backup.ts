@@ -36,7 +36,8 @@ const requireAdmin = (req: Request, res: Response, next: Function) => {
   next();
 };
 
-const FILENAME_REGEX = /^[a-zA-Z0-9_\-.]+\.sql\.gz$/;
+// Pas de point dans le nom (évite les chemins relatifs type ../)
+const FILENAME_REGEX = /^[a-zA-Z0-9_-]+\.sql\.gz$/;
 
 // ─── GET /api/backup/list ──────────────────────────────────────────────────────
 
@@ -138,6 +139,58 @@ router.get('/logs', requireAdmin, asyncHandler(async (_req: Request, res: Respon
     take: 50
   });
   return res.json({ success: true, logs });
+}));
+
+// ─── Notify-emails CRUD ────────────────────────────────────────────────────────
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// GET /api/backup/notify-emails
+router.get('/notify-emails', requireAdmin, asyncHandler(async (_req: Request, res: Response) => {
+  const emails = await (prisma as any).backupNotifyEmail.findMany({
+    orderBy: { createdAt: 'asc' }
+  });
+  return res.json({ success: true, emails });
+}));
+
+// POST /api/backup/notify-emails
+router.post('/notify-emails', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  const { email, name } = req.body;
+  if (!email || !EMAIL_REGEX.test(email)) {
+    throw new AppError('Adresse email invalide', 400, 'INVALID_EMAIL');
+  }
+  const record = await (prisma as any).backupNotifyEmail.create({
+    data: { email: email.toLowerCase().trim(), name: name || null }
+  });
+  return res.status(201).json({ success: true, email: record });
+}));
+
+// DELETE /api/backup/notify-emails/:id
+router.delete('/notify-emails/:id', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  await (prisma as any).backupNotifyEmail.delete({ where: { id } });
+  return res.json({ success: true, message: 'Destinataire supprimé' });
+}));
+
+// PUT /api/backup/notify-emails/:id
+router.put('/notify-emails/:id', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { email, name, isActive } = req.body;
+
+  if (email && !EMAIL_REGEX.test(email)) {
+    throw new AppError('Format email invalide', 400, 'INVALID_EMAIL');
+  }
+
+  const updated = await (prisma as any).backupNotifyEmail.update({
+    where: { id },
+    data: {
+      ...(email !== undefined && { email }),
+      ...(name !== undefined && { name }),
+      ...(isActive !== undefined && { isActive }),
+    },
+  });
+
+  return res.json({ success: true, record: updated });
 }));
 
 export default router;

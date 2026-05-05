@@ -1,15 +1,30 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
+import { triggerNotification } from '../services/notificationService';
+import {
+  getNextWorkflowStep,
+  canApproveStep,
+  StepAction,
+  startWorkflowStep,
+  finalizeStepDuration,
+  finalizeApplicationDuration,
+} from '../services/workflowService';
+import { resolveDelegation } from '../services/delegationService';
+import { authenticate, requireCompany } from '../middleware/auth';
 
 const router = Router();
+router.use(authenticate);
+router.use(requireCompany);
 
 // GET /api/workflows - Get workflow data with filters and role-based filtering
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { status, branch, dateFrom, dateTo, userId, userRole } = req.query;
+    const { status, branch, dateFrom, dateTo, userId } = req.query;
+    // Le rôle est toujours tiré du token JWT — jamais du query param (protection contre l'usurpation)
+    const userRole = (req as any).user?.role as string | undefined;
 
     // Build filter conditions
-    const whereConditions: any = {};
+    const whereConditions: any = { companyId: req.companyId };
 
     if (status && status !== 'all') {
       whereConditions.status = (status as string).toUpperCase();
@@ -52,7 +67,8 @@ router.get('/', async (req: Request, res: Response) => {
             createdAt: 'asc'
           },
           include: {
-            assignee: true
+            assignee: true,
+            policyStep: { select: { allowedActions: true } },
           }
         }
       },
@@ -64,121 +80,24 @@ router.get('/', async (req: Request, res: Response) => {
     // Role-based filtering: Show only applications pending review for the user's role
     let filteredWorkflows = workflows;
 
-    if (userRole && userRole !== 'ADMIN' && userRole !== 'all') {
-      const role = userRole as string;
-
-      // Get approval limits to determine which amounts each role reviews
-      const approvalLimits = await prisma.approvalLimit.findMany({
-        where: { isActive: true },
-        orderBy: { minAmount: 'asc' }
-      });
+    if (userRole && userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN' && userRole !== 'DIRECTION_GENERALE' && userRole !== 'DIRECTION_JURIDIQUE') {
+      const role = userRole;
 
       filteredWorkflows = workflows.filter(workflow => {
-        // Find the current pending workflow step
+        // L'étape courante est la première non-complétée
         const currentStep = workflow.workflowSteps.find(step => !step.completedAt);
 
-        // Find the last completed step
-        const completedSteps = workflow.workflowSteps.filter(step => step.completedAt);
-        const lastCompletedStep = completedSteps.length > 0
-          ? completedSteps[completedSteps.length - 1]
-          : null;
-
-        // Role-specific filtering
-        switch (role) {
-          case 'CREDIT_ANALYST':
-            // Show applications pending credit analysis
-            return currentStep?.stepName === 'credit_analysis';
-
-          case 'BRANCH_MANAGER':
-            // Show applications where credit analysis is complete and amount falls in branch manager range
-            const branchManagerLimit = approvalLimits.find(l => l.role === 'BRANCH_MANAGER');
-            if (!branchManagerLimit) return false;
-
-            const amount = Number(workflow.amount);
-            const isInRange = amount >= Number(branchManagerLimit.minAmount) &&
-                             amount <= Number(branchManagerLimit.maxAmount);
-
-            // Case 1: There's a pending approval step (not credit analysis)
-            if (currentStep &&
-                currentStep.stepName !== 'credit_analysis' &&
-                currentStep.stepName !== 'application_created' &&
-                workflow.status === 'UNDER_REVIEW' &&
-                isInRange) {
-              return true;
-            }
-
-            // Case 2: No pending step, but credit analysis just completed and awaiting branch manager review
-            if (!currentStep &&
-                lastCompletedStep?.stepName === 'credit_analysis' &&
-                workflow.status === 'UNDER_REVIEW' &&
-                isInRange) {
-              return true;
-            }
-
-            return false;
-
-          case 'CREDIT_COMMITTEE':
-            // Show applications where amount falls in credit committee range
-            const committeeLimit = approvalLimits.find(l => l.role === 'CREDIT_COMMITTEE');
-            if (!committeeLimit) return false;
-
-            const committeeAmount = Number(workflow.amount);
-            const committeeInRange = committeeAmount >= Number(committeeLimit.minAmount) &&
-                                    committeeAmount <= Number(committeeLimit.maxAmount);
-
-            // Case 1: There's a pending approval step
-            if (currentStep &&
-                currentStep.stepName !== 'credit_analysis' &&
-                currentStep.stepName !== 'application_created' &&
-                workflow.status === 'UNDER_REVIEW' &&
-                committeeInRange) {
-              return true;
-            }
-
-            // Case 2: No pending step, but credit analysis just completed
-            if (!currentStep &&
-                lastCompletedStep?.stepName === 'credit_analysis' &&
-                workflow.status === 'UNDER_REVIEW' &&
-                committeeInRange) {
-              return true;
-            }
-
-            return false;
-
-          case 'MANAGEMENT':
-            // Show applications where amount falls in management range
-            const mgmtLimit = approvalLimits.find(l => l.role === 'MANAGEMENT');
-            if (!mgmtLimit) return false;
-
-            const mgmtAmount = Number(workflow.amount);
-            const mgmtInRange = mgmtAmount >= Number(mgmtLimit.minAmount);
-
-            // Case 1: There's a pending approval step
-            if (currentStep &&
-                currentStep.stepName !== 'credit_analysis' &&
-                currentStep.stepName !== 'application_created' &&
-                workflow.status === 'UNDER_REVIEW' &&
-                mgmtInRange) {
-              return true;
-            }
-
-            // Case 2: No pending step, but credit analysis just completed
-            if (!currentStep &&
-                lastCompletedStep?.stepName === 'credit_analysis' &&
-                workflow.status === 'UNDER_REVIEW' &&
-                mgmtInRange) {
-              return true;
-            }
-
-            return false;
-
-          case 'ACCOUNT_MANAGER':
-            // Show applications created by this user
-            return workflow.createdBy === userId;
-
-          default:
-            return true;
+        if (role === 'CHARGE_AFFAIRES') {
+          return workflow.createdBy === userId;
         }
+
+        if (role === 'ANALYSTE_RISQUES') {
+          return currentStep?.role === role && workflow.status === 'UNDER_REVIEW';
+        }
+
+        // Pour tous les rôles d'approbation : on vérifie simplement
+        // que l'étape courante leur est destinée — logique 100% dynamique.
+        return currentStep?.role === role && workflow.status === 'UNDER_REVIEW';
       });
     }
 
@@ -215,7 +134,8 @@ router.get('/', async (req: Request, res: Response) => {
         decision: step.status === 'APPROVED' ? 'approved' : 
                  step.status === 'REJECTED' ? 'rejected' : 
                  step.status === 'PENDING' ? 'pending' : 'on_hold',
-        comments: step.comments || undefined
+        comments: step.comments || undefined,
+        allowedActions: (step as any).policyStep?.allowedActions ?? [],
       })),
       createdBy: workflow.createdBy,
       createdByName: workflow.creator.name,
@@ -242,11 +162,203 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/workflows/pending-approvals
+router.get('/pending-approvals', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const userRole = (req as any).user?.role;
+    if (!userId || !userRole) {
+      return res.status(401).json({ success: false, error: 'Authentification requise' });
+    }
+
+    const steps = await prisma.workflowStep.findMany({
+      where: {
+        completedAt: null,
+        application: { companyId: req.companyId },
+        OR: [
+          // Étapes PENDING pour mon rôle (non assignées ou assignées à moi)
+          { status: 'PENDING', role: userRole },
+          // Étapes PENDING directement assignées à moi
+          { status: 'PENDING', assigneeId: userId },
+          // Étapes IN_REVIEW assignées à moi (ex: après REQUEST_INFO)
+          { status: 'IN_REVIEW', assigneeId: userId },
+        ],
+      },
+      include: {
+        application: {
+          include: {
+            client: { select: { companyName: true } },
+            creator: { select: { branch: true, department: true } },
+            creditType: { select: { name: true } },
+          },
+        },
+        policyStep: {
+          select: { stepLabel: true, stepType: true, allowedActions: true },
+        },
+      },
+      orderBy: [
+        { isOverdue: 'desc' },
+        { deadline: 'asc' },
+        { createdAt: 'asc' },
+      ],
+    });
+
+    const FINANCIAL_STEP_TYPES = ['APPROVAL', 'COMMITTEE'];
+    const now = Date.now();
+
+    const data = steps.map((step) => {
+      const policyStep = (step as any).policyStep;
+      const app = (step as any).application;
+      const stepType: string = policyStep?.stepType ?? 'ANALYSIS';
+      return {
+        id: step.id,
+        applicationId: step.applicationId,
+        applicationNumber: app.applicationNumber,
+        clientName: app.client.companyName,
+        amount: Number(app.amount),
+        currency: app.currency || 'XOF',
+        stepName: step.stepName,
+        stepLabel: policyStep?.stepLabel ?? step.stepName,
+        stepType,
+        allowedActions: policyStep?.allowedActions ?? [],
+        type: FINANCIAL_STEP_TYPES.includes(stepType) ? 'financial' : 'process',
+        creditType: app.creditType?.name ?? null,
+        branch: app.creator?.branch ?? app.creator?.department ?? null,
+        purpose: app.purpose,
+        daysWaiting: Math.floor((now - new Date(step.createdAt).getTime()) / 86_400_000),
+        deadline: step.deadline ? step.deadline.toISOString() : null,
+        isOverdue: step.isOverdue,
+      };
+    });
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('[workflows] GET /pending-approvals error:', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// GET /api/workflows/pending-approvals/count
+router.get('/pending-approvals/count', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const userRole = (req as any).user?.role;
+    if (!userId || !userRole) {
+      return res.status(401).json({ success: false, error: 'Authentification requise' });
+    }
+
+    const count = await prisma.workflowStep.count({
+      where: {
+        completedAt: null,
+        application: { companyId: req.companyId },
+        OR: [
+          { status: 'PENDING', role: userRole },
+          { status: 'PENDING', assigneeId: userId },
+          { status: 'IN_REVIEW', assigneeId: userId },
+        ],
+      },
+    });
+
+    res.json({ success: true, count });
+  } catch (error) {
+    console.error('[workflows] GET /pending-approvals/count error:', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// POST /api/workflows/:applicationId/start-step/:stepId
+// Marque une étape comme "en cours" (IN_REVIEW) et enregistre startedAt
+// À appeler dès qu'un profil ouvre le dossier pour traitement
+router.post('/:applicationId/start-step/:stepId', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.body;
+    const { applicationId, stepId } = req.params;
+    if (!userId) return res.status(400).json({ success: false, error: 'userId requis' });
+
+    // Vérification : si l'étape est assignée, seul l'assigné peut la démarrer.
+    // Sinon, vérifier que l'utilisateur appartient à la même agence que le créateur du dossier.
+    const [step, user, application] = await Promise.all([
+      prisma.workflowStep.findUnique({ where: { id: stepId } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { role: true, branch: true, department: true } }),
+      prisma.creditApplication.findUnique({
+        where: { id: applicationId },
+        select: { creator: { select: { branch: true, department: true } } },
+      }),
+    ]);
+
+    if (step?.assigneeId && step.assigneeId !== userId) {
+      return res.status(403).json({ success: false, error: 'Cette étape est assignée à un autre analyste.' });
+    }
+
+    // ── Mur chinois : vérification avant toute autre logique ──────────────────
+    if (step && application && user) {
+      const appFull = await prisma.creditApplication.findUnique({
+        where: { id: applicationId },
+        select: { companyId: true },
+      });
+      if (!appFull?.companyId) {
+        return res.status(403).json({ success: false, error: 'Application non liée à un tenant — démarrage impossible' });
+      }
+      const wallRules = await prisma.tenantChineseWallRule.findMany({
+        where: { companyId: appFull.companyId, blockedRole: user.role as any, isActive: true },
+        select: { forbiddenStep: true, reason: true },
+      });
+      const wallBlock = wallRules.find(r => r.forbiddenStep === step.stepName);
+      if (wallBlock) {
+        return res.status(403).json({ success: false, error: wallBlock.reason ?? 'Mur chinois : opération non autorisée pour ce rôle' });
+      }
+    }
+
+    // Déterminer le contexte effectif (direct ou par délégation)
+    // Services centraux : portée globale (toutes les agences)
+    const GLOBAL_ROLES = [
+      'DIRECTION_GENERALE', 'ADMIN', 'COMITE_CREDIT',
+      'ANALYSTE_RISQUES', 'RESPONSABLE_RISQUES', 'RESPONSABLE_ENGAGEMENTS',
+      'DIRECTION_JURIDIQUE', 'BACK_OFFICE',
+    ];
+    if (user && application) {
+      let effectiveBranch = (user as any).branch as string | null;
+      let effectiveDept   = (user as any).department as string | null;
+
+      // Si le rôle ne correspond pas à l'étape, vérifier délégation START_STEP
+      if (step && step.role !== user.role) {
+        const delegation = await resolveDelegation(userId, 'START_STEP');
+        if (!delegation || delegation.delegatorRole !== step.role) {
+          return res.status(403).json({
+            success: false,
+            error: `Cette étape requiert le rôle ${step?.role}.`,
+          });
+        }
+        effectiveBranch = delegation.delegatorBranch;
+        effectiveDept   = delegation.delegatorDepartment;
+      }
+
+      const effectiveRole = step?.role || user.role;
+      if (!GLOBAL_ROLES.includes(effectiveRole)) {
+        const userBranch    = effectiveBranch || effectiveDept;
+        const creatorBranch = application.creator?.branch || application.creator?.department;
+        if (userBranch && creatorBranch && userBranch !== creatorBranch) {
+          return res.status(403).json({
+            success: false,
+            error: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez traiter que les dossiers de votre agence.`,
+          });
+        }
+      }
+    }
+
+    await startWorkflowStep(stepId, userId);
+    res.json({ success: true, message: 'Étape démarrée' });
+  } catch (error) {
+    console.error('Start step error:', error);
+    res.status(500).json({ success: false, error: 'Erreur démarrage étape' });
+  }
+});
+
 // POST /api/workflows/:applicationId/approve - Submit approval/rejection decision
 router.post('/:applicationId/approve', async (req: Request, res: Response) => {
   try {
     const { applicationId } = req.params;
-    const { userId, decision, comments } = req.body;
+    const { userId, decision, comments, stepId, stepName } = req.body;
 
     if (!userId || !decision) {
       return res.status(400).json({
@@ -255,12 +367,21 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       });
     }
 
-    if (decision !== 'APPROVED' && decision !== 'REJECTED') {
+    const VALID_DECISIONS = ['APPROVED', 'REJECTED', 'REQUEST_INFO', 'TRANSFER'];
+    if (!VALID_DECISIONS.includes(decision)) {
       return res.status(400).json({
         success: false,
-        error: 'decision must be APPROVED or REJECTED'
+        error: `decision must be one of: ${VALID_DECISIONS.join(', ')}`
       });
     }
+
+    const DECISION_TO_ACTION: Record<string, StepAction> = {
+      APPROVED:     'approve',
+      REJECTED:     'reject',
+      REQUEST_INFO: 'request_info',
+      TRANSFER:     'transfer',
+    };
+    const stepAction = DECISION_TO_ACTION[decision] ?? 'approve';
 
     // Get the application with all workflow steps
     const application = await prisma.creditApplication.findUnique({
@@ -273,7 +394,8 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
         client: {
           include: { creator: true }
         },
-        creator: true
+        creator: true,
+        creditType: true
       }
     });
 
@@ -284,8 +406,13 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       });
     }
 
-    // Find the current pending step
-    const currentStep = application.workflowSteps.find(step => !step.completedAt);
+    // Trouver l'étape courante — priorité : stepId (exact) > stepName > première non complétée
+    const pendingSteps = application.workflowSteps.filter(s => !s.completedAt);
+    const currentStep = stepId
+      ? (pendingSteps.find(s => s.id === stepId) ?? pendingSteps.find(s => s.stepName === stepName) ?? pendingSteps[0])
+      : stepName
+        ? (pendingSteps.find(s => s.stepName === stepName) ?? pendingSteps[0])
+        : pendingSteps[0];
 
     if (!currentStep) {
       return res.status(400).json({
@@ -303,109 +430,157 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       });
     }
 
-    // Update the current step
+    // Vérifier que l'approbateur a le droit d'approuver cette étape et ce montant
+    const authCheck = await canApproveStep(userId, applicationId, currentStep.stepName, stepAction, currentStep.id);
+    if (!authCheck.allowed) {
+      return res.status(403).json({
+        success: false,
+        error: authCheck.reason || 'Approbation non autorisée'
+      });
+    }
+
+    // Démarrer l'étape si elle est encore en PENDING (enregistre startedAt)
+    if (currentStep.status === 'PENDING') {
+      await startWorkflowStep(currentStep.id, userId);
+    }
+
+    // REQUEST_INFO : l'étape reste IN_REVIEW, le workflow ne progresse pas
+    if (decision === 'REQUEST_INFO') {
+      await prisma.workflowStep.update({
+        where: { id: currentStep.id },
+        data: {
+          assigneeId: userId,
+          comments: comments || `Informations complémentaires demandées par ${user.name}`,
+        },
+      });
+      triggerNotification('STEP_INFO_REQUESTED', applicationId);
+      return res.json({
+        success: true,
+        message: 'Informations complémentaires demandées',
+        status: 'UNDER_REVIEW',
+        decision: 'REQUEST_INFO',
+      });
+    }
+
+    // TRANSFER : réinitialiser l'étape pour qu'un autre agent puisse la reprendre
+    if (decision === 'TRANSFER') {
+      await prisma.workflowStep.update({
+        where: { id: currentStep.id },
+        data: {
+          status: 'PENDING',
+          assigneeId: null,
+          startedAt: null,
+          comments: comments || `Transféré par ${user.name}`,
+        },
+      });
+      triggerNotification('STEP_ASSIGNED', applicationId);
+      return res.json({
+        success: true,
+        message: 'Étape transférée',
+        status: 'UNDER_REVIEW',
+        decision: 'TRANSFER',
+      });
+    }
+
+    // Calculer la durée de traitement et mettre à jour l'étape
+    const durationMinutes = await finalizeStepDuration(currentStep.id);
+
     await prisma.workflowStep.update({
       where: { id: currentStep.id },
       data: {
-        status: decision,
-        completedAt: new Date(),
+        status: decision as any,  // APPROVED ou REJECTED (valeurs valides de l'enum)
         assigneeId: userId,
-        comments: comments || `Décision: ${decision === 'APPROVED' ? 'Approuvé' : 'Rejeté'} par ${user.name}`
+        durationMinutes: durationMinutes ?? undefined,
+        comments: comments || `${decision === 'APPROVED' ? 'Approuvé' : 'Rejeté'} par ${user.name}`,
       }
     });
 
     if (decision === 'REJECTED') {
-      // Reject the application
       await prisma.creditApplication.update({
         where: { id: applicationId },
         data: { status: 'REJECTED' }
       });
+      // Calculer et stocker la durée totale du dossier
+      await finalizeApplicationDuration(applicationId);
+      triggerNotification('STEP_REJECTED', applicationId);
+      triggerNotification('APPLICATION_REJECTED', applicationId);
+      return res.json({ success: true, message: 'Demande rejetée', status: 'REJECTED' });
+    }
+
+    // Déterminer l'étape suivante via le service dynamique (base de données)
+    const nextStep = await getNextWorkflowStep(applicationId, currentStep.stepName);
+
+    if (nextStep) {
+      // Si l'étape suivante existe déjà en PENDING (créée par createWorkflowStepsForApplication),
+      // ne pas la recréer — évite les doublons d'étapes.
+      const existingNext = await prisma.workflowStep.findFirst({
+        where: { applicationId, stepName: nextStep.stepName, status: 'PENDING' },
+      });
+      if (!existingNext) {
+        await prisma.workflowStep.create({
+          data: {
+            applicationId,
+            stepName: nextStep.stepName,
+            role: nextStep.role,
+            status: 'PENDING',
+            deadline: new Date(
+              Date.now() +
+                (nextStep.expectedDurationHours ?? (nextStep.durationDays ?? 7) * 24) * 60 * 60 * 1000
+            ),
+            policyStepId: nextStep.policyStepId ?? undefined,
+          }
+        });
+      }
+
+      triggerNotification('STEP_ASSIGNED', applicationId, { nextRole: nextStep.role });
 
       return res.json({
         success: true,
-        message: 'Application rejected',
-        status: 'REJECTED'
+        message: `Approuvé. Transféré à : ${nextStep.stepLabel}`,
+        status: 'UNDER_REVIEW',
+        nextStep: nextStep.stepName
       });
     }
 
-    // If approved, determine next step based on sequential approval hierarchy
-    const approvalLimits = await prisma.approvalLimit.findMany({
-      where: { isActive: true },
-      orderBy: { minAmount: 'asc' }
+    // Filet de sécurité : vérifier qu'il ne reste pas d'étapes PENDING en DB
+    // (cas des workflows legacy où les étapes sont créées en bloc dès la soumission)
+    const remainingSteps = await prisma.workflowStep.findMany({
+      where: { applicationId, status: { in: ['PENDING', 'IN_REVIEW'] }, id: { not: currentStep.id } },
+      orderBy: { createdAt: 'asc' },
     });
 
-    const amount = Number(application.amount);
-
-    // Get the approval limits
-    const branchManagerLimit = approvalLimits.find(l => l.role === 'BRANCH_MANAGER');
-    const committeeLimit = approvalLimits.find(l => l.role === 'CREDIT_COMMITTEE');
-    const managementLimit = approvalLimits.find(l => l.role === 'MANAGEMENT');
-
-    // Determine if we need another approval level based on SEQUENTIAL hierarchy
-    let needsMoreApprovals = false;
-    let nextApprovalRole: string | null = null;
-
-    // Sequential approval logic:
-    // Branch Manager (if within limit) → Credit Committee (if exceeds BM) → Management (if exceeds CC)
-
-    if (currentStep.stepName === 'branch_manager_review') {
-      // Just completed branch manager review
-
-      // If amount exceeds branch manager limit, go to credit committee
-      if (committeeLimit && amount > Number(branchManagerLimit?.maxAmount || 0)) {
-        needsMoreApprovals = true;
-        nextApprovalRole = 'CREDIT_COMMITTEE';
-      }
-    } else if (currentStep.stepName === 'credit_committee_review') {
-      // Just completed credit committee review
-
-      // If amount exceeds credit committee limit, go to management
-      if (managementLimit && amount > Number(committeeLimit?.maxAmount || 0)) {
-        needsMoreApprovals = true;
-        nextApprovalRole = 'MANAGEMENT';
-      }
-    }
-
-    if (needsMoreApprovals && nextApprovalRole) {
-      // Create the next approval step
-      const nextStepName = nextApprovalRole === 'BRANCH_MANAGER' ? 'branch_manager_review' :
-                          nextApprovalRole === 'CREDIT_COMMITTEE' ? 'credit_committee_review' :
-                          nextApprovalRole === 'MANAGEMENT' ? 'management_review' : 'final_decision';
-
-      await prisma.workflowStep.create({
-        data: {
-          applicationId: applicationId,
-          stepName: nextStepName,
-          role: nextApprovalRole as any,
-          status: 'PENDING',
-          createdAt: new Date()
-        }
-      });
-
+    if (remainingSteps.length > 0) {
+      const nextRemaining = remainingSteps[0];
+      triggerNotification('STEP_ASSIGNED', applicationId, { nextRole: nextRemaining.role });
       return res.json({
         success: true,
-        message: `Approved. Forwarded to ${nextApprovalRole} for review`,
+        message: `Approuvé. Étape suivante : ${nextRemaining.stepName}`,
         status: 'UNDER_REVIEW',
-        nextStep: nextStepName
+        nextStep: nextRemaining.stepName,
       });
     }
 
-    // No more approvals needed - application is fully approved
+    // Plus aucune étape → approbation finale
     await prisma.creditApplication.update({
       where: { id: applicationId },
       data: { status: 'APPROVED' }
     });
 
-    // Create final_decision step
+    // Calculer et stocker la durée totale du dossier
+    await finalizeApplicationDuration(applicationId);
+
+    triggerNotification('APPLICATION_APPROVED', applicationId);
+
+    // Create final_decision step (rôle système fixe, indépendant de l'approbateur)
     await prisma.workflowStep.create({
       data: {
         applicationId: applicationId,
         stepName: 'final_decision',
-        role: user.role,
+        role: 'CHARGE_AFFAIRES',
         status: 'APPROVED',
         completedAt: new Date(),
         assigneeId: userId,
-        comments: 'Application fully approved - all required approvals obtained'
+        comments: 'Dossier approuvé — toutes les validations requises ont été obtenues',
       }
     });
 
@@ -424,169 +599,124 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/workflows/fix-missing-approval-steps - Fix applications missing approval steps
+// POST /api/workflows/fix-missing-approval-steps
+// Recalcule dynamiquement les étapes manquantes depuis le service
 router.post('/fix-missing-approval-steps', async (req: Request, res: Response) => {
   try {
-    console.log('🔧 Fixing missing approval steps...');
+    const { getNextWorkflowStep: getNext } = await import('../services/workflowService');
 
     const applications = await prisma.creditApplication.findMany({
-      where: {
-        status: 'UNDER_REVIEW'
-      },
-      include: {
-        workflowSteps: true
-      }
+      where: { status: 'UNDER_REVIEW', creditTypeId: { not: null }, companyId: req.companyId },
+      include: { workflowSteps: { orderBy: { createdAt: 'asc' } } }
     });
 
     let fixedCount = 0;
     const fixed: string[] = [];
 
     for (const application of applications) {
-      const creditAnalysisStep = application.workflowSteps.find(
-        (step: any) => step.stepName === 'credit_analysis' && step.status === 'COMPLETED'
+      const analysisStep = application.workflowSteps.find(
+        s => s.stepName === 'credit_analysis' && s.status === 'COMPLETED'
       );
+      if (!analysisStep) continue;
 
-      const hasApprovalStep = application.workflowSteps.some(
-        (step: any) => step.stepName === 'branch_manager_review' ||
-                step.stepName === 'credit_committee_review' ||
-                step.stepName === 'management_review'
-      );
+      const hasPendingStep = application.workflowSteps.some(s => !s.completedAt);
+      if (hasPendingStep) continue;
 
-      if (creditAnalysisStep && !hasApprovalStep) {
-        // Always start with branch_manager_review (first in approval chain)
-        const branchManagerLimit = await prisma.approvalLimit.findFirst({
-          where: { role: 'BRANCH_MANAGER', isActive: true }
-        });
+      // Dernière étape complétée
+      const lastCompleted = [...application.workflowSteps]
+        .filter(s => s.completedAt)
+        .sort((a, b) => b.completedAt!.getTime() - a.completedAt!.getTime())[0];
 
-        if (branchManagerLimit) {
-          await prisma.workflowStep.create({
-            data: {
-              applicationId: application.id,
-              stepName: 'branch_manager_review',
-              role: 'BRANCH_MANAGER' as any,
-              status: 'PENDING',
-              createdAt: new Date()
-            }
-          });
-          console.log(`✅ Created branch_manager_review for ${application.applicationNumber} (Amount: ${Number(application.amount)} XOF)`);
-          fixedCount++;
-          fixed.push(application.applicationNumber);
-        }
-      }
-    }
+      if (!lastCompleted) continue;
 
-    res.json({
-      success: true,
-      message: `Fixed ${fixedCount} application(s)`,
-      fixed
-    });
-
-  } catch (error: any) {
-    console.error('Error fixing approval steps:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Error fixing approval steps'
-    });
-  }
-});
-
-// POST /api/workflows/fix-prematurely-approved - Fix applications that were approved without going through all required approval layers
-router.post('/fix-prematurely-approved', async (req: Request, res: Response) => {
-  try {
-    console.log('🔧 Fixing prematurely approved applications...');
-
-    // Find applications that are APPROVED but missing required approval steps
-    const applications = await prisma.creditApplication.findMany({
-      where: {
-        status: 'APPROVED'
-      },
-      include: {
-        workflowSteps: true
-      }
-    });
-
-    const approvalLimits = await prisma.approvalLimit.findMany({
-      where: { isActive: true },
-      orderBy: { minAmount: 'asc' }
-    });
-
-    const branchManagerLimit = approvalLimits.find(l => l.role === 'BRANCH_MANAGER');
-    const committeeLimit = approvalLimits.find(l => l.role === 'CREDIT_COMMITTEE');
-    const managementLimit = approvalLimits.find(l => l.role === 'MANAGEMENT');
-
-    let fixedCount = 0;
-    const fixed: string[] = [];
-
-    for (const application of applications) {
-      const amount = Number(application.amount);
-
-      const hasBranchManagerReview = application.workflowSteps.some(
-        (step: any) => step.stepName === 'branch_manager_review'
-      );
-      const hasCommitteeReview = application.workflowSteps.some(
-        (step: any) => step.stepName === 'credit_committee_review'
-      );
-      const hasManagementReview = application.workflowSteps.some(
-        (step: any) => step.stepName === 'management_review'
-      );
-
-      let needsFix = false;
-
-      // Check if it's missing required approval steps based on amount
-      if (!hasBranchManagerReview && branchManagerLimit && amount >= Number(branchManagerLimit.minAmount)) {
-        needsFix = true;
-      } else if (!hasCommitteeReview && committeeLimit && amount > Number(branchManagerLimit?.maxAmount || 0) && amount <= Number(committeeLimit.maxAmount)) {
-        needsFix = true;
-      } else if (!hasManagementReview && managementLimit && amount > Number(committeeLimit?.maxAmount || 0)) {
-        needsFix = true;
-      }
-
-      if (needsFix) {
-        // Revert to UNDER_REVIEW status and remove final_decision step
-        await prisma.creditApplication.update({
-          where: { id: application.id },
-          data: { status: 'UNDER_REVIEW' }
-        });
-
-        // Remove final_decision step
-        await prisma.workflowStep.deleteMany({
-          where: {
+      const nextStep = await getNext(application.id, lastCompleted.stepName);
+      if (nextStep) {
+        await prisma.workflowStep.create({
+          data: {
             applicationId: application.id,
-            stepName: 'final_decision'
+            stepName: nextStep.stepName,
+            role: nextStep.role,
+            status: 'PENDING',
+            deadline: new Date(Date.now() + (nextStep.durationDays ?? 7) * 24 * 60 * 60 * 1000),
           }
         });
-
-        // Ensure branch_manager_review exists as first approval step
-        if (!hasBranchManagerReview && branchManagerLimit) {
-          await prisma.workflowStep.create({
-            data: {
-              applicationId: application.id,
-              stepName: 'branch_manager_review',
-              role: 'BRANCH_MANAGER' as any,
-              status: 'PENDING',
-              createdAt: new Date()
-            }
-          });
-        }
-
-        console.log(`✅ Reverted ${application.applicationNumber} to UNDER_REVIEW - missing required approvals`);
         fixedCount++;
         fixed.push(application.applicationNumber);
       }
     }
 
-    res.json({
-      success: true,
-      message: `Fixed ${fixedCount} prematurely approved application(s)`,
-      fixed
+    res.json({ success: true, message: `${fixedCount} dossier(s) corrigé(s)`, fixed });
+  } catch (error: any) {
+    console.error('Error fixing approval steps:', error);
+    res.status(500).json({ success: false, error: 'Erreur correction étapes' });
+  }
+});
+
+// POST /api/workflows/fix-prematurely-approved
+// Vérifie dynamiquement les dossiers approuvés qui auraient dû passer par plus d'étapes
+router.post('/fix-prematurely-approved', async (req: Request, res: Response) => {
+  try {
+    const { buildWorkflowPlan } = await import('../services/workflowService');
+
+    const applications = await prisma.creditApplication.findMany({
+      where: { status: 'APPROVED', creditTypeId: { not: null }, companyId: req.companyId },
+      include: { workflowSteps: true }
     });
 
+    let fixedCount = 0;
+    const fixed: string[] = [];
+
+    for (const application of applications) {
+      if (!application.creditTypeId) continue;
+
+      let plan;
+      try {
+        plan = await buildWorkflowPlan(
+          application.creditTypeId,
+          Number(application.amount),
+          application.companyId ?? undefined
+        );
+      } catch {
+        // Aucune politique active pour ce type de crédit — dossier ignoré
+        continue;
+      }
+
+      // Vérifier si toutes les étapes requises sont présentes
+      const missingSteps = plan.steps.filter(planStep =>
+        !application.workflowSteps.some(ws => ws.stepName === planStep.stepName)
+      );
+
+      if (missingSteps.length > 0) {
+        // Remettre en UNDER_REVIEW et retirer la décision finale
+        await prisma.creditApplication.update({
+          where: { id: application.id },
+          data: { status: 'UNDER_REVIEW' }
+        });
+        await prisma.workflowStep.deleteMany({
+          where: { applicationId: application.id, stepName: 'final_decision' }
+        });
+
+        // Créer la première étape manquante
+        const firstMissing = missingSteps[0];
+        await prisma.workflowStep.create({
+          data: {
+            applicationId: application.id,
+            stepName: firstMissing.stepName,
+            role: firstMissing.role,
+            status: 'PENDING',
+            deadline: new Date(Date.now() + (firstMissing.durationDays ?? 7) * 24 * 60 * 60 * 1000),
+          }
+        });
+
+        fixedCount++;
+        fixed.push(application.applicationNumber);
+      }
+    }
+
+    res.json({ success: true, message: `${fixedCount} dossier(s) corrigé(s)`, fixed });
   } catch (error: any) {
     console.error('Error fixing prematurely approved applications:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Error fixing prematurely approved applications'
-    });
+    res.status(500).json({ success: false, error: 'Erreur correction dossiers' });
   }
 });
 

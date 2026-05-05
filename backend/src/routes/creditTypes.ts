@@ -1,8 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
 import { cacheGet, cacheSet } from '../services/redis';
+import { authenticate, requireCompany } from '../middleware/auth';
 
 const router = Router();
+router.use(authenticate);
+router.use(requireCompany);
 const CACHE_KEY = 'cache:credit-types:active';
 const CACHE_TTL = 300;
 
@@ -10,26 +13,28 @@ const CACHE_TTL = 300;
 router.get('/', async (req: Request, res: Response) => {
   try {
     const { includeInactive } = req.query;
+    const cacheKey = `${CACHE_KEY}:${req.companyId}`;
 
     if (includeInactive !== 'true') {
-      const cached = await cacheGet(CACHE_KEY);
+      const cached = await cacheGet(cacheKey);
       if (cached) {
         return res.json({ success: true, data: JSON.parse(cached) });
       }
     }
 
-    const whereConditions: any = {};
+    const whereConditions: any = { companyId: req.companyId };
     if (includeInactive !== 'true') {
       whereConditions.isActive = true;
     }
 
     const creditTypes = await prisma.creditType.findMany({
       where: whereConditions,
+      include: { workflowSteps: { orderBy: { order: 'asc' } } },
       orderBy: { name: 'asc' }
     });
 
     if (includeInactive !== 'true') {
-      await cacheSet(CACHE_KEY, JSON.stringify(creditTypes), CACHE_TTL);
+      await cacheSet(cacheKey, JSON.stringify(creditTypes), CACHE_TTL);
     }
 
     res.json({ success: true, data: creditTypes });
@@ -48,7 +53,8 @@ router.get('/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
 
     const creditType = await prisma.creditType.findUnique({
-      where: { id }
+      where: { id },
+      include: { workflowSteps: { orderBy: { order: 'asc' } } }
     });
 
     if (!creditType) {
@@ -95,9 +101,9 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Check for duplicate code
-    const existing = await prisma.creditType.findUnique({
-      where: { code }
+    // Check for duplicate code within the same company
+    const existing = await prisma.creditType.findFirst({
+      where: { code, companyId: req.companyId }
     });
 
     if (existing) {
@@ -118,7 +124,8 @@ router.post('/', async (req: Request, res: Response) => {
         minDuration,
         maxDuration,
         requiresCollateral: requiresCollateral || false,
-        isActive: isActive !== undefined ? isActive : true
+        isActive: isActive !== undefined ? isActive : true,
+        companyId: req.companyId
       }
     });
 
@@ -167,8 +174,8 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     // Check for duplicate code (if code is being changed)
     if (code && code !== existing.code) {
-      const duplicate = await prisma.creditType.findUnique({
-        where: { code }
+      const duplicate = await prisma.creditType.findFirst({
+        where: { code, companyId: req.companyId }
       });
 
       if (duplicate) {
@@ -251,6 +258,106 @@ router.delete('/:id', async (req: Request, res: Response) => {
       success: false,
       error: error.message || 'Erreur lors de la suppression du type de crédit'
     });
+  }
+});
+
+// GET /api/credit-types/:id/workflow-steps
+router.get('/:id/workflow-steps', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const steps = await prisma.creditTypeWorkflowStep.findMany({
+      where: { creditTypeId: id },
+      orderBy: { order: 'asc' }
+    });
+    res.json({ success: true, data: steps });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Erreur lors de la récupération des étapes' });
+  }
+});
+
+// POST /api/credit-types/:id/workflow-steps
+router.post('/:id/workflow-steps', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { stepName, stepLabel, role, order, isRequired, durationDays, description } = req.body;
+
+    if (!stepName || !stepLabel || !role || order === undefined) {
+      return res.status(400).json({ success: false, error: 'stepName, stepLabel, role et order sont obligatoires' });
+    }
+
+    // Shift existing steps with order >= new order
+    await prisma.creditTypeWorkflowStep.updateMany({
+      where: { creditTypeId: id, order: { gte: order } },
+      data: { order: { increment: 1 } }
+    });
+
+    const step = await prisma.creditTypeWorkflowStep.create({
+      data: { creditTypeId: id, stepName, stepLabel, role, order, isRequired: isRequired ?? true, durationDays: durationDays ?? 3, description }
+    });
+
+    res.status(201).json({ success: true, data: step });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message || 'Erreur lors de la création de l\'étape' });
+  }
+});
+
+// PUT /api/credit-types/:id/workflow-steps/reorder — body: { steps: [{id, order}] }
+// NOTE: This route must be declared BEFORE /:id/workflow-steps/:stepId to avoid conflicts
+router.put('/:id/workflow-steps/reorder', async (req: Request, res: Response) => {
+  try {
+    const { steps } = req.body; // [{id, order}]
+    await Promise.all(
+      steps.map((s: { id: string; order: number }) =>
+        prisma.creditTypeWorkflowStep.update({ where: { id: s.id }, data: { order: s.order } })
+      )
+    );
+    res.json({ success: true, message: 'Ordre mis à jour' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PUT /api/credit-types/:id/workflow-steps/:stepId
+router.put('/:id/workflow-steps/:stepId', async (req: Request, res: Response) => {
+  try {
+    const { stepId } = req.params;
+    const { stepName, stepLabel, role, order, isRequired, durationDays, description } = req.body;
+
+    const step = await prisma.creditTypeWorkflowStep.update({
+      where: { id: stepId },
+      data: { stepName, stepLabel, role, order, isRequired, durationDays, description }
+    });
+
+    res.json({ success: true, data: step });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message || 'Erreur lors de la mise à jour de l\'étape' });
+  }
+});
+
+// DELETE /api/credit-types/:id/workflow-steps/:stepId
+router.delete('/:id/workflow-steps/:stepId', async (req: Request, res: Response) => {
+  try {
+    const { id, stepId } = req.params;
+    const step = await prisma.creditTypeWorkflowStep.findUnique({ where: { id: stepId } });
+    if (!step) return res.status(404).json({ success: false, error: 'Étape non trouvée' });
+
+    await prisma.creditTypeWorkflowStep.delete({ where: { id: stepId } });
+
+    // Reorder remaining steps
+    const remaining = await prisma.creditTypeWorkflowStep.findMany({
+      where: { creditTypeId: id },
+      orderBy: { order: 'asc' }
+    });
+    for (let i = 0; i < remaining.length; i++) {
+      await prisma.creditTypeWorkflowStep.update({
+        where: { id: remaining[i].id },
+        data: { order: i + 1 }
+      });
+    }
+
+    res.json({ success: true, message: 'Étape supprimée' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message || 'Erreur lors de la suppression de l\'étape' });
   }
 });
 

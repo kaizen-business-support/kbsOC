@@ -30,6 +30,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Snackbar,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -64,6 +65,8 @@ export const BankHolidaysAdminPage: React.FC<BankHolidaysAdminPageProps> = ({ on
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [holidays, setHolidays] = useState<BankHoliday[]>([]);
   
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
   // Dialog states
   const [holidayDialogOpen, setHolidayDialogOpen] = useState(false);
   const [editingHoliday, setEditingHoliday] = useState<BankHoliday | null>(null);
@@ -93,12 +96,10 @@ export const BankHolidaysAdminPage: React.FC<BankHolidaysAdminPageProps> = ({ on
   };
 
   const handleSaveConfiguration = () => {
-    const updatedConfig = {
-      ...workdayConfig,
-      holidays
-    };
+    const updatedConfig = { ...workdayConfig, holidays };
     setWorkdayConfig(updatedConfig);
     saveWorkdayConfiguration(updatedConfig);
+    setSaveSuccess(true);
   };
 
   const openHolidayDialog = (holiday?: BankHoliday) => {
@@ -133,6 +134,11 @@ export const BankHolidaysAdminPage: React.FC<BankHolidaysAdminPageProps> = ({ on
     });
   };
 
+  const persistHolidays = (newHolidays: BankHoliday[]) => {
+    setHolidays(newHolidays);
+    saveWorkdayConfiguration({ ...workdayConfig, holidays: newHolidays });
+  };
+
   const saveHoliday = () => {
     const holidayData: BankHoliday = {
       id: editingHoliday?.id || `holiday-${Date.now()}`,
@@ -143,34 +149,31 @@ export const BankHolidaysAdminPage: React.FC<BankHolidaysAdminPageProps> = ({ on
       description: holidayForm.description
     };
 
-    if (editingHoliday) {
-      // Update existing holiday
-      setHolidays(holidays.map(h => h.id === editingHoliday.id ? holidayData : h));
-    } else {
-      // Add new holiday
-      setHolidays([...holidays, holidayData]);
-    }
+    const newHolidays = editingHoliday
+      ? holidays.map(h => h.id === editingHoliday.id ? holidayData : h)
+      : [...holidays, holidayData];
 
+    persistHolidays(newHolidays);
     closeHolidayDialog();
   };
 
   const deleteHoliday = (holidayId: string) => {
-    setHolidays(holidays.filter(h => h.id !== holidayId));
+    persistHolidays(holidays.filter(h => h.id !== holidayId));
   };
 
   const copyHolidaysToYear = (fromYear: number, toYear: number) => {
-    const recurringHolidays = holidays
-      .filter(h => h.year === fromYear && h.isRecurring)
-      .map(h => ({
-        ...h,
-        id: `holiday-${Date.now()}-${Math.random()}`,
-        year: toYear,
-        date: h.date.replace(fromYear.toString(), toYear.toString())
-      }));
-    
-    // Remove existing holidays for the target year and add new ones
+    const sourceHolidays = holidays.filter(h => h.year === fromYear);
+    if (sourceHolidays.length === 0) return;
+
+    const copiedHolidays = sourceHolidays.map(h => ({
+      ...h,
+      id: `holiday-${Date.now()}-${Math.random()}`,
+      year: toYear,
+      date: h.date.replace(String(fromYear), String(toYear)),
+    }));
+
     const otherYearHolidays = holidays.filter(h => h.year !== toYear);
-    setHolidays([...otherYearHolidays, ...recurringHolidays]);
+    persistHolidays([...otherYearHolidays, ...copiedHolidays]);
   };
 
   if (!canViewBankHolidays) {
@@ -216,7 +219,7 @@ export const BankHolidaysAdminPage: React.FC<BankHolidaysAdminPageProps> = ({ on
       {/* Tabs */}
       <Card sx={{ mb: 4 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={currentTab} onChange={handleTabChange}>
+          <Tabs value={currentTab} onChange={handleTabChange} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
             <Tab label="Jours Fériés" icon={<EventIcon />} />
             <Tab label="Configuration" icon={<SettingsIcon />} />
           </Tabs>
@@ -484,6 +487,18 @@ export const BankHolidaysAdminPage: React.FC<BankHolidaysAdminPageProps> = ({ on
           </Grid>
         </Grid>
       )}
+
+      {/* Save confirmation */}
+      <Snackbar
+        open={saveSuccess}
+        autoHideDuration={3000}
+        onClose={() => setSaveSuccess(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSaveSuccess(false)} severity="success" sx={{ width: '100%' }}>
+          Configuration sauvegardée avec succès
+        </Alert>
+      </Snackbar>
 
       {/* Holiday Dialog */}
       <Dialog open={holidayDialogOpen} onClose={closeHolidayDialog} maxWidth="sm" fullWidth>

@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.*
+*.log
+uploads
+backups
+logs
+.git
+__tests__
+*.test.ts
+*.spec.ts

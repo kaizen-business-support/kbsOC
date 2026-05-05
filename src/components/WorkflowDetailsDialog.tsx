@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -25,7 +25,9 @@ import {
   LinearProgress,
   Alert,
   TextField,
-  CircularProgress
+  CircularProgress,
+  IconButton,
+  Tooltip
 } from '@mui/material';
 import {
   TrendingUp as TrendingUpIcon,
@@ -33,12 +35,18 @@ import {
   BarChart as BarChartIcon,
   Star as StarIcon,
   CheckCircle as ApproveIcon,
-  Cancel as RejectIcon
+  Cancel as RejectIcon,
+  FolderOpen as FolderIcon,
+  Download as DownloadIcon,
+  Visibility as VisibilityIcon,
+  Close as CloseIcon,
+  InsertDriveFile as FileIcon
 } from '@mui/icons-material';
 import { WorkflowTimestamps } from '../types';
 import { WorkflowTimeline } from './WorkflowTimeline';
 import { useUser } from '../contexts/UserContext';
 import { ApiService } from '../services/api';
+import { OtpVerificationDialog } from './OtpVerificationDialog';
 
 interface WorkflowDetailsDialogProps {
   open: boolean;
@@ -80,6 +88,152 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const { state: userState } = useUser();
+
+  // OTP dialog state
+  const [otpDialog, setOtpDialog] = useState<{
+    open: boolean;
+    pendingDecision: 'APPROVED' | 'REJECTED' | null;
+  }>({ open: false, pendingDecision: null });
+
+  // Documents tab state
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [docsUploading, setDocsUploading] = useState(false);
+  const [docsUploadError, setDocsUploadError] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [previewDoc, setPreviewDoc] = useState<any | null>(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const getApiBase = () => `${window.location.origin}/api`;
+
+  const fetchDocuments = useCallback(async (applicationId: string) => {
+    setDocsLoading(true);
+    try {
+      const token = localStorage.getItem('optimus_access_token');
+      const resp = await fetch(`${getApiBase()}/documents/${applicationId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setDocuments(data.documents || []);
+      } else {
+        console.error('[Documents] fetch failed:', resp.status, await resp.text().catch(() => ''));
+      }
+    } catch (err) {
+      console.error('[Documents] fetch error:', err);
+    } finally {
+      setDocsLoading(false);
+    }
+  }, []);
+
+  const openPreview = useCallback(async (doc: any) => {
+    setPreviewDoc(doc);
+    setPreviewBlobUrl(null);
+    setPreviewError(null);
+    setPreviewLoading(true);
+    try {
+      const token = localStorage.getItem('optimus_access_token');
+      const resp = await fetch(`${getApiBase()}/documents/preview/${doc.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        setPreviewBlobUrl(url);
+      } else {
+        const errData = await resp.json().catch(() => ({}));
+        setPreviewError(
+          `Erreur ${resp.status} — ${errData.error || errData.message || 'Fichier introuvable sur le serveur'}`
+        );
+      }
+    } catch (e: any) {
+      setPreviewError('Erreur réseau — impossible de contacter le serveur');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, []);
+
+  const downloadDoc = useCallback(async (doc: any) => {
+    try {
+      const token = localStorage.getItem('optimus_access_token');
+      const resp = await fetch(`${getApiBase()}/documents/download/${doc.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = doc.filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) {
+      console.error('Download failed:', e);
+    }
+  }, []);
+
+  const uploadDocuments = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0 || !workflow?.applicationId) return;
+    setDocsUploading(true);
+    setDocsUploadError(null);
+    const token = localStorage.getItem('optimus_access_token');
+    let hadError = false;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fd = new FormData();
+      fd.append('documents', file, file.name);
+      fd.append('category', 'OTHER');
+      try {
+        const resp = await fetch(`${getApiBase()}/documents/${workflow.applicationId}/upload`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          hadError = true;
+          setDocsUploadError(`Erreur ${resp.status} — ${err.error || err.message || 'Échec du téléversement'}`);
+        }
+      } catch (e: any) {
+        hadError = true;
+        setDocsUploadError('Erreur réseau lors du téléversement');
+      }
+    }
+    setDocsUploading(false);
+    if (!hadError) {
+      fetchDocuments(workflow.applicationId);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [workflow?.applicationId, fetchDocuments]);
+
+  const closePreview = useCallback(() => {
+    if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
+    setPreviewDoc(null);
+    setPreviewBlobUrl(null);
+    setPreviewError(null);
+  }, [previewBlobUrl]);
+
+  // Reset state when dialog opens for a different workflow
+  useEffect(() => {
+    if (open) {
+      setActiveTab(0);
+      setDocuments([]);
+      setComments('');
+      setSubmitError(null);
+      setSubmitSuccess(null);
+    }
+  }, [open, workflow?.applicationId]);
+
+  useEffect(() => {
+    if (activeTab === 5 && workflow?.applicationId) {
+      fetchDocuments(workflow.applicationId);
+    }
+  }, [activeTab, workflow?.applicationId, fetchDocuments]);
 
   if (!workflow) return null;
 
@@ -143,6 +297,12 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
     return false;
   };
 
+  const isActionAllowed = (action: string): boolean => {
+    const currentStep = workflow?.steps?.find(step => !step.completedAt);
+    if (!currentStep?.allowedActions || currentStep.allowedActions.length === 0) return true;
+    return currentStep.allowedActions.includes(action);
+  };
+
   const handleApproval = async (decision: 'APPROVED' | 'REJECTED') => {
     if (!userState.currentUser || !workflow) return;
 
@@ -151,40 +311,30 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
     setSubmitSuccess(null);
 
     try {
-      const response = await fetch(`http://localhost:5006/api/workflows/${workflow.applicationId}/approve`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: userState.currentUser.id,
-          decision,
-          comments: comments.trim() || undefined
-        })
+      const data = await ApiService.approveWorkflow(workflow.applicationId, {
+        userId: userState.currentUser.id,
+        decision,
+        comments: comments.trim() || undefined,
       });
 
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Failed to submit decision');
       }
 
-      setSubmitSuccess(data.message || 'Decision submitted successfully');
+      setSubmitSuccess(data.message || 'Décision soumise avec succès');
       setComments('');
 
-      // Notify parent to reload data
       if (onApprovalSubmitted) {
         onApprovalSubmitted();
       }
 
-      // Close dialog after a short delay
       setTimeout(() => {
         onClose();
       }, 2000);
 
     } catch (error: any) {
       console.error('Error submitting approval:', error);
-      setSubmitError(error.message || 'Error submitting decision');
+      setSubmitError(error.message || 'Erreur lors de la soumission');
     } finally {
       setSubmitting(false);
     }
@@ -209,7 +359,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   // Extract financial data and analysis results
   const analysisResults = application?.analysisResults || {};
   const financialData = analysisResults?.financialData || {};
-  const preliminaryAnalysis = analysisResults?.preliminaryAnalysis || {};
+  const preliminaryAnalysis = (typeof analysisResults?.preliminaryAnalysis === 'object' && analysisResults.preliminaryAnalysis !== null ? analysisResults.preliminaryAnalysis : {}) as any;
 
   // Get scores
   const overallScore = preliminaryAnalysis?.overallScore || application?.overallScore || 0;
@@ -220,14 +370,27 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   const years = Object.keys(financialData).map(Number).sort((a, b) => a - b);
   const latestYear = years[years.length - 1];
 
+  // Resolve year data: handle both nested {multiyear_data.N.data} and flat {field: value} formats
+  const resolveYearData = (entry: any): any | null => {
+    if (!entry) return null;
+    // New format (after fix): { multiyear_data: { N: { data: {...} } } }
+    if (entry?.multiyear_data?.N?.data) return entry.multiyear_data.N.data;
+    // Old flat format: { chiffre_affaires: ..., total_actif: ... }
+    const hasFinancialFields = entry && typeof entry === 'object' &&
+      Object.keys(entry).some(k => ['chiffre_affaires', 'total_actif', 'capitaux_propres',
+        'resultat_net', 'actif_immobilise', 'stocks'].includes(k));
+    if (hasFinancialFields) return entry;
+    return null;
+  };
+
   // Get all years data
   const allYearsData = years.map(year => ({
     year,
-    data: financialData[year]?.multiyear_data?.N?.data || null,
+    data: resolveYearData(financialData[year]),
     ratios: financialData[year]?.ratios || null
   })).filter(yearData => yearData.data !== null);
 
-  const latestYearData = latestYear ? financialData[latestYear]?.multiyear_data?.N?.data : null;
+  const latestYearData = latestYear ? resolveYearData(financialData[latestYear]) : null;
 
   const getProgressColor = (score: number): 'success' | 'warning' | 'error' | 'info' => {
     if (score >= 80) return 'success';
@@ -258,11 +421,43 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
     return isNaN(numValue) ? 0 : numValue;
   };
 
+  // Shared balance totals computation (used by Grandes Masses, Bilan Détaillé and ratios)
+  const computeBalanceTotals = (yearData: any) => {
+    const actifImmobilise = getNumericValue(yearData, 'actif_immobilise') ||
+      (getNumericValue(yearData, 'immobilisations_incorporelles') +
+       getNumericValue(yearData, 'immobilisations_corporelles') +
+       getNumericValue(yearData, 'immobilisations_financieres'));
+    const actifCirculant = getNumericValue(yearData, 'actif_circulant') ||
+      (getNumericValue(yearData, 'stocks') +
+       getNumericValue(yearData, 'creances_clients') +
+       getNumericValue(yearData, 'autres_creances'));
+    const tresorerieActif = getNumericValue(yearData, 'tresorerie');
+    const totalActif = getNumericValue(yearData, 'total_actif') ||
+      (actifImmobilise + actifCirculant + tresorerieActif);
+
+    const capitauxPropres = getNumericValue(yearData, 'capitaux_propres') ||
+      (getNumericValue(yearData, 'capital_social') +
+       getNumericValue(yearData, 'reserves') +
+       getNumericValue(yearData, 'resultat_exercice'));
+    const dettesFinancieres = getNumericValue(yearData, 'dettes_financieres') ||
+      (getNumericValue(yearData, 'emprunts_bancaires_lt') +
+       getNumericValue(yearData, 'autres_dettes_financieres'));
+    const passifCirculant = getNumericValue(yearData, 'passif_circulant') ||
+      (getNumericValue(yearData, 'dettes_fournisseurs') +
+       getNumericValue(yearData, 'dettes_fiscales_sociales') +
+       getNumericValue(yearData, 'autres_dettes_courantes'));
+    const tresoreriePassif = getNumericValue(yearData, 'tresorerie_passif') ||
+      getNumericValue(yearData, 'emprunts_bancaires_ct');
+    const totalPassif = capitauxPropres + dettesFinancieres + passifCirculant + tresoreriePassif;
+
+    return { totalActif, totalPassif };
+  };
+
   // Calculate key ratios
   const calculateRatios = (yearData: any) => {
     if (!yearData) return null;
 
-    const totalActif = getNumericValue(yearData, 'total_actif') || getNumericValue(yearData, 'actif_total');
+    const totalActif = getNumericValue(yearData, 'total_actif') || computeBalanceTotals(yearData).totalActif;
     const actifCirculant = getNumericValue(yearData, 'actif_circulant') || getNumericValue(yearData, 'total_actif_circulant');
     const capitauxPropres = getNumericValue(yearData, 'capitaux_propres') || getNumericValue(yearData, 'fonds_propres');
     const passifCirculant = getNumericValue(yearData, 'passif_circulant') ||
@@ -296,32 +491,77 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
       maxWidth="lg"
       fullWidth
       PaperProps={{
-        sx: { minHeight: '80vh' }
+        sx: {
+          minHeight: '80vh',
+          maxHeight: '92vh',
+          borderRadius: { xs: 0, sm: '16px' },
+          overflow: 'hidden',
+        }
       }}
     >
-      <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-          <Typography variant="h6">
-            Détails du Workflow - {workflow.clientName}
-          </Typography>
-          <Chip
-            label={statusDisplay.label}
-            color={statusDisplay.color}
+      {/* ── Header Apple-style ──────────────────────────────────────────── */}
+      <DialogTitle sx={{ px: 3, py: 2, borderBottom: '1px solid rgba(0,0,0,0.07)', bgcolor: '#fafafa' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+          <Box sx={{ minWidth: 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Typography sx={{ fontSize: '15px', fontWeight: 700, color: '#111', lineHeight: 1.3 }}>
+                {workflow.clientName}
+              </Typography>
+              <Chip
+                label={statusDisplay.label}
+                color={statusDisplay.color}
+                size="small"
+                sx={{ height: 20, fontSize: '11px', fontWeight: 600 }}
+              />
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.25 }}>
+              <Typography variant="caption" sx={{ color: '#8e8e93', fontWeight: 500 }}>
+                {workflow.applicationNumber}
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#c7c7cc' }}>·</Typography>
+              <Typography variant="caption" sx={{ color: '#8e8e93', fontWeight: 500 }}>
+                {new Intl.NumberFormat('fr-FR').format(workflow.requestedAmount)} {workflow.currency || 'XOF'}
+              </Typography>
+            </Box>
+          </Box>
+          <IconButton
             size="small"
-          />
+            onClick={onClose}
+            sx={{
+              bgcolor: 'rgba(0,0,0,0.06)',
+              width: 28, height: 28, flexShrink: 0,
+              '&:hover': { bgcolor: 'rgba(0,0,0,0.12)' },
+            }}
+          >
+            <CloseIcon sx={{ fontSize: 14 }} />
+          </IconButton>
         </Box>
-        <Typography variant="subtitle2" color="text.secondary">
-          {workflow.applicationNumber}
-        </Typography>
       </DialogTitle>
 
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
-        <Tabs value={activeTab} onChange={handleTabChange}>
-          <Tab label="Workflow" icon={<AssessmentIcon />} iconPosition="start" />
-          <Tab label="Détails de la Demande" icon={<TrendingUpIcon />} iconPosition="start" />
-          <Tab label="Données Financières" icon={<TrendingUpIcon />} iconPosition="start" />
-          <Tab label="Ratios" icon={<BarChartIcon />} iconPosition="start" />
-          <Tab label="Scoring" icon={<StarIcon />} iconPosition="start" />
+      <Box sx={{ borderBottom: '1px solid rgba(0,0,0,0.07)', px: 2, bgcolor: '#fafafa' }}>
+        <Tabs
+          value={activeTab}
+          onChange={handleTabChange}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
+          sx={{
+            minHeight: 40,
+            '& .MuiTab-root': {
+              minHeight: 40, fontSize: '12px', fontWeight: 500,
+              px: 1.5, minWidth: 0, gap: 0.5, color: '#8e8e93',
+              textTransform: 'none', letterSpacing: 0,
+            },
+            '& .Mui-selected': { color: '#1c1c1e', fontWeight: 650 },
+            '& .MuiTabs-indicator': { height: 2, borderRadius: '2px 2px 0 0' },
+          }}
+        >
+          <Tab label="Workflow"    icon={<AssessmentIcon sx={{ fontSize: 13 }} />} iconPosition="start" />
+          <Tab label="Demande"     icon={<TrendingUpIcon sx={{ fontSize: 13 }} />} iconPosition="start" />
+          <Tab label="Financier"   icon={<TrendingUpIcon sx={{ fontSize: 13 }} />} iconPosition="start" />
+          <Tab label="Ratios"      icon={<BarChartIcon  sx={{ fontSize: 13 }} />} iconPosition="start" />
+          <Tab label="Scoring"     icon={<StarIcon       sx={{ fontSize: 13 }} />} iconPosition="start" />
+          <Tab label="Documents"   icon={<FolderIcon     sx={{ fontSize: 13 }} />} iconPosition="start" />
         </Tabs>
       </Box>
 
@@ -642,7 +882,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                             <Typography variant="subtitle1" fontWeight={600} gutterBottom color="primary">
                               ACTIF
                             </Typography>
-                            <TableContainer>
+                            <TableContainer sx={{ overflowX: 'auto' }}>
                               <Table size="small">
                                 <TableHead>
                                   <TableRow>
@@ -695,17 +935,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                                       <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>TOTAL ACTIF</Typography>
                                     </TableCell>
                                     {allYearsData.map(({ year, data: yearData }) => {
-                                      // Calculate total from grandes masses
-                                      const actifImmobilise = getNumericValue(yearData, 'actif_immobilise') ||
-                                        (getNumericValue(yearData, 'immobilisations_incorporelles') +
-                                         getNumericValue(yearData, 'immobilisations_corporelles') +
-                                         getNumericValue(yearData, 'immobilisations_financieres'));
-                                      const actifCirculantHAO = getNumericValue(yearData, 'stocks') +
-                                        getNumericValue(yearData, 'creances_clients') +
-                                        getNumericValue(yearData, 'autres_creances');
-                                      const tresorerie = getNumericValue(yearData, 'tresorerie');
-                                      const totalActif = actifImmobilise + actifCirculantHAO + tresorerie;
-
+                                      const totalActif = getNumericValue(yearData, 'total_actif') || computeBalanceTotals(yearData).totalActif;
                                       return (
                                         <TableCell key={year} align="right">
                                           <Typography variant="body2" sx={{ color: 'white', fontWeight: 700 }}>
@@ -729,7 +959,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                             <Typography variant="subtitle1" fontWeight={600} gutterBottom color="secondary">
                               PASSIF
                             </Typography>
-                            <TableContainer>
+                            <TableContainer sx={{ overflowX: 'auto' }}>
                               <Table size="small">
                                 <TableHead>
                                   <TableRow>
@@ -785,20 +1015,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                                       <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>TOTAL PASSIF</Typography>
                                     </TableCell>
                                     {allYearsData.map(({ year, data: yearData }) => {
-                                      // Calculate total from grandes masses
-                                      const capitauxPropres = getNumericValue(yearData, 'capitaux_propres') ||
-                                        (getNumericValue(yearData, 'capital_social') +
-                                         getNumericValue(yearData, 'reserves') +
-                                         getNumericValue(yearData, 'resultat_exercice'));
-                                      const dettesFinancieres = getNumericValue(yearData, 'dettes_financieres') ||
-                                        (getNumericValue(yearData, 'emprunts_bancaires_lt') +
-                                         getNumericValue(yearData, 'autres_dettes_financieres'));
-                                      const passifCirculantHAO = getNumericValue(yearData, 'dettes_fournisseurs') +
-                                        getNumericValue(yearData, 'dettes_fiscales_sociales') +
-                                        getNumericValue(yearData, 'autres_dettes_courantes');
-                                      const tresoreriePassif = getNumericValue(yearData, 'emprunts_bancaires_ct');
-                                      const totalPassif = capitauxPropres + dettesFinancieres + passifCirculantHAO + tresoreriePassif;
-
+                                      const totalPassif = getNumericValue(yearData, 'total_passif') || computeBalanceTotals(yearData).totalPassif;
                                       return (
                                         <TableCell key={year} align="right">
                                           <Typography variant="body2" sx={{ color: 'white', fontWeight: 700 }}>
@@ -836,7 +1053,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                     </Typography>
                     <Divider sx={{ mb: 2 }} />
 
-                    <TableContainer>
+                    <TableContainer sx={{ overflowX: 'auto' }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -958,7 +1175,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                             <TableCell><strong>TOTAL ACTIF</strong></TableCell>
                             {allYearsData.map(({ year, data: yearData }) => (
                               <TableCell key={year} align="right" sx={{ fontWeight: 700, fontSize: '1rem' }}>
-                                {formatCurrency(getNumericValue(yearData, 'total_actif'))}
+                                {formatCurrency(getNumericValue(yearData, 'total_actif') || computeBalanceTotals(yearData).totalActif)}
                               </TableCell>
                             ))}
                           </TableRow>
@@ -1111,12 +1328,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                             <TableCell><strong>TOTAL PASSIF</strong></TableCell>
                             {allYearsData.map(({ year, data: yearData }) => (
                               <TableCell key={year} align="right" sx={{ fontWeight: 700, fontSize: '1rem' }}>
-                                {formatCurrency(
-                                  getNumericValue(yearData, 'total_passif') ||
-                                  (getNumericValue(yearData, 'capitaux_propres') +
-                                   getNumericValue(yearData, 'dettes_financieres') +
-                                   getNumericValue(yearData, 'passif_circulant'))
-                                )}
+                                {formatCurrency(getNumericValue(yearData, 'total_passif') || computeBalanceTotals(yearData).totalPassif)}
                               </TableCell>
                             ))}
                           </TableRow>
@@ -1136,7 +1348,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                     </Typography>
                     <Divider sx={{ mb: 2 }} />
 
-                    <TableContainer>
+                    <TableContainer sx={{ overflowX: 'auto' }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -1415,7 +1627,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                       Ratios de Liquidité
                     </Typography>
                     <Divider sx={{ mb: 2 }} />
-                    <TableContainer>
+                    <TableContainer sx={{ overflowX: 'auto' }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -1453,7 +1665,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                       Ratios de Rentabilité
                     </Typography>
                     <Divider sx={{ mb: 2 }} />
-                    <TableContainer>
+                    <TableContainer sx={{ overflowX: 'auto' }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -1501,7 +1713,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                       Ratios d'Endettement
                     </Typography>
                     <Divider sx={{ mb: 2 }} />
-                    <TableContainer>
+                    <TableContainer sx={{ overflowX: 'auto' }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -1549,7 +1761,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                       Ratios d'Efficacité
                     </Typography>
                     <Divider sx={{ mb: 2 }} />
-                    <TableContainer>
+                    <TableContainer sx={{ overflowX: 'auto' }}>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -1811,7 +2023,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                       <Typography variant="subtitle1" fontWeight={600} gutterBottom>
                         Calcul du Score Financier
                       </Typography>
-                      <TableContainer>
+                      <TableContainer sx={{ overflowX: 'auto' }}>
                         <Table size="small">
                           <TableHead>
                             <TableRow>
@@ -2015,77 +2227,305 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
             )}
           </Grid>
         </TabPanel>
+
+        {/* Tab 5: Documents */}
+        <TabPanel value={activeTab} index={5}>
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.doc,.docx"
+            style={{ display: 'none' }}
+            onChange={(e) => uploadDocuments(e.target.files)}
+          />
+
+          {/* Header row: title + upload button */}
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Typography variant="h6">Documents justificatifs</Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={docsUploading ? <CircularProgress size={14} /> : <DownloadIcon sx={{ transform: 'rotate(180deg)' }} />}
+              disabled={docsUploading}
+              onClick={() => fileInputRef.current?.click()}
+              sx={{ borderRadius: 6, textTransform: 'none', fontSize: '13px', px: 2 }}
+            >
+              {docsUploading ? 'Envoi…' : 'Ajouter des fichiers'}
+            </Button>
+          </Box>
+
+          {docsUploadError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setDocsUploadError(null)}>
+              {docsUploadError}
+            </Alert>
+          )}
+
+          {docsLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : documents.length === 0 ? (
+            <Alert severity="info">
+              Aucun document joint à cette demande. Cliquez sur « Ajouter des fichiers » pour en téléverser.
+            </Alert>
+          ) : (
+            <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none', overflowX: 'auto' }}>
+              <Table size="small" sx={{ minWidth: 560 }}>
+                <TableHead>
+                  <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                    <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Nom du fichier</TableCell>
+                    <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Catégorie</TableCell>
+                    <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Taille</TableCell>
+                    <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Ajouté par</TableCell>
+                    <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Date</TableCell>
+                    <TableCell align="center" sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {documents.map((doc) => {
+                    const ext = doc.filename?.split('.').pop()?.toLowerCase() || '';
+                    const canPreview = ['pdf', 'png', 'jpg', 'jpeg'].includes(ext);
+                    const sizeKb = doc.fileSize ? (doc.fileSize / 1024).toFixed(0) : '?';
+                    return (
+                      <TableRow key={doc.id} sx={{ '&:hover': { bgcolor: 'rgba(31,78,121,0.03)' }, borderBottom: '1px solid #f1f5f9' }}>
+                        <TableCell sx={{ py: 1.5 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <FileIcon sx={{ fontSize: 16, color: '#9ca3af' }} />
+                            <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '13px' }}>{doc.filename}</Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell sx={{ py: 1.5 }}>
+                          <Chip label={doc.category || 'OTHER'} size="small" variant="outlined" sx={{ fontSize: '11px' }} />
+                        </TableCell>
+                        <TableCell sx={{ py: 1.5, color: '#6b7280', fontSize: '13px' }}>{sizeKb} Ko</TableCell>
+                        <TableCell sx={{ py: 1.5, fontSize: '13px' }}>{doc.uploader?.name || '—'}</TableCell>
+                        <TableCell sx={{ py: 1.5, color: '#6b7280', fontSize: '13px' }}>
+                          {new Date(doc.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        </TableCell>
+                        <TableCell align="center" sx={{ py: 1.5 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                            {canPreview ? (
+                              <Tooltip title="Prévisualiser">
+                                <IconButton size="small" color="primary" onClick={() => openPreview(doc)}>
+                                  <VisibilityIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            ) : (
+                              <Tooltip title="Aperçu non disponible pour ce type de fichier">
+                                <span>
+                                  <IconButton size="small" disabled>
+                                    <VisibilityIcon fontSize="small" />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            )}
+                            <Tooltip title="Télécharger">
+                              <IconButton size="small" onClick={() => downloadDoc(doc)}>
+                                <DownloadIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </TabPanel>
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, py: 2, flexDirection: 'column', alignItems: 'stretch' }}>
-        {/* Success/Error Messages */}
-        {submitSuccess && (
-          <Alert severity="success" sx={{ mb: 2, width: '100%' }}>
-            {submitSuccess}
-          </Alert>
-        )}
-        {submitError && (
-          <Alert severity="error" sx={{ mb: 2, width: '100%' }}>
-            {submitError}
-          </Alert>
-        )}
+      {/* Document Preview Modal */}
+      <Dialog
+        open={Boolean(previewDoc)}
+        onClose={closePreview}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { height: '90vh' } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <FileIcon color="primary" />
+            <Typography variant="subtitle1" fontWeight={600}>{previewDoc?.filename}</Typography>
+          </Box>
+          <IconButton size="small" onClick={closePreview}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {previewLoading && <CircularProgress />}
 
-        {/* Approval Section - Only show if user can approve */}
-        {canApprove() && !submitSuccess && (
-          <Box sx={{ width: '100%', mb: 2 }}>
-            <Alert severity="info" sx={{ mb: 2 }}>
-              <Typography variant="body2" fontWeight={600}>
-                Cette demande nécessite votre approbation
+          {!previewLoading && previewBlobUrl && (() => {
+            const ext = previewDoc?.filename?.split('.').pop()?.toLowerCase() || '';
+            if (['png', 'jpg', 'jpeg'].includes(ext)) {
+              return (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', bgcolor: '#111', p: 2 }}>
+                  <img src={previewBlobUrl} alt={previewDoc?.filename} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                </Box>
+              );
+            }
+            if (ext === 'pdf') {
+              // Chrome blocks blob: URLs in <iframe> for PDFs — use <embed> instead
+              return (
+                <embed
+                  src={previewBlobUrl}
+                  type="application/pdf"
+                  style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+                />
+              );
+            }
+            // Office docs (docx, xlsx, etc.) can't be previewed in-browser
+            return (
+              <Box sx={{ textAlign: 'center', p: 4, maxWidth: 400 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  L'aperçu n'est pas disponible pour les fichiers <strong>.{ext}</strong>.<br />
+                  Téléchargez le document pour l'ouvrir avec l'application appropriée.
+                </Typography>
+                <Button variant="outlined" size="small" onClick={() => downloadDoc(previewDoc)}
+                  sx={{ borderRadius: '10px', textTransform: 'none', fontSize: '13px' }}>
+                  Télécharger le fichier
+                </Button>
+              </Box>
+            );
+          })()}
+
+          {!previewLoading && (previewError || (!previewBlobUrl && previewDoc)) && (
+            <Box sx={{ textAlign: 'center', p: 4, maxWidth: 400 }}>
+              <Typography variant="body2" color="error" sx={{ mb: 1, fontWeight: 600 }}>
+                Aperçu indisponible
               </Typography>
-              <Typography variant="body2">
-                Veuillez examiner les détails de la demande et fournir votre décision.
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 3 }}>
+                {previewError || 'Impossible de charger ce document.'}
               </Typography>
-            </Alert>
-
-            <TextField
-              label="Commentaires (optionnel)"
-              multiline
-              rows={3}
-              fullWidth
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-              placeholder="Ajoutez vos commentaires sur cette demande..."
-              disabled={submitting}
-              sx={{ mb: 2 }}
-            />
-
-            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
               <Button
                 variant="outlined"
-                color="error"
-                startIcon={submitting ? <CircularProgress size={20} /> : <RejectIcon />}
-                onClick={() => handleApproval('REJECTED')}
-                disabled={submitting}
-                size="large"
+                size="small"
+                onClick={() => previewDoc && downloadDoc(previewDoc)}
+                sx={{ borderRadius: '10px', textTransform: 'none', fontSize: '13px' }}
               >
-                Rejeter
-              </Button>
-              <Button
-                variant="contained"
-                color="success"
-                startIcon={submitting ? <CircularProgress size={20} /> : <ApproveIcon />}
-                onClick={() => handleApproval('APPROVED')}
-                disabled={submitting}
-                size="large"
-              >
-                Approuver
+                Télécharger le fichier
               </Button>
             </Box>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Barre d'action Apple-style ─────────────────────────────────── */}
+      <DialogActions
+        sx={{
+          px: 2.5, py: 1.5,
+          borderTop: '1px solid rgba(0,0,0,0.07)',
+          bgcolor: '#fafafa',
+          gap: 1,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          minHeight: 56,
+        }}
+      >
+        {/* Feedback compact */}
+        {submitSuccess && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flex: 1 }}>
+            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'success.main', flexShrink: 0 }} />
+            <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 600, fontSize: '12px' }}>
+              {submitSuccess}
+            </Typography>
+          </Box>
+        )}
+        {submitError && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flex: 1 }}>
+            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'error.main', flexShrink: 0 }} />
+            <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 600, fontSize: '12px' }}>
+              {submitError}
+            </Typography>
           </Box>
         )}
 
-        {/* Close button */}
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
-          <Button onClick={onClose} disabled={submitting}>
-            Fermer
-          </Button>
-        </Box>
+        {/* Zone d'approbation compacte */}
+        {canApprove() && !submitSuccess && (
+          <>
+            <TextField
+              placeholder="Commentaire (optionnel)"
+              size="small"
+              multiline
+              minRows={1}
+              maxRows={3}
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              disabled={submitting}
+              sx={{
+                flex: 1, minWidth: { xs: '100%', sm: 200 },
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: '10px', fontSize: '13px',
+                  bgcolor: 'white',
+                },
+              }}
+            />
+            {isActionAllowed('reject') && (
+            <Button
+              variant="outlined"
+              color="error"
+              size="small"
+              startIcon={submitting ? <CircularProgress size={13} /> : <RejectIcon sx={{ fontSize: 14 }} />}
+              onClick={() => setOtpDialog({ open: true, pendingDecision: 'REJECTED' })}
+              disabled={submitting}
+              sx={{
+                borderRadius: '10px', px: 2, fontSize: '13px', fontWeight: 600,
+                textTransform: 'none', whiteSpace: 'nowrap',
+              }}
+            >
+              Rejeter
+            </Button>
+            )}
+            {isActionAllowed('approve') && (
+            <Button
+              variant="contained"
+              color="success"
+              size="small"
+              startIcon={submitting ? <CircularProgress size={13} /> : <ApproveIcon sx={{ fontSize: 14 }} />}
+              onClick={() => setOtpDialog({ open: true, pendingDecision: 'APPROVED' })}
+              disabled={submitting}
+              sx={{
+                borderRadius: '10px', px: 2, fontSize: '13px', fontWeight: 600,
+                textTransform: 'none', whiteSpace: 'nowrap',
+                boxShadow: 'none', '&:hover': { boxShadow: 'none' },
+              }}
+            >
+              Approuver
+            </Button>
+            )}
+          </>
+        )}
+
+        {/* Fermer toujours visible à droite */}
+        {!canApprove() && !submitSuccess && !submitError && <Box sx={{ flex: 1 }} />}
+        <Button
+          onClick={onClose}
+          disabled={submitting}
+          size="small"
+          sx={{
+            borderRadius: '10px', px: 2, fontSize: '13px',
+            textTransform: 'none', color: '#636366',
+            '&:hover': { bgcolor: 'rgba(0,0,0,0.05)' },
+          }}
+        >
+          Fermer
+        </Button>
       </DialogActions>
+
+      {/* OTP Verification */}
+      <OtpVerificationDialog
+        open={otpDialog.open}
+        actionLabel={otpDialog.pendingDecision === 'APPROVED' ? 'Approuver la demande' : 'Rejeter la demande'}
+        purpose={otpDialog.pendingDecision === 'APPROVED' ? 'approve_credit' : 'reject_credit'}
+        onClose={() => setOtpDialog({ open: false, pendingDecision: null })}
+        onVerified={async () => {
+          if (otpDialog.pendingDecision) {
+            await handleApproval(otpDialog.pendingDecision);
+          }
+        }}
+      />
     </Dialog>
   );
 };

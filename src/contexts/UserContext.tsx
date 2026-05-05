@@ -19,13 +19,15 @@ export interface User {
   createdAt?: string;
 }
 
-export type UserRole = 
-  | 'account_manager'     // Chargé d'Affaires
-  | 'credit_analyst'      // Analyste Crédit  
-  | 'branch_manager'      // Directeur d'Agence
-  | 'credit_committee'    // Membre Comité de Crédit
-  | 'management'          // Direction Générale
-  | 'admin';              // Administrateur Système
+export type UserRole =
+  // Anciennes valeurs DB @map (legacy — conservées pour compatibilité)
+  | 'account_manager' | 'credit_analyst' | 'analyst_supervisor'
+  | 'branch_manager' | 'credit_committee' | 'management' | 'admin'
+  | 'super_admin' | 'back_office' | 'direction_juridique'
+  // Nouvelles clés Prisma TypeScript (valeur réelle retournée par l'API)
+  | 'CHARGE_AFFAIRES' | 'ANALYSTE_RISQUES' | 'RESPONSABLE_RISQUES'
+  | 'RESPONSABLE_ENGAGEMENTS' | 'COMITE_CREDIT' | 'DIRECTION_GENERALE'
+  | 'ADMIN' | 'SUPER_ADMIN' | 'BACK_OFFICE' | 'DIRECTION_JURIDIQUE';
 
 export interface UserState {
   currentUser: User | null;
@@ -157,13 +159,25 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         try {
           dispatch({ type: 'SET_LOADING', payload: true });
           const user = await ApiService.getCurrentUser();
-          const roleMapping: Record<string, UserRole> = {
-            'ADMIN': 'admin',
-            'MANAGEMENT': 'management',
-            'BRANCH_MANAGER': 'branch_manager',
-            'ACCOUNT_MANAGER': 'account_manager',
-            'CREDIT_ANALYST': 'credit_analyst',
-            'CREDIT_COMMITTEE': 'credit_committee'
+          const roleMapping: Record<string, any> = {
+            // New RACI names (from backend)
+            'CHARGE_AFFAIRES':         'account_manager',      // frontend legacy compat
+            'ANALYSTE_RISQUES':        'credit_analyst',
+            'RESPONSABLE_RISQUES':     'analyst_supervisor',
+            'RESPONSABLE_ENGAGEMENTS': 'branch_manager',
+            'COMITE_CREDIT':           'credit_committee',
+            'DIRECTION_GENERALE':      'management',
+            'ADMIN':                   'admin',
+            'SUPER_ADMIN':             'admin',
+            'BACK_OFFICE':             'account_manager',
+            'DIRECTION_JURIDIQUE':     'account_manager',
+            // Old names (backward compat)
+            'ACCOUNT_MANAGER':    'account_manager',
+            'CREDIT_ANALYST':     'credit_analyst',
+            'ANALYST_SUPERVISOR': 'analyst_supervisor',
+            'BRANCH_MANAGER':     'branch_manager',
+            'CREDIT_COMMITTEE':   'credit_committee',
+            'MANAGEMENT':         'management',
           };
           
           const userWithDefaults: User = {
@@ -210,13 +224,25 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       const response = await ApiService.login({ email, password });
       
       // Convert backend user format to frontend User format with role mapping
-      const roleMapping: Record<string, UserRole> = {
-        'ADMIN': 'admin',
-        'MANAGEMENT': 'management',
-        'BRANCH_MANAGER': 'branch_manager',
-        'ACCOUNT_MANAGER': 'account_manager',
-        'CREDIT_ANALYST': 'credit_analyst',
-        'CREDIT_COMMITTEE': 'credit_committee'
+      const roleMapping: Record<string, any> = {
+        // New RACI names (from backend)
+        'CHARGE_AFFAIRES':         'account_manager',      // frontend legacy compat
+        'ANALYSTE_RISQUES':        'credit_analyst',
+        'RESPONSABLE_RISQUES':     'analyst_supervisor',
+        'RESPONSABLE_ENGAGEMENTS': 'branch_manager',
+        'COMITE_CREDIT':           'credit_committee',
+        'DIRECTION_GENERALE':      'management',
+        'ADMIN':                   'admin',
+        'SUPER_ADMIN':             'admin',
+        'BACK_OFFICE':             'account_manager',
+        'DIRECTION_JURIDIQUE':     'account_manager',
+        // Old names (backward compat)
+        'ACCOUNT_MANAGER':    'account_manager',
+        'CREDIT_ANALYST':     'credit_analyst',
+        'ANALYST_SUPERVISOR': 'analyst_supervisor',
+        'BRANCH_MANAGER':     'branch_manager',
+        'CREDIT_COMMITTEE':   'credit_committee',
+        'MANAGEMENT':         'management',
       };
 
       const user: User = {
@@ -262,19 +288,27 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   };
 
   const isRole = (role: UserRole): boolean => {
-    return state.currentUser?.role === role;
+    const current = state.currentUser?.role;
+    if (!current) return false;
+    // Compare insensible à la casse pour gérer les deux formats de rôle
+    // (ancien @map lowercase: 'admin', nouveau Prisma key uppercase: 'ADMIN')
+    return current.toLowerCase() === role.toLowerCase();
   };
 
   const getRoleLabel = (role: UserRole): string => {
-    const roleLabels: Record<UserRole, string> = {
-      account_manager: 'Chargé d\'Affaires',
-      credit_analyst: 'Analyste Crédit',
-      branch_manager: 'Directeur d\'Agence',
-      credit_committee: 'Comité de Crédit',
-      management: 'Direction Générale',
-      admin: 'Administrateur'
+    const roleLabels: Partial<Record<UserRole, string>> = {
+      account_manager: 'Chargé d\'Affaires', CHARGE_AFFAIRES: 'Chargé d\'Affaires',
+      credit_analyst: 'Analyste Crédit', ANALYSTE_RISQUES: 'Analyste Risques',
+      analyst_supervisor: 'Responsable Risques', RESPONSABLE_RISQUES: 'Responsable Risques',
+      branch_manager: 'Responsable Engagements', RESPONSABLE_ENGAGEMENTS: 'Responsable Engagements',
+      credit_committee: 'Comité de Crédit', COMITE_CREDIT: 'Comité de Crédit',
+      management: 'Direction Générale', DIRECTION_GENERALE: 'Direction Générale',
+      admin: 'Administrateur', ADMIN: 'Administrateur',
+      super_admin: 'Super Administrateur', SUPER_ADMIN: 'Super Administrateur',
+      back_office: 'Back Office', BACK_OFFICE: 'Back Office',
+      direction_juridique: 'Direction Juridique', DIRECTION_JURIDIQUE: 'Direction Juridique',
     };
-    return roleLabels[role];
+    return roleLabels[role] ?? role;
   };
 
   const clearError = () => {

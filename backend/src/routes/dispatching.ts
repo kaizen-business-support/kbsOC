@@ -1,0 +1,443 @@
+import { Router, Request, Response } from 'express';
+import { PolicyStatus } from '@prisma/client';
+import { prisma } from '../server';
+import { createInAppNotification } from '../services/notificationService';
+import { resolveDelegation } from '../services/delegationService';
+import { createWorkflowStepsForApplication } from '../services/workflowService';
+
+const router = Router();
+
+// ─── Middleware : RESPONSABLE_RISQUES, ADMIN, ou délégué avec DISPATCH_APPLICATION ──
+const requireSupervisorOrDelegate = async (req: Request, res: Response, next: any) => {
+  const user = (req as any).user;
+  if (!user) return res.status(403).json({ success: false, error: 'Non authentifié' });
+
+  if (['RESPONSABLE_RISQUES', 'ADMIN'].includes(user.role)) return next();
+
+  const userId = user?.userId || user?.id;
+  const delegation = await resolveDelegation(userId, 'DISPATCH_APPLICATION');
+  if (delegation && ['RESPONSABLE_RISQUES', 'ADMIN'].includes(delegation.delegatorRole)) {
+    (req as any).delegationContext = delegation;
+    return next();
+  }
+
+  return res.status(403).json({ success: false, error: 'Accès réservé au Responsable Analyste' });
+};
+
+router.use(requireSupervisorOrDelegate);
+
+// Rôles distincts de la politique active (fallback = ANALYSTE_RISQUES si pas de politique)
+async function getActivePolicyRoles(companyId: string | undefined): Promise<string[]> {
+  if (!companyId) return ['ANALYSTE_RISQUES'];
+  const policy = await prisma.creditPolicy.findFirst({
+    where: { companyId, status: PolicyStatus.ACTIVE, isActive: true },
+    include: { steps: { select: { assignedRole: true } } },
+  });
+  if (!policy || policy.steps.length === 0) return ['ANALYSTE_RISQUES'];
+  return [...new Set(policy.steps.map(s => s.assignedRole as string))];
+}
+
+// ─── GET /api/dispatching/workload ─────────────────────────────────────────────
+router.get('/workload', async (req: Request, res: Response) => {
+  try {
+    const companyId = (req as any).companyId as string | undefined;
+    const policyRoles = await getActivePolicyRoles(companyId);
+
+    const agents = await prisma.user.findMany({
+      where: { role: { in: policyRoles as any[] }, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        department: true,
+        jobTitle: true,
+        assignedSteps: {
+          where: { status: { in: ['PENDING', 'IN_REVIEW'] } },
+          select: {
+            id: true,
+            status: true,
+            stepName: true,
+            deadline: true,
+            application: {
+              select: {
+                id: true,
+                applicationNumber: true,
+                amount: true,
+                currency: true,
+                status: true,
+                client: { select: { companyName: true } }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const workload = agents.map(agent => {
+      const overdueCount = agent.assignedSteps.filter(
+        s => s.deadline && new Date(s.deadline) < new Date()
+      ).length;
+
+      return {
+        id: agent.id,
+        name: agent.name,
+        email: agent.email,
+        role: agent.role,
+        department: agent.department,
+        jobTitle: agent.jobTitle,
+        activeCount: agent.assignedSteps.length,
+        pendingCount: agent.assignedSteps.filter(s => s.status === 'PENDING').length,
+        inReviewCount: agent.assignedSteps.filter(s => s.status === 'IN_REVIEW').length,
+        overdueCount,
+        activeDossiers: agent.assignedSteps.map(s => ({
+          stepId: s.id,
+          applicationId: s.application.id,
+          applicationNumber: s.application.applicationNumber,
+          clientName: s.application.client.companyName,
+          amount: Number(s.application.amount),
+          currency: s.application.currency,
+          appStatus: s.application.status,
+          stepStatus: s.status,
+          deadline: s.deadline
+        })),
+        workloadScore: agent.assignedSteps.length + overdueCount * 2
+      };
+    });
+
+    workload.sort((a, b) => a.workloadScore - b.workloadScore);
+
+    res.json({ success: true, data: workload });
+  } catch (error) {
+    console.error('Workload error:', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// ─── GET /api/dispatching/pending ─────────────────────────────────────────────
+router.get('/pending', async (req: Request, res: Response) => {
+  try {
+    const companyId = (req as any).companyId as string | undefined;
+
+    const applications = await prisma.creditApplication.findMany({
+      where: {
+        ...(companyId ? { companyId } : {}),
+        status: { in: ['SUBMITTED', 'UNDER_REVIEW'] },
+      },
+      include: {
+        client: true,
+        creator: true,
+        creditType: true,
+        workflowSteps: {
+          where: { status: 'PENDING', assigneeId: null },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+          include: {
+            policyStep: { select: { stepLabel: true, order: true } }
+          }
+        }
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    const data = applications.map(app => {
+      const currentStep = app.workflowSteps[0] ?? null;
+      const daysPending = Math.floor(
+        (Date.now() - new Date(app.submittedAt || app.createdAt).getTime()) / (1000 * 60 * 60 * 24)
+      );
+      return {
+        id: app.id,
+        applicationNumber: app.applicationNumber,
+        clientName: app.client.companyName,
+        clientSector: app.client.sector,
+        branch: app.creator.department || 'Non définie',
+        amount: Number(app.amount),
+        currency: app.currency,
+        purpose: app.purpose,
+        durationMonths: app.durationMonths,
+        status: app.status,
+        createdAt: app.createdAt,
+        submittedAt: app.submittedAt,
+        daysPending,
+        accountManager: app.creator.name,
+        accountManagerId: app.creator.id,
+        creditType: app.creditType?.name,
+        currentStepId: currentStep?.id ?? null,
+        currentStepRole: currentStep?.role ?? null,
+        currentStepName: currentStep?.stepName ?? null,
+        currentStepLabel: currentStep?.policyStep?.stepLabel ?? currentStep?.stepName ?? null,
+        needsCircuit: currentStep === null,
+      };
+    });
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Pending dispatching error:', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// ─── GET /api/dispatching/suggest/:applicationId ──────────────────────────────
+router.get('/suggest/:applicationId', async (req: Request, res: Response) => {
+  try {
+    const { applicationId } = req.params;
+
+    const [application, currentStep] = await Promise.all([
+      prisma.creditApplication.findUnique({
+        where: { id: applicationId },
+        include: { client: true, creator: true }
+      }),
+      prisma.workflowStep.findFirst({
+        where: { applicationId, status: 'PENDING', assigneeId: null },
+        orderBy: { createdAt: 'asc' }
+      })
+    ]);
+
+    if (!application) {
+      return res.status(404).json({ success: false, error: 'Demande non trouvée' });
+    }
+
+    const neededRole = currentStep?.role ?? 'ANALYSTE_RISQUES';
+
+    const agents = await prisma.user.findMany({
+      where: { role: neededRole as any, isActive: true },
+      include: {
+        assignedSteps: {
+          where: { status: { in: ['PENDING', 'IN_REVIEW'] } }
+        }
+      }
+    });
+
+    if (agents.length === 0) {
+      return res.status(404).json({ success: false, error: `Aucun responsable disponible avec le rôle ${neededRole}` });
+    }
+
+    const ranked = agents
+      .map(a => {
+        const overdueCount = a.assignedSteps.filter(
+          s => s.deadline && new Date(s.deadline) < new Date()
+        ).length;
+        const sameDeptBonus = a.department === application.creator?.department ? -0.5 : 0;
+        return {
+          id: a.id,
+          name: a.name,
+          email: a.email,
+          role: a.role,
+          department: a.department,
+          jobTitle: a.jobTitle,
+          activeCount: a.assignedSteps.length,
+          pendingCount: a.assignedSteps.filter(s => s.status === 'PENDING').length,
+          inReviewCount: a.assignedSteps.filter(s => s.status === 'IN_REVIEW').length,
+          overdueCount,
+          workloadScore: a.assignedSteps.length + overdueCount * 2 + sameDeptBonus
+        };
+      })
+      .sort((a, b) => a.workloadScore - b.workloadScore);
+
+    res.json({
+      success: true,
+      data: {
+        suggested: ranked[0],
+        ranked,
+        neededRole,
+        applicationId,
+        applicationNumber: application.applicationNumber
+      }
+    });
+  } catch (error) {
+    console.error('Suggest error:', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// ─── GET /api/dispatching/history ─────────────────────────────────────────────
+router.get('/history', async (req: Request, res: Response) => {
+  try {
+    const companyId = (req as any).companyId as string | undefined;
+
+    const steps = await prisma.workflowStep.findMany({
+      where: {
+        assigneeId: { not: null },
+        ...(companyId ? { application: { companyId } } : {})
+      },
+      include: {
+        application: {
+          include: {
+            client: { select: { companyName: true } },
+            creator: { select: { name: true, department: true } }
+          }
+        },
+        assignee: { select: { id: true, name: true, role: true, department: true, jobTitle: true } }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 30
+    });
+
+    const data = steps.map(s => ({
+      stepId: s.id,
+      applicationId: (s as any).application.id,
+      applicationNumber: (s as any).application.applicationNumber,
+      clientName: (s as any).application.client.companyName,
+      amount: Number((s as any).application.amount),
+      currency: (s as any).application.currency,
+      status: s.status,
+      appStatus: (s as any).application.status,
+      stepRole: s.role,
+      stepName: s.stepName,
+      assignedTo: (s as any).assignee,
+      accountManager: (s as any).application.creator.name,
+      branch: (s as any).application.creator.department,
+      assignedAt: s.createdAt,
+      deadline: s.deadline,
+      comments: s.comments
+    }));
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('History error:', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
+// ─── POST /api/dispatching/assign ─────────────────────────────────────────────
+router.post('/assign', async (req: Request, res: Response) => {
+  try {
+    // Accept userId (new) or analystId (backward compat)
+    const { applicationId, userId, analystId, comment, isReassign } = req.body;
+    const targetUserId = userId || analystId;
+    const supervisorId = (req as any).user?.userId || (req as any).user?.id;
+
+    if (!applicationId || !targetUserId) {
+      return res.status(400).json({ success: false, error: 'applicationId et userId requis' });
+    }
+
+    const [application, agent] = await Promise.all([
+      prisma.creditApplication.findUnique({
+        where: { id: applicationId },
+        include: {
+          workflowSteps: { orderBy: { createdAt: 'asc' } },
+          client: { select: { companyName: true } },
+          creator: { select: { branch: true, department: true } }
+        }
+      }),
+      prisma.user.findUnique({ where: { id: targetUserId } })
+    ]);
+
+    if (!application) return res.status(404).json({ success: false, error: 'Demande non trouvée' });
+    if (!agent) return res.status(400).json({ success: false, error: 'Utilisateur introuvable' });
+
+    // Find the step to assign: for reassign, first PENDING/IN_REVIEW; for initial, first PENDING unassigned
+    let targetStep = isReassign
+      ? application.workflowSteps.find(s => ['PENDING', 'IN_REVIEW'].includes(s.status))
+      : application.workflowSteps.find(s => s.status === 'PENDING' && !s.assigneeId);
+
+    // Si aucune étape PENDING et que l'application est SUBMITTED, tenter de générer le circuit
+    if (!targetStep && !isReassign && application.creditTypeId) {
+      try {
+        await createWorkflowStepsForApplication(application.id, application.creditTypeId, Number(application.amount));
+        // Recharger les étapes
+        const updated = await prisma.creditApplication.findUnique({
+          where: { id: applicationId },
+          include: { workflowSteps: { orderBy: { createdAt: 'asc' } } },
+        });
+        targetStep = updated?.workflowSteps.find(s => s.status === 'PENDING' && !s.assigneeId) ?? undefined;
+      } catch (circuitErr: any) {
+        console.warn('[dispatching] Circuit non généré :', circuitErr.message);
+      }
+    }
+
+    if (!targetStep) {
+      return res.status(400).json({ success: false, error: 'Aucune étape en attente pour ce dossier. Vérifiez qu\'une politique de crédit active est configurée.' });
+    }
+
+    // Validate the agent's role matches the step's role
+    if (agent.role !== targetStep.role) {
+      return res.status(400).json({
+        success: false,
+        error: `Cette étape requiert un responsable avec le rôle "${targetStep.role}". L'utilisateur sélectionné a le rôle "${agent.role}".`
+      });
+    }
+
+    const supervisorUser = await prisma.user.findUnique({
+      where: { id: supervisorId },
+      select: { name: true, role: true, branch: true, department: true }
+    });
+    const supervisorName = supervisorUser?.name || 'Responsable';
+
+    // ── Guard agence ──────────────────────────────────────────────────────────
+    const GLOBAL_ROLES = ['RESPONSABLE_RISQUES', 'DIRECTION_GENERALE', 'ADMIN'];
+    const delegCtx = (req as any).delegationContext as {
+      delegatorBranch: string | null;
+      delegatorDepartment: string | null;
+      delegatorRole: string;
+    } | undefined;
+
+    const effectiveRole   = delegCtx ? delegCtx.delegatorRole : (supervisorUser?.role ?? '');
+    const effectiveBranch = delegCtx
+      ? (delegCtx.delegatorBranch || delegCtx.delegatorDepartment)
+      : ((supervisorUser as any)?.branch || (supervisorUser as any)?.department);
+
+    if (!GLOBAL_ROLES.includes(effectiveRole)) {
+      const creatorBranch = (application as any).creator?.branch || (application as any).creator?.department;
+      if (effectiveBranch && creatorBranch && effectiveBranch !== creatorBranch) {
+        return res.status(403).json({
+          success: false,
+          error: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez affecter que les dossiers de votre agence ("${effectiveBranch}").`,
+        });
+      }
+      const agentBranch = (agent as any).branch || (agent as any).department;
+      if (effectiveBranch && agentBranch && agentBranch !== effectiveBranch) {
+        return res.status(403).json({
+          success: false,
+          error: `Le responsable "${agent.name}" n'appartient pas à votre agence ("${effectiveBranch}").`,
+        });
+      }
+    }
+
+    const dateStr = new Date().toLocaleDateString('fr-FR');
+
+    await prisma.workflowStep.update({
+      where: { id: targetStep.id },
+      data: {
+        assigneeId: targetUserId,
+        status: 'PENDING',
+        comments: comment ||
+          (isReassign
+            ? `Ré-affecté à ${agent.name} par ${supervisorName} le ${dateStr}`
+            : `Affecté à ${agent.name} par ${supervisorName} le ${dateStr}`)
+      }
+    });
+
+    if (application.status === 'SUBMITTED') {
+      await prisma.creditApplication.update({
+        where: { id: applicationId },
+        data: { status: 'UNDER_REVIEW' }
+      });
+    }
+
+    const clientName = (application as any).client?.companyName ?? 'Client';
+    await createInAppNotification(targetUserId, {
+      title: isReassign
+        ? `Dossier ré-affecté — ${application.applicationNumber}`
+        : `Nouveau dossier à traiter — ${application.applicationNumber}`,
+      message: `Le dossier de ${clientName} (${application.applicationNumber}) vous a été ${isReassign ? 'ré-affecté' : 'affecté'} par ${supervisorName}. Veuillez procéder au traitement.`,
+      type: 'ACTION_REQUIRED',
+      relatedType: 'application',
+      relatedId: applicationId,
+      actionUrl: `/workflow?applicationId=${applicationId}`,
+    });
+
+    res.json({
+      success: true,
+      message: isReassign
+        ? `Dossier ${application.applicationNumber} ré-affecté à ${agent.name}`
+        : `Dossier ${application.applicationNumber} affecté à ${agent.name}`,
+      data: { applicationId, userId: targetUserId, agentName: agent.name }
+    });
+  } catch (error) {
+    console.error('Assign error:', error);
+    res.status(500).json({ success: false, error: "Erreur lors de l'affectation" });
+  }
+});
+
+export default router;

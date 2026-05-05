@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Container,
@@ -36,14 +36,18 @@ import {
   PhotoCamera as PhotoCameraIcon,
   Shield as ShieldIcon,
   VpnKey as VpnKeyIcon,
+  BeachAccess as BeachAccessIcon,
+  Add as AddIcon,
 } from '@mui/icons-material';
 import { useUser } from '../contexts/UserContext';
 import { ApiService } from '../services/api';
 import axios from 'axios';
 import { TwoFactorSetup } from '../components/TwoFactorSetup';
 import { tokenManager } from '../services/api';
+import DelegationForm from '../components/DelegationForm';
+import { PowerDelegation, DelegatableAction, DELEGATION_ACTION_LABELS } from '../types/delegation';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5006/api';
+const API_BASE = `${window.location.origin}/api`;
 
 interface ProfilePageProps {
   onNavigate?: (page: any) => void;
@@ -81,6 +85,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigate }) => {
   const [regenLoading, setRegenLoading] = useState(false);
   const [regenCodes, setRegenCodes] = useState<string[]>([]);
 
+  // ─── Délégations ────────────────────────────────────────────────────────────
+  const [myDelegations, setMyDelegations] = useState<PowerDelegation[]>([]);
+  const [delegationFormOpen, setDelegationFormOpen] = useState(false);
+  const [allUsers, setAllUsers] = useState<{ id: string; name: string; role: string; branch: string | null }[]>([]);
+  const currentUserId = userState.currentUser?.id || '';
+
   const getAuthHeader = () => ({
     headers: { Authorization: `Bearer ${tokenManager.getAccessToken()}` }
   });
@@ -117,6 +127,27 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigate }) => {
     } finally {
       setRegenLoading(false);
     }
+  };
+
+  // Charger les délégations et la liste des utilisateurs
+  useEffect(() => {
+    if (!currentUserId) return;
+    ApiService.getMyDelegations().then(res => {
+      if (res.success) setMyDelegations(res.data || []);
+    }).catch(() => {});
+    ApiService.getUsers?.().then((res: any) => {
+      if (res.success && res.data) {
+        setAllUsers(res.data.map((u: any) => ({
+          id: u.id, name: u.name, role: u.role, branch: u.branch || null,
+        })));
+      }
+    }).catch(() => {});
+  }, [currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadMyDelegations = () => {
+    ApiService.getMyDelegations().then(res => {
+      if (res.success) setMyDelegations(res.data || []);
+    }).catch(() => {});
   };
 
   if (!userState.currentUser) {
@@ -695,6 +726,100 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigate }) => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* ─── Section Délégations ─────────────────────────────────────────── */}
+      <Paper elevation={0} sx={{ border: '1px solid #e2e8f0', borderRadius: 3, p: 3, mt: 3, mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <BeachAccessIcon sx={{ color: 'warning.main' }} />
+            <Typography variant="h6" fontWeight={600}>Mes délégations de pouvoir</Typography>
+          </Box>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={() => setDelegationFormOpen(true)}
+          >
+            Créer une délégation
+          </Button>
+        </Box>
+
+        {myDelegations.length === 0 ? (
+          <Typography color="text.secondary" variant="body2">
+            Aucune délégation active ou passée.
+          </Typography>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            {myDelegations.map(d => {
+              const now = new Date();
+              const isActive = d.isActive && new Date(d.endDate) >= now && new Date(d.startDate) <= now;
+              const isGiven  = d.delegatorId === currentUserId;
+              const statusLabel = isActive ? 'Active' : d.revokedAt ? 'Révoquée' : 'Expirée';
+              return (
+                <Box
+                  key={d.id}
+                  sx={{
+                    border: '1px solid',
+                    borderColor: isActive ? 'warning.light' : 'divider',
+                    borderRadius: 2,
+                    p: 2,
+                    bgcolor: isActive ? 'warning.50' : 'transparent',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
+                    <Typography variant="subtitle2" fontWeight={600}>
+                      {isGiven
+                        ? `Délégué à : ${d.delegate.name}`
+                        : `Reçu de : ${d.delegator.name}`}
+                    </Typography>
+                    <Chip
+                      label={statusLabel}
+                      color={isActive ? 'warning' : 'default'}
+                      size="small"
+                      variant={isActive ? 'filled' : 'outlined'}
+                    />
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
+                    Du {new Date(d.startDate).toLocaleDateString('fr-FR')} au {new Date(d.endDate).toLocaleDateString('fr-FR')}
+                    {d.reason ? ` — ${d.reason}` : ''}
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: isActive && isGiven ? 1 : 0 }}>
+                    {(d.permissions as DelegatableAction[]).map(p => (
+                      <Chip key={p} label={DELEGATION_ACTION_LABELS[p]} size="small" variant="outlined" sx={{ fontSize: '0.68rem' }} />
+                    ))}
+                  </Box>
+                  {isActive && isGiven && (
+                    <Button
+                      size="small"
+                      color="error"
+                      variant="outlined"
+                      onClick={async () => {
+                        const res = await ApiService.revokeDelegation(d.id);
+                        if (res.success) loadMyDelegations();
+                      }}
+                    >
+                      Révoquer
+                    </Button>
+                  )}
+                  {isActive && !isGiven && (
+                    <Alert severity="info" sx={{ mt: 1, py: 0.25, fontSize: '0.78rem' }}>
+                      Vous agissez au nom de <strong>{d.delegator.name}</strong> jusqu'au {new Date(d.endDate).toLocaleDateString('fr-FR')}.
+                    </Alert>
+                  )}
+                </Box>
+              );
+            })}
+          </Box>
+        )}
+
+        <DelegationForm
+          open={delegationFormOpen}
+          onClose={() => setDelegationFormOpen(false)}
+          onSuccess={loadMyDelegations}
+          delegatorId={currentUserId}
+          users={allUsers}
+        />
+      </Paper>
     </Container>
   );
 };

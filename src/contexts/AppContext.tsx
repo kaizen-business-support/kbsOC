@@ -269,18 +269,16 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     }
   }, [state.analysisData]);
 
-  // Session timeout management
+  // Nettoyage de session AppContext aligné sur 15 min (cohérence avec SessionTimeoutDialog)
   useEffect(() => {
     if (state.lastActivity) {
       const timeout = setTimeout(() => {
         const now = new Date();
-        const timeDiff = now.getTime() - state.lastActivity!.getTime();
-        const hoursDiff = timeDiff / (1000 * 60 * 60);
-        
-        if (hoursDiff > 2) { // 2 hours timeout
+        const minutesDiff = (now.getTime() - state.lastActivity!.getTime()) / (1000 * 60);
+        if (minutesDiff >= 15) {
           clearSession();
         }
-      }, 60000); // Check every minute
+      }, 60000); // Vérification chaque minute
 
       return () => clearTimeout(timeout);
     }
@@ -298,7 +296,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       '/reports': 'reports',
       '/settings': 'settings',
       '/documentation': 'documentation',
-      '/credit-simulation': 'credit-simulation'
+      '/credit-simulation': 'credit-simulation',
+      '/dispatching': 'dispatching'
     };
     
     const currentPageFromUrl = pathToPageMap[location.pathname];
@@ -362,7 +361,19 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       'credit-simulation': '/credit-simulation',
       'credit-types': '/credit-types',
       'profile': '/profile',
-      'backup': '/backup'
+      'backup': '/backup',
+      'announcements': '/announcements',
+      'notifications-config': '/notifications-config',
+      'dispatching': '/dispatching',
+      'credit-policy': '/credit-policy',
+      'company-settings':  '/company-settings',
+      'platform-admin':    '/platform-admin',
+      'raci-matrix':       '/raci-matrix',
+      'workflow-builder':  '/workflow-builder',
+      'approvals':         '/approvals',
+      'contract-templates': '/contract-templates',
+      'legal-step':         '/legal-step',
+      'codir-dashboard':    '/codir-dashboard',
     };
     
     const route = routeMap[page];

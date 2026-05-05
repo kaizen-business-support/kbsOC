@@ -13,7 +13,10 @@ declare global {
         email: string;
         role: string;
         permissions: string[];
+        companyId?: string;
+        readOnly?: boolean;
       };
+      companyId?: string;  // shortcut for req.user.companyId
     }
   }
 }
@@ -22,6 +25,9 @@ export interface JwtPayload {
   userId: string;
   email: string;
   role: string;
+  jti?: string;
+  companyId?: string;      // present in tokens after company selection
+  readOnly?: boolean;      // present in impersonation tokens
   iat?: number;
   exp?: number;
 }
@@ -29,33 +35,23 @@ export interface JwtPayload {
 // Authentication middleware
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Skip authentication for testing if flag is set
-    if (process.env.DISABLE_AUTH_FOR_TESTING === 'true' && process.env.NODE_ENV === 'development') {
-      // Use a default test user
-      req.user = {
-        id: 'test-user-id',
-        email: 'test@example.com',
-        role: 'ACCOUNT_MANAGER',
-        permissions: ['create_client', 'create_application', 'view_applications']
-      };
-      return next();
+    // Accept token from Authorization header OR ?token= query param.
+    // Le query param est nécessaire pour les téléchargements directs déclenchés
+    // par le navigateur (balises <a href>, multer download routes) qui ne
+    // peuvent pas porter d'en-tête Authorization personnalisé.
+    const authHeader = req.headers.authorization;
+    let token: string | undefined;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    } else if (typeof req.query.token === 'string' && req.query.token.length > 0) {
+      token = req.query.token;
     }
 
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!token) {
       return res.status(401).json({
         error: 'Authorization header missing or invalid format',
         code: 'MISSING_AUTH_HEADER'
-      });
-    }
-
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    
-    if (!token) {
-      return res.status(401).json({
-        error: 'Access token missing',
-        code: 'MISSING_TOKEN'
       });
     }
 
@@ -69,7 +65,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       });
     }
 
-    const decoded = jwt.verify(token, jwtSecret) as JwtPayload & { jti?: string };
+    const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
 
     // Check token revocation (logout blacklist)
     if (decoded.jti) {
@@ -118,6 +114,14 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       permissions: Array.isArray(user.permissions) ? user.permissions as string[] : []
     };
 
+    if (decoded.companyId) {
+      req.user!.companyId = decoded.companyId;
+      req.companyId = decoded.companyId;
+    }
+    if (decoded.readOnly) {
+      req.user!.readOnly = true;
+    }
+
     // Update last login timestamp (optional, for audit purposes)
     if (process.env.UPDATE_LAST_LOGIN === 'true') {
       prisma.user.update({
@@ -153,7 +157,9 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
-// Authorization middleware factory
+// Authorization middleware factory.
+// Bypass : SUPER_ADMIN, ADMIN, ou un user disposant du wildcard '*' passent
+// systématiquement (cohérent avec le rôle d'administration tenant).
 export const authorize = (requiredPermissions: string[] = [], requiredRoles: string[] = []) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
@@ -163,13 +169,18 @@ export const authorize = (requiredPermissions: string[] = [], requiredRoles: str
       });
     }
 
+    // Bypass admin / wildcard
+    const isAdminLike = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
+    const hasWildcard = req.user.permissions.includes('*');
+    if (isAdminLike || hasWildcard) {
+      return next();
+    }
+
     // Check roles if specified
     if (requiredRoles.length > 0 && !requiredRoles.includes(req.user.role)) {
       return res.status(403).json({
-        error: 'Insufficient role permissions',
-        code: 'INSUFFICIENT_ROLE',
-        required: requiredRoles,
-        current: req.user.role
+        error: 'Insufficient permissions',
+        code: 'INSUFFICIENT_PERMISSIONS'
       });
     }
 
@@ -182,9 +193,7 @@ export const authorize = (requiredPermissions: string[] = [], requiredRoles: str
       if (!hasPermission) {
         return res.status(403).json({
           error: 'Insufficient permissions',
-          code: 'INSUFFICIENT_PERMISSIONS',
-          required: requiredPermissions,
-          current: req.user.permissions
+          code: 'INSUFFICIENT_PERMISSIONS'
         });
       }
     }
@@ -193,15 +202,48 @@ export const authorize = (requiredPermissions: string[] = [], requiredRoles: str
   };
 };
 
-// Helper function to generate JWT token
-export const generateToken = (payload: Omit<JwtPayload, 'iat' | 'exp'>): string => {
-  const jwtSecret = process.env.JWT_SECRET;
-
-  if (!jwtSecret) {
-    throw new Error('JWT_SECRET environment variable not set');
+export const requireCompany = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.companyId) {
+    return res.status(403).json({
+      error: "Compagnie non sélectionnée. Appelez POST /api/auth/select-company d'abord.",
+      code: 'COMPANY_NOT_SELECTED'
+    });
   }
+  next();
+};
 
-  return jwt.sign(payload, jwtSecret, { expiresIn: '1h' });
+export const requireSuperAdmin = (req: Request, res: Response, next: NextFunction) => {
+  if (req.user?.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({
+      error: 'Accès réservé au Super Administrateur plateforme.',
+      code: 'SUPER_ADMIN_REQUIRED'
+    });
+  }
+  next();
+};
+
+export const blockReadOnly = (req: Request, res: Response, next: NextFunction) => {
+  if (req.user?.readOnly) {
+    return res.status(403).json({
+      error: 'Mode impersonation : modifications interdites.',
+      code: 'READ_ONLY_MODE'
+    });
+  }
+  next();
+};
+
+// Helper function to generate JWT token
+export const generateToken = (payload: {
+  userId: string;
+  email: string;
+  role: string;
+  companyId?: string;
+  readOnly?: boolean;
+}, expiresIn = '1h'): string => {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) throw new Error('JWT_SECRET environment variable not set');
+  const jti = require('crypto').randomUUID();
+  return jwt.sign({ ...payload, jti }, jwtSecret, { expiresIn } as SignOptions);
 };
 
 // Helper function to generate refresh token

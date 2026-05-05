@@ -1,9 +1,8 @@
 import express, { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import Joi from 'joi';
+import { prisma } from '../prismaClient';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // Validation schemas
 const stepConfigSchema = Joi.object({

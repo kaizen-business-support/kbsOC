@@ -1,0 +1,216 @@
+import { ModuleAccess, ModuleProfileData, DEFAULT_ROLE_PROFILES } from '../constants/defaultModuleProfiles';
+import { prisma } from '../prismaClient';
+import { derivePermissions } from '../constants/moduleToPermissionsMap';
+import type { ModuleAccess as MappingModuleAccess } from '../constants/moduleToPermissionsMap';
+import { cacheDel } from './redis';
+import { logger } from '../utils/logger';
+import { Prisma } from '@prisma/client';
+import type { UserRole } from '@prisma/client';
+
+// Maps Prisma TypeScript enum keys to PostgreSQL native user_role enum values (@map values)
+const ROLE_TO_DB: Record<string, string> = {
+  CHARGE_AFFAIRES: 'account_manager',
+  ANALYSTE_RISQUES: 'credit_analyst',
+  RESPONSABLE_RISQUES: 'analyst_supervisor',
+  RESPONSABLE_ENGAGEMENTS: 'branch_manager',
+  COMITE_CREDIT: 'credit_committee',
+  DIRECTION_GENERALE: 'management',
+  ADMIN: 'admin',
+  SUPER_ADMIN: 'super_admin',
+  BACK_OFFICE: 'back_office',
+  DIRECTION_JURIDIQUE: 'direction_juridique',
+};
+
+type DataScopeValue = 'BRANCH_ONLY' | 'MULTI_BRANCH' | 'ALL_BRANCHES';
+const SCOPE_ORDER: DataScopeValue[] = ['BRANCH_ONLY', 'MULTI_BRANCH', 'ALL_BRANCHES'];
+
+export function resolveDataScope(
+  base: DataScopeValue,
+  override: DataScopeValue | null,
+  delegation: DataScopeValue | null
+): DataScopeValue {
+  const effective = override ?? base;
+  if (!delegation) return effective;
+  return SCOPE_ORDER.indexOf(delegation) > SCOPE_ORDER.indexOf(effective) ? delegation : effective;
+}
+
+export function mergeModuleProfile(
+  baseModules: Record<string, ModuleAccess>,
+  overrideModules: Record<string, ModuleAccess> | null
+): Record<string, ModuleAccess> {
+  if (!overrideModules) return { ...baseModules };
+  return { ...baseModules, ...overrideModules };
+}
+
+export async function getMergedProfile(userId: string, companyId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, branch: true } });
+  if (!user) throw new Error('User not found');
+
+  const roleKey = user.role as string;
+
+  let roleProfile = await prisma.moduleProfile.findUnique({
+    where: { companyId_role: { companyId, role: user.role } }
+  });
+
+  if (!roleProfile) {
+    const def = DEFAULT_ROLE_PROFILES[roleKey];
+    if (!def) throw new Error(`No default profile for role ${roleKey}`);
+    roleProfile = await prisma.moduleProfile.create({
+      data: {
+        companyId,
+        role: user.role,
+        label: def.label,
+        modules: def.modules as any,
+        defaultScope: def.defaultScope as any,
+        allowedBranches: def.allowedBranches,
+        isDefault: true,
+        createdById: userId,
+      }
+    });
+  }
+
+  const userOverride = await prisma.userModuleOverride.findUnique({
+    where: { userId_companyId: { userId, companyId } }
+  });
+
+  const now = new Date();
+  const delegation = await prisma.scopeDelegate.findFirst({
+    where: {
+      delegateId: userId,
+      companyId,
+      isActive: true,
+      startDate: { lte: now },
+      OR: [{ endDate: null }, { endDate: { gt: now } }]
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  const finalScope = resolveDataScope(
+    roleProfile.defaultScope as DataScopeValue,
+    (userOverride?.dataScope as DataScopeValue | null) ?? null,
+    (delegation?.scope as DataScopeValue | null) ?? null
+  );
+
+  const baseBranches = userOverride?.allowedBranches?.length
+    ? userOverride.allowedBranches
+    : roleProfile.allowedBranches;
+
+  let finalBranches = delegation
+    ? [...new Set([...baseBranches, ...delegation.allowedBranches])]
+    : baseBranches;
+
+  if (finalScope === 'BRANCH_ONLY' && user.branch && finalBranches.length === 0) {
+    finalBranches = [user.branch];
+  }
+
+  const baseModules = roleProfile.modules as unknown as Record<string, ModuleAccess>;
+  // Remplir les modules ajoutés après création du profil — les valeurs DB ont priorité
+  const freshDefaults = (DEFAULT_ROLE_PROFILES[roleKey]?.modules ?? {}) as Record<string, ModuleAccess>;
+  const baseWithDefaults = { ...freshDefaults, ...baseModules };
+  const overrideModules = (userOverride?.modules as unknown as Record<string, ModuleAccess> | null) ?? null;
+  const finalModules = mergeModuleProfile(baseWithDefaults, overrideModules);
+
+  return {
+    role: roleKey,
+    label: roleProfile.label,
+    modules: finalModules,
+    dataScope: finalScope,
+    allowedBranches: finalBranches,
+    delegationActive: !!delegation,
+    delegationActions: delegation?.allowedActions ?? [],
+  };
+}
+
+export async function invalidateRoleProfileCache(
+  companyId: string,
+  role: string,
+  prismaClient: typeof prisma
+): Promise<void> {
+  try {
+    // $queryRaw avec cast explicite ::user_role — évite l'erreur Prisma/PG
+    // "operator does not exist: text = user_role" sur les findMany avec enum natif
+    const dbRole = ROLE_TO_DB[role] ?? role;
+    const rows = await prismaClient.$queryRaw<Array<{ user_id: string }>>(
+      Prisma.sql`SELECT user_id FROM company_memberships WHERE company_id = ${companyId} AND role = ${dbRole}::user_role`
+    );
+    await Promise.all(
+      rows.map(({ user_id }) =>
+        cacheDel(`module-profile:${companyId}:${user_id}`).catch((err: unknown) =>
+          logger.warn(`Redis invalidation failed for ${user_id}:`, err)
+        )
+      )
+    );
+  } catch (err) {
+    logger.warn('invalidateRoleProfileCache: Redis unavailable, skipping', err);
+  }
+}
+
+export async function syncPermissionsForRole(
+  role: string,
+  modules: Record<string, MappingModuleAccess>,
+  defaultScope: string,
+  companyId: string,
+  prismaClient: typeof prisma
+): Promise<void> {
+  const isAdminRole = ['ADMIN', 'SUPER_ADMIN'].includes(role);
+  const permissions = isAdminRole ? ['*'] : derivePermissions(modules, defaultScope);
+
+  await prismaClient.$transaction([
+    prismaClient.rolePermission.upsert({
+      where: { role: role as UserRole },
+      update: { permissions },
+      create: { role: role as any, label: role, permissions, isActive: true },
+    }),
+    prismaClient.user.updateMany({
+      where: {
+        role: role as UserRole,
+        memberships: { some: { companyId } },
+      },
+      data: { permissions },
+    }),
+  ]);
+
+  await invalidateRoleProfileCache(companyId, role, prismaClient);
+}
+
+export async function syncAllRolePermissionsOnStartup(): Promise<void> {
+  try {
+    const companies = await prisma.company.findMany({ select: { id: true } });
+    for (const company of companies) {
+      for (const [roleKey, def] of Object.entries(DEFAULT_ROLE_PROFILES)) {
+        const profile = await prisma.moduleProfile.findUnique({
+          where: { companyId_role: { companyId: company.id, role: roleKey as any } },
+        });
+        const dbModules = (profile?.modules as unknown as Record<string, MappingModuleAccess> | null) ?? null;
+        const freshDefaults = def.modules as Record<string, MappingModuleAccess>;
+        const backfilled: Record<string, MappingModuleAccess> = dbModules
+          ? { ...freshDefaults, ...dbModules }
+          : freshDefaults;
+        const defaultScope = (profile?.defaultScope ?? def.defaultScope) as string;
+        await syncPermissionsForRole(roleKey, backfilled, defaultScope, company.id, prisma);
+      }
+    }
+  } catch (err) {
+    // Non-fatal at startup — log and continue
+    logger.warn('syncAllRolePermissionsOnStartup failed:', err);
+  }
+}
+
+export async function seedDefaultProfiles(companyId: string, createdById: string) {
+  for (const [roleKey, def] of Object.entries(DEFAULT_ROLE_PROFILES)) {
+    await prisma.moduleProfile.upsert({
+      where: { companyId_role: { companyId, role: roleKey as any } },
+      update: {},
+      create: {
+        companyId,
+        role: roleKey as any,
+        label: def.label,
+        modules: def.modules as any,
+        defaultScope: def.defaultScope as any,
+        allowedBranches: def.allowedBranches,
+        isDefault: true,
+        createdById,
+      }
+    });
+  }
+}

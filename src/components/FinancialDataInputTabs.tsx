@@ -3,9 +3,15 @@ import {
   Box,
   Tabs,
   Tab,
-  Alert,
-  Typography,
+  Paper,
+  Chip,
 } from '@mui/material';
+import {
+  TableChart as ExcelIcon,
+  EditNote as ManualIcon,
+  CheckCircle as DoneIcon,
+  DocumentScanner as OcrIcon,
+} from '@mui/icons-material';
 import { UploadPage } from '../pages/UploadPage';
 import ManualInputPage from '../pages/ManualInputPage';
 import { OcrUpload } from './OcrUpload';
@@ -26,13 +32,11 @@ interface TabPanelProps {
   index: number;
 }
 
-const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => {
-  return (
-    <div role="tabpanel" hidden={value !== index}>
-      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
-    </div>
-  );
-};
+const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => (
+  <div role="tabpanel" hidden={value !== index}>
+    {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
+  </div>
+);
 
 export const FinancialDataInputTabs: React.FC<FinancialDataInputTabsProps> = ({
   referenceYear,
@@ -46,94 +50,147 @@ export const FinancialDataInputTabs: React.FC<FinancialDataInputTabsProps> = ({
   const [activeDataTab, setActiveDataTab] = useState(0);
   const [activeYearTab, setActiveYearTab] = useState(0);
 
-  // Calculate the years based on reference year and number of years
-  const getSelectedYears = () => {
-    const years = [];
-    for (let i = 0; i < numberOfYears; i++) {
-      years.push(referenceYear - i);
-    }
-    return years.sort((a, b) => b - a); // Sort descending (most recent first)
-  };
-
-  const selectedYears = getSelectedYears();
+  const selectedYears = Array.from({ length: numberOfYears }, (_, i) => referenceYear - i)
+    .sort((a, b) => b - a);
 
   const getYearLabel = (year: number) => {
     if (year === referenceYear) return `${year} (N)`;
-    const diff = referenceYear - year;
-    return `${year} (N-${diff})`;
+    return `${year} (N-${referenceYear - year})`;
   };
 
   return (
     <Box>
-      <Alert severity="info" sx={{ mb: 3 }}>
-        <Typography variant="body2">
-          Vous pouvez importer les données financières de trois façons :
-          <strong> OCR</strong> (scan de documents),
-          <strong> Excel</strong> (import de fichier), ou
-          <strong> Saisie Manuelle</strong>.
-        </Typography>
-      </Alert>
+      {/* Year pills */}
+      <Box sx={{ display: 'flex', gap: 1.5, mb: 3, flexWrap: 'wrap' }}>
+        {selectedYears.map((year, i) => {
+          const isDone = !!financialData[year];
+          const isActive = i === activeYearTab;
+          return (
+            <Box
+              key={year}
+              onClick={() => setActiveYearTab(i)}
+              sx={{
+                display: 'flex', alignItems: 'center', gap: 1,
+                px: 2.5, py: 1.25,
+                borderRadius: 3,
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: '0.875rem',
+                transition: 'all 0.2s ease',
+                bgcolor: isActive ? 'primary.main' : isDone ? '#e8f5e9' : '#f1f5f9',
+                color: isActive ? 'white' : isDone ? '#2e7d32' : '#64748b',
+                boxShadow: isActive ? '0 4px 12px rgba(21,101,192,0.3)' : 'none',
+                border: '2px solid',
+                borderColor: isActive ? 'primary.main' : isDone ? '#a5d6a7' : 'transparent',
+                '&:hover': { transform: 'translateY(-1px)', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' },
+              }}
+            >
+              {isDone && <DoneIcon sx={{ fontSize: 16 }} />}
+              {getYearLabel(year)}
+            </Box>
+          );
+        })}
+      </Box>
 
-      {/* Year Tabs */}
-      <Tabs
-        value={activeYearTab}
-        onChange={(_, newValue) => setActiveYearTab(newValue)}
-        sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}
-      >
-        {selectedYears.map((year, index) => (
-          <Tab
-            key={year}
-            label={getYearLabel(year)}
-            icon={financialData[year] ? '✓' : undefined}
-            iconPosition="end"
-          />
-        ))}
-      </Tabs>
-
+      {/* Content per year */}
       {selectedYears.map((year, yearIndex) => (
-        <TabPanel key={year} value={activeYearTab} index={yearIndex}>
-          {/* Input Method Tabs */}
-          <Tabs
-            value={activeDataTab}
-            onChange={(_, newValue) => setActiveDataTab(newValue)}
-            sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}
-          >
-            <Tab label="📄 Import Excel" />
-            <Tab label="✍️ Saisie Manuelle" />
-            <Tab label="📷 OCR (Scan)" />
-          </Tabs>
-
-          {/* Excel Upload Tab */}
-          <TabPanel value={activeDataTab} index={0}>
-            <UploadPage
-              onNavigate={() => {}}
-              yearContext={{
-                year: year,
-                onComplete: (data: any) => onDataInput(year, data)
+        <Box key={year} hidden={yearIndex !== activeYearTab}>
+          {yearIndex === activeYearTab && (
+            <Paper
+              variant="outlined"
+              sx={{
+                borderRadius: 3,
+                overflow: 'hidden',
+                borderColor: 'rgba(0,0,0,0.08)',
               }}
-            />
-          </TabPanel>
+            >
+              {/* Input method tabs */}
+              <Box sx={{ borderBottom: '1px solid', borderColor: 'rgba(0,0,0,0.08)', bgcolor: '#fafafa' }}>
+                <Tabs
+                  value={activeDataTab}
+                  onChange={(_, v) => setActiveDataTab(v)}
+                  sx={{
+                    px: 2,
+                    '& .MuiTab-root': { minHeight: 52, fontWeight: 600, fontSize: '0.875rem' },
+                    '& .Mui-selected': { color: 'primary.main' },
+                  }}
+                >
+                  <Tab
+                    icon={<ExcelIcon sx={{ fontSize: 18 }} />}
+                    iconPosition="start"
+                    label="Import Excel"
+                  />
+                  <Tab
+                    icon={<ManualIcon sx={{ fontSize: 18 }} />}
+                    iconPosition="start"
+                    label="Saisie Manuelle"
+                  />
+                  <Tab
+                    icon={<OcrIcon sx={{ fontSize: 18 }} />}
+                    iconPosition="start"
+                    label={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        OCR / IA
+                        <Chip
+                          label="Nouveau"
+                          size="small"
+                          sx={{
+                            height: 16, fontSize: '0.6rem', fontWeight: 700,
+                            bgcolor: '#e3f2fd', color: '#1565c0',
+                            border: '1px solid #90caf9',
+                            '& .MuiChip-label': { px: 0.75 },
+                          }}
+                        />
+                      </Box>
+                    }
+                  />
+                </Tabs>
+              </Box>
 
-          {/* Manual Input Tab */}
-          <TabPanel value={activeDataTab} index={1}>
-            <ManualInputPage
-              onNavigate={() => {}}
-              yearContext={{
-                year: year,
-                onComplete: (data: any) => onDataInput(year, data)
-              }}
-            />
-          </TabPanel>
+              <Box sx={{ p: 3 }}>
+                <TabPanel value={activeDataTab} index={0}>
+                  <UploadPage
+                    onNavigate={() => {}}
+                    yearContext={{
+                      year,
+                      onComplete: (data: any) => onDataInput(year, data),
+                    }}
+                  />
+                </TabPanel>
 
-          {/* OCR Tab */}
-          <TabPanel value={activeDataTab} index={2}>
-            <OcrUpload
-              onDataExtracted={(data: any) => onDataInput(year, data)}
-              onDocumentUploaded={onDocumentUploaded}
-              targetYear={year}
-            />
-          </TabPanel>
-        </TabPanel>
+                <TabPanel value={activeDataTab} index={1}>
+                  <ManualInputPage
+                    onNavigate={() => {}}
+                    yearContext={{
+                      year,
+                      onComplete: (data: any) => onDataInput(year, data),
+                    }}
+                  />
+                </TabPanel>
+
+                <TabPanel value={activeDataTab} index={2}>
+                  <OcrUpload
+                    targetYear={year}
+                    onDataExtracted={(data: any) => onDataInput(year, data)}
+                    onDocumentUploaded={onDocumentUploaded}
+                  />
+                </TabPanel>
+              </Box>
+
+              {financialData[year] && (
+                <Box sx={{ px: 3, pb: 2 }}>
+                  <Chip
+                    icon={<DoneIcon />}
+                    label={`Données ${year} enregistrées`}
+                    color="success"
+                    size="small"
+                    sx={{ fontWeight: 600 }}
+                  />
+                </Box>
+              )}
+            </Paper>
+          )}
+        </Box>
       ))}
     </Box>
   );

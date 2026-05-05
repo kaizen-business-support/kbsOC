@@ -44,15 +44,27 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
-    
-    this.setState({
-      error,
-      errorInfo,
-    });
 
-    // Log error to monitoring service
+    // Chunk loading failure after a new deployment — reload once to fetch fresh chunks
+    const isChunkError =
+      error.message?.includes('Loading chunk') ||
+      error.message?.includes('Failed to fetch') ||
+      error.name === 'ChunkLoadError';
+
+    if (isChunkError) {
+      const reloadKey = 'chunk_reload_attempted';
+      if (!sessionStorage.getItem(reloadKey)) {
+        sessionStorage.setItem(reloadKey, '1');
+        window.location.reload();
+        return;
+      }
+      // Already reloaded once — clear the flag and show the error UI
+      sessionStorage.removeItem(reloadKey);
+    }
+
+    this.setState({ error, errorInfo });
+
     if (process.env.NODE_ENV === 'production') {
-      // Here you would send error to monitoring service like Sentry
       console.error('Production error:', {
         message: error.message,
         stack: error.stack,

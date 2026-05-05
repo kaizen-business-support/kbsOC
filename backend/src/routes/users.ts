@@ -3,8 +3,14 @@ import jwt from 'jsonwebtoken';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
 import { generateRandomPassword, hashPassword } from '../utils/password';
 import { prisma } from '../server';
+import { sendEmail } from '../services/notificationService';
+import { buildWelcomeEmail, buildAdminResetEmail } from '../utils/emailTemplates';
+import { getAppUrl } from '../utils/getAppUrl';
+import { authenticate, requireCompany } from '../middleware/auth';
 
 const router = express.Router();
+router.use(authenticate);
+router.use(requireCompany);
 
 // Permission check using JWT verification + live DB lookup
 const checkUserManagementPermission = async (req: Request, res: Response, next: express.NextFunction) => {
@@ -16,7 +22,10 @@ const checkUserManagementPermission = async (req: Request, res: Response, next: 
   const token = authHeader.substring(7);
 
   try {
-    const jwtSecret = process.env.JWT_SECRET || 'dev-secret';
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      return res.status(500).json({ error: 'Server configuration error', code: 'CONFIG_ERROR' });
+    }
     const payload = jwt.verify(token, jwtSecret) as any;
 
     const user = await prisma.user.findUnique({
@@ -29,7 +38,7 @@ const checkUserManagementPermission = async (req: Request, res: Response, next: 
     }
 
     const permissions = user.permissions as string[];
-    if (user.role === 'ADMIN' || permissions.includes('user_management') || permissions.includes('*')) {
+    if (user.role === 'ADMIN' || permissions.includes('user_management')) {
       req.user = { id: user.id, email: user.email, role: user.role, permissions };
       next();
     } else {
@@ -40,13 +49,52 @@ const checkUserManagementPermission = async (req: Request, res: Response, next: 
   }
 };
 
-// Get credit analysts (accessible by account managers)
-router.get('/credit-analysts',
-  asyncHandler(async (req: Request, res: Response) => {
-    const analysts = await prisma.user.findMany({
-      where: { role: 'CREDIT_ANALYST', isActive: true },
-      select: { id: true, email: true, name: true, role: true, department: true, jobTitle: true }
+// Middleware allégé : ADMIN, RESPONSABLE_RISQUES, ou permission user_management
+const checkAnalystListPermission = async (req: Request, res: Response, next: express.NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required', code: 'AUTH_REQUIRED' });
+  }
+  const token = authHeader.substring(7);
+  try {
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) return res.status(500).json({ error: 'Server configuration error' });
+    const payload = jwt.verify(token, jwtSecret) as any;
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { id: true, email: true, role: true, permissions: true }
     });
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    const permissions = user.permissions as string[];
+    const allowed = ['ADMIN', 'RESPONSABLE_RISQUES'].includes(user.role)
+      || permissions.includes('user_management')
+      || permissions.includes('assign_analyst');
+    if (allowed) {
+      req.user = { id: user.id, email: user.email, role: user.role, permissions };
+      next();
+    } else {
+      return res.status(403).json({ error: 'Insufficient permissions', code: 'INSUFFICIENT_PERMISSIONS' });
+    }
+  } catch {
+    return res.status(401).json({ error: 'Invalid token', code: 'INVALID_TOKEN' });
+  }
+};
+
+// Get credit analysts (accessible aux utilisateurs authentifiés avec droit d'affectation)
+router.get('/credit-analysts',
+  checkAnalystListPermission,
+  asyncHandler(async (req: Request, res: Response) => {
+    const members = await (prisma.companyMembership as any).findMany({
+      where: { companyId: req.companyId, isActive: true },
+      include: {
+        user: {
+          select: { id: true, email: true, name: true, role: true, department: true, jobTitle: true, isActive: true }
+        }
+      }
+    });
+    const analysts = (members as any[])
+      .map((m: any) => m.user)
+      .filter((u: any) => u.role === 'ANALYSTE_RISQUES' && u.isActive);
 
     res.json({
       success: true,
@@ -60,23 +108,30 @@ router.get('/credit-analysts',
 router.get('/',
   checkUserManagementPermission,
   asyncHandler(async (req: Request, res: Response) => {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        department: true,
-        jobTitle: true,
-        isActive: true,
-        lastLogin: true,
-        createdAt: true,
-        permissions: true
+    const members = await (prisma.companyMembership as any).findMany({
+      where: { companyId: req.companyId, isActive: true },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            department: true,
+            branch: true,
+            isActive: true,
+            jobTitle: true,
+            lastLogin: true,
+            createdAt: true,
+            permissions: true,
+            twoFactorEnabled: true,
+            twoFactorRequired: true
+          }
+        }
       },
-      orderBy: {
-        createdAt: 'desc'
-      }
+      orderBy: { joinedAt: 'desc' }
     });
+    const users = (members as any[]).map((m: any) => ({ ...m.user, membershipRole: m.role }));
 
     res.json({
       success: true,
@@ -103,6 +158,7 @@ router.get('/:id',
         name: true,
         role: true,
         department: true,
+        branch: true,
         jobTitle: true,
         isActive: true,
         lastLogin: true,
@@ -130,7 +186,7 @@ router.get('/:id',
 router.post('/',
   checkUserManagementPermission,
   asyncHandler(async (req: Request, res: Response) => {
-    const { name, email, role, department, jobTitle, isActive = true } = req.body;
+    const { name, email, role, department, branch, jobTitle, isActive = true } = req.body;
 
     // Validate required fields
     if (!name || !email || !role) {
@@ -171,26 +227,54 @@ router.post('/',
         name,
         role,
         department: department || null,
+        branch: branch || null,
         jobTitle: jobTitle || null,
         permissions,
-        isActive
-      }
+        isActive,
+        mustChangePassword: true,
+        passwordExpiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000) // 72 heures
+      } as any
     });
+
+    // Attach user to the company via CompanyMembership
+    if (req.companyId) {
+      await prisma.companyMembership.create({
+        data: {
+          userId: newUser.id,
+          companyId: req.companyId,
+          role: role as any,
+          isActive: true
+        }
+      });
+    }
+
+    // Send welcome email with temporary credentials (non-blocking)
+    const frontendUrl = getAppUrl();
+    const welcomeHtml = buildWelcomeEmail({
+      name: newUser.name,
+      email: newUser.email,
+      temporaryPassword,
+      loginUrl: frontendUrl,
+      expiresIn: '72 heures'
+    });
+    sendEmail(newUser.email, 'Bienvenue sur OptimusCredit — Vos accès', welcomeHtml)
+      .catch(err => console.error('Welcome email failed:', err));
 
     res.status(201).json({
       success: true,
-      message: 'User created successfully. Please provide the temporary password to the user.',
+      message: `Utilisateur créé. Mot de passe temporaire transmis à ${newUser.email} par email.`,
       user: {
         id: newUser.id,
         email: newUser.email,
         name: newUser.name,
         role: newUser.role,
         department: newUser.department,
+        branch: (newUser as any).branch,
         jobTitle: newUser.jobTitle,
         isActive: newUser.isActive,
         createdAt: newUser.createdAt.toISOString()
-      },
-      temporaryPassword // Return the password so admin can give it to the user
+      }
+      // temporaryPassword omis volontairement — ne jamais exposer un secret en API
     });
   })
 );
@@ -200,7 +284,7 @@ router.put('/:id',
   checkUserManagementPermission,
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { name, role, department, jobTitle, isActive } = req.body;
+    const { name, role, department, branch, jobTitle, isActive } = req.body;
 
     // Check if user exists
     const existingUser = await prisma.user.findUnique({
@@ -216,6 +300,7 @@ router.put('/:id',
     if (name !== undefined) updateData.name = name;
     if (role !== undefined) updateData.role = role;
     if (department !== undefined) updateData.department = department;
+    if (branch !== undefined) updateData.branch = branch;
     if (jobTitle !== undefined) updateData.jobTitle = jobTitle;
     if (isActive !== undefined) updateData.isActive = isActive;
 
@@ -247,6 +332,7 @@ router.put('/:id',
         name: user.name,
         role: user.role,
         department: user.department,
+        branch: (user as any).branch,
         jobTitle: user.jobTitle,
         isActive: user.isActive,
         updatedAt: user.updatedAt.toISOString()
@@ -276,21 +362,37 @@ router.post('/:id/reset-password',
     // Hash the password
     const passwordHash = await hashPassword(temporaryPassword);
 
-    // Update user password
+    // Update user password + force change on next login
     await prisma.user.update({
       where: { id },
-      data: { passwordHash }
+      data: {
+        passwordHash,
+        mustChangePassword: true,
+        passwordExpiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000) // 72 heures
+      } as any
     });
+
+    // Send admin reset email with temporary credentials (non-blocking)
+    const frontendUrl = getAppUrl();
+    const resetHtml = buildAdminResetEmail({
+      name: user.name,
+      email: user.email,
+      temporaryPassword,
+      loginUrl: frontendUrl,
+      expiresIn: '72 heures'
+    });
+    sendEmail(user.email, 'Réinitialisation de votre mot de passe — OptimusCredit', resetHtml)
+      .catch(err => console.error('Admin reset email failed:', err));
 
     res.json({
       success: true,
-      message: `Password reset successfully for ${user.name}. Please provide the temporary password to the user.`,
+      message: `Mot de passe réinitialisé pour ${user.name}. Le mot de passe temporaire a été envoyé à ${user.email}.`,
       user: {
         id: user.id,
         email: user.email,
         name: user.name
-      },
-      temporaryPassword // Return the password so admin can give it to the user
+      }
+      // temporaryPassword omis volontairement — ne jamais exposer un secret en API
     });
   })
 );

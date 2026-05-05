@@ -22,6 +22,7 @@ interface OcrOptions {
   language?: string;
   pages?: number[];
   dpi?: number;
+  onProgress?: (step: string, detail: string, percent: number, extra?: any) => void;
 }
 
 interface FinancialStatement {
@@ -182,51 +183,58 @@ export class OcrService {
    * Main extraction method - detects statements first, then extracts data
    */
   async extractFinancialData(file: File, options: OcrOptions = {}): Promise<ExtractedFinancialData> {
+    const { onProgress } = options;
     try {
+      onProgress?.('init', 'Initialisation des moteurs OCR Tesseract…', 5);
       console.log('🚀 Starting SYSCOHADA financial statement detection and extraction...');
-      console.log(`📄 File: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
-      
+
       // Step 1: Detect financial statements in the document
-      const detectedStatements = await this.detectFinancialStatements(file);
-      
+      onProgress?.('scan', `Lecture du document : ${file.name}`, 10);
+      const detectedStatements = await this.detectFinancialStatements(file, onProgress);
+
       if (detectedStatements.length === 0) {
+        onProgress?.('warn', 'Aucun état financier détecté dans le document', 40);
         console.warn('⚠️ No financial statements detected in the document');
         return { confidence: 0 };
       }
-      
+
+      onProgress?.('detect', `${detectedStatements.length} état(s) financier(s) détecté(s)`, 55,
+        { statements: detectedStatements });
+
       // Step 2: Extract data from each detected statement
       const extractedData: ExtractedFinancialData = {};
       let totalConfidence = 0;
-      
+      let stepIdx = 0;
+
       for (const statement of detectedStatements) {
         try {
+          const label = { bilan: 'Bilan', compte_resultat: 'Compte de Résultat', tableau_flux: 'Tableau des Flux' }[statement.type] ?? statement.type;
+          onProgress?.('extract', `Extraction des données : ${label} (page ${statement.pageNumber})`,
+            60 + stepIdx * 10);
           const rawData = await this.extractStatementData(file, statement);
-          
-          // Save raw data to file for debugging (as specified)
           await this.saveDebugOutput(statement.type, rawData);
-          
-          // Parse the raw data to extract financial values
           const parsedData = this.parseStatementData(statement.type, rawData);
-          
-          // Merge parsed data into main result
           Object.assign(extractedData, parsedData);
           totalConfidence += statement.confidence;
-          
+          onProgress?.('field', `${label} : ${Object.keys(parsedData).length} champ(s) extrait(s)`,
+            65 + stepIdx * 10, { count: Object.keys(parsedData).length });
+          stepIdx++;
         } catch (error) {
           console.warn(`⚠️ Error extracting ${statement.type}:`, error);
+          onProgress?.('warn', `Erreur sur ${statement.type}: ${error instanceof Error ? error.message : '?'}`, 60 + stepIdx * 10);
         }
       }
-      
-      // Calculate overall confidence
+
       extractedData.confidence = detectedStatements.length > 0 ? totalConfidence / detectedStatements.length : 0;
-      
-      console.log(`✅ Final extraction confidence: ${extractedData.confidence?.toFixed(1)}%`);
-      console.log(`📊 Extracted ${Object.keys(extractedData).length - 1} financial fields`);
-      
+      const fieldCount = Object.keys(extractedData).filter(k => k !== 'confidence').length;
+      onProgress?.('done', `Extraction terminée — ${fieldCount} champs — confiance ${extractedData.confidence?.toFixed(0)}%`, 100,
+        { fieldCount, confidence: extractedData.confidence });
+
       return extractedData;
-      
+
     } catch (error) {
       console.error('❌ OCR extraction failed:', error);
+      onProgress?.('error', `Erreur OCR : ${error instanceof Error ? error.message : 'Erreur inconnue'}`, 100);
       throw new Error(`Erreur lors de l'extraction OCR: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
     }
   }
@@ -234,7 +242,7 @@ export class OcrService {
   /**
    * Detect financial statements in PDF by scanning all pages
    */
-  async detectFinancialStatements(file: File): Promise<FinancialStatement[]> {
+  async detectFinancialStatements(file: File, onProgress?: OcrOptions['onProgress']): Promise<FinancialStatement[]> {
     console.log('🔍 Starting financial statement detection...');
     
     // Validate file parameter
@@ -252,16 +260,19 @@ export class OcrService {
       
       const pdf = await pdfjsLib.getDocument({ data: fileArrayBuffer }).promise;
     const totalPages = pdf.numPages;
-    
+    onProgress?.('scan', `Document chargé — ${totalPages} pages à analyser`, 12, { totalPages });
     console.log(`📄 Scanning ${totalPages} pages for financial statements...`);
-    
+
     for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
       console.log(`🔎 Analyzing page ${pageNum}/${totalPages}...`);
-      
+      const pct = 12 + Math.round((pageNum / totalPages) * 40);
+      onProgress?.('page', `Analyse page ${pageNum} / ${totalPages}`, pct, { page: pageNum, totalPages });
+
       // Check if we already found all three financial statements
       const foundStatements = new Set(detectedStatements.map(s => s.type));
       if (foundStatements.has('bilan') && foundStatements.has('compte_resultat') && foundStatements.has('tableau_flux')) {
         console.log(`🎯 All three financial statements found! Stopping scan at page ${pageNum - 1}`);
+        onProgress?.('detect', 'Les 3 états financiers détectés — arrêt anticipé', pct);
         break;
       }
       
@@ -367,20 +378,22 @@ export class OcrService {
           
           console.log(`📊 Page ${pageNum} - ${statementType}: ${confidence.toFixed(1)}% match`);
           
-          if (confidence >= 70) { // Set to 70% minimum confidence as requested
+          if (confidence >= 40) { // lowered threshold for better document coverage
             // Check if we already found this statement type
             const existingStatement = detectedStatements.find(s => s.type === statementType);
-            
+            const labels: Record<string, string> = { bilan: 'Bilan', compte_resultat: 'Compte de Résultat', tableau_flux: 'Tableau des Flux' };
+            const label = labels[statementType] ?? statementType;
+
             if (!existingStatement || confidence > existingStatement.confidence) {
               if (existingStatement) {
-                console.log(`✅ Found better ${statementType} on page ${pageNum} (${confidence.toFixed(1)}% vs ${existingStatement.confidence.toFixed(1)}%)`);
-                // Remove the existing one
                 const index = detectedStatements.indexOf(existingStatement);
                 detectedStatements.splice(index, 1);
-              } else {
-                console.log(`✅ Detected ${statementType} on page ${pageNum} with ${confidence.toFixed(1)}% confidence`);
               }
-              
+              const pct = 12 + Math.round((pageNum / totalPages) * 40);
+              onProgress?.('found', `${label} détecté — page ${pageNum} (confiance ${confidence.toFixed(0)}%)`,
+                pct, { type: statementType, page: pageNum, confidence });
+              console.log(`✅ Detected ${statementType} on page ${pageNum} with ${confidence.toFixed(1)}% confidence`);
+
               detectedStatements.push({
                 type: statementType as 'bilan' | 'compte_resultat' | 'tableau_flux',
                 pageNumber: pageNum,
@@ -423,10 +436,10 @@ export class OcrService {
       .replace(/[ýÿ]/g, 'y')
       .replace(/[ç]/g, 'c')
       .replace(/[ñ]/g, 'n')
-      .replace(/['\u2019\u2018]/g, '')  // Handle various apostrophe types
-      .replace(/[\\u00A0\\s]+/g, ' ')      // Normalize all whitespace including non-breaking spaces
-      .replace(/[^a-z0-9\\s]/g, ' ')       // Remove special chars for better matching
-      .replace(/\\s+/g, ' ')               // Collapse multiple spaces
+      .replace(/['\u2019\u2018]/g, '')
+      .replace(/[\u00A0\s]+/g, ' ')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
     
     console.log(`🔍 Analyzing text snippet (first 200 chars): "${text.substring(0, 200)}..."`);
@@ -445,9 +458,9 @@ export class OcrService {
         .replace(/[ç]/g, 'c')
         .replace(/[ñ]/g, 'n')
         .replace(/['\u2019\u2018]/g, '')
-        .replace(/[\\u00A0\\s]+/g, ' ')
-        .replace(/[^a-z0-9\\s]/g, ' ')
-        .replace(/\\s+/g, ' ')
+        .replace(/[\u00A0\s]+/g, ' ')
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
       
       // Try exact match first
@@ -683,960 +696,210 @@ export class OcrService {
     }
   }
   
+  // ─── Normalisation helpers ──────────────────────────────────────────────────
+
   /**
-   * Parse bilan (balance sheet) data - looking for NET column for assets, N column for liabilities
+   * Normalize a French string: remove accents, strip non-alphanumeric chars, collapse spaces.
    */
+  private normalizeFr(s: string): string {
+    return s
+      .toLowerCase()
+      .replace(/[àáâãäå]/g, 'a').replace(/[èéêë]/g, 'e').replace(/[ìíî]/g, 'i')
+      .replace(/[òóôõö]/g, 'o').replace(/[ùúûü]/g, 'u').replace(/[ç]/g, 'c')
+      .replace(/[\u00A0]/g, ' ')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Return true if haystack contains ≥60% of needle's significant words.
+   */
+  private fuzzyContains(haystack: string, needle: string): boolean {
+    const words = needle.split(' ').filter(w => w.length > 3);
+    if (words.length === 0) return haystack.includes(needle);
+    const matched = words.filter(w => haystack.includes(w));
+    return matched.length >= Math.ceil(words.length * 0.6);
+  }
+
+  /**
+   * Find the first line in `text` that matches any of the given label variants.
+   */
+  private findLineByLabel(text: string, ...labels: string[]): string | null {
+    for (const line of text.split('\n')) {
+      const norm = this.normalizeFr(line);
+      for (const label of labels) {
+        const normLabel = this.normalizeFr(label);
+        if (norm.includes(normLabel) || this.fuzzyContains(norm, normLabel)) {
+          return line;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Extract all financial numbers (≥3 digits) from a pipe/space-separated line.
+   */
+  private numsFromLine(line: string): number[] {
+    const nums: number[] = [];
+    for (const part of line.split('|')) {
+      const clean = part.trim().replace(/[\s\u00A0]/g, '');
+      if (/^-?\d{3,}$/.test(clean)) {
+        const n = parseInt(clean, 10);
+        if (!isNaN(n)) nums.push(n);
+      }
+    }
+    return nums;
+  }
+
+  /**
+   * Find a line by label, then pick a number by index.
+   * numIdx: 0 = first, -1 = last, 2 = third (NET_N in SYSCOHADA ACTIF format: BRUT_N, AMORT_N, NET_N, NET_N-1)
+   */
+  private labelValue(text: string, numIdx: number, ...labels: string[]): number | undefined {
+    const line = this.findLineByLabel(text, ...labels);
+    if (!line) return undefined;
+    const nums = this.numsFromLine(line);
+    if (nums.length === 0) return undefined;
+    const idx = numIdx < 0 ? nums.length + numIdx : numIdx;
+    return nums[Math.max(0, Math.min(idx, nums.length - 1))];
+  }
+
+  /** For ACTIF lines: SYSCOHADA format has BRUT_N | AMORT_N | NET_N | NET_N-1.
+   *  We want NET_N = 3rd number (idx 2). Fallback to first if fewer columns. */
+  private actif(text: string, ...labels: string[]): number | undefined {
+    const line = this.findLineByLabel(text, ...labels);
+    if (!line) return undefined;
+    const nums = this.numsFromLine(line);
+    if (nums.length === 0) return undefined;
+    if (nums.length >= 3) return nums[2];
+    return nums[0];
+  }
+
+  /** For PASSIF/CR/TFT lines: current year is typically the first number after the label. */
+  private cr(text: string, ...labels: string[]): number | undefined {
+    return this.labelValue(text, 0, ...labels);
+  }
+
+  // ─── Parse methods ───────────────────────────────────────────────────────────
+
   private parseBilanData(text: string): ExtractedFinancialData {
-    console.log('📊 Parsing bilan data...');
-    const data: ExtractedFinancialData = {};
-    const lines = text.split('\n');
-    
-    for (const line of lines) {
-      const cleanLine = line.trim();
-      if (!cleanLine) continue;
-      
-      console.log(`🔍 Processing bilan line: "${cleanLine}"`);
-      
-      // BILAN ACTIF FIELDS - Matching Excel import exactly
-      
-      // IMMOBILISATIONS INCORPORELLES section
-      if (cleanLine.includes('AD|IMMOBILISATIONS INCORPORELLES')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.immobilisations_incorporelles = value;
-          console.log(`✅ Set immobilisations_incorporelles = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('Frais de développement et de prospection')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.frais_developpement = value;
-          console.log(`✅ Set frais_developpement = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('Brevets, licences, logiciels')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.brevets_licences = value;
-          console.log(`✅ Set brevets_licences = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('Fonds commercial et droit au bail')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.fonds_commercial = value;
-          console.log(`✅ Set fonds_commercial = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('Autres immobilisations incorporelles')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.autres_immob_incorporelles = value;
-          console.log(`✅ Set autres_immob_incorporelles = ${value}`);
-        }
-      }
-      
-      // IMMOBILISATIONS CORPORELLES section
-      if (cleanLine.includes('AI|IMMOBILISATIONS CORPORELLES')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.immobilisations_corporelles = value;
-          console.log(`✅ Set immobilisations_corporelles = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('Terrains')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.terrains = value;
-          console.log(`✅ Set terrains = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('Bâtiments')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.batiments = value;
-          console.log(`✅ Set batiments = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('Aménagements, agencements')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.agencements = value;
-          console.log(`✅ Set agencements = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('Matériel, mobilier et actifs biologiques')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.materiel_mobilier = value;
-          console.log(`✅ Set materiel_mobilier = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('Matériel de transport')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.materiel_transport = value;
-          console.log(`✅ Set materiel_transport = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('Avances & acomptes versés sur immobilisations')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.avances_immobilisations = value;
-          console.log(`✅ Set avances_immobilisations = ${value}`);
-        }
-      }
-      
-      // IMMOBILISATIONS FINANCIERES section
-      if (cleanLine.includes('AQ|IMMOBILISATIONS FINANCIERES')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.immobilisations_financieres = value;
-          console.log(`✅ Set immobilisations_financieres = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('Titres de participation')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.titres_participation = value;
-          console.log(`✅ Set titres_participation = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('Autres immobilisations financières')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.autres_immob_financieres = value;
-          console.log(`✅ Set autres_immob_financieres = ${value}`);
-        }
-      }
-      
-      // TOTAL ACTIF IMMOBILISE
-      if (cleanLine.includes('AZ|TOTAL ACTIF IMMOBILISE')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.total_actif_immobilise = value;
-          console.log(`✅ Set total_actif_immobilise = ${value}`);
-        }
-      }
-      
-      // ACTIF CIRCULANT section
-      if (cleanLine.includes('BA|ACTIF CIRCULANT H.A.O.')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.actif_circulant_hao = value;
-          console.log(`✅ Set actif_circulant_hao = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('BB|STOCKS ET ENCOURS')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.stocks = value;
-          console.log(`✅ Set stocks = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('BG|CREANCES ET EMPLOIS ASSIMILES')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.creances_clients = value;
-          console.log(`✅ Set creances_clients = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('Fournisseurs, avances versées')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.fournisseurs_avances = value;
-          console.log(`✅ Set fournisseurs_avances = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('BI|Clients')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.clients = value;
-          console.log(`✅ Set clients = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('BJ|Autres créances')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.autres_creances = value;
-          console.log(`✅ Set autres_creances = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('BK|TOTAL ACTIF CIRCULANT')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.total_actif_circulant = value;
-          console.log(`✅ Set total_actif_circulant = ${value}`);
-        }
-      }
-      
-      // TRESORERIE section
-      if (cleanLine.includes('BQ|Titres de placement')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.titres_placement = value;
-          console.log(`✅ Set titres_placement = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('BR|Valeurs a encaisser')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.valeurs_encaisser = value;
-          console.log(`✅ Set valeurs_encaisser = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('BS|Banques, chèques postaux, caisse')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.banques_caisses = value;
-          console.log(`✅ Set banques_caisses = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('BT|TOTAL TRESORERIE ACTIF')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.tresorerie_actif = value;
-          console.log(`✅ Set tresorerie_actif = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('BU|Ecarts de conversion Actif')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.ecart_conversion_actif = value;
-          console.log(`✅ Set ecart_conversion_actif = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('BZ|TOTAL GENERAL')) {
-        const value = this.extractValueFromActifSection(cleanLine);
-        if (value !== null) {
-          data.total_actif = value;
-          console.log(`✅ Set total_actif = ${value}`);
-        }
-      }
-      
-      // BILAN PASSIF FIELDS - Matching Excel import exactly (using column 11)
-      
-      // CAPITAUX PROPRES section  
-      if (cleanLine.includes('CA|CAPITAL')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.capital_social = value;
-          console.log(`✅ Set capital_social = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('CB|Apporteurs capital non appelé')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.actionnaires_capital = value;
-          console.log(`✅ Set actionnaires_capital = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('CD|Primes liées au capital social')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.primes_capital = value;
-          console.log(`✅ Set primes_capital = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('CE|Ecarts de réévaluation')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.ecarts_reevaluation = value;
-          console.log(`✅ Set ecarts_reevaluation = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('CF|Réserves indisponibles')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.reserves_indisponibles = value;
-          console.log(`✅ Set reserves_indisponibles = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('CG|Réserves libres')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.reserves_libres = value;
-          console.log(`✅ Set reserves_libres = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('CH|Report à nouveau')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.report_nouveau = value;
-          console.log(`✅ Set report_nouveau = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('CJ|Resutat net de l\'exercice') || 
-          cleanLine.includes('CJ|Resultat net de l\'exercice') ||
-          cleanLine.includes('CJ|Résutat net de l\'exercice')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.resultat_exercice = value;
-          console.log(`✅ Set resultat_exercice = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('CL|Subventions d\'investissement')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.subventions_investissement = value;
-          console.log(`✅ Set subventions_investissement = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('CM|Provisions réglementées')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.provisions_reglementees = value;
-          console.log(`✅ Set provisions_reglementees = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('CP|TOTAL CAPITAUX PROPRES')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.capitaux_propres = value;
-          console.log(`✅ Set capitaux_propres = ${value}`);
-        }
-      }
-      
-      // DETTES section
-      if (cleanLine.includes('DA|Emprunts et dettes financières diverses')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.emprunts_dettes_financieres = value;
-          console.log(`✅ Set emprunts_dettes_financieres = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('DB|Dettes de location acquisition')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.dettes_location = value;
-          console.log(`✅ Set dettes_location = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('DC|Provisions pour risques et charges')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.provisions_risques = value;
-          console.log(`✅ Set provisions_risques = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('DD|TOTAL DETTES FINANCIERES')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.total_dettes_financieres = value;
-          console.log(`✅ Set total_dettes_financieres = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('DJ|Fournisseurs d\'exploitation')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.dettes_fournisseurs = value;
-          console.log(`✅ Set dettes_fournisseurs = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('DK|Dettes fiscales et sociales')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.dettes_fiscales_sociales = value;
-          console.log(`✅ Set dettes_fiscales_sociales = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('DM|Autres dettes')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.autres_dettes = value;
-          console.log(`✅ Set autres_dettes = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('DP|TOTAL PASSIF CIRCULANT')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.total_passif_circulant = value;
-          console.log(`✅ Set total_passif_circulant = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('DR|Banques, établissements financiers')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.banques_concours = value;
-          console.log(`✅ Set banques_concours = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('DT|TOTAL TRESORERIE PASSIF')) {
-        const value = this.extractValueFromPassifSection(cleanLine);
-        if (value !== null) {
-          data.tresorerie_passif = value;
-          console.log(`✅ Set tresorerie_passif = ${value}`);
-        }
-      }
-    }
-    
-    console.log(`✅ Parsed ${Object.keys(data).length} bilan fields`);
-    return data;
+    const a = ((...l: string[]) => this.actif(text, ...l));
+    const p = ((...l: string[]) => this.cr(text, ...l));
+    return {
+      // ── ACTIF IMMOBILISÉ ────────────────────────────────────────────────
+      immobilisations_incorporelles:  a('IMMOBILISATIONS INCORPORELLES'),
+      frais_developpement:            a('Frais de developpement', 'frais de prospection'),
+      brevets_licences:               a('Brevets', 'licences', 'logiciels'),
+      fonds_commercial:               a('Fonds commercial', 'droit au bail'),
+      autres_immob_incorporelles:     a('Autres immobilisations incorporelles'),
+      immobilisations_corporelles:    a('IMMOBILISATIONS CORPORELLES'),
+      terrains:                       a('Terrains'),
+      batiments:                      a('Batiments', 'Bâtiments'),
+      agencements:                    a('Agencements', 'amenagements'),
+      materiel_mobilier:              a('Materiel mobilier', 'Matériel mobilier', 'actifs biologiques'),
+      materiel_transport:             a('Materiel de transport', 'Matériel de transport'),
+      avances_immobilisations:        a('Avances', 'acomptes', 'immobilisations'),
+      immobilisations_financieres:    a('IMMOBILISATIONS FINANCIERES'),
+      titres_participation:           a('Titres de participation'),
+      autres_immob_financieres:       a('Autres immobilisations financieres', 'Autres Immobilisations Financières'),
+      total_actif_immobilise:         a('TOTAL ACTIF IMMOBILISE', 'TOTAL IMMOBILISATIONS'),
+      // ── ACTIF CIRCULANT ─────────────────────────────────────────────────
+      actif_circulant_hao:            a('ACTIF CIRCULANT H.A.O', 'ACTIF CIRCULANT HAO'),
+      stocks:                         a('STOCKS ET ENCOURS', 'STOCKS'),
+      creances_clients:               a('CREANCES ET EMPLOIS'),
+      fournisseurs_avances:           a('Fournisseurs avances', 'Fournisseurs, avances versees'),
+      clients:                        a('Clients'),
+      autres_creances:                a('Autres creances', 'Autres créances'),
+      total_actif_circulant:          a('TOTAL ACTIF CIRCULANT'),
+      // ── TRÉSORERIE ACTIF ────────────────────────────────────────────────
+      titres_placement:               a('Titres de placement'),
+      valeurs_encaisser:              a('Valeurs a encaisser', 'Valeurs à encaisser'),
+      banques_caisses:                a('Banques', 'cheques postaux', 'caisse'),
+      tresorerie_actif:               a('TOTAL TRESORERIE ACTIF', 'TRESORERIE ACTIF'),
+      ecart_conversion_actif:         a('Ecart de conversion actif', 'Ecarts de conversion Actif'),
+      total_actif:                    a('TOTAL GENERAL', 'TOTAL ACTIF'),
+      // ── PASSIF CAPITAUX PROPRES ─────────────────────────────────────────
+      capital_social:                 p('CA|CAPITAL', 'CAPITAL'),
+      actionnaires_capital:           p('Apporteurs capital', 'capital non appele'),
+      primes_capital:                 p('Primes liees au capital', 'Primes liées au capital'),
+      ecarts_reevaluation:            p('Ecarts de reevaluation', 'Ecarts de réévaluation'),
+      reserves_indisponibles:         p('Reserves indisponibles', 'Réserves indisponibles'),
+      reserves_libres:                p('Reserves libres', 'Réserves libres'),
+      report_nouveau:                 p('Report a nouveau', 'Report à nouveau'),
+      resultat_exercice:              p('Resultat net de l\'exercice', 'Résultat de l\'exercice'),
+      subventions_investissement:     p('Subventions d\'investissement'),
+      provisions_reglementees:        p('Provisions reglementees', 'Provisions réglementées'),
+      capitaux_propres:               p('TOTAL CAPITAUX PROPRES'),
+      // ── PASSIF DETTES ───────────────────────────────────────────────────
+      emprunts_dettes_financieres:    p('Emprunts et dettes financieres', 'Emprunts et dettes financières'),
+      dettes_location:                p('Dettes de location'),
+      provisions_risques:             p('Provisions pour risques'),
+      fournisseurs:                   p('Fournisseurs d\'exploitation', 'Dettes fournisseurs'),
+      dettes_fiscales:                p('Dettes fiscales', 'Organismes sociaux'),
+      tresorerie_passif:              p('TOTAL TRESORERIE PASSIF', 'TRESORERIE PASSIF'),
+      total_passif:                   p('TOTAL GENERAL', 'TOTAL PASSIF'),
+    };
   }
-  
-  /**
-   * Parse compte de résultat data - looking for 31/12/N column
-   */
+
   private parseCompteResultatData(text: string): ExtractedFinancialData {
-    console.log('📊 Parsing compte de résultat data...');
-    const data: ExtractedFinancialData = {};
-    const lines = text.split('\n');
-    
-    for (const line of lines) {
-      const cleanLine = line.trim();
-      if (!cleanLine) continue;
-      
-      console.log(`🔍 Processing compte de résultat line: "${cleanLine}"`);
-      
-      // COMPTE DE RESULTAT FIELDS - Matching Excel import exactly (using column 5)
-      
-      // PRODUITS section
-      if (cleanLine.includes('TA|Ventes de marchandises')) {
-        console.log(`🔍 FOUND LINE MATCHING ventes_marchandises: "${cleanLine}"`);
-        const value = this.extractCurrentYearValue(cleanLine);
-        console.log(`🎯 extractCurrentYearValue returned: ${value}`);
-        if (value !== null) {
-          data.ventes_marchandises = value;
-          console.log(`✅ Set ventes_marchandises = ${value}`);
-        } else {
-          console.log(`❌ extractCurrentYearValue returned null for ventes_marchandises`);
-        }
-      }
-      
-      if (cleanLine.includes('RA|Achats de marchandises')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.achats_marchandises = Math.abs(value);
-          console.log(`✅ Set achats_marchandises = ${data.achats_marchandises}`);
-        }
-      }
-      
-      if (cleanLine.includes('RB|Variation de stocks de marchandises')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.variation_stocks_marchandises = value;
-          console.log(`✅ Set variation_stocks_marchandises = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('XA|MARGE BRUTE SUR MARCHANDISES')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.marge_brute_marchandises = value;
-          console.log(`✅ Set marge_brute_marchandises = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('TB|Ventes de produits fabriqués')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.ventes_produits_fabriques = value;
-          console.log(`✅ Set ventes_produits_fabriques = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('TC|Travaux, services vendus')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.travaux_services = value;
-          console.log(`✅ Set travaux_services = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('TD|Produits accessoires')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.produits_accessoires = value;
-          console.log(`✅ Set produits_accessoires = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('XB|CHIFFRE D\'AFFAIRES')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.chiffre_affaires = value;
-          console.log(`✅ Set chiffre_affaires = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('TE|Production stockée')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.production_stockee = value;
-          console.log(`✅ Set production_stockee = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('TF|Production immobilisée')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.production_immobilisee = value;
-          console.log(`✅ Set production_immobilisee = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('TG|Subventions d\'exploitation')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.subvention_exploitation = value;
-          console.log(`✅ Set subvention_exploitation = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('TH|Autres produits')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.autres_produits = value;
-          console.log(`✅ Set autres_produits = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('TI|Transferts de charges d\'exploitation')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.transferts_charges = value;
-          console.log(`✅ Set transferts_charges = ${value}`);
-        }
-      }
-      
-      // CHARGES section
-      if (cleanLine.includes('RC|Achats de matières premières')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.achats_matieres = Math.abs(value);
-          console.log(`✅ Set achats_matieres = ${data.achats_matieres}`);
-        }
-      }
-      
-      if (cleanLine.includes('RD|Variation de stocks de stocks de matières')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.variation_stocks_matieres = value;
-          console.log(`✅ Set variation_stocks_matieres = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('RE|Autres achats')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.autres_achats = Math.abs(value);
-          console.log(`✅ Set autres_achats = ${data.autres_achats}`);
-        }
-      }
-      
-      if (cleanLine.includes('RF|Variation de stocks d\'autres approvisionnements')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.variation_stocks_approvisionnements = value;
-          console.log(`✅ Set variation_stocks_approvisionnements = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('RG|Transports')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.transports = Math.abs(value);
-          console.log(`✅ Set transports = ${data.transports}`);
-        }
-      }
-      
-      if (cleanLine.includes('RH|Services extérieurs')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.services_exterieurs = Math.abs(value);
-          console.log(`✅ Set services_exterieurs = ${data.services_exterieurs}`);
-        }
-      }
-      
-      if (cleanLine.includes('RI|Impôts et taxes')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.impots_taxes = Math.abs(value);
-          console.log(`✅ Set impots_taxes = ${data.impots_taxes}`);
-        }
-      }
-      
-      if (cleanLine.includes('RJ|Autres charges')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.autres_charges = Math.abs(value);
-          console.log(`✅ Set autres_charges = ${data.autres_charges}`);
-        }
-      }
-      
-      if (cleanLine.includes('XC|VALEUR AJOUTEE')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.valeur_ajoutee = value;
-          console.log(`✅ Set valeur_ajoutee = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('RK|Charges de personnel')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.charges_personnel = Math.abs(value);
-          console.log(`✅ Set charges_personnel = ${data.charges_personnel}`);
-        }
-      }
-      
-      if (cleanLine.includes('XD|EXCEDENT BRUT D\'EXPLOITATION')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.excedent_brut_exploitation = value;
-          console.log(`✅ Set excedent_brut_exploitation = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('TJ|Reprises d\'amortissements')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.reprises_amortissements = value;
-          console.log(`✅ Set reprises_amortissements = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('RL|Dotations aux amortissements')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.dotations_amortissements = Math.abs(value);
-          console.log(`✅ Set dotations_amortissements = ${data.dotations_amortissements}`);
-        }
-      }
-      
-      if (cleanLine.includes('XE|RESULTAT D\'EXPLOITATION')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.resultat_exploitation = value;
-          console.log(`✅ Set resultat_exploitation = ${value}`);
-        }
-      }
-      
-      // RESULTAT FINANCIER section
-      if (cleanLine.includes('TK|Revenus financiers')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.revenus_financiers = value;
-          console.log(`✅ Set revenus_financiers = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('RM|Frais financiers')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.frais_financiers = Math.abs(value);
-          console.log(`✅ Set frais_financiers = ${data.frais_financiers}`);
-        }
-      }
-      
-      if (cleanLine.includes('XF|RESULTAT FINANCIER')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.resultat_financier = value;
-          console.log(`✅ Set resultat_financier = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('XG|RESULTAT DES ACTIVITES ORDINAIRES')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.resultat_activites_ordinaires = value;
-          console.log(`✅ Set resultat_activites_ordinaires = ${value}`);
-        }
-      }
-      
-      // RESULTAT EXCEPTIONNEL section
-      if (cleanLine.includes('TN|Produits des cessions d\'immobilisations')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.produits_cessions = value;
-          console.log(`✅ Set produits_cessions = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('TO|Autres produits H.A.O.')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.autres_produits_hao = value;
-          console.log(`✅ Set autres_produits_hao = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('RO|Valeurs comptables des cessions')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.valeurs_comptables_cessions = Math.abs(value);
-          console.log(`✅ Set valeurs_comptables_cessions = ${data.valeurs_comptables_cessions}`);
-        }
-      }
-      
-      if (cleanLine.includes('RP|Autres charges H.A.O.')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.autres_charges_hao = Math.abs(value);
-          console.log(`✅ Set autres_charges_hao = ${data.autres_charges_hao}`);
-        }
-      }
-      
-      if (cleanLine.includes('XH|RESULTAT HORS ACTIVITES ORDINAIRES')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.resultat_hors_activites_ordinaires = value;
-          console.log(`✅ Set resultat_hors_activites_ordinaires = ${value}`);
-        }
-      }
-      
-      if (cleanLine.includes('RQ|Participation des travailleurs')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.participation_travailleurs = Math.abs(value);
-          console.log(`✅ Set participation_travailleurs = ${data.participation_travailleurs}`);
-        }
-      }
-      
-      if (cleanLine.includes('RS|Impôts sur le résultat')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.impots_benefice = Math.abs(value);
-          console.log(`✅ Set impots_benefice = ${data.impots_benefice}`);
-        }
-      }
-      
-      if (cleanLine.includes('XI|RESULTAT NET')) {
-        const value = this.extractCurrentYearValue(cleanLine);
-        if (value !== null) {
-          data.resultat_net = value;
-          console.log(`✅ Set resultat_net = ${value}`);
-        }
-      }
-    }
-    
-    console.log(`✅ Parsed ${Object.keys(data).length} compte de résultat fields`);
-    return data;
+    const v = ((...l: string[]) => this.cr(text, ...l));
+    return {
+      ventes_marchandises:            v('Ventes de marchandises'),
+      achats_marchandises:            v('Achats de marchandises'),
+      variation_stocks_marchandises:  v('Variation de stocks de marchandises'),
+      marge_brute_marchandises:       v('MARGE BRUTE SUR MARCHANDISES', 'MARGE COMMERCIALE'),
+      ventes_produits_fabriques:      v('Ventes de produits fabriques', 'Ventes de produits finis'),
+      travaux_services:               v('Travaux', 'services vendus'),
+      produits_accessoires:           v('Produits accessoires'),
+      chiffre_affaires:               v('CHIFFRE D\'AFFAIRES', 'CHIFFRE AFFAIRES'),
+      production_stockee:             v('Production stockee', 'Production stockée'),
+      production_immobilisee:         v('Production immobilisee', 'Production immobilisée'),
+      subvention_exploitation:        v('Subvention d\'exploitation'),
+      autres_produits:                v('Autres produits'),
+      transferts_charges:             v('Transferts de charges d\'exploitation'),
+      achats_matieres_premieres:      v('Achats de matieres premieres', 'Achats de matières premières'),
+      variation_stocks_mp:            v('Variation de stocks de matieres', 'Variation de stocks de matières'),
+      autres_achats:                  v('Autres achats'),
+      transports:                     v('Transports'),
+      services_exterieurs:            v('Services exterieurs', 'Services extérieurs'),
+      impots_taxes:                   v('Impots et taxes', 'Impôts et taxes'),
+      autres_charges:                 v('Autres charges'),
+      valeur_ajoutee:                 v('VALEUR AJOUTEE', 'VALEUR AJOUTÉE'),
+      charges_personnel:              v('Charges de personnel'),
+      excedent_brut_exploitation:     v('EXCEDENT BRUT D\'EXPLOITATION', 'EXCEDENT BRUT'),
+      reprises_amortissements:        v('Reprises d\'amortissements'),
+      dotations_amortissements:       v('Dotations aux amortissements'),
+      resultat_exploitation:          v('RESULTAT D\'EXPLOITATION', 'RÉSULTAT D\'EXPLOITATION'),
+      revenus_financiers:             v('Revenus financiers'),
+      frais_financiers:               v('Frais financiers'),
+      resultat_financier:             v('RESULTAT FINANCIER', 'RÉSULTAT FINANCIER'),
+      resultat_courant:               v('RESULTAT DES ACTIVITES ORDINAIRES', 'RESULTAT COURANT'),
+      resultat_hao:                   v('RESULTAT HORS ACTIVITES ORDINAIRES', 'RESULTAT HAO'),
+      participation_travailleurs:     v('Participation des travailleurs'),
+      impots_resultat:                v('Impots sur le resultat', 'Impôts sur le résultat'),
+      resultat_net:                   v('RESULTAT NET', 'RÉSULTAT NET'),
+    };
   }
-  
-  /**
-   * Parse tableau de flux de trésorerie data - looking for 31/12/N column
-   */
+
   private parseTableauFluxData(text: string): ExtractedFinancialData {
-    console.log('📊 Parsing tableau de flux data...');
-    const data: ExtractedFinancialData = {};
-    const lines = text.split('\n');
-    
-    for (const line of lines) {
-      const cleanLine = line.trim();
-      if (!cleanLine) continue;
-      
-      // Look for key cash flow items with 31/12/N column
-      if (cleanLine.includes('Flux de trésorerie provenant des activités opérationnelles')) {
-        const value = this.extractValueFromLine(cleanLine);
-        if (value !== null) data.flux_activites_operationnelles = value;
-      }
-      
-      if (cleanLine.includes('Flux de trésorerie provenant des activités d\'investissement')) {
-        const value = this.extractValueFromLine(cleanLine);
-        if (value !== null) data.flux_activites_investissement = value;
-      }
-      
-      if (cleanLine.includes('Flux de trésorerie provenant des activités de financement')) {
-        const value = this.extractValueFromLine(cleanLine);
-        if (value !== null) data.flux_activites_financement = value;
-      }
-      
-      if (cleanLine.includes('VARIATION DE LA TRESORERIE NETTE')) {
-        const value = this.extractValueFromLine(cleanLine);
-        if (value !== null) data.variation_tresorerie_nette = value;
-      }
-    }
-    
-    console.log(`✅ Parsed ${Object.keys(data).length} tableau de flux fields`);
-    return data;
-  }
-  
-  /**
-   * Extract value from ACTIF section (column 6 - Net under 31/12/N)
-   * Handles lines like: "AZ|TOTAL ACTIF IMMOBILISE||237854045|236969499|884546|2133691|DF|TOTAL RESSOURCES STABLES||375947354|373870235"
-   */
-  private extractValueFromActifSection(line: string): number | null {
-    console.log(`🔍 Extracting from ACTIF section column 4 (Net 31/12/N): "${line}"`);
-    
-    const columns = line.split('|').map(col => col.trim());
-    console.log(`📊 Columns: [${columns.map((c, i) => `${i}:"${c}"`).join(', ')}]`);
-    
-    // Target column 4 specifically (Net 31/12/N - current year net for ACTIF)
-    // Structure: REF|LABEL|Brut N(col2)|Brut N-1(col3)|Net N(col4)|Net N-1(col5)|...
-    if (columns.length > 4) {
-      const col = columns[4]; // Column 4 (0-indexed as 4) - Net 31/12/N
-      if (col && col !== '' && col !== '-' && col !== '0') {
-        const numberMatch = col.match(/^(-?\d+(?:\s\d{3})*)$/);
-        if (numberMatch) {
-          const cleanNumber = numberMatch[1].replace(/\s/g, '');
-          const numericValue = parseInt(cleanNumber, 10);
-          if (!isNaN(numericValue) && Math.abs(numericValue) > 0) {
-            console.log(`💰 Found ACTIF value: ${numericValue} in column 4 (Net 31/12/N - original: "${col}")`);
-            return numericValue;
-          }
-        }
-      }
-    }
-    
-    console.log(`❌ No ACTIF value found in column 4`);
-    return null;
+    const v = ((...l: string[]) => this.cr(text, ...l));
+    return {
+      tresorerie_debut_periode:                 v('Tresorerie nette au 1er Janvier', 'Tresorerie nette au 1er janvier'),
+      capacite_autofinancement:                 v('Capacite d\'autofinancement', 'CAFG'),
+      flux_tresorerie_activites_operationnelles: v('activites operationnelles', 'activités opérationnelles', 'FLUX OPERATIONNELS'),
+      flux_tresorerie_activites_investissement:  v('operations d\'investissement', 'activites d\'investissement'),
+      flux_tresorerie_activites_financement:     v('activites de financement', 'activités de financement'),
+      variation_tresorerie:                     v('VARIATION DE LA TRESORERIE NETTE', 'VARIATION TRESORERIE'),
+      tresorerie_fin_periode:                   v('Tresorerie nette au 31 Decembre', 'Tresorerie nette au 31 décembre'),
+      flux_activites_operationnelles:           v('activites operationnelles', 'FLUX OPERATIONNELS'),
+      flux_activites_investissement:            v('operations d\'investissement'),
+      flux_activites_financement:               v('activites de financement'),
+      variation_tresorerie_nette:               v('VARIATION DE LA TRESORERIE NETTE'),
+    };
   }
 
-  /**
-   * Extract current year value from compte de résultat line (column 5 - 31/12/N)
-   * Targets column 5 specifically, not NOTE column (column 4)
-   */
-  private extractCurrentYearValue(line: string): number | null {
-    console.log(`🚀 EXTRACT CURRENT YEAR VALUE CALLED`);
-    console.log(`🔍 Extracting current year value from column 5 (31/12/N): "${line}"`);
-    
-    const columns = line.split('|').map(col => col.trim());
-    console.log(`📊 Columns: [${columns.map((c, i) => `${i}:"${c}"`).join(', ')}]`);
-    console.log(`🎯 Target column 5 content: "${columns[5]}"`);
-    console.log(`❌ Column 4 (NOTE) content: "${columns[4]}"`); 
-    
-    // Target column 5 specifically (31/12/N, not NOTE)
-    // Actual OCR structure: REF|LIBELLES|A|Extra|NOTE|31/12/N|31/12/N-1
-    // Indices:              0  |    1   |2|  3  | 4  |  5   |   6
-    if (columns.length > 5) {
-      const col = columns[5]; // Column 5 (0-indexed) = 31/12/N
-      if (col && col !== '' && col !== '-' && col !== '0' && !col.toLowerCase().includes('note')) {
-        // Handle any numeric format (with/without spaces, positive/negative)
-        const numberMatch = col.match(/^-?\d[\d\s]*$/);
-        if (numberMatch) {
-          const cleanNumber = col.replace(/\s/g, '');
-          const numericValue = parseInt(cleanNumber, 10);
-          if (!isNaN(numericValue) && Math.abs(numericValue) > 0) {
-            console.log(`💰 Found current year value: ${numericValue} in column 5 (31/12/N) (original: "${col}")`);
-            return numericValue;
-          }
-        }
-      }
-    }
-    
-    console.log(`❌ No current year value found in column 5 (31/12/N)`);
-    return null;
-  }
-
-  /**
-   * Extract value from PASSIF section (column 11 - Net under exercice au 31/12/N) 
-   * Looks for values in column 11 specifically
-   */
-  private extractValueFromPassifSection(line: string): number | null {
-    console.log(`🔍 Extracting from PASSIF section column 9 (31/12/N): "${line}"`);
-    
-    const columns = line.split('|').map(col => col.trim());
-    console.log(`📊 Columns: [${columns.map((c, i) => `${i}:"${c}"`).join(', ')}]`);
-    
-    // Target column 9 specifically (Net under exercice au 31/12/N for PASSIF)
-    // Structure: ACTIF_REF|ACTIF_DATA|...|PASSIF_REF|PASSIF_LABEL|PASSIF_EXTRA|31/12/N|31/12/N-1
-    if (columns.length > 9) {
-      const col = columns[9]; // Column 9 (0-indexed as 9) - 31/12/N current year
-      if (col && col !== '' && col !== '-' && col !== '0') {
-        const numberMatch = col.match(/^(-?\d+(?:\s\d{3})*)$/);
-        if (numberMatch) {
-          const cleanNumber = numberMatch[1].replace(/\s/g, '');
-          const numericValue = parseInt(cleanNumber, 10);
-          if (!isNaN(numericValue) && Math.abs(numericValue) > 0) {
-            console.log(`💰 Found PASSIF value: ${numericValue} in column 9 (31/12/N - original: "${col}")`);
-            return numericValue;
-          }
-        }
-      }
-    }
-    
-    console.log(`❌ No PASSIF value found in column 9`);
-    return null;
-  }
-
-  /**
-   * Extract numeric value from a table line (with pipe separators)
-   */
-  private extractValueFromLine(line: string): number | null {
-    console.log(`🔍 Parsing line: "${line}"`);
-    
-    // All formats now use pipe separators for consistency
-    const columns = line.split('|').map(col => col.trim());
-    console.log(`📊 Columns: [${columns.map((c, i) => `${i}:"${c}"`).join(', ')}]`);
-    
-    // Look for numeric values in appropriate columns (prioritize later columns for Net values)
-    const possibleValues: number[] = [];
-    
-    for (let i = 1; i < columns.length; i++) {
-      const col = columns[i];
-      
-      // Skip empty columns or columns with just dashes/dots
-      if (!col || col === '' || col === '-' || col === '.' || col === 'Note') continue;
-      
-      // Look for numeric values (handle French thousand separators with spaces)
-      // Pattern: optional minus, digits with optional spaces for thousands, more digits
-      const numberMatch = col.match(/^(-?\d+(?:\s\d{3})*)$/);
-      if (numberMatch) {
-        // Remove spaces (French thousand separators) and convert
-        const cleanNumber = numberMatch[1].replace(/\s/g, '');
-        const numericValue = parseInt(cleanNumber, 10);
-        
-        if (!isNaN(numericValue) && Math.abs(numericValue) > 0) {
-          console.log(`💰 Found value: ${numericValue} in column ${i} (original: "${col}")`);
-          possibleValues.push(numericValue);
-        }
-      }
-    }
-    
-    // Return the last (rightmost) numeric value found, as it's likely the Net/current year value
-    if (possibleValues.length > 0) {
-      const selectedValue = possibleValues[possibleValues.length - 1];
-      console.log(`✅ Selected value: ${selectedValue}`);
-      return selectedValue;
-    }
-    
-    console.log(`❌ No numeric value found in line`);
-    return null;
-  }
 
   convertToOptimusFormat(extractedData: ExtractedFinancialData): any {
     console.log('🔄 Converting to OptimusCredit format...');

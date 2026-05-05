@@ -134,22 +134,38 @@ router.get('/dashboard', async (req: Request, res: Response) => {
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       );
 
-      const steps = sortedSteps.map((step, index) => {
+      // Noms d'étapes de création qui ne se mesurent pas comme durée de traitement
+      const CREATION_STEP_NAMES = new Set(['Application Créée', 'application_created', 'Demande Soumise']);
+
+      // Trier les étapes complétées par leur completedAt réel (ordre chronologique fiable)
+      // Les étapes seedées ont toutes le même createdAt (date d'insert) mais des completedAt distincts
+      const completedByTime = sortedSteps
+        .filter(s => s.completedAt && !CREATION_STEP_NAMES.has(s.stepName))
+        .sort((a, b) => new Date(a.completedAt!).getTime() - new Date(b.completedAt!).getTime());
+
+      // Point de départ fiable : app.createdAt si antérieur à la 1re étape, sinon la 1re étape elle-même
+      // (fallback nécessaire quand createdAt vaut la date d'insert DB > completedAt des étapes)
+      const appCreatedMs = new Date(app.createdAt).getTime();
+      const firstCompletedMs = completedByTime.length > 0
+        ? new Date(completedByTime[0].completedAt!).getTime()
+        : appCreatedMs;
+      const effectiveStart = new Date(Math.min(appCreatedMs, firstCompletedMs));
+
+      const steps = sortedSteps.map((step) => {
         let duration: number | undefined = undefined;
 
-        // Skip "Application Créée" step for duration calculations - this is just submission
-        if (step.completedAt && step.stepName !== 'Application Créée') {
-          if (step.stepName === 'Vérification Documents') {
-            // First measured step: working time from application creation to docs verification
-            const workingTime = calculateWorkingTime(new Date(app.createdAt), step.completedAt);
-            duration = workingTime.totalWorkingMinutes * 60 * 1000; // Convert to milliseconds for compatibility
+        if (step.completedAt && !CREATION_STEP_NAMES.has(step.stepName)) {
+          const chronoIdx = completedByTime.findIndex(s => s.id === step.id);
+
+          if (chronoIdx > 0) {
+            // Durée = temps ouvré entre la fin de l'étape précédente et la fin de celle-ci
+            const prevStep = completedByTime[chronoIdx - 1];
+            const workingTime = calculateWorkingTime(prevStep.completedAt!, step.completedAt);
+            duration = workingTime.totalWorkingMinutes * 60 * 1000;
           } else {
-            // Subsequent steps: working time from previous step completion to current step completion
-            const previousStep = sortedSteps[index - 1];
-            if (previousStep && previousStep.completedAt) {
-              const workingTime = calculateWorkingTime(previousStep.completedAt, step.completedAt);
-              duration = workingTime.totalWorkingMinutes * 60 * 1000; // Convert to milliseconds for compatibility
-            }
+            // Première étape mesurable : durée depuis le point de départ effectif
+            const workingTime = calculateWorkingTime(effectiveStart, step.completedAt);
+            duration = workingTime.totalWorkingMinutes * 60 * 1000;
           }
         }
 
@@ -162,28 +178,23 @@ router.get('/dashboard', async (req: Request, res: Response) => {
         };
       });
 
-      // Calculate total duration for completed applications using working time
-      // Total duration = working time from application start to last completed step
+      // Durée totale = temps ouvré du point de départ effectif jusqu'à la dernière étape clôturée
+      // Calculé pour APPROVED, REJECTED et DISBURSED
       let totalDuration: number | undefined = undefined;
-      if (app.status === 'APPROVED' || app.status === 'REJECTED') {
-        const lastCompletedStep = steps
-          .filter(s => s.completedAt)
-          .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime())[0];
-        
-        if (lastCompletedStep) {
-          const totalWorkingTime = calculateWorkingTime(new Date(app.createdAt), new Date(lastCompletedStep.completedAt!));
-          totalDuration = totalWorkingTime.totalWorkingMinutes * 60 * 1000; // Convert to milliseconds for compatibility
-        }
+      if (['APPROVED', 'REJECTED', 'DISBURSED'].includes(app.status) && completedByTime.length > 0) {
+        const lastCompleted = completedByTime[completedByTime.length - 1];
+        const totalWorkingTime = calculateWorkingTime(effectiveStart, new Date(lastCompleted.completedAt!));
+        totalDuration = totalWorkingTime.totalWorkingMinutes * 60 * 1000;
       }
 
       return {
         id: app.id,
         clientId: app.clientId,
         applicationNumber: app.applicationNumber,
-        branch: app.client.creator.department || 'Non spécifié',
+        branch: app.creator.department || app.client.creator.department || 'Non spécifié',
         createdByName: app.creator.name,
         status: app.status.toLowerCase(),
-        finalDecision: app.status === 'APPROVED' ? 'approved' : 
+        finalDecision: (app.status === 'APPROVED' || app.status === 'DISBURSED') ? 'approved' :
                       app.status === 'REJECTED' ? 'rejected' : undefined,
         requestedAmount: Number(app.amount),
         totalStartedAt: app.createdAt.toISOString(),
@@ -243,15 +254,42 @@ router.get('/dashboard', async (req: Request, res: Response) => {
 // GET /api/analytics/branches - Get branch performance data
 router.get('/branches', async (req: Request, res: Response) => {
   try {
+    const { timeRange, startDate, endDate } = req.query;
+
+    // Build date filter for applications
+    let appDateFilter: any = {};
+    if (timeRange && timeRange !== '') {
+      const now = new Date();
+      let filterStartDate: Date = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+      switch (timeRange) {
+        case '1month':  filterStartDate = new Date(now.getFullYear(), now.getMonth() - 1,  now.getDate()); break;
+        case '3months': filterStartDate = new Date(now.getFullYear(), now.getMonth() - 3,  now.getDate()); break;
+        case '6months': filterStartDate = new Date(now.getFullYear(), now.getMonth() - 6,  now.getDate()); break;
+        case '1year':   filterStartDate = new Date(now.getFullYear() - 1, now.getMonth(),  now.getDate()); break;
+        case 'custom':
+          if (startDate && endDate) {
+            const fd = new Date(startDate as string);
+            const td = new Date(endDate as string);
+            td.setHours(23, 59, 59, 999);
+            appDateFilter = { gte: fd, lte: td };
+          }
+          break;
+      }
+      if (timeRange !== 'custom') {
+        appDateFilter = { gte: filterStartDate, lte: now };
+      }
+    }
+
     const branches = await prisma.user.findMany({
       where: {
         department: { not: null },
-        role: 'ACCOUNT_MANAGER'
+        role: 'CHARGE_AFFAIRES'
       },
       select: {
         name: true,
         department: true,
         createdApplications: {
+          where: Object.keys(appDateFilter).length > 0 ? { createdAt: appDateFilter } : undefined,
           select: {
             id: true,
             amount: true,
@@ -262,23 +300,25 @@ router.get('/branches', async (req: Request, res: Response) => {
       }
     });
 
-    const branchData = branches.map(branch => {
-      const applications = branch.createdApplications;
-      const approved = applications.filter(a => a.status === 'APPROVED').length;
-      const total = applications.length;
-      const volume = applications.reduce((sum, a) => sum + Number(a.amount), 0);
-      
-      return {
-        branch: branch.department,
-        manager: branch.name,
-        applications: total,
-        approved,
-        rejected: applications.filter(a => a.status === 'REJECTED').length,
-        pending: applications.filter(a => !['APPROVED', 'REJECTED'].includes(a.status)).length,
-        volume,
-        performance: total > 0 ? Math.round((approved / total) * 100) : 0
-      };
-    });
+    const branchData = branches
+      .filter(branch => branch.createdApplications.length > 0)
+      .map(branch => {
+        const applications = branch.createdApplications;
+        const approved = applications.filter(a => a.status === 'APPROVED').length;
+        const total = applications.length;
+        const volume = applications.reduce((sum, a) => sum + Number(a.amount), 0);
+
+        return {
+          branch: branch.department,
+          manager: branch.name,
+          applications: total,
+          approved,
+          rejected: applications.filter(a => a.status === 'REJECTED').length,
+          pending: applications.filter(a => !['APPROVED', 'REJECTED'].includes(a.status)).length,
+          volume,
+          performance: total > 0 ? Math.round((approved / total) * 100) : 0
+        };
+      });
 
     res.json({
       success: true,
@@ -293,17 +333,38 @@ router.get('/branches', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/analytics/managers - Get account manager performance data  
+// GET /api/analytics/managers - Get account manager performance data
 router.get('/managers', async (req: Request, res: Response) => {
   try {
-    const { branch } = req.query;
-    
-    const whereClause: any = {
-      role: 'ACCOUNT_MANAGER'
-    };
-    
+    const { branch, timeRange, startDate, endDate } = req.query;
+
+    const whereClause: any = { role: 'CHARGE_AFFAIRES' };
     if (branch && branch !== 'all') {
       whereClause.department = branch;
+    }
+
+    // Build date filter for applications
+    let appDateFilter: any = {};
+    if (timeRange && timeRange !== '') {
+      const now = new Date();
+      let filterStartDate: Date = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+      switch (timeRange) {
+        case '1month':  filterStartDate = new Date(now.getFullYear(), now.getMonth() - 1,  now.getDate()); break;
+        case '3months': filterStartDate = new Date(now.getFullYear(), now.getMonth() - 3,  now.getDate()); break;
+        case '6months': filterStartDate = new Date(now.getFullYear(), now.getMonth() - 6,  now.getDate()); break;
+        case '1year':   filterStartDate = new Date(now.getFullYear() - 1, now.getMonth(),  now.getDate()); break;
+        case 'custom':
+          if (startDate && endDate) {
+            const fd = new Date(startDate as string);
+            const td = new Date(endDate as string);
+            td.setHours(23, 59, 59, 999);
+            appDateFilter = { gte: fd, lte: td };
+          }
+          break;
+      }
+      if (timeRange !== 'custom') {
+        appDateFilter = { gte: filterStartDate, lte: now };
+      }
     }
 
     const managers = await prisma.user.findMany({
@@ -313,6 +374,7 @@ router.get('/managers', async (req: Request, res: Response) => {
         name: true,
         department: true,
         createdApplications: {
+          where: Object.keys(appDateFilter).length > 0 ? { createdAt: appDateFilter } : undefined,
           select: {
             id: true,
             amount: true,

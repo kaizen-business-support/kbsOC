@@ -21,6 +21,7 @@ import {
   TableRow,
   Paper,
   Link,
+  Button,
 } from '@mui/material';
 import {
   Description as DocumentIcon,
@@ -136,7 +137,7 @@ const sectoralReferences = [
     sector: "Commerce",
     source: "BCEAO - Rapport Conditions de Banque UEMOA 2023",
     link: "https://www.bceao.int/fr/publications/rapport-sur-les-conditions-de-banque-dans-luemoa-2023",
-    downloadLink: "/optimus/docs/BCEAO_2023_Annual_Report.pdf",
+    downloadLink: "/docs/BCEAO_Conditions_Banque_UEMOA_2023.pdf",
     liquidite_generale: "1,0 - 1,5",
     autonomie_financiere: "20% - 35%",
     roe: "12% - 20%",
@@ -146,7 +147,7 @@ const sectoralReferences = [
     sector: "Industrie",
     source: "BCEAO - Commission Bancaire UMOA 2023",
     link: "https://www.bceao.int/fr/publications/rapport-annuel-de-la-commission-bancaire-de-lumoa-2023",
-    downloadLink: "/optimus/docs/BCEAO_Banking_Commission_2023.pdf",
+    downloadLink: "/docs/BCEAO_Commission_Bancaire_UMOA_2023.pdf",
     liquidite_generale: "1,2 - 1,8",
     autonomie_financiere: "25% - 45%",
     roe: "8% - 15%",
@@ -154,9 +155,9 @@ const sectoralReferences = [
   },
   {
     sector: "Services",
-    source: "FMI - Indicateurs de Solidité Financière",
+    source: "FMI - Guide de Compilation des ISF 2019",
     link: "https://www.imf.org/en/Data/Statistics/FSI-guide",
-    downloadLink: "/optimus/docs/IMF_FSI_Compilation_Guide_2019.pdf",
+    downloadLink: "/docs/FMI_Guide_ISF_2019.pdf",
     liquidite_generale: "1,5 - 2,5",
     autonomie_financiere: "30% - 60%",
     roe: "15% - 25%",
@@ -164,9 +165,9 @@ const sectoralReferences = [
   },
   {
     sector: "Agriculture",
-    source: "Banque Mondiale - Enquêtes Entreprises",
+    source: "Banque Mondiale - Manuel Enquêtes Entreprises",
     link: "https://www.enterprisesurveys.org/en/data",
-    downloadLink: "/optimus/docs/World_Bank_Enterprise_Surveys_Manual.pdf",
+    downloadLink: "/docs/WorldBank_Enterprise_Surveys_Manual.pdf",
     liquidite_generale: "1,3 - 2,0",
     autonomie_financiere: "35% - 55%",
     roe: "10% - 18%",
@@ -242,48 +243,45 @@ const bceaoNorms = [
   }
 ];
 
-// PDF Preview Component
-const PDFPreview: React.FC<{ pdfUrl: string; isOpen: boolean; sector: string }> = ({ pdfUrl, isOpen, sector }) => {
+// PDF Preview Component — PDFs servis en local (public/docs/)
+const PDFPreview: React.FC<{ pdfUrl: string; isOpen: boolean; sector: string; officialLink?: string }> = ({ pdfUrl, isOpen, sector, officialLink }) => {
   const [loadError, setLoadError] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleIframeError = () => {
-    setLoadError(true);
-    console.warn(`Failed to load PDF preview for ${sector}`);
-  };
-
   return (
     <Box sx={{ mt: 2, mb: 2, mx: 2, border: '1px solid #e0e0e0', borderRadius: 1, overflow: 'hidden' }}>
-      <Box sx={{ p: 2, bgcolor: 'grey.100', borderBottom: '1px solid #e0e0e0' }}>
+      <Box sx={{ p: 1.5, bgcolor: 'grey.100', borderBottom: '1px solid #e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <PdfIcon color="primary" />
-          Prévisualisation PDF - {sector}
+          <PdfIcon color="primary" fontSize="small" />
+          Prévisualisation PDF — {sector}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
-          Document de référence sectorielle • Cliquez sur "Télécharger PDF" pour ouvrir dans un nouvel onglet
-        </Typography>
+        <Button size="small" variant="outlined" href={pdfUrl} target="_blank" rel="noopener noreferrer" startIcon={<PdfIcon />} sx={{ fontSize: '0.72rem' }}>
+          Télécharger
+        </Button>
       </Box>
-      <Box sx={{ height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <Box sx={{ height: '520px', bgcolor: '#f5f5f5' }}>
         {loadError ? (
-          <Box sx={{ textAlign: 'center', p: 3 }}>
-            <PdfIcon sx={{ fontSize: 48, color: 'grey.400', mb: 2 }} />
-            <Typography variant="body2" color="text.secondary">
-              Impossible de charger la prévisualisation PDF
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2, p: 3 }}>
+            <PdfIcon sx={{ fontSize: 52, color: 'grey.400' }} />
+            <Typography variant="body2" color="text.secondary" textAlign="center">
+              Impossible de charger la prévisualisation.<br />
+              Utilisez le bouton <strong>"Télécharger"</strong> ci-dessus.
             </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Utilisez le lien "Télécharger PDF" ci-dessus pour accéder au document
-            </Typography>
+            {officialLink && (
+              <Button variant="outlined" size="small" href={officialLink} target="_blank" rel="noopener noreferrer">
+                Source officielle
+              </Button>
+            )}
           </Box>
         ) : (
-          <iframe
-            src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+          <embed
+            src={`${pdfUrl}#toolbar=1&navpanes=0&view=FitH`}
+            type="application/pdf"
             width="100%"
             height="100%"
-            style={{ border: 'none' }}
-            title={`PDF Preview - ${sector}`}
-            onError={handleIframeError}
-            onLoad={() => setLoadError(false)}
+            style={{ border: 'none', display: 'block' }}
+            onError={() => setLoadError(true)}
           />
         )}
       </Box>
@@ -1545,10 +1543,11 @@ export const DocumentationPage: React.FC<DocumentationPageProps> = ({ onNavigate
                         {expandedSectors[ref.sector] && ref.downloadLink && (
                           <TableRow>
                             <TableCell colSpan={7} sx={{ p: 0, border: 'none' }}>
-                              <PDFPreview 
-                                pdfUrl={ref.downloadLink} 
+                              <PDFPreview
+                                pdfUrl={ref.downloadLink}
                                 isOpen={expandedSectors[ref.sector]}
                                 sector={ref.sector}
+                                officialLink={ref.link}
                               />
                             </TableCell>
                           </TableRow>

@@ -1,20 +1,25 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
+import { triggerNotification } from '../services/notificationService';
+import { createWorkflowStepsForApplication } from '../services/workflowService';
+import { authenticate, requireCompany } from '../middleware/auth';
 
 const router = Router();
+router.use(authenticate);
+router.use(requireCompany);
 
 // GET /api/applications - Get applications with filters
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { status, branch, dateFrom, dateTo, userId } = req.query;
-    
+    const { status, branch, dateFrom, dateTo, userId, assignedAnalystId } = req.query;
+
     // Build filter conditions
-    const whereConditions: any = {};
-    
+    const whereConditions: any = { companyId: req.companyId };
+
     if (status && status !== 'all') {
       whereConditions.status = (status as string).toUpperCase();
     }
-    
+
     if (branch && branch !== 'all') {
       whereConditions.client = {
         creator: {
@@ -22,7 +27,7 @@ router.get('/', async (req: Request, res: Response) => {
         }
       };
     }
-    
+
     if (dateFrom || dateTo) {
       whereConditions.createdAt = {};
       if (dateFrom) {
@@ -32,9 +37,19 @@ router.get('/', async (req: Request, res: Response) => {
         whereConditions.createdAt.lte = new Date(dateTo as string);
       }
     }
-    
+
     if (userId) {
       whereConditions.createdBy = userId as string;
+    }
+
+    if (assignedAnalystId) {
+      whereConditions.workflowSteps = {
+        some: {
+          role: 'ANALYSTE_RISQUES',
+          assigneeId: assignedAnalystId as string,
+          status: { in: ['PENDING', 'IN_REVIEW'] },
+        }
+      };
     }
 
     const applications = await prisma.creditApplication.findMany({
@@ -51,28 +66,30 @@ router.get('/', async (req: Request, res: Response) => {
     });
 
     // Transform to match frontend expectations
-    const applicationData = applications.map(app => ({
-      id: app.id,
-      clientName: app.client.companyName,
-      clientId: app.clientId,
-      amount: Number(app.amount),
-      currency: app.currency || 'XOF',
-      status: app.status.toLowerCase(),
-      accountManager: app.creator.name,
-      createdAt: app.createdAt.toISOString(),
-      updatedAt: app.updatedAt.toISOString(),
-      purpose: app.purpose || '',
-      duration: app.durationMonths || 0,
-      durationMonths: app.durationMonths || 0,
-      proposedRate: app.proposedRate ? Number(app.proposedRate) : null,
-      collateralType: app.collateralType,
-      collateralValue: app.collateralValue ? Number(app.collateralValue) : null,
-      repaymentSchedule: app.repaymentSchedule?.toLowerCase(),
-      creditType: app.creditType,
-      workflowSteps: app.workflowSteps, // Include workflow steps for checking completion status
-      analysisResults: app.analysisResults, // Include analysis results with financial data
-      applicationNumber: app.applicationNumber
-    }));
+    const applicationData = applications
+      .filter(app => app.client && app.creator)
+      .map(app => ({
+        id: app.id,
+        clientName: app.client!.companyName,
+        clientId: app.clientId,
+        amount: Number(app.amount),
+        currency: app.currency || 'XOF',
+        status: app.status.toLowerCase(),
+        accountManager: app.creator!.name,
+        createdAt: app.createdAt.toISOString(),
+        updatedAt: app.updatedAt.toISOString(),
+        purpose: app.purpose || '',
+        duration: app.durationMonths || 0,
+        durationMonths: app.durationMonths || 0,
+        proposedRate: app.proposedRate ? Number(app.proposedRate) : null,
+        collateralType: app.collateralType,
+        collateralValue: app.collateralValue ? Number(app.collateralValue) : null,
+        repaymentSchedule: app.repaymentSchedule?.toLowerCase(),
+        creditType: app.creditType,
+        workflowSteps: app.workflowSteps,
+        analysisResults: app.analysisResults,
+        applicationNumber: app.applicationNumber
+      }));
 
     res.json({
       success: true,
@@ -165,6 +182,7 @@ router.post('/', async (req: Request, res: Response) => {
       currency = 'XOF',
       purpose,
       durationMonths,
+      creditTypeId,
       proposedRate,
       collateralType,
       collateralValue,
@@ -175,10 +193,10 @@ router.post('/', async (req: Request, res: Response) => {
     } = req.body;
 
     // Validate required fields
-    if (!clientId || !amount || !purpose || !createdBy) {
+    if (!clientId || !amount || !purpose || !createdBy || !creditTypeId) {
       return res.status(400).json({
         success: false,
-        error: 'Les champs clientId, amount, purpose et createdBy sont obligatoires'
+        error: 'Les champs clientId, amount, purpose, createdBy et creditTypeId sont obligatoires'
       });
     }
 
@@ -207,6 +225,7 @@ router.post('/', async (req: Request, res: Response) => {
         currency,
         purpose,
         durationMonths: durationMonths || null,
+        creditTypeId: creditTypeId || null,
         proposedRate: proposedRate || null,
         collateralType: collateralType || null,
         collateralValue: collateralValue || null,
@@ -214,7 +233,8 @@ router.post('/', async (req: Request, res: Response) => {
         status: 'SUBMITTED',
         submittedAt: new Date(),
         createdBy,
-        analysisResults: analysisResults || null
+        analysisResults: analysisResults || null,
+        companyId: req.companyId
       },
       include: {
         client: true,
@@ -222,34 +242,39 @@ router.post('/', async (req: Request, res: Response) => {
       }
     });
 
-    // Create workflow steps: first two completed, credit analysis pending
-    const now = new Date();
-
-    // Step 1: Application created (completed immediately)
+    // Étape "dossier créé" — toujours complétée immédiatement par le créateur
     await prisma.workflowStep.create({
       data: {
         applicationId: application.id,
         stepName: 'application_created',
-        role: 'ACCOUNT_MANAGER',
+        role: 'CHARGE_AFFAIRES',
         assigneeId: createdBy,
         status: 'COMPLETED',
-        completedAt: now,
-        comments: 'Demande de crédit créée'
-      }
+        completedAt: new Date(),
+        comments: 'Demande de crédit soumise',
+      },
     });
 
-    // Step 2: Credit analysis (pending, assigned to analyst - includes document verification)
-    if (assignedAnalystId) {
-      await prisma.workflowStep.create({
-        data: {
-          applicationId: application.id,
-          stepName: 'credit_analysis',
-          role: 'CREDIT_ANALYST',
-          assigneeId: assignedAnalystId,
-          status: 'PENDING'
-        }
-      });
+    // Construction du circuit via la politique de crédit active (non-bloquant)
+    if (application.creditTypeId) {
+      try {
+        await createWorkflowStepsForApplication(
+          application.id,
+          application.creditTypeId,
+          Number(amount)
+        );
+        await prisma.creditApplication.update({
+          where: { id: application.id },
+          data: { status: 'UNDER_REVIEW' },
+        });
+      } catch (workflowErr: any) {
+        console.warn('[applications] Workflow non généré (politique manquante ?) :', workflowErr.message);
+        // L'application est quand même créée; le dispatching gérera l'attribution
+      }
     }
+
+    // Trigger notification (non-blocking)
+    triggerNotification('APPLICATION_SUBMITTED', application.id);
 
     res.status(201).json({
       success: true,
@@ -359,59 +384,14 @@ router.put('/:id', async (req: Request, res: Response) => {
       }
     });
 
-    // If analyst scores are provided, complete the credit_analysis workflow step
+    // Si des scores d'analyste sont fournis, compléter l'étape credit_analysis
+    // en cours, puis laisser la politique piloter la suite (pas de step hardcodé).
     if (analystScore !== undefined || financialScore !== undefined || overallScore !== undefined) {
       const now = new Date();
 
-      // Define the workflow step order
-      const WORKFLOW_STEP_ORDER = [
-        { name: 'application_created', role: 'ACCOUNT_MANAGER' },
-        { name: 'credit_analysis', role: 'CREDIT_ANALYST' }
-      ];
-
-      // Get existing workflow steps
-      const existingSteps = new Map(
-        application.workflowSteps.map(step => [step.stepName, step])
-      );
-
-      // Find the credit_analysis step index
-      const creditAnalysisIndex = WORKFLOW_STEP_ORDER.findIndex(s => s.name === 'credit_analysis');
-
-      // Create and complete all prior steps if they don't exist
-      for (let i = 0; i < creditAnalysisIndex; i++) {
-        const stepConfig = WORKFLOW_STEP_ORDER[i];
-
-        if (!existingSteps.has(stepConfig.name)) {
-          console.log(`📝 Creating missing workflow step: ${stepConfig.name}`);
-          await prisma.workflowStep.create({
-            data: {
-              applicationId: application.id,
-              stepName: stepConfig.name,
-              role: stepConfig.role as any,
-              assigneeId: application.createdBy,
-              status: 'COMPLETED',
-              completedAt: now
-            }
-          });
-        } else {
-          // Mark existing prior steps as completed if not already
-          const existingStep = existingSteps.get(stepConfig.name)!;
-          if (existingStep.status !== 'COMPLETED') {
-            console.log(`✅ Completing prior workflow step: ${stepConfig.name}`);
-            await prisma.workflowStep.update({
-              where: { id: existingStep.id },
-              data: {
-                status: 'COMPLETED',
-                completedAt: now
-              }
-            });
-          }
-        }
-      }
-
-      // Find and complete the credit_analysis workflow step
+      // Trouver l'étape credit_analysis active (PENDING ou IN_REVIEW)
       const creditAnalysisStep = application.workflowSteps.find(
-        step => step.stepName === 'credit_analysis' && step.status !== 'COMPLETED'
+        s => s.stepName === 'credit_analysis' && s.status !== 'COMPLETED'
       );
 
       if (creditAnalysisStep) {
@@ -420,32 +400,19 @@ router.put('/:id', async (req: Request, res: Response) => {
           data: {
             status: 'COMPLETED',
             completedAt: now,
-            comments: 'Analyse de crédit complétée avec succès'
-          }
+            comments: 'Analyse de crédit complétée avec succès',
+          },
         });
-        console.log('✅ Credit analysis workflow step marked as COMPLETED');
+      }
 
-        // After completing credit analysis, ALWAYS start with branch_manager_review
-        // The sequential approval chain will be handled when each level approves
-        const branchManagerLimit = await prisma.approvalLimit.findFirst({
-          where: { role: 'BRANCH_MANAGER', isActive: true }
-        });
-
-        if (branchManagerLimit) {
-          // Create the branch manager review step (first step in approval chain)
-          await prisma.workflowStep.create({
-            data: {
-              applicationId: application.id,
-              stepName: 'branch_manager_review',
-              role: 'BRANCH_MANAGER' as any,
-              status: 'PENDING',
-              createdAt: now
-            }
-          });
-          console.log(`✅ Created branch_manager_review workflow step (first in approval chain)`);
-        } else {
-          console.warn(`⚠️ No branch manager approval limit found`);
-        }
+      // Si le dossier n'a pas encore d'étapes de politique créées, les générer maintenant.
+      // Cela rattrape les dossiers soumis avant qu'une politique soit active.
+      const app = await prisma.creditApplication.findUnique({
+        where: { id },
+        select: { policyId: true, creditTypeId: true, amount: true },
+      });
+      if (!app?.policyId && app?.creditTypeId) {
+        await createWorkflowStepsForApplication(id, app.creditTypeId, Number(app.amount));
       }
     }
 

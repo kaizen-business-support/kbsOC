@@ -1,9 +1,11 @@
 import express, { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { cacheGet, cacheSet, cacheDel } from '../services/redis';
+import { prisma } from '../prismaClient';
+import { authenticate, requireCompany } from '../middleware/auth';
 
 const router = express.Router();
-const prisma = new PrismaClient();
+router.use(authenticate);
+router.use(requireCompany);
 
 const CACHE_KEY = 'cache:departments:active';
 const CACHE_TTL = 300; // 5 minutes
@@ -12,17 +14,18 @@ const CACHE_TTL = 300; // 5 minutes
 router.get('/', async (req: Request, res: Response) => {
   try {
     const { includeInactive } = req.query;
+    const cacheKey = `${CACHE_KEY}:${req.companyId}`;
 
     // Use cache only for the default (active-only) query
     if (includeInactive !== 'true') {
-      const cached = await cacheGet(CACHE_KEY);
+      const cached = await cacheGet(cacheKey);
       if (cached) {
         const departments = JSON.parse(cached);
         return res.json({ success: true, departments, data: departments });
       }
     }
 
-    const whereConditions: any = {};
+    const whereConditions: any = { companyId: req.companyId };
     if (includeInactive !== 'true') {
       whereConditions.isActive = true;
     }
@@ -33,7 +36,7 @@ router.get('/', async (req: Request, res: Response) => {
     });
 
     if (includeInactive !== 'true') {
-      await cacheSet(CACHE_KEY, JSON.stringify(departments), CACHE_TTL);
+      await cacheSet(cacheKey, JSON.stringify(departments), CACHE_TTL);
     }
 
     res.json({ success: true, departments, data: departments });
@@ -92,7 +95,8 @@ router.post('/', async (req: Request, res: Response) => {
         name,
         code,
         description,
-        isActive: isActive !== undefined ? isActive : true
+        isActive: isActive !== undefined ? isActive : true,
+        companyId: req.companyId
       }
     });
 

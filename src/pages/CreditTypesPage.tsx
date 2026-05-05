@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
-  Container,
   Typography,
   Button,
   Table,
@@ -22,16 +21,28 @@ import {
   Alert,
   Chip,
   Grid,
-  CircularProgress
+  CircularProgress,
+  Tabs,
+  Tab,
+  Checkbox,
+  Tooltip,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Business as BusinessIcon
+  Business as BusinessIcon,
+  AccountTree as WorkflowIcon,
 } from '@mui/icons-material';
 import { useUser } from '../contexts/UserContext';
-import { ApiService } from '../services/api';
+import { ApiService, creditPolicyApi } from '../services/api';
+
+const STEP_TYPES: Record<string, { label: string; color: string }> = {
+  DISPATCH:  { label: 'Dispatch',    color: '#2196f3' },
+  ANALYSIS:  { label: 'Analyse',     color: '#ff9800' },
+  APPROVAL:  { label: 'Approbation', color: '#4caf50' },
+  COMMITTEE: { label: 'Comité',      color: '#9c27b0' },
+};
 
 interface CreditType {
   id: string;
@@ -47,6 +58,21 @@ interface CreditType {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  workflowSteps?: WorkflowStepConfig[];
+}
+
+interface WorkflowStepConfig {
+  id: string;
+  creditTypeId: string;
+  stepName: string;
+  stepLabel: string;
+  role: string;
+  order: number;
+  isRequired: boolean;
+  durationDays: number;
+  description?: string;
+  conditionMinAmount?: number | null;
+  conditionMaxAmount?: number | null;
 }
 
 interface CreditTypeFormData {
@@ -62,6 +88,25 @@ interface CreditTypeFormData {
   isActive: boolean;
 }
 
+interface NewStepFormData {
+  stepName: string;
+  stepLabel: string;
+  role: string;
+  durationDays: string;
+  description: string;
+  conditionMinAmount: string;
+  conditionMaxAmount: string;
+}
+
+const ROLES = [
+  { value: 'ACCOUNT_MANAGER',    label: 'Chargé de Compte' },
+  { value: 'CREDIT_ANALYST',     label: 'Analyste Crédit' },
+  { value: 'ANALYST_SUPERVISOR', label: 'Superviseur Analyste' },
+  { value: 'BRANCH_MANAGER',     label: 'Directeur d\'Agence' },
+  { value: 'CREDIT_COMMITTEE',   label: 'Comité de Crédit' },
+  { value: 'MANAGEMENT',         label: 'Direction Générale' },
+];
+
 const emptyFormData: CreditTypeFormData = {
   name: '',
   code: '',
@@ -75,7 +120,17 @@ const emptyFormData: CreditTypeFormData = {
   isActive: true
 };
 
-export const CreditTypesPage: React.FC = () => {
+const emptyStepForm: NewStepFormData = {
+  stepName: '',
+  stepLabel: '',
+  role: '',
+  durationDays: '3',
+  description: '',
+  conditionMinAmount: '',
+  conditionMaxAmount: '',
+};
+
+export const CreditTypesPage: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   const { state: userState } = useUser();
   const [creditTypes, setCreditTypes] = useState<CreditType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +142,18 @@ export const CreditTypesPage: React.FC = () => {
   const [selectedCreditType, setSelectedCreditType] = useState<CreditType | null>(null);
   const [formData, setFormData] = useState<CreditTypeFormData>(emptyFormData);
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof CreditTypeFormData, string>>>({});
+
+  // Dialog tabs
+  const [activeTab, setActiveTab] = useState(0);
+
+  // Politique de crédit — workflow tab
+  const [activePolicyId, setActivePolicyId] = useState<string | null>(null);
+  const [activePolicySteps, setActivePolicySteps] = useState<any[]>([]);
+  const [policyStepsLoading, setPolicyStepsLoading] = useState(false);
+  // Sélections locales (batch save)
+  const [localSelections, setLocalSelections] = useState<Set<string>>(new Set());
+  const [selectionsDirty, setSelectionsDirty] = useState(false);
+  const [selectionsSaving, setSelectionsSaving] = useState(false);
 
   // Check if user has write access (only ADMIN can write, MANAGEMENT can only read)
   const hasWriteAccess = userState.currentUser?.role === 'admin';
@@ -115,7 +182,94 @@ export const CreditTypesPage: React.FC = () => {
     }
   };
 
+  const initSelections = (steps: any[], creditTypeId: string) => {
+    const selected = new Set<string>(
+      steps
+        .filter((s: any) => s.creditTypeIds.length === 0 || s.creditTypeIds.includes(creditTypeId))
+        .map((s: any) => s.id)
+    );
+    setLocalSelections(selected);
+    setSelectionsDirty(false);
+  };
+
+  const loadActivePolicySteps = async (creditTypeId: string) => {
+    setPolicyStepsLoading(true);
+    const res = await creditPolicyApi.getPolicies();
+    if (res.success && res.data) {
+      const active = (res.data as any[]).find((p: any) => p.isActive);
+      if (active) {
+        const steps = active.steps ?? [];
+        setActivePolicyId(active.id);
+        setActivePolicySteps(steps);
+        initSelections(steps, creditTypeId);
+      } else {
+        setActivePolicyId(null);
+        setActivePolicySteps([]);
+        setLocalSelections(new Set());
+      }
+    }
+    setPolicyStepsLoading(false);
+  };
+
+  const toggleStep = (stepId: string) => {
+    setLocalSelections(prev => {
+      const next = new Set(prev);
+      if (next.has(stepId)) next.delete(stepId); else next.add(stepId);
+      return next;
+    });
+    setSelectionsDirty(true);
+  };
+
+  const saveSelections = async () => {
+    if (!activePolicyId || !selectedCreditType) return;
+    setSelectionsSaving(true);
+
+    const updates: Promise<any>[] = [];
+
+    for (const step of activePolicySteps) {
+      const isNowSelected = localSelections.has(step.id);
+      const wasSelected = step.creditTypeIds.length === 0 || step.creditTypeIds.includes(selectedCreditType.id);
+      if (isNowSelected === wasSelected) continue;
+
+      let newCreditTypeIds: string[];
+      if (isNowSelected) {
+        // Ajouter ce type de crédit
+        newCreditTypeIds = [...step.creditTypeIds, selectedCreditType.id];
+      } else {
+        // Retirer ce type de crédit
+        if (step.creditTypeIds.length === 0) {
+          // Étape "tous" → matérialiser l'exclusion
+          newCreditTypeIds = creditTypes
+            .filter(ct => ct.id !== selectedCreditType.id)
+            .map(ct => ct.id);
+        } else {
+          newCreditTypeIds = step.creditTypeIds.filter((id: string) => id !== selectedCreditType.id);
+        }
+      }
+      updates.push(creditPolicyApi.updateStep(activePolicyId, step.id, { creditTypeIds: newCreditTypeIds }));
+    }
+
+    if (updates.length > 0) {
+      const results = await Promise.all(updates);
+      if (results.some((r: any) => !r.success)) {
+        setError('Erreur lors de la sauvegarde du workflow.');
+      } else {
+        setSuccess('Workflow mis à jour avec succès.');
+        await loadActivePolicySteps(selectedCreditType.id);
+      }
+    } else {
+      setSelectionsDirty(false);
+    }
+    setSelectionsSaving(false);
+  };
+
   const handleOpenDialog = (creditType?: CreditType) => {
+    setActiveTab(0);
+    setActivePolicySteps([]);
+    setActivePolicyId(null);
+    setLocalSelections(new Set());
+    setSelectionsDirty(false);
+
     if (creditType) {
       setEditMode(true);
       setSelectedCreditType(creditType);
@@ -140,12 +294,26 @@ export const CreditTypesPage: React.FC = () => {
     setDialogOpen(true);
   };
 
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+    if (newValue === 1 && selectedCreditType) {
+      if (activePolicySteps.length === 0) {
+        loadActivePolicySteps(selectedCreditType.id);
+      } else {
+        initSelections(activePolicySteps, selectedCreditType.id);
+      }
+    }
+  };
+
   const handleCloseDialog = () => {
     setDialogOpen(false);
     setEditMode(false);
     setSelectedCreditType(null);
     setFormData(emptyFormData);
     setFormErrors({});
+    setActiveTab(0);
+    setActivePolicySteps([]);
+    setActivePolicyId(null);
   };
 
   const validateForm = (): boolean => {
@@ -281,30 +449,58 @@ export const CreditTypesPage: React.FC = () => {
     }
   };
 
+
   return (
-    <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <BusinessIcon sx={{ fontSize: 40, color: 'primary.main' }} />
+    <Box sx={{ p: compact ? 0 : { xs: 2, md: 3 } }}>
+      {!compact && (
+        <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <BusinessIcon sx={{ fontSize: 40, color: 'primary.main' }} />
+            <Box>
+              <Typography variant="h4" sx={{ fontWeight: 600 }}>
+                Types de Crédit
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Gérer les types de crédit et leurs paramètres
+              </Typography>
+            </Box>
+          </Box>
+          {hasWriteAccess && (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => handleOpenDialog()}
+            >
+              Nouveau Type
+            </Button>
+          )}
+        </Box>
+      )}
+      {compact && (
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+          sx={{
+            mb: 3,
+            pb: 2,
+            borderBottom: 1,
+            borderColor: 'divider',
+          }}
+        >
           <Box>
-            <Typography variant="h4" sx={{ fontWeight: 600 }}>
-              Types de Crédit
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Gérer les types de crédit et leurs paramètres
+            <Typography variant="subtitle1" fontWeight={700}>Types de crédit</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {creditTypes.length} produit{creditTypes.length !== 1 ? 's' : ''} configuré{creditTypes.length !== 1 ? 's' : ''}
             </Typography>
           </Box>
+          {hasWriteAccess && (
+            <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
+              Nouveau Type
+            </Button>
+          )}
         </Box>
-        {hasWriteAccess && (
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenDialog()}
-          >
-            Nouveau Type
-          </Button>
-        )}
-      </Box>
+      )}
 
       {/* Access Info for Management Role */}
       {userState.currentUser?.role === 'management' && (
@@ -332,7 +528,7 @@ export const CreditTypesPage: React.FC = () => {
           <CircularProgress />
         </Box>
       ) : (
-        <TableContainer component={Paper}>
+        <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
           <Table>
             <TableHead>
               <TableRow>
@@ -342,6 +538,7 @@ export const CreditTypesPage: React.FC = () => {
                 <TableCell><strong>Taux Min/Max</strong></TableCell>
                 <TableCell><strong>Durée (mois)</strong></TableCell>
                 <TableCell><strong>Garantie</strong></TableCell>
+                <TableCell><strong>Workflow</strong></TableCell>
                 <TableCell><strong>Statut</strong></TableCell>
                 {hasWriteAccess && <TableCell align="center"><strong>Actions</strong></TableCell>}
               </TableRow>
@@ -349,7 +546,7 @@ export const CreditTypesPage: React.FC = () => {
             <TableBody>
               {creditTypes.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={hasWriteAccess ? 8 : 7} align="center">
+                  <TableCell colSpan={hasWriteAccess ? 9 : 8} align="center">
                     <Typography variant="body2" color="text.secondary" sx={{ py: 4 }}>
                       Aucun type de crédit disponible
                     </Typography>
@@ -394,6 +591,19 @@ export const CreditTypesPage: React.FC = () => {
                       />
                     </TableCell>
                     <TableCell>
+                      {creditType.workflowSteps && creditType.workflowSteps.length > 0 ? (
+                        <Chip
+                          icon={<WorkflowIcon />}
+                          label={`${creditType.workflowSteps.length} étape(s)`}
+                          size="small"
+                          color="info"
+                          variant="outlined"
+                        />
+                      ) : (
+                        <Chip label="Défaut" size="small" color="default" variant="outlined" />
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <Chip
                         label={creditType.isActive ? 'Actif' : 'Inactif'}
                         size="small"
@@ -432,130 +642,345 @@ export const CreditTypesPage: React.FC = () => {
           {editMode ? 'Modifier le Type de Crédit' : 'Nouveau Type de Crédit'}
         </DialogTitle>
         <DialogContent>
-          <Grid container spacing={3} sx={{ mt: 1 }}>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Nom du Type de Crédit"
-                value={formData.name}
-                onChange={(e) => handleInputChange('name', e.target.value)}
-                error={!!formErrors.name}
-                helperText={formErrors.name}
-                required
-              />
+          {editMode && (
+            <Tabs value={activeTab} onChange={handleTabChange} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+              <Tab label="Informations générales" />
+              <Tab label="Configuration du Workflow" icon={<WorkflowIcon />} iconPosition="start" />
+            </Tabs>
+          )}
+
+          {/* Tab 0: General Information */}
+          {activeTab === 0 && (
+            <Grid container spacing={3} sx={{ mt: 1 }}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Nom du Type de Crédit"
+                  value={formData.name}
+                  onChange={(e) => handleInputChange('name', e.target.value)}
+                  error={!!formErrors.name}
+                  helperText={formErrors.name}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Code"
+                  value={formData.code}
+                  onChange={(e) => handleInputChange('code', e.target.value.toUpperCase())}
+                  error={!!formErrors.code}
+                  helperText={formErrors.code || 'Ex: CT, CI, CIMMO'}
+                  required
+                  disabled={editMode} // Don't allow code changes in edit mode
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Description"
+                  value={formData.description}
+                  onChange={(e) => handleInputChange('description', e.target.value)}
+                  multiline
+                  rows={2}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  label="Taux par Défaut (%)"
+                  type="number"
+                  value={formData.defaultRate}
+                  onChange={(e) => handleInputChange('defaultRate', e.target.value)}
+                  error={!!formErrors.defaultRate}
+                  helperText={formErrors.defaultRate}
+                  required
+                  inputProps={{ step: 0.1, min: 0 }}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  label="Taux Minimum (%)"
+                  type="number"
+                  value={formData.minRate}
+                  onChange={(e) => handleInputChange('minRate', e.target.value)}
+                  error={!!formErrors.minRate}
+                  helperText={formErrors.minRate}
+                  inputProps={{ step: 0.1, min: 0 }}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  label="Taux Maximum (%)"
+                  type="number"
+                  value={formData.maxRate}
+                  onChange={(e) => handleInputChange('maxRate', e.target.value)}
+                  error={!!formErrors.maxRate}
+                  helperText={formErrors.maxRate}
+                  inputProps={{ step: 0.1, min: 0 }}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Durée Minimum (mois)"
+                  type="number"
+                  value={formData.minDuration}
+                  onChange={(e) => handleInputChange('minDuration', e.target.value)}
+                  error={!!formErrors.minDuration}
+                  helperText={formErrors.minDuration}
+                  inputProps={{ min: 0 }}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Durée Maximum (mois)"
+                  type="number"
+                  value={formData.maxDuration}
+                  onChange={(e) => handleInputChange('maxDuration', e.target.value)}
+                  error={!!formErrors.maxDuration}
+                  helperText={formErrors.maxDuration}
+                  inputProps={{ min: 0 }}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formData.requiresCollateral}
+                      onChange={(e) => handleInputChange('requiresCollateral', e.target.checked)}
+                    />
+                  }
+                  label="Garantie obligatoire"
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formData.isActive}
+                      onChange={(e) => handleInputChange('isActive', e.target.checked)}
+                    />
+                  }
+                  label="Actif"
+                />
+              </Grid>
             </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Code"
-                value={formData.code}
-                onChange={(e) => handleInputChange('code', e.target.value.toUpperCase())}
-                error={!!formErrors.code}
-                helperText={formErrors.code || 'Ex: CT, CI, CIMMO'}
-                required
-                disabled={editMode} // Don't allow code changes in edit mode
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Description"
-                value={formData.description}
-                onChange={(e) => handleInputChange('description', e.target.value)}
-                multiline
-                rows={2}
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label="Taux par Défaut (%)"
-                type="number"
-                value={formData.defaultRate}
-                onChange={(e) => handleInputChange('defaultRate', e.target.value)}
-                error={!!formErrors.defaultRate}
-                helperText={formErrors.defaultRate}
-                required
-                inputProps={{ step: 0.1, min: 0 }}
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label="Taux Minimum (%)"
-                type="number"
-                value={formData.minRate}
-                onChange={(e) => handleInputChange('minRate', e.target.value)}
-                error={!!formErrors.minRate}
-                helperText={formErrors.minRate}
-                inputProps={{ step: 0.1, min: 0 }}
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label="Taux Maximum (%)"
-                type="number"
-                value={formData.maxRate}
-                onChange={(e) => handleInputChange('maxRate', e.target.value)}
-                error={!!formErrors.maxRate}
-                helperText={formErrors.maxRate}
-                inputProps={{ step: 0.1, min: 0 }}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Durée Minimum (mois)"
-                type="number"
-                value={formData.minDuration}
-                onChange={(e) => handleInputChange('minDuration', e.target.value)}
-                error={!!formErrors.minDuration}
-                helperText={formErrors.minDuration}
-                inputProps={{ min: 0 }}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Durée Maximum (mois)"
-                type="number"
-                value={formData.maxDuration}
-                onChange={(e) => handleInputChange('maxDuration', e.target.value)}
-                error={!!formErrors.maxDuration}
-                helperText={formErrors.maxDuration}
-                inputProps={{ min: 0 }}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={formData.requiresCollateral}
-                    onChange={(e) => handleInputChange('requiresCollateral', e.target.checked)}
-                  />
-                }
-                label="Garantie obligatoire"
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={formData.isActive}
-                    onChange={(e) => handleInputChange('isActive', e.target.checked)}
-                  />
-                }
-                label="Actif"
-              />
-            </Grid>
-          </Grid>
+          )}
+
+          {/* Tab 1: Workflow — Parcours de la politique de crédit */}
+          {activeTab === 1 && selectedCreditType && (
+            <Box sx={{ mt: 1 }}>
+              {policyStepsLoading ? (
+                <Box display="flex" justifyContent="center" py={6}>
+                  <CircularProgress size={28} />
+                </Box>
+              ) : activePolicySteps.length === 0 ? (
+                <Alert severity="info">
+                  Aucune politique de crédit active avec des étapes configurées.
+                  Définissez d'abord les étapes dans l'onglet <strong>Traitement</strong>.
+                </Alert>
+              ) : (
+                <>
+                  {/* ── Description ────────────────────────────────────────── */}
+                  <Alert severity="info" sx={{ mb: 2.5, py: 0.75 }}>
+                    Cochez les étapes du parcours qui s'appliquent à ce type de crédit.
+                    Les sélections sauvegardées sont prioritaires sur le paramètre par défaut.
+                  </Alert>
+
+                  {/* ── Visualisation du flux avec cases à cocher ──────────── */}
+                  <Box
+                    sx={{
+                      display: 'flex', alignItems: 'center', gap: 1,
+                      flexWrap: 'wrap', mb: 3,
+                      bgcolor: 'grey.50', borderRadius: 2, p: 2,
+                      border: '1px solid', borderColor: 'divider',
+                    }}
+                  >
+                    {[...activePolicySteps].sort((a, b) => a.order - b.order).map((step, i, arr) => {
+                      const isSelected = localSelections.has(step.id);
+                      const typeInfo = STEP_TYPES[step.stepType];
+                      const roleInfo = ROLES.find(r => r.value === step.assignedRole);
+                      return (
+                        <React.Fragment key={step.id}>
+                          <Box
+                            onClick={() => hasWriteAccess && toggleStep(step.id)}
+                            sx={{
+                              position: 'relative',
+                              display: 'flex', flexDirection: 'column', alignItems: 'center',
+                              bgcolor: isSelected ? 'white' : 'grey.100',
+                              border: '1px solid',
+                              borderColor: isSelected ? (typeInfo?.color ?? 'divider') : 'grey.300',
+                              borderTop: `3px solid ${isSelected ? (typeInfo?.color ?? '#999') : '#ccc'}`,
+                              borderRadius: 2, px: 1.5, py: 1, minWidth: 100,
+                              opacity: isSelected ? 1 : 0.5,
+                              cursor: hasWriteAccess ? 'pointer' : 'default',
+                              transition: 'all 0.18s',
+                              '&:hover': hasWriteAccess ? { boxShadow: 3, opacity: 1 } : {},
+                            }}
+                          >
+                            {/* Checkbox overlay */}
+                            <Box sx={{ position: 'absolute', top: -10, right: -10 }}>
+                              <Checkbox
+                                checked={isSelected}
+                                size="small"
+                                disabled={!hasWriteAccess}
+                                onClick={e => { e.stopPropagation(); if (hasWriteAccess) toggleStep(step.id); }}
+                                sx={{
+                                  p: 0.3,
+                                  bgcolor: 'white',
+                                  borderRadius: '50%',
+                                  boxShadow: 1,
+                                }}
+                              />
+                            </Box>
+                            <Typography
+                              variant="caption" fontWeight={700} fontSize={10}
+                              sx={{ color: isSelected ? (typeInfo?.color ?? '#999') : 'text.disabled', textTransform: 'uppercase' }}
+                            >
+                              {typeInfo?.label ?? step.stepType}
+                            </Typography>
+                            <Typography variant="caption" fontWeight={600} fontSize={11} noWrap sx={{ maxWidth: 110, textAlign: 'center' }}>
+                              {step.stepLabel}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" fontSize={10} noWrap>
+                              {roleInfo?.label ?? step.assignedRole}
+                            </Typography>
+                            <Typography variant="caption" color="text.disabled" fontSize={10}>
+                              {Math.ceil(step.expectedDurationHours / 24)}j
+                            </Typography>
+                          </Box>
+                          {i < arr.length - 1 && (
+                            <Typography
+                              variant="caption"
+                              sx={{ color: isSelected && localSelections.has(arr[i + 1]?.id) ? 'text.secondary' : 'grey.400', fontSize: 18 }}
+                            >
+                              →
+                            </Typography>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </Box>
+
+                  {/* ── Barre de statut + bouton Sauvegarder ───────────────── */}
+                  <Box
+                    display="flex" alignItems="center" justifyContent="space-between"
+                    sx={{ mb: 2.5, px: 1 }}
+                  >
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Typography variant="caption" color="text.secondary">
+                        <strong>{localSelections.size}</strong> étape{localSelections.size !== 1 ? 's' : ''} sélectionnée{localSelections.size !== 1 ? 's' : ''}
+                        {' '}sur {activePolicySteps.length}
+                      </Typography>
+                      {selectionsDirty && (
+                        <Chip
+                          label="Modifications non sauvegardées"
+                          size="small"
+                          color="warning"
+                          sx={{ fontSize: 11, height: 20 }}
+                        />
+                      )}
+                    </Box>
+                    {hasWriteAccess && (
+                      <Button
+                        variant={selectionsDirty ? 'contained' : 'outlined'}
+                        size="small"
+                        onClick={saveSelections}
+                        disabled={selectionsSaving || !selectionsDirty}
+                        startIcon={selectionsSaving ? <CircularProgress size={14} color="inherit" /> : undefined}
+                      >
+                        {selectionsSaving ? 'Sauvegarde…' : 'Sauvegarder'}
+                      </Button>
+                    )}
+                  </Box>
+
+                  {/* ── Table détaillée ────────────────────────────────────── */}
+                  <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
+                    <Table size="small" sx={{ minWidth: 480 }}>
+                      <TableHead sx={{ bgcolor: 'grey.50' }}>
+                        <TableRow>
+                          <TableCell padding="checkbox" />
+                          <TableCell align="center" width={36}>#</TableCell>
+                          <TableCell>Étape de traitement</TableCell>
+                          <TableCell align="center">Type</TableCell>
+                          <TableCell>Responsable</TableCell>
+                          <TableCell align="center">SLA</TableCell>
+                          <TableCell align="center">Condition montant</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {[...activePolicySteps].sort((a, b) => a.order - b.order).map((step) => {
+                          const isSelected = localSelections.has(step.id);
+                          const typeInfo = STEP_TYPES[step.stepType];
+                          const roleInfo = ROLES.find(r => r.value === step.assignedRole);
+                          return (
+                            <TableRow
+                              key={step.id}
+                              hover
+                              onClick={() => hasWriteAccess && toggleStep(step.id)}
+                              sx={{ opacity: isSelected ? 1 : 0.45, cursor: hasWriteAccess ? 'pointer' : 'default' }}
+                            >
+                              <TableCell padding="checkbox" onClick={e => e.stopPropagation()}>
+                                <Checkbox
+                                  checked={isSelected}
+                                  disabled={!hasWriteAccess}
+                                  onChange={() => hasWriteAccess && toggleStep(step.id)}
+                                  size="small"
+                                />
+                              </TableCell>
+                              <TableCell align="center">
+                                <Typography variant="caption" fontWeight={700}>{step.order}</Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={600}>{step.stepLabel}</Typography>
+                                <Typography variant="caption" color="text.secondary">{step.stepName}</Typography>
+                              </TableCell>
+                              <TableCell align="center">
+                                {typeInfo
+                                  ? <Chip label={typeInfo.label} size="small"
+                                      sx={{ bgcolor: typeInfo.color + '22', color: typeInfo.color, fontWeight: 600, fontSize: 11 }} />
+                                  : <Typography variant="caption" color="text.disabled">—</Typography>
+                                }
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2">{roleInfo?.label ?? step.assignedRole}</Typography>
+                              </TableCell>
+                              <TableCell align="center">
+                                <Typography variant="caption" color="text.secondary">
+                                  {Math.ceil(step.expectedDurationHours / 24)}j / {Math.ceil(step.maxDurationHours / 24)}j max
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="center">
+                                <Typography variant="caption" color={step.conditionMinAmount !== null || step.conditionMaxAmount !== null ? 'warning.dark' : 'text.disabled'}>
+                                  {step.conditionMinAmount !== null || step.conditionMaxAmount !== null
+                                    ? `${step.conditionMinAmount?.toLocaleString('fr-FR') ?? '0'} – ${step.conditionMaxAmount?.toLocaleString('fr-FR') ?? '∞'} XOF`
+                                    : 'Tous montants'}
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </>
+              )}
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>Annuler</Button>
-          <Button onClick={handleSubmit} variant="contained">
-            {editMode ? 'Mettre à jour' : 'Créer'}
+          <Button onClick={handleCloseDialog}>
+            {activeTab === 1 ? 'Fermer' : 'Annuler'}
           </Button>
+          {activeTab === 0 && (
+            <Button onClick={handleSubmit} variant="contained">
+              {editMode ? 'Mettre à jour' : 'Créer'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 
@@ -577,6 +1002,6 @@ export const CreditTypesPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
+    </Box>
   );
 };

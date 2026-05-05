@@ -1,0 +1,55 @@
+# ─── Stage 1 : Build ─────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Dépendances système pour bcrypt et compilation native
+RUN apk add --no-cache python3 make g++
+
+# Dépendances npm (incluant devDependencies pour la compilation TypeScript)
+COPY package*.json ./
+COPY prisma/ ./prisma/
+RUN npm ci
+
+# Générer le client Prisma
+RUN npx prisma generate
+
+# Copier les sources et compiler
+COPY . .
+RUN npm run build
+
+# ─── Stage 2 : Runner production ─────────────────────────────────────────────
+FROM node:20-alpine
+
+WORKDIR /app
+
+# curl pour le healthcheck
+RUN apk add --no-cache curl
+
+# Utilisateur non-root
+RUN addgroup -S optimus && adduser -S optimus -G optimus
+
+# Dépendances production uniquement
+COPY package*.json ./
+COPY prisma/ ./prisma/
+RUN npm ci --omit=dev && npx prisma generate
+
+# Artefacts compilés depuis le builder
+COPY --from=builder /app/dist ./dist
+
+# Répertoires de données
+RUN mkdir -p uploads /var/backups/credit_app \
+    && chown -R optimus:optimus /app /var/backups/credit_app
+
+# Script d'entrée
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh && chown optimus:optimus /docker-entrypoint.sh
+
+USER optimus
+
+EXPOSE 5007
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:5007/api/health || exit 1
+
+ENTRYPOINT ["/docker-entrypoint.sh"]

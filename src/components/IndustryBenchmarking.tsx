@@ -194,9 +194,7 @@ export const IndustryBenchmarking: React.FC<IndustryBenchmarkingProps> = ({
       {/* Header */}
       <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Avatar sx={{ bgcolor: 'primary.main' }}>
-            <BenchmarkIcon />
-          </Avatar>
+          <BenchmarkIcon sx={{ color: 'primary.main', fontSize: 28 }} />
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 600 }}>
               {t('analysis.benchmarking.title')}

@@ -1,35 +1,28 @@
 import express, { Request, Response } from 'express';
 import { prisma } from '../server';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
+import { logger } from '../utils/logger';
+
+function buildEmptyModuleProfile(): Record<string, { visible: boolean; actions: string[]; sections: string[] }> {
+  const keys = [
+    'home','clients','credit-application','dispatching','approvals','workflow',
+    'analytics','credit-scoring','credit-simulation','data-input','analysis',
+    'reports','credit-policy','credit-types','approval-limits','contract-templates',
+    'legal-step','raci-matrix','user-management','bank-holidays-admin',
+    'notifications-config','announcements',
+  ];
+  return Object.fromEntries(keys.map(k => [k, { visible: false, actions: [], sections: [] }]));
+}
 
 const router = express.Router();
 
 // Middleware to check admin permission
 const requireAdmin = (req: Request, res: Response, next: express.NextFunction) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({
-      success: false,
-      error: 'Authentication required'
-    });
+  const role = req.user?.role;
+  if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
+    return res.status(403).json({ success: false, error: 'Admin access required' });
   }
-
-  const token = authHeader.substring(7);
-  try {
-    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-    if (payload.role !== 'ADMIN') {
-      return res.status(403).json({
-        success: false,
-        error: 'Admin access required'
-      });
-    }
-    next();
-  } catch (error) {
-    return res.status(401).json({
-      success: false,
-      error: 'Invalid token'
-    });
-  }
+  next();
 };
 
 // GET /api/roles - Get all roles with their permissions
@@ -50,8 +43,9 @@ router.get('/',
       label: role.label,
       description: role.description,
       permissions: role.permissions as string[],
-      twoFactorRequired: (role as any).twoFactorRequired ?? false,
-      userCount: countByRole.get(role.role) ?? 0,
+      twoFactorRequired: role.twoFactorRequired ?? false,
+      isReadOnly: role.isReadOnly ?? false,
+      userCount: countByRole.get(role.role as any) ?? 0,
       isActive: role.isActive,
       createdAt: role.createdAt.toISOString(),
       updatedAt: role.updatedAt.toISOString()
@@ -75,7 +69,7 @@ router.get('/:role',
     }
 
     const userCount = await prisma.user.count({
-      where: { role: rolePermission.role }
+      where: { role: rolePermission.role as any }
     });
 
     res.json({
@@ -95,51 +89,52 @@ router.get('/:role',
   })
 );
 
-// PUT /api/roles/:role - Update role permissions (admin only)
+// PUT /api/roles/:role - DÉPRÉCIÉ (HTTP 410)
+// Utiliser PUT /api/module-profiles/:role pour modifier les permissions.
 router.put('/:role',
+  requireAdmin,
+  (_req: Request, res: Response) => {
+    res.status(410).json({
+      success: false,
+      deprecated: true,
+      message: 'Cette route est dépréciée. Utilisez PUT /api/module-profiles/:role pour modifier les permissions.',
+    });
+  }
+);
+
+// PATCH /api/roles/:role/readonly - Toggle lecture seule pour un rôle
+router.patch('/:role/readonly',
   requireAdmin,
   asyncHandler(async (req: Request, res: Response) => {
     const { role } = req.params;
-    const { permissions, label, description } = req.body;
-
-    if (!permissions || !Array.isArray(permissions)) {
-      throw new AppError('Permissions array is required', 400, 'INVALID_PERMISSIONS');
+    const { isReadOnly } = req.body;
+    if (typeof isReadOnly !== 'boolean') {
+      throw new AppError('isReadOnly (boolean) requis', 400, 'MISSING_FIELDS');
     }
 
-    // Update role permissions
-    const updatedRole = await prisma.rolePermission.update({
-      where: { role: role as any },
-      data: {
-        permissions,
-        ...(label && { label }),
-        ...(description !== undefined && { description })
-      }
+    const updated = await prisma.rolePermission.update({
+      where: { role },
+      data: { isReadOnly },
     });
 
-    // Update all users with this role to have the new permissions
-    await prisma.user.updateMany({
-      where: { role: role as any },
-      data: { permissions }
-    });
+    res.json({ success: true, data: { role: updated.role, isReadOnly: updated.isReadOnly } });
+  })
+);
 
-    const userCount = await prisma.user.count({
-      where: { role: updatedRole.role }
-    });
+// DELETE /api/roles/:id - Delete role (admin only)
+router.delete('/:id',
+  requireAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
 
-    res.json({
-      success: true,
-      message: `Role ${updatedRole.label} and all associated users updated successfully`,
-      role: {
-        id: updatedRole.id,
-        name: updatedRole.role,
-        label: updatedRole.label,
-        description: updatedRole.description,
-        permissions: updatedRole.permissions as string[],
-        userCount,
-        isActive: updatedRole.isActive,
-        updatedAt: updatedRole.updatedAt.toISOString()
-      }
-    });
+    const existing = await prisma.rolePermission.findUnique({ where: { id } });
+    if (!existing) {
+      throw new AppError('Rôle introuvable', 404, 'NOT_FOUND');
+    }
+
+    await prisma.rolePermission.delete({ where: { id } });
+
+    res.json({ success: true, message: 'Rôle supprimé avec succès' });
   })
 );
 
@@ -153,14 +148,39 @@ router.post('/',
       throw new AppError('Role, label, and permissions are required', 400, 'MISSING_FIELDS');
     }
 
+    const sanitizedRole = String(role).trim().toUpperCase().replace(/\s+/g, '_');
+
+    if (!/^[A-Z][A-Z0-9_]*$/.test(sanitizedRole)) {
+      throw new AppError('Le nom du rôle ne doit contenir que des lettres, chiffres et underscores', 400, 'INVALID_ROLE_NAME');
+    }
+
     const newRole = await prisma.rolePermission.create({
       data: {
-        role: role as any,
+        role: sanitizedRole,
         label,
         description: description || null,
         permissions
       }
     });
+
+    // Seed d'un profil de modules vide pour éviter un état indéfini
+    const companyId = req.user?.companyId;
+    if (companyId) {
+      // upsert pour idempotence (race condition safe)
+      await prisma.moduleProfile.upsert({
+        where: { companyId_role: { companyId, role: sanitizedRole as any } },
+        update: {},
+        create: {
+          companyId,
+          role: sanitizedRole as any,
+          label,
+          modules: buildEmptyModuleProfile() as any,
+          defaultScope: 'BRANCH_ONLY',
+          isDefault: false,
+          createdById: req.user!.id,
+        },
+      }).catch(err => logger.warn('Failed to seed empty ModuleProfile for new role:', err));
+    }
 
     res.status(201).json({
       success: true,

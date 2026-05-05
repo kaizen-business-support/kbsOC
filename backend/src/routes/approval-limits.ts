@@ -1,26 +1,30 @@
 import express, { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { cacheGet, cacheSet } from '../services/redis';
+import { prisma } from '../prismaClient';
+import { authenticate, requireCompany } from '../middleware/auth';
 
 const router = express.Router();
-const prisma = new PrismaClient();
+router.use(authenticate);
+router.use(requireCompany);
 const CACHE_KEY = 'cache:approval-limits';
 const CACHE_TTL = 120; // 2 minutes
 
 // GET /api/approval-limits - Get all approval limits
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const cached = await cacheGet(CACHE_KEY);
+    const cacheKey = `${CACHE_KEY}:${req.companyId}`;
+    const cached = await cacheGet(cacheKey);
     if (cached) {
       const approvalLimits = JSON.parse(cached);
       return res.json({ success: true, data: approvalLimits, approvalLimits });
     }
 
     const approvalLimits = await prisma.approvalLimit.findMany({
+      where: { companyId: req.companyId },
       orderBy: { minAmount: 'asc' }
     });
 
-    await cacheSet(CACHE_KEY, JSON.stringify(approvalLimits), CACHE_TTL);
+    await cacheSet(cacheKey, JSON.stringify(approvalLimits), CACHE_TTL);
 
     res.json({ success: true, data: approvalLimits, approvalLimits });
   } catch (error) {
@@ -65,8 +69,8 @@ router.get('/:id', async (req: Request, res: Response) => {
 router.get('/role/:role', async (req: Request, res: Response) => {
   try {
     const { role } = req.params;
-    const limit = await prisma.approvalLimit.findUnique({
-      where: { role: role as any }
+    const limit = await prisma.approvalLimit.findFirst({
+      where: { role: role as any, companyId: req.companyId }
     });
 
     if (!limit) {
@@ -100,7 +104,8 @@ router.get('/amount/:amount', async (req: Request, res: Response) => {
         AND: [
           { minAmount: { lte: amount } },
           { maxAmount: { gte: amount } },
-          { isActive: true }
+          { isActive: true },
+          { companyId: req.companyId }
         ]
       }
     });
@@ -164,7 +169,8 @@ router.post('/', async (req: Request, res: Response) => {
         currency: currency || 'XOF',
         reviewDuration: reviewDuration || 480, // Default 1 day
         maxReviewDuration: maxReviewDuration || null,
-        description: description || null
+        description: description || null,
+        companyId: req.companyId
       }
     });
 
