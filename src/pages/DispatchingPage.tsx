@@ -124,6 +124,7 @@ export const DispatchingPage: React.FC = () => {
     open: false, app: null, neededRole: null, suggestedAgent: null,
     selectedAgentId: '', comment: '', loading: false, isReassign: false,
   });
+  const [dialogError, setDialogError] = useState('');
 
   const reload = useCallback(async (silent = false) => {
     if (!silent) setLoadingData(true);
@@ -191,6 +192,7 @@ export const DispatchingPage: React.FC = () => {
   const handleAssign = async () => {
     if (!dialog.app || !dialog.selectedAgentId) return;
     setDialog(d => ({ ...d, loading: true }));
+    setDialogError('');
     const appId = (dialog.app as any).id || (dialog.app as any).applicationId;
     const res = await dispatchingApi.assignAnalyst(
       appId, dialog.selectedAgentId, dialog.comment, dialog.isReassign
@@ -201,10 +203,11 @@ export const DispatchingPage: React.FC = () => {
         setPending(prev => prev.filter(p => p.id !== appId));
       }
       setDialog(d => ({ ...d, open: false, loading: false }));
+      setDialogError('');
       reload(true);
     } else {
       setDialog(d => ({ ...d, loading: false }));
-      setError(res.error || 'Erreur affectation');
+      setDialogError(res.error || 'Erreur affectation');
     }
   };
 
@@ -583,7 +586,7 @@ export const DispatchingPage: React.FC = () => {
       </Box>
 
       {/* ── Dialog d'affectation / ré-affectation ─────────────── */}
-      <Dialog open={dialog.open} onClose={() => setDialog(d => ({ ...d, open: false }))} maxWidth="sm" fullWidth
+      <Dialog open={dialog.open} onClose={() => { setDialog(d => ({ ...d, open: false })); setDialogError(''); }} maxWidth="sm" fullWidth
         PaperProps={{ sx: { borderRadius: 3 } }}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 800, pb: 1 }}>
           {dialog.isReassign ? <ReassignIcon sx={{ color: '#d97706' }} /> : <AssignIcon sx={{ color: ACCENT }} />}
@@ -656,6 +659,12 @@ export const DispatchingPage: React.FC = () => {
             Choisir le responsable
             {dialog.neededRole ? ` — ${roleLabel(dialog.neededRole)}` : ''} :
           </Typography>
+
+          {dialogError && (
+            <Alert severity="error" sx={{ mb: 1.5, fontSize: '0.78rem', borderRadius: 2 }} onClose={() => setDialogError('')}>
+              {dialogError}
+            </Alert>
+          )}
 
           {dialogAgents.length === 0 && dialog.neededRole && (
             <Alert severity="warning" sx={{ mb: 1.5, fontSize: '0.78rem', borderRadius: 2 }}>
