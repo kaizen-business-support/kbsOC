@@ -216,10 +216,11 @@ export const DispatchingPage: React.FC = () => {
     ? pending
     : pending.filter(p => p.branch === branchFilter);
 
-  // Agents filtrés par le rôle nécessaire dans la dialog
-  const dialogAgents = dialog.neededRole
+  // Agents filtrés par le rôle requis ; si aucun, afficher tous (avec rôle visible)
+  const exactRoleAgents = dialog.neededRole
     ? agents.filter(a => a.role === dialog.neededRole)
     : agents;
+  const dialogAgents = exactRoleAgents.length > 0 ? exactRoleAgents : agents;
 
   const totalActive = agents.reduce((s, a) => s + a.activeCount, 0);
   const avgLoad = agents.length ? (totalActive / agents.length) : 0;
@@ -666,9 +667,10 @@ export const DispatchingPage: React.FC = () => {
             </Alert>
           )}
 
-          {dialogAgents.length === 0 && dialog.neededRole && (
+          {exactRoleAgents.length === 0 && dialog.neededRole && (
             <Alert severity="warning" sx={{ mb: 1.5, fontSize: '0.78rem', borderRadius: 2 }}>
               Aucun responsable actif avec le rôle «{roleLabel(dialog.neededRole)}» trouvé.
+              {agents.length > 0 && ' Tous les responsables disponibles sont affichés ci-dessous.'}
             </Alert>
           )}
 
@@ -692,7 +694,15 @@ export const DispatchingPage: React.FC = () => {
                 </Avatar>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography variant="body2" fontWeight={700} noWrap>{a.name}</Typography>
-                  <Typography variant="caption" color="text.secondary" noWrap>{a.jobTitle || a.department || roleLabel(a.role)}</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                    <Typography variant="caption" color="text.secondary" noWrap>{a.jobTitle || a.department || roleLabel(a.role)}</Typography>
+                    {(exactRoleAgents.length === 0 || a.role !== dialog.neededRole) && (
+                      <Chip label={roleLabel(a.role)} size="small"
+                        sx={{ height: 16, fontSize: 9, fontWeight: 700,
+                          bgcolor: a.role === dialog.neededRole ? '#dcfce7' : '#fef3c7',
+                          color: a.role === dialog.neededRole ? '#166534' : '#92400e' }} />
+                    )}
+                  </Box>
                 </Box>
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.25 }}>
                   <Chip label={`${a.activeCount} actif${a.activeCount !== 1 ? 's' : ''}`} size="small"

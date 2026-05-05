@@ -197,7 +197,26 @@ router.get('/suggest/:applicationId', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Demande non trouvée' });
     }
 
-    const neededRole = currentStep?.role ?? 'ANALYSTE_RISQUES';
+    // Si pas d'étape PENDING, chercher la 1ère étape de la politique active
+    let neededRole: string | null = (currentStep?.role as string) ?? null;
+    if (!neededRole) {
+      const companyId = (req as any).companyId as string | undefined;
+      const policy = await prisma.creditPolicy.findFirst({
+        where: {
+          ...(companyId ? { companyId } : {}),
+          status: PolicyStatus.ACTIVE,
+          isActive: true,
+        },
+        include: {
+          steps: {
+            orderBy: { order: 'asc' },
+            take: 1,
+            select: { assignedRole: true },
+          },
+        },
+      });
+      neededRole = (policy?.steps[0]?.assignedRole as string) ?? 'ANALYSTE_RISQUES';
+    }
 
     const agents = await prisma.user.findMany({
       where: { role: neededRole as any, isActive: true },
