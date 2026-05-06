@@ -29,6 +29,56 @@ const router = Router();
 router.use(authenticate);
 router.use(requireCompany);
 
+// ─── Étape Création par défaut ────────────────────────────────────────────────
+
+const DEFAULT_CREATION_STEP = {
+  stepName: 'creation',
+  stepLabel: 'Création',
+  stepType: 'CREATION' as const,
+  assignedRole: 'CHARGE_AFFAIRES',
+  order: 1,
+  isRequired: true,
+  expectedDurationHours: 24,
+  maxDurationHours: 72,
+  conditionMinAmount: null,
+  conditionMaxAmount: null,
+  approvalMinAmount: null,
+  approvalMaxAmount: null,
+  creditTypeIds: [],
+  allowedActions: [],
+  description: null,
+  phase: null,
+  guards: null,
+  isActive: true,
+};
+
+function normalizeStepsWithCreation(clientSteps: any[]): any[] {
+  const nonCreation = clientSteps.filter((s: any) => s.stepType !== 'CREATION');
+  return [
+    DEFAULT_CREATION_STEP,
+    ...nonCreation.map((s: any, idx: number) => ({
+      stepName: s.stepName || `step_${idx + 2}`,
+      stepLabel: s.stepLabel,
+      order: idx + 2,
+      stepType: s.stepType,
+      assignedRole: s.assignedRole,
+      conditionMinAmount: s.conditionMinAmount ?? null,
+      conditionMaxAmount: s.conditionMaxAmount ?? null,
+      approvalMinAmount: s.approvalMinAmount ?? null,
+      approvalMaxAmount: s.approvalMaxAmount ?? null,
+      expectedDurationHours: s.expectedDurationHours ?? 24,
+      maxDurationHours: s.maxDurationHours ?? 72,
+      isRequired: s.isRequired ?? true,
+      isActive: s.isActive ?? true,
+      description: s.description ?? null,
+      creditTypeIds: s.creditTypeIds ?? [],
+      allowedActions: s.allowedActions ?? [],
+      phase: s.phase ?? null,
+      guards: s.guards ?? null,
+    })),
+  ];
+}
+
 // ─── GET /api/credit-policies ─────────────────────────────────────────────────
 
 router.get('/', async (req: Request, res: Response) => {
@@ -70,27 +120,9 @@ router.post('/', async (req: Request, res: Response) => {
         validFrom: validFrom ? new Date(validFrom) : new Date(),
         validTo: validTo ? new Date(validTo) : null,
         companyId: req.companyId,
-        steps: steps
-          ? {
-              create: steps.map((s: any, idx: number) => ({
-                stepName: s.stepName,
-                stepLabel: s.stepLabel,
-                order: s.order ?? idx + 1,
-                stepType: s.stepType,
-                assignedRole: s.assignedRole,
-                conditionMinAmount: s.conditionMinAmount ?? null,
-                conditionMaxAmount: s.conditionMaxAmount ?? null,
-                approvalMinAmount: s.approvalMinAmount ?? null,
-                approvalMaxAmount: s.approvalMaxAmount ?? null,
-                expectedDurationHours: s.expectedDurationHours ?? 24,
-                maxDurationHours: s.maxDurationHours ?? 72,
-                isRequired: s.isRequired ?? true,
-                description: s.description ?? null,
-                creditTypeIds: s.creditTypeIds ?? [],
-                allowedActions: s.allowedActions ?? [],
-              })),
-            }
-          : undefined,
+        steps: {
+          create: normalizeStepsWithCreation(Array.isArray(steps) ? steps : []),
+        },
       },
       include: { steps: { orderBy: { order: 'asc' } } },
     });
@@ -274,29 +306,10 @@ router.put('/:id', async (req: Request, res: Response) => {
     // Remplacement complet des étapes si fourni
     if (Array.isArray(steps)) {
       await prisma.creditPolicyStep.deleteMany({ where: { policyId: req.params.id } });
-      if (steps.length > 0) {
+      const allSteps = normalizeStepsWithCreation(steps);
+      if (allSteps.length > 0) {
         await prisma.creditPolicyStep.createMany({
-          data: steps.map((s: any, idx: number) => ({
-            policyId: req.params.id,
-            stepName: s.stepName || (s.stepLabel ? s.stepLabel.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') : null) || `step_${idx + 1}`,
-            stepLabel: s.stepLabel,
-            order: s.order ?? idx + 1,
-            stepType: s.stepType,
-            assignedRole: s.assignedRole,
-            conditionMinAmount: s.conditionMinAmount ?? null,
-            conditionMaxAmount: s.conditionMaxAmount ?? null,
-            approvalMinAmount: s.approvalMinAmount ?? null,
-            approvalMaxAmount: s.approvalMaxAmount ?? null,
-            expectedDurationHours: s.expectedDurationHours ?? 24,
-            maxDurationHours: s.maxDurationHours ?? 72,
-            isRequired: s.isRequired ?? true,
-            isActive: s.isActive ?? true,
-            description: s.description ?? null,
-            creditTypeIds: s.creditTypeIds ?? [],
-            allowedActions: s.allowedActions ?? [],
-            phase: s.phase ?? null,
-            guards: s.guards ?? null,
-          })),
+          data: allSteps.map((s: any) => ({ ...s, policyId: req.params.id })),
         });
       }
     }
