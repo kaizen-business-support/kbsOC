@@ -302,6 +302,11 @@ if [[ -f "$APP_DIR/backend/prisma/seed-policies.js" ]]; then
     && dep_ok "Politiques de crédit seedées" \
     || warn "seed-policies.js : erreur (non bloquant)"
 fi
+if [[ -f "$APP_DIR/backend/prisma/seed-bci.js" ]]; then
+  node "$APP_DIR/backend/prisma/seed-bci.js" \
+    && dep_ok "Utilisateurs et clients BCI seedés (reset clients)" \
+    || warn "seed-bci.js : erreur (non bloquant)"
+fi
 
 # Vider les clés Redis liées aux listes (cache périmé après seed)
 redis-cli DEL cache:departments:active cache:branches:active 2>/dev/null \

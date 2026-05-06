@@ -192,35 +192,28 @@ async function main() {
     console.log(`  ${u.role.padEnd(25)} ${u.email}`);
   }
 
-  // ── 3. Clients de démonstration ────────────────────────────────────────────
-  console.log('\n── Clients ──');
-  // Le CA1 sera le créateur des clients de démo
+  // ── 3. Clients de démonstration (RESET : suppression + recréation) ──────────
+  console.log('\n── Clients (reset) ──');
   const adminUser = createdUsers.find(u => u.email === 'admin@bci.sn') || createdUsers[0];
+  const deleted = await prisma.client.deleteMany({ where: { companyId: bci.id } });
+  console.log(`  Supprimés : ${deleted.count} client(s) + demandes en cascade`);
   const createdClients = [];
   for (const c of TEST_CLIENTS) {
-    const existing = await prisma.client.findFirst({
-      where: { companyId: bci.id, companyName: c.companyName },
+    const client = await prisma.client.create({
+      data: {
+        ...c,
+        companyId: bci.id,
+        isActive: true,
+        contactPerson: null,
+        phone: null,
+        email: null,
+        cofi: null,
+        establishedYear: 2010 + Math.floor(Math.random() * 10),
+        createdBy: adminUser.id,
+      },
     });
-    if (!existing) {
-      const client = await prisma.client.create({
-        data: {
-          ...c,
-          companyId: bci.id,
-          isActive: true,
-          contactPerson: null,
-          phone: null,
-          email: null,
-          cofi: null,
-          establishedYear: 2010 + Math.floor(Math.random() * 10),
-          createdBy: adminUser.id,
-        },
-      });
-      createdClients.push(client);
-      console.log(`  Créé : ${c.companyName}`);
-    } else {
-      createdClients.push(existing);
-      console.log(`  Existant : ${c.companyName}`);
-    }
+    createdClients.push(client);
+    console.log(`  Créé : ${c.companyName}`);
   }
 
   // ── 4. Limites d'approbation BCI ───────────────────────────────────────────
@@ -398,7 +391,7 @@ async function main() {
           stepLabel: 'Création du dossier',
           phase: 'Montage dossier',
           order: 0,
-          stepType: 'DISPATCH',
+          stepType: 'CREATION',
           assignedRole: 'CHARGE_AFFAIRES',
           expectedDurationHours: 1,
           maxDurationHours: 4,
@@ -484,7 +477,7 @@ async function main() {
     // Créer la politique BCI par défaut avec toutes les étapes
     console.log('  ↳ Création de la politique BCI par défaut...');
     const defaultSteps = [
-      { stepName: 'application_created',       stepLabel: 'Création du dossier',              order: 0,  stepType: 'DISPATCH',  assignedRole: 'CHARGE_AFFAIRES',         phase: 'Montage dossier',  expectedDurationHours: 24,  maxDurationHours: 72,  allowedActions: ['approve', 'transfer'] },
+      { stepName: 'application_created',       stepLabel: 'Création du dossier',              order: 0,  stepType: 'CREATION',  assignedRole: 'CHARGE_AFFAIRES',         phase: 'Montage dossier',  expectedDurationHours: 24,  maxDurationHours: 72,  allowedActions: ['approve', 'transfer'] },
       { stepName: 'charge_affaires_dispatch',  stepLabel: 'Traitement par le CA',              order: 1,  stepType: 'DISPATCH',  assignedRole: 'CHARGE_AFFAIRES',         phase: 'Montage dossier',  expectedDurationHours: 48,  maxDurationHours: 120, allowedActions: ['approve', 'transfer'] },
       { stepName: 'verification_completude',   stepLabel: 'Vérification de la complétude',    order: 2,  stepType: 'ANALYSIS',  assignedRole: 'CHARGE_AFFAIRES',         phase: 'Montage dossier',  expectedDurationHours: 24,  maxDurationHours: 48,  allowedActions: ['approve', 'request_info'] },
       { stepName: 'contre_analyse',            stepLabel: 'Contre-analyse',                   order: 3,  stepType: 'ANALYSIS',  assignedRole: 'ANALYSTE_RISQUES',        phase: 'Analyse risques',  expectedDurationHours: 48,  maxDurationHours: 120, allowedActions: ['approve', 'request_info'] },
