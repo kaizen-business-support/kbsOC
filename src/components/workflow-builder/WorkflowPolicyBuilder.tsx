@@ -203,7 +203,8 @@ export function WorkflowPolicyBuilder() {
     if (res.success && res.data) {
       await loadData();
       setSelectedPolicyId(res.data.id);
-      setSteps([]); setCurrentVersion(1);
+      setSteps(res.data.steps ?? []);
+    setCurrentVersion(res.data.version ?? 1);
     }
   };
 
