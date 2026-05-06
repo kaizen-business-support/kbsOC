@@ -81,7 +81,7 @@ export function StepConfigPanel({
           size="small"
           sx={{ bgcolor: `${cfg.color}18`, color: cfg.color, fontWeight: 700, fontSize: 10, height: 20 }}
         />
-        {!readOnly && (
+        {!readOnly && step.stepType !== 'CREATION' && (
           <Tooltip title="Supprimer">
             <IconButton
               size="small"
@@ -117,7 +117,7 @@ export function StepConfigPanel({
           {/* Type */}
           <FormControl size="small" fullWidth>
             <InputLabel>Type d'étape</InputLabel>
-            <Select value={step.stepType} label="Type d'étape" disabled={readOnly}
+            <Select value={step.stepType} label="Type d'étape" disabled={readOnly || step.stepType === 'CREATION'}
               onChange={(e) => onChange({ stepType: e.target.value as any })}>
               {(['DISPATCH', 'ANALYSIS', 'APPROVAL', 'COMMITTEE', 'LEGAL'] as const).map((t) => (
                 <MenuItem key={t} value={t}>
