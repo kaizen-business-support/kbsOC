@@ -167,7 +167,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
 
   // Load assigned apps when Analyse tab becomes active or user loaded
   useEffect(() => {
-    if (currentTab === 4 && currentUserId) {
+    if (currentTab === 3 && currentUserId) {
       loadAssignedApps();
     }
   }, [currentTab, currentUserId, loadAssignedApps]);
@@ -244,7 +244,6 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
           <Tabs value={currentTab} onChange={handleTabChange} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
             <Tab label="Liste des Clients" />
             <Tab label="Nouveau Client" />
-            <Tab label="Import/Export" />
             <Tab label="Actionnaires" />
             {(currentUserRole === 'CREDIT_ANALYST' || currentUserRole === 'ANALYST_SUPERVISOR' || currentUserRole === 'ADMIN') && (
               <Tab label="Analyse" icon={<AnalysisIcon fontSize="small" />} iconPosition="start" />
@@ -476,50 +475,6 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
           {currentTab === 2 && (
             <Box>
               <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                Import/Export de Données Clients
-              </Typography>
-              
-              <Grid container spacing={4} sx={{ mt: 2 }}>
-                <Grid item xs={12} md={6}>
-                  <Card variant="outlined">
-                    <CardContent sx={{ textAlign: 'center', py: 4 }}>
-                      <UploadIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
-                      <Typography variant="h6" gutterBottom>
-                        Import depuis Core Banking
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                        Synchronisation avec le système bancaire central
-                      </Typography>
-                      <Button variant="contained" startIcon={<BankIcon />}>
-                        Synchroniser
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </Grid>
-
-                <Grid item xs={12} md={6}>
-                  <Card variant="outlined">
-                    <CardContent sx={{ textAlign: 'center', py: 4 }}>
-                      <UploadIcon sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
-                      <Typography variant="h6" gutterBottom>
-                        Import depuis Excel
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                        Format standardisé SYSCOHADA
-                      </Typography>
-                      <Button variant="outlined" startIcon={<UploadIcon />}>
-                        Choisir Fichier
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
-            </Box>
-          )}
-
-          {currentTab === 3 && (
-            <Box>
-              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
                 Gestion des Actionnaires
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -543,7 +498,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
             </Box>
           )}
 
-          {currentTab === 4 && (
+          {currentTab === 3 && (
             <Box>
               {/* Header */}
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
