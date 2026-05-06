@@ -389,6 +389,13 @@ router.post('/:id/steps', async (req: Request, res: Response) => {
       });
     }
 
+    if (stepType === 'CREATION') {
+      return res.status(403).json({
+        success: false,
+        error: "L'étape Création est unique et ne peut pas être ajoutée manuellement",
+      });
+    }
+
     // Validation cohérence des plages de montant
     if (conditionMinAmount != null && conditionMaxAmount != null && Number(conditionMinAmount) > Number(conditionMaxAmount)) {
       return res.status(400).json({ success: false, error: 'conditionMinAmount doit être ≤ conditionMaxAmount' });
@@ -476,6 +483,21 @@ router.put('/:id/steps/:stepId', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'approvalMinAmount doit être ≤ approvalMaxAmount' });
     }
 
+    const existing = await prisma.creditPolicyStep.findUnique({ where: { id: req.params.stepId } });
+    if (!existing) return res.status(404).json({ success: false, error: 'Étape introuvable' });
+    if (existing.stepType === 'CREATION' && stepType !== undefined && stepType !== 'CREATION') {
+      return res.status(403).json({
+        success: false,
+        error: "Le type de l'étape Création ne peut pas être modifié",
+      });
+    }
+    if (existing.stepType === 'CREATION' && order !== undefined && order !== 1) {
+      return res.status(403).json({
+        success: false,
+        error: "L'étape Création doit rester en position 1",
+      });
+    }
+
     const step = await prisma.creditPolicyStep.update({
       where: { id: req.params.stepId },
       data: {
@@ -513,6 +535,14 @@ router.put('/:id/steps/:stepId', async (req: Request, res: Response) => {
 
 router.delete('/:id/steps/:stepId', async (req: Request, res: Response) => {
   try {
+    const stepToDelete = await prisma.creditPolicyStep.findUnique({ where: { id: req.params.stepId } });
+    if (!stepToDelete) return res.status(404).json({ success: false, error: 'Étape introuvable' });
+    if (stepToDelete.stepType === 'CREATION') {
+      return res.status(403).json({
+        success: false,
+        error: "L'étape Création est obligatoire et ne peut pas être supprimée",
+      });
+    }
     await prisma.creditPolicyStep.delete({ where: { id: req.params.stepId } });
 
     await prisma.creditPolicy.update({
