@@ -34,6 +34,8 @@ export function StepList({ steps, onStepsChange, creditTypes, roles, readOnly = 
     onStepsChange(steps.map((s) => s.id === id ? { ...s, ...patch } : s));
 
   const deleteStep = (id: string) => {
+    const target = steps.find((s) => s.id === id);
+    if (target?.stepType === 'CREATION') return;
     const filtered = steps.filter((s) => s.id !== id).map((s, i) => ({ ...s, order: i + 1 }));
     onStepsChange(filtered);
     if (expandedId === id) setExpandedId(null);
@@ -43,6 +45,8 @@ export function StepList({ steps, onStepsChange, creditTypes, roles, readOnly = 
   const handleDragOver = (e: React.DragEvent, idx: number) => { e.preventDefault(); setOverIdx(idx); };
   const handleDrop = (toIdx: number) => {
     if (draggingIdx === null || draggingIdx === toIdx) { setDraggingIdx(null); setOverIdx(null); return; }
+    if (steps[draggingIdx]?.stepType === 'CREATION') { setDraggingIdx(null); setOverIdx(null); return; }
+    if (toIdx === 0 && steps[0]?.stepType === 'CREATION') { setDraggingIdx(null); setOverIdx(null); return; }
     const reordered = [...steps];
     const [moved] = reordered.splice(draggingIdx, 1);
     reordered.splice(toIdx, 0, moved);
@@ -81,8 +85,8 @@ export function StepList({ steps, onStepsChange, creditTypes, roles, readOnly = 
       {steps.map((step, idx) => (
         <Box
           key={step.id}
-          draggable={!readOnly}
-          onDragStart={() => handleDragStart(idx)}
+          draggable={!readOnly && step.stepType !== 'CREATION'}
+          onDragStart={() => step.stepType !== 'CREATION' && handleDragStart(idx)}
           onDragOver={(e) => handleDragOver(e, idx)}
           onDrop={() => handleDrop(idx)}
           onDragEnd={() => { setDraggingIdx(null); setOverIdx(null); }}
