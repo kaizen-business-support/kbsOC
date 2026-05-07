@@ -15,6 +15,7 @@ import { AnnouncementModal, useAnnouncements } from './components/AnnouncementMo
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DialogHeader } from './components/ui/DialogHeader';
 import { SessionTimeoutDialog } from './components/SessionTimeoutDialog';
+import ProtectedRoute from './components/ProtectedRoute';
 
 // ── Lazy-loaded pages (code splitting) ────────────────────────────────────────
 // Each page is a separate JS chunk loaded only when first visited.
@@ -266,144 +267,180 @@ const AppContent: React.FC = () => {
             <Suspense fallback={<PageLoader />}>
             <PageTransition>
             <Routes>
-              <Route 
-                path="/" 
-                element={<HomePage onNavigate={handlePageChange} />} 
-              />
-              <Route 
-                path="/configuration" 
-                element={<ConfigurationPage onNavigate={handlePageChange} />} 
-              />
-              <Route 
-                path="/data-input" 
-                element={<DataInputPage onNavigate={handlePageChange} />} 
-              />
-              <Route 
-                path="/upload" 
-                element={<UploadPage onNavigate={handlePageChange} />} 
-              />
-              <Route 
-                path="/manual-input" 
-                element={<ManualInputPage onNavigate={handlePageChange} />} 
-              />
-              <Route 
-                path="/analysis" 
-                element={
-                  hasAnalysisData() ? (
-                    <AnalysisPage onNavigate={handlePageChange} />
-                  ) : (
-                    <Navigate to="/upload" replace />
-                  )
-                } 
-              />
-              <Route 
-                path="/reports" 
-                element={
-                  hasAnalysisData() ? (
-                    <ReportsPage onNavigate={handlePageChange} />
-                  ) : (
-                    <Navigate to="/upload" replace />
-                  )
-                } 
-              />
-              <Route 
-                path="/settings" 
-                element={<SettingsPage onNavigate={handlePageChange} />} 
-              />
-              <Route 
-                path="/documentation" 
-                element={<DocumentationPage onNavigate={handlePageChange} />} 
-              />
-              <Route 
-                path="/clients" 
-                element={<ClientManagementPage onNavigate={handlePageChange} />} 
-              />
-              <Route 
-                path="/credit-scoring" 
-                element={<CreditScoringPage onNavigate={handlePageChange} />} 
-              />
-              <Route 
-                path="/credit-application" 
-                element={<CreditApplicationPage onNavigate={handlePageChange} />} 
-              />
-              <Route 
-                path="/workflow" 
-                element={<WorkflowPage onNavigate={handlePageChange} />} 
-              />
-              <Route 
-                path="/analytics" 
-                element={<AnalyticsDashboardPage />} 
-              />
-              <Route 
-                path="/bank-holidays-admin" 
-                element={<BankHolidaysAdminPage onNavigate={handlePageChange} />} 
-              />
-              <Route 
-                path="/user-management" 
-                element={<UserManagementPage onNavigate={handlePageChange} />} 
-              />
-              <Route
-                path="/credit-types"
-                element={<CreditManagementPage initialTab={0} onNavigate={handlePageChange} />}
-              />
-              <Route
-                path="/credit-simulation"
-                element={<CreditSimulationPage onNavigate={handlePageChange} />}
-              />
-              <Route
-                path="/profile"
-                element={<ProfilePage onNavigate={handlePageChange} />}
-              />
-              <Route
-                path="/backup"
-                element={<BackupPage />}
-              />
-              <Route
-                path="/announcements"
-                element={<AnnouncementsAdminPage />}
-              />
-              <Route
-                path="/notifications-config"
-                element={<NotificationsConfigPage />}
-              />
-              <Route
-                path="/dispatching"
-                element={<DispatchingPage />}
-              />
-              <Route
-                path="/approvals"
-                element={<ApprovalsPage />}
-              />
-              <Route path="/codir-dashboard" element={<CodirDashboardPage />} />
+              {/* ── Pages accessibles à tout utilisateur connecté ── */}
+              <Route path="/"              element={<HomePage onNavigate={handlePageChange} />} />
+              <Route path="/settings"      element={<SettingsPage onNavigate={handlePageChange} />} />
+              <Route path="/profile"       element={<ProfilePage onNavigate={handlePageChange} />} />
+              <Route path="/documentation" element={<DocumentationPage onNavigate={handlePageChange} />} />
+              <Route path="/configuration" element={<ConfigurationPage onNavigate={handlePageChange} />} />
+
+              {/* ── Analyse financière ── */}
+              <Route path="/upload" element={
+                <ProtectedRoute permissions={['financial_analysis', 'analyze_credit']}>
+                  <UploadPage onNavigate={handlePageChange} />
+                </ProtectedRoute>
+              } />
+              <Route path="/data-input" element={
+                <ProtectedRoute permissions={['financial_analysis', 'analyze_credit']}>
+                  <DataInputPage onNavigate={handlePageChange} />
+                </ProtectedRoute>
+              } />
+              <Route path="/manual-input" element={
+                <ProtectedRoute permissions={['financial_analysis', 'analyze_credit']}>
+                  <ManualInputPage onNavigate={handlePageChange} />
+                </ProtectedRoute>
+              } />
+              <Route path="/analysis" element={
+                <ProtectedRoute permissions={['financial_analysis', 'analyze_credit']}>
+                  {hasAnalysisData()
+                    ? <AnalysisPage onNavigate={handlePageChange} />
+                    : <Navigate to="/upload" replace />}
+                </ProtectedRoute>
+              } />
+              <Route path="/reports" element={
+                <ProtectedRoute permissions={['reports', 'financial_analysis']}>
+                  {hasAnalysisData()
+                    ? <ReportsPage onNavigate={handlePageChange} />
+                    : <Navigate to="/upload" replace />}
+                </ProtectedRoute>
+              } />
+              <Route path="/credit-scoring" element={
+                <ProtectedRoute permissions={['financial_analysis', 'analyze_credit']}>
+                  <CreditScoringPage onNavigate={handlePageChange} />
+                </ProtectedRoute>
+              } />
+
+              {/* ── Gestion des dossiers de crédit ── */}
+              <Route path="/clients" element={
+                <ProtectedRoute
+                  permissions={['view_applications', 'view_own', 'create_client', 'manage_clients']}
+                  moduleKey="clients"
+                >
+                  <ClientManagementPage onNavigate={handlePageChange} />
+                </ProtectedRoute>
+              } />
+              <Route path="/credit-application" element={
+                <ProtectedRoute
+                  permissions={['view_applications', 'view_own', 'create_application']}
+                  moduleKey="credit-application"
+                >
+                  <CreditApplicationPage onNavigate={handlePageChange} />
+                </ProtectedRoute>
+              } />
+              <Route path="/credit-simulation" element={
+                <ProtectedRoute permissions={['view_applications', 'view_own', 'create_application', 'financial_analysis', 'analyze_credit']}>
+                  <CreditSimulationPage onNavigate={handlePageChange} />
+                </ProtectedRoute>
+              } />
+              <Route path="/workflow" element={
+                <ProtectedRoute permissions={['view_applications', 'view_own']}>
+                  <WorkflowPage onNavigate={handlePageChange} />
+                </ProtectedRoute>
+              } />
+              <Route path="/approvals" element={
+                <ProtectedRoute permissions={['view_applications', 'view_own']}>
+                  <ApprovalsPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/dispatching" element={
+                <ProtectedRoute permissions={['dispatch_applications']} moduleKey="dispatching">
+                  <DispatchingPage />
+                </ProtectedRoute>
+              } />
+
+              {/* ── Tableaux de bord ── */}
+              <Route path="/analytics" element={
+                <ProtectedRoute permissions={['analytics']} moduleKey="analytics">
+                  <AnalyticsDashboardPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/codir-dashboard" element={
+                <ProtectedRoute permissions={['codir_dashboard']} moduleKey="codir-dashboard">
+                  <CodirDashboardPage />
+                </ProtectedRoute>
+              } />
+
+              {/* ── Administration interne ── */}
+              <Route path="/user-management" element={
+                <ProtectedRoute permissions={['user_management']}>
+                  <UserManagementPage onNavigate={handlePageChange} />
+                </ProtectedRoute>
+              } />
+              <Route path="/bank-holidays-admin" element={
+                <ProtectedRoute permissions={['user_management']}>
+                  <BankHolidaysAdminPage onNavigate={handlePageChange} />
+                </ProtectedRoute>
+              } />
+              <Route path="/backup" element={
+                <ProtectedRoute permissions={['user_management']}>
+                  <BackupPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/announcements" element={
+                <ProtectedRoute permissions={['user_management']}>
+                  <AnnouncementsAdminPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/notifications-config" element={
+                <ProtectedRoute permissions={['user_management']}>
+                  <NotificationsConfigPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/raci-matrix" element={
+                <ProtectedRoute permissions={['user_management', 'policy_configuration']}>
+                  <RACIMatrixPage />
+                </ProtectedRoute>
+              } />
+
+              {/* ── Politique de crédit & workflow ── */}
+              <Route path="/credit-types" element={
+                <ProtectedRoute permissions={['policy_configuration']} moduleKey="credit-policy">
+                  <CreditManagementPage initialTab={0} onNavigate={handlePageChange} />
+                </ProtectedRoute>
+              } />
+              <Route path="/approval-limits" element={
+                <ProtectedRoute permissions={['policy_configuration']} moduleKey="credit-policy">
+                  <CreditManagementPage initialTab={1} onNavigate={handlePageChange} />
+                </ProtectedRoute>
+              } />
+              <Route path="/workflow-builder" element={
+                <ProtectedRoute permissions={['policy_configuration']}>
+                  <WorkflowBuilderPage />
+                </ProtectedRoute>
+              } />
               <Route path="/credit-policy" element={<Navigate to="/credit-types" replace />} />
-              <Route path="/workflow-builder" element={<WorkflowBuilderPage />} />
-              <Route
-                path="/approval-limits"
-                element={<CreditManagementPage initialTab={1} onNavigate={handlePageChange} />}
-              />
+
+              {/* ── Juridique & contrats ── */}
+              <Route path="/contract-templates" element={
+                <ProtectedRoute permissions={['manage_contract_templates', 'view_contracts', 'generate_contracts']}>
+                  <ContractTemplatesPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/legal-step/:applicationId" element={
+                <ProtectedRoute permissions={['view_contracts', 'generate_contracts']}>
+                  <LegalStepPageWrapper />
+                </ProtectedRoute>
+              } />
+
+              {/* ── Paramètres compagnie (ADMIN tenant, pas SUPER_ADMIN) ── */}
               <Route
                 path="/company-settings"
                 element={(() => {
                   const p = userState.currentUser?.permissions ?? [];
-                  // ADMIN tenant : a user_management mais PAS manage_platform
                   const allowed = p.includes('user_management') || (p.includes('*') && !p.includes('manage_platform'));
                   return allowed ? <CompanySettingsPage /> : <Navigate to="/" replace />;
                 })()}
               />
+
+              {/* ── Admin plateforme (SUPER_ADMIN uniquement) ── */}
               <Route
                 path="/platform-admin"
                 element={(() => {
-                  // SUPER_ADMIN uniquement : vérifié LITTÉRALEMENT
                   const allowed = (userState.currentUser?.permissions ?? []).includes('manage_platform');
                   return allowed ? <PlatformAdminPage /> : <Navigate to="/" replace />;
                 })()}
               />
-              <Route path="/raci-matrix" element={<RACIMatrixPage />} />
-              {/* Pas de guard React strict ici : l'autorisation est faite par
-                  l'API backend (authorize middleware). Évite les redirections
-                  silencieuses dues à un snapshot de permissions obsolète. */}
-              <Route path="/contract-templates" element={<ContractTemplatesPage />} />
-              <Route path="/legal-step/:applicationId" element={<LegalStepPageWrapper />} />
+
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             </PageTransition>

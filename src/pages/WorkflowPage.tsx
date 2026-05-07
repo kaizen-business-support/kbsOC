@@ -93,17 +93,17 @@ interface WorkflowPageProps {
   onNavigate: (page: any) => void;
 }
 
-// Roles that receive step assignments and should see "Mes dossiers" tab
-const ANALYST_ROLES = ['credit_analyst', 'analyst_supervisor'];
+// Rôles qui ont des étapes en attente dans la politique — tous sauf ADMIN/SUPER_ADMIN
+const ADMIN_ROLES = ['admin', 'super_admin', 'ADMIN', 'SUPER_ADMIN'];
 
 export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
   const { state: userState, isRole } = useUser();
   const navigate = useNavigate();
 
-  const isAnalystRole = ANALYST_ROLES.includes(userState.currentUser?.role || '');
+  // Tout rôle non-admin a des étapes en attente → rediriger vers "Mes Dossiers" (ApprovalsPage)
+  const isAdminRole = ADMIN_ROLES.includes(userState.currentUser?.role || '');
 
-  // Analyst roles start on "Mes dossiers" tab (index 0); others start on "Vue d'ensemble"
-  const [activeTab, setActiveTab] = useState(isAnalystRole ? 0 : 0);
+  const [activeTab, setActiveTab] = useState(0);
   const [workflows, setWorkflows] = useState<WorkflowTimestamps[]>([]);
   const [applications, setApplications] = useState<CreditApplication[]>([]);
   const [myAssignedApps, setMyAssignedApps] = useState<any[]>([]);
@@ -121,22 +121,22 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
   const [error, setError] = useState<string | null>(null);
   const [activeDelegationReceived, setActiveDelegationReceived] = useState<PowerDelegation | null>(null);
 
-  // Load assigned applications for analyst roles
+  // Chargement des dossiers du CHARGE_AFFAIRES (ses propres créations)
   const loadMyApps = useCallback(async () => {
     const userId = userState.currentUser?.id;
-    if (!userId || !isAnalystRole) return;
+    if (!userId) return;
     setMyAppsLoading(true);
     try {
-      const res = await ApiService.getApplications({ assignedAnalystId: userId });
+      const res = await ApiService.getApplications({ userId });
       if (res.success && res.data) {
         setMyAssignedApps(res.data);
       }
     } catch (e) {
-      console.error('Error loading assigned apps:', e);
+      console.error('Error loading my apps:', e);
     } finally {
       setMyAppsLoading(false);
     }
-  }, [userState.currentUser?.id, isAnalystRole]);
+  }, [userState.currentUser?.id]);
 
   // Charger la délégation active reçue
   useEffect(() => {
@@ -158,7 +158,7 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
   // Load data on component mount
   useEffect(() => {
     loadData();
-    if (isAnalystRole) loadMyApps();
+    loadMyApps();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ouvrir automatiquement un dossier si la notif a stocké un applicationId
@@ -421,167 +421,148 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
         allowScrollButtonsMobile
         sx={{ mb: 4 }}
       >
-        {isAnalystRole && (
-          <Tab
-            label={
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                Mes dossiers
-                {myAssignedApps.length > 0 && (
-                  <Chip label={myAssignedApps.length} size="small" color="primary" sx={{ height: 18, fontSize: '10px' }} />
-                )}
-              </Box>
-            }
-          />
-        )}
+        <Tab
+          label={
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              Mes dossiers
+              {myAssignedApps.length > 0 && (
+                <Chip label={myAssignedApps.length} size="small" color="primary" sx={{ height: 18, fontSize: '10px' }} />
+              )}
+            </Box>
+          }
+        />
         <Tab label="Vue d'ensemble" />
         <Tab label="Workflows en cours" />
         <Tab label="Historique complet" />
       </Tabs>
 
-      {/* ── Mes dossiers (analyst only) ─────────────────────────────────── */}
-      {isAnalystRole && (
-        <TabPanel value={activeTab} index={0}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>Mes dossiers à traiter</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Demandes de crédit qui vous ont été affectées
-              </Typography>
-            </Box>
+      {/* ── Mes dossiers (tous rôles) ─────────────────────────────────────── */}
+      <TabPanel value={activeTab} index={0}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              {isAdminRole ? 'Mes dossiers créés' : 'Mes dossiers'}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {isAdminRole
+                ? 'Dossiers créés par votre compte'
+                : 'Vos dossiers en attente de traitement — utilisez la page Mes Dossiers pour agir'}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            {!isAdminRole && (
+              <Button
+                variant="contained"
+                size="small"
+                onClick={() => navigate('/approvals')}
+                sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: 13, boxShadow: 'none' }}
+              >
+                Aller à Mes Dossiers →
+              </Button>
+            )}
             <Tooltip title="Rafraîchir">
               <IconButton onClick={loadMyApps} disabled={myAppsLoading}>
                 {myAppsLoading ? <CircularProgress size={20} /> : <RefreshIcon />}
               </IconButton>
             </Tooltip>
           </Box>
-
-          {myAppsLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-              <CircularProgress />
-            </Box>
-          ) : myAssignedApps.length === 0 ? (
-            <Alert severity="info" sx={{ borderRadius: 2 }}>
-              Aucun dossier ne vous est actuellement affecté.
-            </Alert>
-          ) : (
-            <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none', overflowX: 'auto' }}>
-              <Table sx={{ minWidth: 720 }}>
-                <TableHead>
-                  <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                    {['N° Dossier', 'Client', 'Objet du crédit', 'Montant', 'Délai', 'Avancement', 'Actions'].map(col => (
-                      <TableCell key={col} sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', borderBottom: '1px solid #e8ecf0', py: 1.5 }}>
-                        {col}
+        </Box>
+        {myAppsLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+            <CircularProgress />
+          </Box>
+        ) : myAssignedApps.length === 0 ? (
+          <Alert severity="info" sx={{ borderRadius: 2 }}>
+            Aucun dossier trouvé pour votre compte.
+          </Alert>
+        ) : (
+          <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none', overflowX: 'auto' }}>
+            <Table sx={{ minWidth: 720 }}>
+              <TableHead>
+                <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                  {['N° Dossier', 'Client', 'Objet du crédit', 'Montant', 'Statut', 'Avancement', 'Actions'].map(col => (
+                    <TableCell key={col} sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', borderBottom: '1px solid #e8ecf0', py: 1.5 }}>
+                      {col}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {myAssignedApps.map((app: any) => {
+                  const currentStep = (app.workflowSteps || []).find((s: any) => !s.completedAt);
+                  const hasAnalysis = !!(app.analysisResults?.preliminaryAnalysis);
+                  return (
+                    <TableRow
+                      key={app.id}
+                      sx={{
+                        borderBottom: '1px solid #f1f5f9',
+                        '&:last-child': { borderBottom: 'none' },
+                        '&:hover': { bgcolor: 'rgba(31,78,121,0.03)' },
+                      }}
+                    >
+                      <TableCell sx={{ py: 1.5 }}>
+                        <Typography sx={{ fontSize: '13px', fontWeight: 600, fontFamily: 'monospace', color: 'primary.main' }}>
+                          {app.applicationNumber || app.id.slice(0, 8).toUpperCase()}
+                        </Typography>
                       </TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {myAssignedApps.map((app: any) => {
-                    const analystStep = (app.workflowSteps || []).find(
-                      (s: any) => s.role === 'CREDIT_ANALYST' && s.assigneeId === userState.currentUser?.id
-                    );
-                    const deadline = analystStep?.deadline;
-                    const isOverdue = deadline && new Date(deadline) < new Date();
-                    const hasAnalysis = !!(app.analysisResults?.preliminaryAnalysis);
-                    const statusColors: Record<string, any> = {
-                      submitted: 'info', under_review: 'warning', approved: 'success', rejected: 'error',
-                    };
-
-                    return (
-                      <TableRow
-                        key={app.id}
-                        sx={{
-                          borderBottom: '1px solid #f1f5f9',
-                          '&:last-child': { borderBottom: 'none' },
-                          '&:hover': { bgcolor: isOverdue ? 'rgba(244,67,54,0.03)' : 'rgba(31,78,121,0.03)' },
-                          bgcolor: isOverdue ? 'rgba(244,67,54,0.02)' : 'transparent',
-                        }}
-                      >
-                        <TableCell sx={{ py: 1.5 }}>
-                          <Typography sx={{ fontSize: '13px', fontWeight: 600, fontFamily: 'monospace', color: 'primary.main' }}>
-                            {app.applicationNumber || app.id.slice(0, 8).toUpperCase()}
+                      <TableCell sx={{ py: 1.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Avatar sx={{ bgcolor: 'primary.main', width: 28, height: 28 }}>
+                            <BusinessIcon sx={{ fontSize: 14 }} />
+                          </Avatar>
+                          <Typography sx={{ fontSize: '13.5px', fontWeight: 500, color: '#374151' }}>
+                            {app.clientName}
                           </Typography>
-                        </TableCell>
-                        <TableCell sx={{ py: 1.5 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Avatar sx={{ bgcolor: 'primary.main', width: 28, height: 28 }}>
-                              <BusinessIcon sx={{ fontSize: 14 }} />
-                            </Avatar>
-                            <Typography sx={{ fontSize: '13.5px', fontWeight: 500, color: '#374151' }}>
-                              {app.clientName}
-                            </Typography>
-                          </Box>
-                        </TableCell>
-                        <TableCell sx={{ py: 1.5, maxWidth: 160 }}>
-                          <Typography variant="body2" noWrap title={app.purpose}>{app.purpose || '—'}</Typography>
-                        </TableCell>
-                        <TableCell sx={{ py: 1.5 }}>
-                          <Typography sx={{ fontSize: '13.5px', fontWeight: 600, color: '#1f4e79' }}>
-                            {Number(app.amount).toLocaleString('fr-FR')} {app.currency || 'XOF'}
-                          </Typography>
-                        </TableCell>
-                        <TableCell sx={{ py: 1.5 }}>
-                          {deadline ? (
-                            <Chip
-                              size="small"
-                              label={isOverdue ? 'Délai dépassé' : new Date(deadline).toLocaleDateString('fr-FR')}
-                              color={isOverdue ? 'error' : 'default'}
-                              icon={isOverdue ? <OverdueIcon /> : undefined}
-                              variant={isOverdue ? 'filled' : 'outlined'}
-                            />
-                          ) : (
-                            <Typography variant="caption" color="text.disabled">—</Typography>
-                          )}
-                        </TableCell>
-                        <TableCell sx={{ py: 1.5 }}>
-                          <Chip
-                            size="small"
-                            label={hasAnalysis ? 'Analyse enregistrée' : 'Non commencé'}
-                            color={hasAnalysis ? 'success' : 'default'}
-                            variant={hasAnalysis ? 'filled' : 'outlined'}
-                          />
-                        </TableCell>
-                        <TableCell sx={{ py: 1.5 }}>
-                          <Box sx={{ display: 'flex', gap: 1 }}>
-                            <Tooltip title={hasAnalysis ? "Continuer l'analyse" : "Commencer l'analyse"}>
-                              <Button
-                                size="small"
-                                variant="contained"
-                                color={hasAnalysis ? 'success' : 'primary'}
-                                startIcon={<StartIcon />}
-                                onClick={() => navigate(`/credit-scoring?applicationId=${app.id}`)}
-                                sx={{ textTransform: 'none', fontSize: '12px', whiteSpace: 'nowrap' }}
-                              >
-                                {hasAnalysis ? 'Continuer' : 'Analyser'}
-                              </Button>
-                            </Tooltip>
-                            <Tooltip title="Voir workflow">
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={() => {
-                                  const wf = workflows.find(w => w.applicationId === app.id);
-                                  if (wf) { setSelectedWorkflow(wf); setDialogOpen(true); }
-                                }}
-                                sx={{ textTransform: 'none', fontSize: '12px' }}
-                              >
-                                Workflow
-                              </Button>
-                            </Tooltip>
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </TabPanel>
-      )}
+                        </Box>
+                      </TableCell>
+                      <TableCell sx={{ py: 1.5, maxWidth: 160 }}>
+                        <Typography variant="body2" noWrap title={app.purpose}>{app.purpose || '—'}</Typography>
+                      </TableCell>
+                      <TableCell sx={{ py: 1.5 }}>
+                        <Typography sx={{ fontSize: '13.5px', fontWeight: 600, color: '#1f4e79' }}>
+                          {Number(app.amount).toLocaleString('fr-FR')} {app.currency || 'XOF'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ py: 1.5 }}>
+                        <Chip
+                          size="small"
+                          label={app.status || '—'}
+                          color={app.status === 'approved' ? 'success' : app.status === 'rejected' ? 'error' : app.status === 'under_review' ? 'info' : 'default'}
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell sx={{ py: 1.5 }}>
+                        <Chip
+                          size="small"
+                          label={currentStep ? currentStep.stepName : (hasAnalysis ? 'Terminé' : '—')}
+                          color={currentStep ? 'warning' : 'success'}
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell sx={{ py: 1.5 }}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => {
+                            const wf = workflows.find(w => w.applicationId === app.id);
+                            if (wf) { setSelectedWorkflow(wf); setDialogOpen(true); }
+                          }}
+                          sx={{ textTransform: 'none', fontSize: '12px' }}
+                        >
+                          Voir
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </TabPanel>
 
       {/* ── Vue d'ensemble ──────────────────────────────────────────────── */}
-      <TabPanel value={activeTab} index={isAnalystRole ? 1 : 0}>
+      <TabPanel value={activeTab} index={1}>
         {/* Overview Tab */}
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12} md={3}>
@@ -689,7 +670,7 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
         </Card>
       </TabPanel>
 
-      <TabPanel value={activeTab} index={isAnalystRole ? 2 : 1}>
+      <TabPanel value={activeTab} index={2}>
         {/* In Progress Workflows Tab */}
         <Box sx={{ mb: 3 }}>
           <Grid container spacing={2} alignItems="center">
@@ -840,8 +821,8 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
                         >
                           Voir workflow
                         </Button>
-                        {/* Bouton Analyser pour les rôles analyste quand le dossier leur est affecté */}
-                        {isAnalystRole &&
+                        {/* Bouton Traiter quand le dossier a une étape active pour l'utilisateur */}
+                        {!isAdminRole &&
                          (application.status === 'submitted' || application.status === 'under_review') &&
                          (() => {
                            const workflowSteps = (application as any).workflowSteps || [];
@@ -884,7 +865,7 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
         </TableContainer>
       </TabPanel>
 
-      <TabPanel value={activeTab} index={isAnalystRole ? 3 : 2}>
+      <TabPanel value={activeTab} index={3}>
         {/* Complete History Tab */}
         <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none', overflowX: 'auto' }}>
           <Table sx={{ minWidth: 780 }}>

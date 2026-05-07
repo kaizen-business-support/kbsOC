@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
 import { triggerNotification } from '../services/notificationService';
-import { createWorkflowStepsForApplication } from '../services/workflowService';
+import { createWorkflowStepsForApplication, getActivePolicyForCreditType, finalizeApplicationDuration } from '../services/workflowService';
 import { authenticate, requireCompany } from '../middleware/auth';
 
 const router = Router();
@@ -204,6 +204,15 @@ router.post('/', async (req: Request, res: Response) => {
     const count = await prisma.creditApplication.count();
     const applicationNumber = `APP-${new Date().getFullYear()}-${String(count + 1).padStart(6, '0')}`;
 
+    // Vérifier qu'une politique de crédit active existe — blocage immédiat sinon
+    const activePolicy = await getActivePolicyForCreditType(creditTypeId, req.companyId);
+    if (!activePolicy) {
+      return res.status(422).json({
+        success: false,
+        error: 'Aucune politique de crédit active. Un administrateur doit activer une politique de crédit avant de soumettre un dossier.'
+      });
+    }
+
     // Ensure the user exists in the database (for demo users)
     const userExists = await prisma.user.findUnique({
       where: { id: createdBy }
@@ -255,23 +264,16 @@ router.post('/', async (req: Request, res: Response) => {
       },
     });
 
-    // Construction du circuit via la politique de crédit active (non-bloquant)
-    if (application.creditTypeId) {
-      try {
-        await createWorkflowStepsForApplication(
-          application.id,
-          application.creditTypeId,
-          Number(amount)
-        );
-        await prisma.creditApplication.update({
-          where: { id: application.id },
-          data: { status: 'UNDER_REVIEW' },
-        });
-      } catch (workflowErr: any) {
-        console.warn('[applications] Workflow non généré (politique manquante ?) :', workflowErr.message);
-        // L'application est quand même créée; le dispatching gérera l'attribution
-      }
-    }
+    // Construction du circuit — la politique est garantie active (vérifiée ci-dessus)
+    await createWorkflowStepsForApplication(
+      application.id,
+      application.creditTypeId!,
+      Number(amount)
+    );
+    await prisma.creditApplication.update({
+      where: { id: application.id },
+      data: { status: 'UNDER_REVIEW' },
+    });
 
     // Trigger notification (non-blocking)
     triggerNotification('APPLICATION_SUBMITTED', application.id);
@@ -465,6 +467,71 @@ router.put('/:id', async (req: Request, res: Response) => {
       success: false,
       error: error.message || 'Erreur lors de la mise à jour de la demande'
     });
+  }
+});
+
+// POST /api/applications/:id/disburse — BACK_OFFICE, DIRECTION_GENERALE, ADMIN
+const DISBURSE_ROLES = ['BACK_OFFICE', 'DIRECTION_GENERALE', 'ADMIN', 'SUPER_ADMIN'];
+
+router.post('/:id/disburse', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const user = (req as any).user;
+
+    if (!user || !DISBURSE_ROLES.includes(user.role)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès réservé au Back-Office ou à la Direction Générale'
+      });
+    }
+
+    const application = await prisma.creditApplication.findFirst({
+      where: { id, companyId: req.companyId },
+      select: { id: true, status: true, applicationNumber: true }
+    });
+
+    if (!application) {
+      return res.status(404).json({ success: false, error: 'Dossier introuvable' });
+    }
+
+    if (application.status !== 'APPROVED') {
+      return res.status(409).json({
+        success: false,
+        error: `Le décaissement requiert le statut APPROVED (statut actuel : ${application.status})`
+      });
+    }
+
+    const now = new Date();
+
+    await prisma.$transaction([
+      prisma.creditApplication.update({
+        where: { id },
+        data: { status: 'DISBURSED' }
+      }),
+      prisma.workflowStep.create({
+        data: {
+          applicationId: id,
+          stepName: 'disbursement',
+          role: user.role,
+          assigneeId: user.id,
+          status: 'COMPLETED',
+          completedAt: now,
+          comments: `Décaissement effectué par ${user.name ?? user.email}`
+        }
+      })
+    ]);
+
+    await finalizeApplicationDuration(id);
+    triggerNotification('APPLICATION_APPROVED', id);
+
+    res.json({
+      success: true,
+      message: `Dossier ${application.applicationNumber} décaissé avec succès`,
+      status: 'DISBURSED'
+    });
+  } catch (error: any) {
+    console.error('Disburse error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Erreur lors du décaissement' });
   }
 });
 

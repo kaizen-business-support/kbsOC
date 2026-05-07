@@ -17,6 +17,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { prisma } from '../prismaClient';
 import { authenticate, authorize, requireCompany } from '../middleware/auth';
+import { finalizeApplicationDuration } from '../services/workflowService';
 import { generateContract } from '../services/contractGenerationService';
 import { validateMagicBytes } from '../services/contractTemplateService';
 import { getProvider } from '../services/signatureService';
@@ -224,6 +225,10 @@ router.post('/:id/upload-signed', authorize(['generate_contracts']), upload.sing
       },
       include: { signatories: { orderBy: { order: 'asc' } }, template: true },
     });
+
+    // Auto-complétion de l'étape LEGAL si elle est en cours
+    await completeLegalStepOnSigned(c.applicationId);
+
     res.json({ success: true, data: updated });
   } catch (e: any) {
     console.error('[contracts] POST /:id/upload-signed', e);
@@ -247,6 +252,48 @@ router.post('/:id/cancel', authorize(['generate_contracts']), async (req: Reques
   });
   res.json({ success: true, data: updated });
 });
+
+/**
+ * Complète automatiquement l'étape LEGAL en cours dès qu'un contrat est signé.
+ * Si c'était la dernière étape, passe le dossier en APPROVED.
+ */
+async function completeLegalStepOnSigned(applicationId: string): Promise<void> {
+  const legalStep = await prisma.workflowStep.findFirst({
+    where: {
+      applicationId,
+      status: { in: ['PENDING', 'IN_REVIEW'] },
+      policyStep: { stepType: 'LEGAL' },
+    },
+  });
+  if (!legalStep) return;
+
+  const now = new Date();
+  const durationMinutes = legalStep.startedAt
+    ? Math.round((now.getTime() - legalStep.startedAt.getTime()) / 60000)
+    : null;
+
+  await prisma.workflowStep.update({
+    where: { id: legalStep.id },
+    data: {
+      status: 'APPROVED',
+      completedAt: now,
+      durationMinutes: durationMinutes ?? undefined,
+      comments: 'Contrat signé — étape juridique complétée automatiquement',
+    },
+  });
+
+  const remaining = await prisma.workflowStep.findFirst({
+    where: { applicationId, status: { in: ['PENDING', 'IN_REVIEW'] } },
+  });
+
+  if (!remaining) {
+    await prisma.creditApplication.update({
+      where: { id: applicationId },
+      data: { status: 'APPROVED' },
+    });
+    await finalizeApplicationDuration(applicationId);
+  }
+}
 
 /**
  * Handler webhook DocuSeal — exporté pour montage manuel dans server.ts
@@ -320,6 +367,7 @@ export async function handleDocusealWebhook(req: Request, res: Response) {
           signedAt: new Date(),
         },
       });
+      await completeLegalStepOnSigned(contract.applicationId);
     } else if (parsed.event === 'submission.declined' || parsed.event === 'submission.expired') {
       // Pas d'enum DECLINED côté contrat : on garde PENDING_SIGNATURE et le juridique annule manuellement.
       // Trace dans le webhook log suffit.

@@ -607,6 +607,33 @@ export async function canApproveStep(
   const blocked = wallRules.find((r) => r.forbiddenStep === stepName);
   if (blocked) return { allowed: false, reason: blocked.reason ?? 'Mur chinois : opération non autorisée pour ce rôle' };
 
+  // ── 0b. Non-cumul analyse / contre-analyse (même personne physique) ────────
+  // Un analyste qui a déjà complété une étape ANALYSIS sur ce dossier
+  // ne peut pas en traiter une seconde (contre-analyse).
+  if (step.policyStepId) {
+    const currentStepType = await prisma.creditPolicyStep.findUnique({
+      where: { id: step.policyStepId },
+      select: { stepType: true },
+    });
+    if (currentStepType?.stepType === 'ANALYSIS') {
+      const priorAnalysis = await prisma.workflowStep.findFirst({
+        where: {
+          applicationId,
+          assigneeId: userId,
+          completedAt: { not: null },
+          id: { not: step.id },
+          policyStep: { stepType: 'ANALYSIS' },
+        },
+      });
+      if (priorAnalysis) {
+        return {
+          allowed: false,
+          reason: "Non-cumul des analyses : vous avez déjà traité une étape d'analyse sur ce dossier. Un autre analyste doit effectuer cette contre-analyse.",
+        };
+      }
+    }
+  }
+
   // ── 1. Vérification du rôle (direct ou par délégation) ────────────────────
   let effectiveRole   = user.role as UserRole;
   let effectiveBranch = (user as any).branch as string | null;

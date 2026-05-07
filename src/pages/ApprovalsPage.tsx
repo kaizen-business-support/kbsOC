@@ -7,21 +7,24 @@ import {
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
-  HowToVote as ApprovalIcon,
+  FolderSpecial as DossierIcon,
   Warning as WarningIcon,
   AccessTime as TimeIcon,
+  Gavel as LegalIcon,
 } from '@mui/icons-material';
-import GavelIcon from '@mui/icons-material/Gavel';
 import { useNavigate } from 'react-router-dom';
 import { ApprovalItem } from '../types';
 import { ApiService } from '../services/api';
-import { ApprovalActionDialog } from '../components/ApprovalActionDialog';
+import { DossierActionDrawer } from '../components/DossierActionDrawer';
 
-const ACCENT = '#5c35b5';
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 const REFRESH_INTERVAL = 30;
 
 function fmtAmount(v: number, currency = 'XOF') {
-  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency, minimumFractionDigits: 0 }).format(v);
+  return new Intl.NumberFormat('fr-FR', {
+    style: 'currency', currency, minimumFractionDigits: 0,
+  }).format(v);
 }
 
 function SlaChip({ item }: { item: ApprovalItem }) {
@@ -33,6 +36,26 @@ function SlaChip({ item }: { item: ApprovalItem }) {
   return <Chip label="Dans les délais" color="success" size="small" variant="outlined" />;
 }
 
+const STEP_TYPE_LABEL: Record<string, string> = {
+  CREATION:  'Création',
+  DISPATCH:  'Dispatching',
+  ANALYSIS:  'Analyse',
+  APPROVAL:  'Approbation',
+  COMMITTEE: 'Comité',
+  LEGAL:     'Juridique',
+};
+
+const STEP_TYPE_COLOR: Record<string, 'default' | 'info' | 'warning' | 'success' | 'error' | 'primary' | 'secondary'> = {
+  CREATION:  'default',
+  DISPATCH:  'info',
+  ANALYSIS:  'primary',
+  APPROVAL:  'warning',
+  COMMITTEE: 'warning',
+  LEGAL:     'secondary',
+};
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export const ApprovalsPage: React.FC = () => {
   const navigate = useNavigate();
   const [items, setItems]               = useState<ApprovalItem[]>([]);
@@ -41,7 +64,7 @@ export const ApprovalsPage: React.FC = () => {
   const [tab, setTab]                   = useState(0);
   const [branchFilter, setBranchFilter] = useState('all');
   const [countdown, setCountdown]       = useState(REFRESH_INTERVAL);
-  const [dialog, setDialog]             = useState<ApprovalItem | null>(null);
+  const [drawer, setDrawer]             = useState<ApprovalItem | null>(null);
   const lastReloadRef                   = useRef(Date.now());
 
   const reload = useCallback(async (silent = false) => {
@@ -59,6 +82,7 @@ export const ApprovalsPage: React.FC = () => {
 
   useEffect(() => { reload(); }, [reload]);
 
+  // Rafraîchissement automatique
   useEffect(() => {
     const interval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - lastReloadRef.current) / 1000);
@@ -73,34 +97,45 @@ export const ApprovalsPage: React.FC = () => {
     return () => clearInterval(interval);
   }, [reload]);
 
-  const branches = Array.from(new Set(items.map(i => i.branch).filter(Boolean) as string[])).sort();
+  const branches = Array.from(
+    new Set(items.map(i => i.branch).filter(Boolean) as string[])
+  ).sort();
+
+  // Compteurs par type d'étape
+  const countByType = (type: string) => items.filter(i => i.stepType === type).length;
 
   const filtered = items.filter(item => {
     const matchBranch = branchFilter === 'all' || item.branch === branchFilter;
-    const matchTab = tab === 0
-      || (tab === 1 && item.type === 'financial')
-      || (tab === 2 && item.type === 'process');
+    const matchTab =
+      tab === 0 ||
+      (tab === 1 && item.stepType === 'ANALYSIS') ||
+      (tab === 2 && ['APPROVAL', 'COMMITTEE'].includes(item.stepType)) ||
+      (tab === 3 && item.stepType === 'LEGAL') ||
+      (tab === 4 && item.stepType === 'DISPATCH');
     return matchBranch && matchTab;
   });
-
-  const countFinancial = items.filter(i => i.type === 'financial').length;
-  const countProcess   = items.filter(i => i.type === 'process').length;
 
   const handleSuccess = (itemId: string) => {
     setItems(prev => prev.filter(i => i.id !== itemId));
   };
 
-  const showAmount = tab === 0 || tab === 1;
+  const openDrawer = (item: ApprovalItem) => {
+    if (item.stepType === 'LEGAL') {
+      navigate(`/legal-step/${item.applicationId}`);
+    } else {
+      setDrawer(item);
+    }
+  };
 
   return (
     <Box sx={{ p: 3 }}>
-      {/* Header */}
+      {/* ── En-tête ── */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-        <ApprovalIcon sx={{ fontSize: 32, color: ACCENT }} />
+        <DossierIcon sx={{ fontSize: 32, color: '#5c35b5' }} />
         <Box sx={{ flex: 1 }}>
-          <Typography variant="h5" fontWeight={700}>Mes Approbations</Typography>
+          <Typography variant="h5" fontWeight={700}>Mes Dossiers</Typography>
           <Typography variant="body2" color="text.secondary">
-            {items.length} élément{items.length !== 1 ? 's' : ''} en attente
+            {items.length} dossier{items.length !== 1 ? 's' : ''} en attente de traitement
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -116,49 +151,41 @@ export const ApprovalsPage: React.FC = () => {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      {/* Filtre agence */}
+      {/* ── Filtre agence ── */}
       {branches.length > 0 && (
         <FormControl size="small" sx={{ mb: 2, minWidth: 200 }}>
           <InputLabel>Agence</InputLabel>
-          <Select value={branchFilter} label="Agence" onChange={(e) => setBranchFilter(e.target.value)}>
+          <Select value={branchFilter} label="Agence" onChange={e => setBranchFilter(e.target.value)}>
             <MenuItem value="all">Toutes les agences</MenuItem>
             {branches.map(b => <MenuItem key={b} value={b}>{b}</MenuItem>)}
           </Select>
         </FormControl>
       )}
 
-      {/* Onglets */}
+      {/* ── Onglets par type d'étape ── */}
       <Tabs
         value={tab}
         onChange={(_, v) => setTab(v)}
         sx={{ mb: 2, borderBottom: '1px solid #e0e0e0' }}
+        variant="scrollable"
+        scrollButtons="auto"
       >
-        <Tab label={
-          <Badge badgeContent={items.length} color="primary" max={99}>
-            <Box sx={{ pr: 1 }}>Tout</Box>
-          </Badge>
-        } />
-        <Tab label={
-          <Badge badgeContent={countFinancial} color="success" max={99}>
-            <Box sx={{ pr: 1 }}>Financière</Box>
-          </Badge>
-        } />
-        <Tab label={
-          <Badge badgeContent={countProcess} color="warning" max={99}>
-            <Box sx={{ pr: 1 }}>Process</Box>
-          </Badge>
-        } />
+        <Tab label={<Badge badgeContent={items.length} color="primary" max={99}><Box sx={{ pr: 1 }}>Tout</Box></Badge>} />
+        <Tab label={<Badge badgeContent={countByType('ANALYSIS')} color="info" max={99}><Box sx={{ pr: 1 }}>Analyse</Box></Badge>} />
+        <Tab label={<Badge badgeContent={countByType('APPROVAL') + countByType('COMMITTEE')} color="warning" max={99}><Box sx={{ pr: 1 }}>Approbation</Box></Badge>} />
+        <Tab label={<Badge badgeContent={countByType('LEGAL')} color="secondary" max={99}><Box sx={{ pr: 1 }}>Juridique</Box></Badge>} />
+        <Tab label={<Badge badgeContent={countByType('DISPATCH')} color="default" max={99}><Box sx={{ pr: 1 }}>Dispatching</Box></Badge>} />
       </Tabs>
 
-      {/* Contenu */}
+      {/* ── Tableau ── */}
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
           <CircularProgress />
         </Box>
       ) : filtered.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 8 }}>
-          <ApprovalIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
-          <Typography color="text.secondary">Aucune approbation en attente</Typography>
+          <DossierIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+          <Typography color="text.secondary">Aucun dossier en attente</Typography>
         </Box>
       ) : (
         <Paper sx={{ borderRadius: '12px', overflow: 'hidden' }} elevation={0} variant="outlined">
@@ -168,22 +195,23 @@ export const ApprovalsPage: React.FC = () => {
                 <TableCell><strong>N° dossier</strong></TableCell>
                 <TableCell><strong>Client</strong></TableCell>
                 <TableCell><strong>Étape</strong></TableCell>
-                {showAmount && <TableCell align="right"><strong>Montant</strong></TableCell>}
+                <TableCell align="right"><strong>Montant</strong></TableCell>
                 <TableCell><strong>Type crédit</strong></TableCell>
                 <TableCell><strong>Agence</strong></TableCell>
                 <TableCell align="center"><strong>Attente</strong></TableCell>
                 <TableCell align="center"><strong>SLA</strong></TableCell>
-                <TableCell align="center"><strong>Actions</strong></TableCell>
+                <TableCell align="center"><strong>Action</strong></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {filtered.map((item) => (
+              {filtered.map(item => (
                 <TableRow
                   key={item.id}
                   sx={{
                     bgcolor: item.isOverdue ? 'rgba(220,38,38,0.03)' : 'white',
-                    '&:hover': { bgcolor: 'rgba(92,53,181,0.04)' },
+                    '&:hover': { bgcolor: 'rgba(92,53,181,0.04)', cursor: 'pointer' },
                   }}
+                  onClick={() => openDrawer(item)}
                 >
                   <TableCell>
                     <Typography variant="body2" fontWeight={600} color="primary.main">
@@ -194,16 +222,24 @@ export const ApprovalsPage: React.FC = () => {
                     <Typography variant="body2">{item.clientName}</Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2">{item.stepLabel}</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <Chip
+                        label={STEP_TYPE_LABEL[item.stepType] ?? item.stepType}
+                        color={STEP_TYPE_COLOR[item.stepType] ?? 'default'}
+                        size="small"
+                        variant="outlined"
+                        sx={{ fontSize: 11, height: 20 }}
+                      />
+                      <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 140 }}>
+                        {item.stepLabel}
+                      </Typography>
+                    </Box>
                   </TableCell>
-                  {showAmount && (
-                    <TableCell align="right">
-                      {item.type === 'financial'
-                        ? <Typography variant="body2" fontWeight={600}>{fmtAmount(item.amount, item.currency)}</Typography>
-                        : <Typography variant="body2" color="text.disabled">—</Typography>
-                      }
-                    </TableCell>
-                  )}
+                  <TableCell align="right">
+                    <Typography variant="body2" fontWeight={600}>
+                      {fmtAmount(item.amount, item.currency)}
+                    </Typography>
+                  </TableCell>
                   <TableCell>
                     <Typography variant="body2">{item.creditType ?? '—'}</Typography>
                   </TableCell>
@@ -218,15 +254,15 @@ export const ApprovalsPage: React.FC = () => {
                       </Typography>
                     </Box>
                   </TableCell>
-                  <TableCell align="center">
+                  <TableCell align="center" onClick={e => e.stopPropagation()}>
                     <SlaChip item={item} />
                   </TableCell>
-                  <TableCell align="center">
+                  <TableCell align="center" onClick={e => e.stopPropagation()}>
                     {item.stepType === 'LEGAL' ? (
                       <Button
                         variant="contained"
                         size="small"
-                        startIcon={<GavelIcon sx={{ fontSize: 14 }} />}
+                        startIcon={<LegalIcon sx={{ fontSize: 14 }} />}
                         onClick={() => navigate(`/legal-step/${item.applicationId}`)}
                         sx={{
                           borderRadius: '8px', fontSize: '12px', fontWeight: 600,
@@ -234,16 +270,16 @@ export const ApprovalsPage: React.FC = () => {
                           '&:hover': { bgcolor: '#6b21a8', boxShadow: 'none' },
                         }}
                       >
-                        Étape juridique
+                        Traiter
                       </Button>
                     ) : (
                       <Button
                         variant="contained"
                         size="small"
-                        onClick={() => setDialog(item)}
+                        onClick={() => openDrawer(item)}
                         sx={{
                           borderRadius: '8px', fontSize: '12px', fontWeight: 600,
-                          textTransform: 'none', bgcolor: ACCENT, boxShadow: 'none',
+                          textTransform: 'none', bgcolor: '#5c35b5', boxShadow: 'none',
                           '&:hover': { bgcolor: '#4a2a9e', boxShadow: 'none' },
                         }}
                       >
@@ -258,10 +294,11 @@ export const ApprovalsPage: React.FC = () => {
         </Paper>
       )}
 
-      <ApprovalActionDialog
-        item={dialog}
-        open={!!dialog}
-        onClose={() => setDialog(null)}
+      {/* ── Drawer de traitement ── */}
+      <DossierActionDrawer
+        item={drawer}
+        open={!!drawer}
+        onClose={() => setDrawer(null)}
         onSuccess={handleSuccess}
       />
     </Box>

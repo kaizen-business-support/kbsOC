@@ -439,6 +439,25 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       });
     }
 
+    // Étape LEGAL : un contrat signé est requis avant toute décision d'approbation
+    if (decision === 'APPROVED' && currentStep.policyStepId) {
+      const legalStepType = await prisma.creditPolicyStep.findUnique({
+        where: { id: currentStep.policyStepId },
+        select: { stepType: true },
+      });
+      if (legalStepType?.stepType === 'LEGAL') {
+        const signedContract = await prisma.generatedContract.findFirst({
+          where: { applicationId, status: 'SIGNED' },
+        });
+        if (!signedContract) {
+          return res.status(422).json({
+            success: false,
+            error: "Un contrat signé est requis avant de valider l'étape juridique. Générez le contrat et téléversez la version signée."
+          });
+        }
+      }
+    }
+
     // Démarrer l'étape si elle est encore en PENDING (enregistre startedAt)
     if (currentStep.status === 'PENDING') {
       await startWorkflowStep(currentStep.id, userId);

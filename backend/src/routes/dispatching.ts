@@ -373,6 +373,31 @@ router.post('/assign', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Aucune étape en attente pour ce dossier. Vérifiez qu\'une politique de crédit active est configurée.' });
     }
 
+    // Non-cumul : empêcher l'affectation du même analyste sur deux étapes ANALYSIS
+    if (targetStep.policyStepId) {
+      const stepTypeInfo = await prisma.creditPolicyStep.findUnique({
+        where: { id: targetStep.policyStepId },
+        select: { stepType: true },
+      });
+      if (stepTypeInfo?.stepType === 'ANALYSIS') {
+        const priorAnalysis = await prisma.workflowStep.findFirst({
+          where: {
+            applicationId,
+            assigneeId: targetUserId,
+            completedAt: { not: null },
+            id: { not: targetStep.id },
+            policyStep: { stepType: 'ANALYSIS' },
+          },
+        });
+        if (priorAnalysis) {
+          return res.status(403).json({
+            success: false,
+            error: `Non-cumul des analyses : ${agent.name} a déjà traité une étape d'analyse sur ce dossier. Choisissez un autre analyste pour la contre-analyse.`,
+          });
+        }
+      }
+    }
+
     // Validate the agent's role matches the step's role
     if (agent.role !== targetStep.role) {
       return res.status(400).json({
