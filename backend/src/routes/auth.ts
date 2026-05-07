@@ -388,7 +388,7 @@ router.get('/companies', authenticate, async (req: Request, res: Response) => {
 
 router.post('/refresh', async (req: Request, res: Response) => {
   try {
-    const { refreshToken } = req.body;
+    const { refreshToken, accessToken: oldAccessToken } = req.body;
 
     if (!refreshToken) {
       return res.status(400).json({ success: false, error: 'Refresh token requis' });
@@ -413,11 +413,19 @@ router.post('/refresh', async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Token invalide' });
     }
 
-    const accessToken = generateAccessToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role
-    });
+    // Récupérer le companyId depuis l'ancien access token (decode sans vérif d'expiry)
+    // pour que le nouveau token préserve le contexte company de la session.
+    let companyId: string | undefined;
+    if (oldAccessToken) {
+      try {
+        const oldPayload = jwt.decode(oldAccessToken) as any;
+        if (oldPayload?.companyId) companyId = oldPayload.companyId;
+      } catch { /* ignore */ }
+    }
+
+    const accessToken = companyId
+      ? generateAccessTokenWithCompany({ userId: user.id, email: user.email, role: user.role, companyId })
+      : generateAccessToken({ userId: user.id, email: user.email, role: user.role });
 
     return res.json({
       success: true,

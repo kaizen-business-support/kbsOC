@@ -76,7 +76,11 @@ api.interceptors.response.use(
       const refreshToken = tokenManager.getRefreshToken();
       if (refreshToken) {
         try {
-          const response = await api.post('/auth/refresh', { refreshToken });
+          const expiredAccessToken = tokenManager.getAccessToken();
+          const response = await api.post('/auth/refresh', {
+            refreshToken,
+            accessToken: expiredAccessToken,
+          });
           
           // Update access token
           tokenManager.setTokens(response.data.accessToken, refreshToken);
