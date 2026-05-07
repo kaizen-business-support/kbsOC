@@ -63,10 +63,12 @@ const STEP_TYPES = [
 ];
 
 const ROLES = [
+  { value: 'ASSISTANT_COMMERCIAL',    label: 'Assistant Commercial' },
   { value: 'CHARGE_AFFAIRES',         label: "Chargé d'Affaires" },
   { value: 'ANALYSTE_RISQUES',        label: 'Analyste Risques' },
   { value: 'RESPONSABLE_RISQUES',     label: 'Responsable Risques' },
   { value: 'RESPONSABLE_ENGAGEMENTS', label: 'Responsable Engagements' },
+  { value: 'DIR_AG',                  label: "Directeur d'Agence" },
   { value: 'COMITE_CREDIT',           label: 'Comité de Crédit' },
   { value: 'DIRECTION_GENERALE',      label: 'Direction Générale' },
   { value: 'DIRECTION_JURIDIQUE',     label: 'Direction Juridique' },

@@ -327,8 +327,15 @@ router.put('/:id', async (req: Request, res: Response) => {
     });
 
     res.json({ success: true, data: policy });
-  } catch (error) {
+  } catch (error: any) {
     console.error('[credit-policy] PUT /:id', error);
+    if (error?.code === 'P2009' || error?.message?.includes('Invalid value for argument')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Un rôle utilisé dans les étapes n\'est pas reconnu. Vérifiez les rôles assignés.',
+        detail: error.message,
+      });
+    }
     res.status(500).json({ success: false, error: 'Erreur lors de la mise à jour' });
   }
 });

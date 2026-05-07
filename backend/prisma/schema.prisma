@@ -574,16 +574,18 @@ model PowerDelegation {
 }
 
 enum UserRole {
-  CHARGE_AFFAIRES         @map("account_manager")      // ex ACCOUNT_MANAGER
-  ANALYSTE_RISQUES        @map("credit_analyst")        // ex CREDIT_ANALYST
-  RESPONSABLE_RISQUES     @map("analyst_supervisor")    // ex ANALYST_SUPERVISOR
-  RESPONSABLE_ENGAGEMENTS @map("branch_manager")        // ex BRANCH_MANAGER
-  COMITE_CREDIT           @map("credit_committee")      // ex CREDIT_COMMITTEE
-  DIRECTION_GENERALE      @map("management")            // ex MANAGEMENT
+  CHARGE_AFFAIRES         @map("account_manager")       // ex ACCOUNT_MANAGER
+  ANALYSTE_RISQUES        @map("credit_analyst")         // ex CREDIT_ANALYST
+  RESPONSABLE_RISQUES     @map("analyst_supervisor")     // ex ANALYST_SUPERVISOR
+  RESPONSABLE_ENGAGEMENTS @map("branch_manager")         // ex BRANCH_MANAGER
+  COMITE_CREDIT           @map("credit_committee")       // ex CREDIT_COMMITTEE
+  DIRECTION_GENERALE      @map("management")             // ex MANAGEMENT
   ADMIN                   @map("admin")
-  SUPER_ADMIN             @map("super_admin")           // nouveau
-  BACK_OFFICE             @map("back_office")           // nouveau
-  DIRECTION_JURIDIQUE     @map("direction_juridique")   // nouveau
+  SUPER_ADMIN             @map("super_admin")
+  BACK_OFFICE             @map("back_office")
+  DIRECTION_JURIDIQUE     @map("direction_juridique")
+  ASSISTANT_COMMERCIAL    @map("assistant_commercial")   // assistant commercial (front-office)
+  DIR_AG                  @map("dir_ag")                 // directeur d'agence
 
   @@map("user_role")
 }
