@@ -53,9 +53,19 @@ const DEFAULT_CREATION_STEP = {
 };
 
 function normalizeStepsWithCreation(clientSteps: any[]): any[] {
-  const nonCreation = clientSteps.filter((s: any) => s.stepType !== 'CREATION');
+  const clientCreation = clientSteps.find((s: any) => s.stepType === 'CREATION');
+  const nonCreation    = clientSteps.filter((s: any) => s.stepType !== 'CREATION');
+  const creationStep   = {
+    ...DEFAULT_CREATION_STEP,
+    // Conserver le rôle et le label personnalisés si l'utilisateur les a modifiés
+    ...(clientCreation?.assignedRole           && { assignedRole:           clientCreation.assignedRole }),
+    ...(clientCreation?.stepLabel              && { stepLabel:              clientCreation.stepLabel }),
+    ...(clientCreation?.expectedDurationHours  && { expectedDurationHours:  clientCreation.expectedDurationHours }),
+    ...(clientCreation?.maxDurationHours       && { maxDurationHours:       clientCreation.maxDurationHours }),
+    ...(clientCreation?.description            && { description:            clientCreation.description }),
+  };
   return [
-    DEFAULT_CREATION_STEP,
+    creationStep,
     ...nonCreation.map((s: any, idx: number) => ({
       stepName: s.stepName || `step_${idx + 2}`,
       stepLabel: s.stepLabel,
