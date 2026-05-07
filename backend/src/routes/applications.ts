@@ -118,9 +118,11 @@ router.get('/:id', async (req: Request, res: Response) => {
         creditType: true,
         workflowSteps: {
           include: {
-            assignee: true
-          }
-        }
+            assignee: true,
+            policyStep: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        },
       }
     });
 

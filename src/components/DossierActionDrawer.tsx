@@ -250,7 +250,12 @@ export const DossierActionDrawer: React.FC<Props> = ({
     </Box>
   );
 
-  const steps: any[] = app?.workflowSteps ?? [];
+  const steps: any[] = [...(app?.workflowSteps ?? [])].sort((a, b) => {
+    const orderA = a.policyStep?.order ?? 0;
+    const orderB = b.policyStep?.order ?? 0;
+    if (orderA !== orderB) return orderA - orderB;
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  });
   const creditType   = app?.creditType?.name ?? item.creditType ?? '—';
   const creator      = app?.creator?.name ?? '—';
 
