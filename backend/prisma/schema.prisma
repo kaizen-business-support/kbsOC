@@ -233,7 +233,7 @@ model WorkflowStep {
   id              String            @id @default(cuid())
   applicationId   String            @map("application_id")
   stepName        String            @map("step_name")
-  role            UserRole
+  role            String
   assigneeId      String?           @map("assignee_id")
   status          StepStatus        @default(PENDING)
   deadline        DateTime?
@@ -403,7 +403,7 @@ model CreditPolicy {
  *
  * Chaque étape définit :
  *   - stepType    : le rôle fonctionnel de l'étape (DISPATCH / ANALYSIS / APPROVAL / COMMITTEE)
- *   - assignedRole: le profil (UserRole) responsable de cette étape
+ *   - assignedRole: le profil responsable de cette étape (String libre pour rôles dynamiques)
  *   - conditions  : plages de montant pour activer l'étape (null = toujours actif)
  *   - limites     : plafonds que ce profil peut approuver (pour APPROVAL/COMMITTEE)
  *   - délais      : SLA attendu et maximum (en heures) → base des alertes
@@ -419,8 +419,8 @@ model CreditPolicyStep {
   order       Int
   stepType    PolicyStepType  @map("step_type")
 
-  // Profil responsable de cette étape
-  assignedRole UserRole        @map("assigned_role")
+  // Profil responsable de cette étape (String pour accepter les rôles personnalisés)
+  assignedRole String          @map("assigned_role")
 
   // Condition d'activation (montant du dossier) — null = toujours actif
   conditionMinAmount Decimal?  @map("condition_min_amount") @db.Decimal(15, 2)

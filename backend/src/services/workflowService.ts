@@ -23,7 +23,7 @@ export interface WorkflowStepPlan {
   order: number;
   stepName: string;
   stepLabel: string;
-  role: UserRole;
+  role: string;
   stepType?: PolicyStepType;
   durationDays: number;
   expectedDurationHours?: number;
@@ -51,7 +51,7 @@ export interface WorkflowPlan {
 export interface StepProcessingStats {
   stepName: string;
   stepLabel: string;
-  role: UserRole;
+  role: string;
   durationMinutes: number | null;
   isOverdue: boolean;
   completedAt: Date | null;
