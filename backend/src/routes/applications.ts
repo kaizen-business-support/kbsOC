@@ -215,6 +215,17 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
+    // Vérifier que le client appartient bien à cette company
+    const clientExists = await prisma.client.findFirst({
+      where: { id: clientId, companyId: req.companyId },
+    });
+    if (!clientExists) {
+      return res.status(400).json({
+        success: false,
+        error: 'Client introuvable. Veuillez sélectionner un client valide.',
+      });
+    }
+
     // Ensure the user exists in the database (for demo users)
     const userExists = await prisma.user.findUnique({
       where: { id: createdBy }

@@ -115,6 +115,52 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
   const [openDialog, setOpenDialog] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [createNotif, setCreateNotif] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+
+  const emptyForm = { companyName: '', rccm: '', ninea: '', legalForm: '', sector: '', branch: '', headquarters: '', phone: '', email: '', contactPerson: '' };
+  const [newClientForm, setNewClientForm] = useState(emptyForm);
+
+  const handleFormChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement | { value: unknown }>) =>
+    setNewClientForm(prev => ({ ...prev, [field]: e.target.value as string }));
+
+  const handleCreateClient = async () => {
+    if (!newClientForm.companyName.trim()) {
+      setCreateNotif({ msg: 'La raison sociale est obligatoire', sev: 'error' });
+      return;
+    }
+    setIsCreating(true);
+    try {
+      const res = await ApiService.createClient(newClientForm);
+      if (res.success) {
+        setCreateNotif({ msg: 'Client créé avec succès', sev: 'success' });
+        setNewClientForm(emptyForm);
+        // Refresh client list and switch to list tab
+        const refreshed = await ApiService.getClients();
+        if (refreshed.success && refreshed.data) {
+          setClients(refreshed.data.map((c: any) => ({
+            id: c.id,
+            name: c.companyName,
+            rccm: c.rccm || 'N/A',
+            ninea: c.ninea || 'N/A',
+            cofi: c.legalForm || 'N/A',
+            industry: c.sector || 'Non spécifié',
+            branch: c.creator?.department || 'Non spécifié',
+            relationshipManager: c.creator?.name || 'Non assigné',
+            createdDate: c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : '',
+            status: c.isActive ? 'active' : 'inactive',
+          })));
+        }
+        setTimeout(() => setCurrentTab(0), 1200);
+      } else {
+        setCreateNotif({ msg: res.error || 'Erreur lors de la création', sev: 'error' });
+      }
+    } catch {
+      setCreateNotif({ msg: 'Erreur lors de la création du client', sev: 'error' });
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   // Analyse tab state
   const [assignedApps, setAssignedApps] = useState<AssignedApplication[]>([]);
@@ -355,6 +401,11 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                 Création d'un Nouveau Client Corporatif
               </Typography>
               
+              {createNotif && (
+                <Alert severity={createNotif.sev} onClose={() => setCreateNotif(null)} sx={{ mb: 2 }}>
+                  {createNotif.msg}
+                </Alert>
+              )}
               <Grid container spacing={3} sx={{ mt: 2 }}>
                 <Grid item xs={12} md={6}>
                   <TextField
@@ -362,33 +413,37 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                     label="Raison Sociale *"
                     placeholder="Ex: SARL TECH SOLUTIONS"
                     required
-                  />
-                </Grid>
-                
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    label="RCCM *"
-                    placeholder="Ex: SN-DKR-2020-B-1234"
-                    helperText="Registre du Commerce et du Crédit Mobilier"
-                    required
+                    value={newClientForm.companyName}
+                    onChange={handleFormChange('companyName')}
                   />
                 </Grid>
 
                 <Grid item xs={12} md={6}>
                   <TextField
                     fullWidth
-                    label="NINEA *"
+                    label="RCCM"
+                    placeholder="Ex: SN-DKR-2020-B-1234"
+                    helperText="Registre du Commerce et du Crédit Mobilier"
+                    value={newClientForm.rccm}
+                    onChange={handleFormChange('rccm')}
+                  />
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    label="NINEA"
                     placeholder="Ex: 0123456789"
                     helperText="Numéro d'Identification Nationale des Entreprises"
-                    required
+                    value={newClientForm.ninea}
+                    onChange={handleFormChange('ninea')}
                   />
                 </Grid>
 
                 <Grid item xs={12} md={6}>
                   <FormControl fullWidth>
-                    <InputLabel>Forme Juridique (COFI) *</InputLabel>
-                    <Select label="Forme Juridique (COFI) *">
+                    <InputLabel>Forme Juridique (COFI)</InputLabel>
+                    <Select label="Forme Juridique (COFI)" value={newClientForm.legalForm} onChange={handleFormChange('legalForm') as any}>
                       <MenuItem value="SARL">SARL - Société à Responsabilité Limitée</MenuItem>
                       <MenuItem value="SA">SA - Société Anonyme</MenuItem>
                       <MenuItem value="GIE">GIE - Groupement d'Intérêt Économique</MenuItem>
@@ -400,8 +455,8 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
 
                 <Grid item xs={12} md={6}>
                   <FormControl fullWidth>
-                    <InputLabel>Secteur d'Activité *</InputLabel>
-                    <Select label="Secteur d'Activité *">
+                    <InputLabel>Secteur d'Activité</InputLabel>
+                    <Select label="Secteur d'Activité" value={newClientForm.sector} onChange={handleFormChange('sector') as any}>
                       {industries.map((industry) => (
                         <MenuItem key={industry} value={industry}>
                           {industry}
@@ -413,8 +468,8 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
 
                 <Grid item xs={12} md={6}>
                   <FormControl fullWidth>
-                    <InputLabel>Agence de Rattachement *</InputLabel>
-                    <Select label="Agence de Rattachement *">
+                    <InputLabel>Agence de Rattachement</InputLabel>
+                    <Select label="Agence de Rattachement" value={newClientForm.branch} onChange={handleFormChange('branch') as any}>
                       <MenuItem value="Dakar Centre">Dakar Centre</MenuItem>
                       <MenuItem value="Dakar Plateau">Dakar Plateau</MenuItem>
                       <MenuItem value="Thiès">Thiès</MenuItem>
@@ -425,13 +480,23 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                   </FormControl>
                 </Grid>
 
-                <Grid item xs={12}>
+                <Grid item xs={12} md={6}>
                   <TextField
                     fullWidth
-                    label="Adresse Complète"
-                    multiline
-                    rows={3}
-                    placeholder="Adresse du siège social de l'entreprise"
+                    label="Personne de Contact"
+                    placeholder="Ex: Mamadou Diallo"
+                    value={newClientForm.contactPerson}
+                    onChange={handleFormChange('contactPerson')}
+                  />
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    label="Siège Social"
+                    placeholder="Adresse du siège social"
+                    value={newClientForm.headquarters}
+                    onChange={handleFormChange('headquarters')}
                   />
                 </Grid>
 
@@ -440,6 +505,8 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                     fullWidth
                     label="Téléphone"
                     placeholder="Ex: +221 33 123 45 67"
+                    value={newClientForm.phone}
+                    onChange={handleFormChange('phone')}
                   />
                 </Grid>
 
@@ -449,6 +516,8 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                     label="Email"
                     type="email"
                     placeholder="contact@entreprise.sn"
+                    value={newClientForm.email}
+                    onChange={handleFormChange('email')}
                   />
                 </Grid>
 
@@ -457,12 +526,15 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                     <Button
                       variant="outlined"
                       onClick={() => setCurrentTab(0)}
+                      disabled={isCreating}
                     >
                       Annuler
                     </Button>
                     <Button
                       variant="contained"
-                      startIcon={<AddIcon />}
+                      startIcon={isCreating ? <CircularProgress size={16} color="inherit" /> : <AddIcon />}
+                      onClick={handleCreateClient}
+                      disabled={isCreating}
                     >
                       Créer le Client
                     </Button>

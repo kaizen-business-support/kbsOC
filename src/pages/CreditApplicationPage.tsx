@@ -251,7 +251,17 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
 
   // ── Load data ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    ApiService.getClients().then(r => r.success && setClients(r.data || []));
+    ApiService.getClients().then(r => {
+      if (r.success) {
+        const loaded = r.data || [];
+        setClients(loaded);
+        // Invalider le clientId du brouillon s'il n'existe plus dans cette company
+        setSelectedClientId(prev => {
+          if (prev && !loaded.find((c: any) => c.id === prev)) return '';
+          return prev;
+        });
+      }
+    });
     ApiService.getCreditTypes().then(r => r.success && setCreditTypes(r.data || []));
   }, []);
 
