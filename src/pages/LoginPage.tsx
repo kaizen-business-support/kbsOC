@@ -236,7 +236,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     setOtpError(''); setOtpLoading(true);
     try {
       const response = await axios.post(`${API_BASE}/auth/2fa/verify`, { token: otpCode }, { headers: { Authorization: `Bearer ${tempToken}` } });
-      completeLogin(response.data.accessToken, response.data.refreshToken, response.data.user);
+      const data = response.data;
+      if (data.requiresCompanySelection) {
+        setPartialToken(data.partialToken);
+        setCompanyOptions(data.companies || []);
+        setShowCompanySelector(true);
+        if (dispatch) dispatch({ type: 'SET_LOADING', payload: false });
+        return;
+      }
+      if (data.companies?.length === 1 || data.autoSelected) {
+        companyCtx.setActiveCompany(data.companies[0], data.accessToken);
+        companyCtx.setCompanies(data.companies || []);
+      }
+      completeLogin(data.accessToken, data.refreshToken, data.user);
     } catch (error: any) {
       setOtpError(error.response?.data?.error || 'Code invalide. Réessayez.');
     } finally {
@@ -285,7 +297,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     setChangePasswordLoading(true);
     try {
       const data = await authPasswordApi.changePasswordForced(tempToken, newPassword);
-      completeLogin(data.accessToken, data.refreshToken, data.user);
+      if (data.requiresCompanySelection) {
+        setPartialToken(data.partialToken ?? '');
+        setCompanyOptions(data.companies ?? []);
+        setShowCompanySelector(true);
+        if (dispatch) dispatch({ type: 'SET_LOADING', payload: false });
+        return;
+      }
+      if ((data.companies?.length === 1 || data.autoSelected) && data.companies?.[0]) {
+        companyCtx.setActiveCompany(data.companies[0], data.accessToken ?? '');
+        companyCtx.setCompanies(data.companies);
+      }
+      completeLogin(data.accessToken ?? '', data.refreshToken ?? '', data.user);
     } catch (error: any) {
       setChangePasswordError(error.response?.data?.error || 'Erreur lors du changement de mot de passe.');
     } finally {

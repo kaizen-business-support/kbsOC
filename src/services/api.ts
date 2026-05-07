@@ -1546,7 +1546,7 @@ export const authPasswordApi = {
   async changePasswordForced(
     tempToken: string,
     newPassword: string
-  ): Promise<{ success: boolean; accessToken: string; refreshToken: string; user: any }> {
+  ): Promise<{ success: boolean; accessToken?: string; refreshToken?: string; user: any; requiresCompanySelection?: boolean; partialToken?: string; companies?: any[]; autoSelected?: boolean }> {
     const res = await api.post('/auth/change-password-forced', { newPassword }, {
       headers: { Authorization: `Bearer ${tempToken}` }
     });

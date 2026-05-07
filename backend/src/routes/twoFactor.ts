@@ -46,6 +46,15 @@ function generateAccessToken(payload: { userId: string; email: string; role: str
   );
 }
 
+function generateAccessTokenWithCompany(payload: { userId: string; email: string; role: string; companyId: string }): string {
+  const jti = uuidv4();
+  return jwt.sign(
+    { ...payload, jti },
+    process.env.JWT_SECRET || 'dev-secret',
+    { expiresIn: '1h' }
+  );
+}
+
 function generateRefreshToken(userId: string): string {
   const jti = uuidv4();
   return jwt.sign(
@@ -206,30 +215,40 @@ router.post('/verify', async (req: Request, res: Response) => {
     // Issue full session tokens
     await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });
 
-    const accessToken = generateAccessToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role
+    const memberships = await (prisma as any).companyMembership.findMany({
+      where: { userId: user.id, isActive: true },
+      include: { company: { select: { id: true, name: true, code: true, logoUrl: true, isActive: true } } },
     });
+    const companies = memberships
+      .filter((m: any) => m.company.isActive)
+      .map((m: any) => ({ id: m.company.id, name: m.company.name, code: m.company.code, logoUrl: m.company.logoUrl, role: m.role }));
+
+    const userData = {
+      id: user.id, email: user.email, name: user.name, role: user.role,
+      department: user.department, jobTitle: user.jobTitle,
+      permissions: user.permissions, lastLogin: new Date().toISOString(),
+      isActive: user.isActive, twoFactorEnabled: user.twoFactorEnabled
+    };
+
     const refreshToken = generateRefreshToken(user.id);
 
-    return res.json({
-      success: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        department: user.department,
-        jobTitle: user.jobTitle,
-        permissions: user.permissions,
-        lastLogin: new Date().toISOString(),
-        isActive: user.isActive,
-        twoFactorEnabled: user.twoFactorEnabled
-      },
-      accessToken,
-      refreshToken
-    });
+    if (companies.length === 1) {
+      const accessToken = generateAccessTokenWithCompany({ userId: user.id, email: user.email, role: companies[0].role, companyId: companies[0].id });
+      return res.json({ success: true, user: userData, accessToken, refreshToken, companies, autoSelected: true });
+    }
+
+    if (companies.length > 1) {
+      const partialToken = jwt.sign(
+        { userId: user.id, email: user.email, role: user.role, type: 'company_selection' },
+        process.env.JWT_SECRET || 'dev-secret',
+        { expiresIn: '5m' }
+      );
+      return res.json({ success: true, requiresCompanySelection: true, partialToken, companies, user: userData });
+    }
+
+    // No company
+    const accessToken = generateAccessToken({ userId: user.id, email: user.email, role: user.role });
+    return res.json({ success: true, user: userData, accessToken, refreshToken });
   } catch (error) {
     console.error('2FA verify error:', error);
     return res.status(500).json({ success: false, error: 'Erreur de vérification 2FA' });

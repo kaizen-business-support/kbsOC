@@ -598,25 +598,39 @@ router.post('/change-password-forced', async (req: Request, res: Response) => {
       } as any
     });
 
+    const memberships = await (prisma as any).companyMembership.findMany({
+      where: { userId: user.id, isActive: true },
+      include: { company: { select: { id: true, name: true, code: true, logoUrl: true, isActive: true } } },
+    });
+    const companies = memberships
+      .filter((m: any) => m.company.isActive)
+      .map((m: any) => ({ id: m.company.id, name: m.company.name, code: m.company.code, logoUrl: m.company.logoUrl, role: m.role }));
+
+    const userData = {
+      id: user.id, email: user.email, name: user.name, role: user.role,
+      department: user.department, jobTitle: user.jobTitle,
+      permissions: user.permissions, lastLogin: new Date().toISOString(), isActive: user.isActive
+    };
+
+    if (companies.length === 1) {
+      const accessToken = generateAccessTokenWithCompany({ userId: user.id, email: user.email, role: companies[0].role, companyId: companies[0].id });
+      const refreshToken = generateRefreshToken(user.id);
+      return res.json({ success: true, accessToken, refreshToken, user: userData, companies, autoSelected: true });
+    }
+
+    if (companies.length > 1) {
+      const partialToken = jwt.sign(
+        { userId: user.id, email: user.email, role: user.role, type: 'company_selection' },
+        process.env.JWT_SECRET || 'dev-secret',
+        { expiresIn: '5m' }
+      );
+      return res.json({ success: true, requiresCompanySelection: true, partialToken, companies, user: userData });
+    }
+
+    // No company (legacy/admin flow)
     const accessToken = generateAccessToken({ userId: user.id, email: user.email, role: user.role });
     const refreshToken = generateRefreshToken(user.id);
-
-    return res.json({
-      success: true,
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        department: user.department,
-        jobTitle: user.jobTitle,
-        permissions: user.permissions,
-        lastLogin: new Date().toISOString(),
-        isActive: user.isActive
-      }
-    });
+    return res.json({ success: true, accessToken, refreshToken, user: userData });
   } catch (error) {
     console.error('Change password forced error:', error);
     return res.status(500).json({ success: false, error: 'Erreur interne du serveur' });
