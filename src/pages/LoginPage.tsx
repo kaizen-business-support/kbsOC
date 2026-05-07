@@ -752,10 +752,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
               <form onSubmit={handleSubmit}>
                 <TextField
-                  fullWidth label={t('login.email')} type="email"
+                  fullWidth label={t('login.email')} type="text"
+                  inputMode="email"
                   value={email} onChange={(e) => setEmail(e.target.value)}
-                  required disabled={state.isLoading}
+                  disabled={state.isLoading}
                   autoComplete="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
                   sx={{
                     mb: 2,
                     '& .MuiOutlinedInput-root': { borderRadius: '12px', bgcolor: '#f8fafc' },

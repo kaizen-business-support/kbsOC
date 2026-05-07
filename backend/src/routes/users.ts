@@ -193,9 +193,11 @@ router.post('/',
       throw new AppError('Name, email, and role are required', 400, 'MISSING_REQUIRED_FIELDS');
     }
 
+    const normalizedEmail = String(email).normalize('NFC').toLowerCase().trim();
+
     // Check if email already exists in database
     const existingUser = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() }
+      where: { email: normalizedEmail }
     });
 
     if (existingUser) {
@@ -222,7 +224,7 @@ router.post('/',
     // Create user in database
     const newUser = await prisma.user.create({
       data: {
-        email: email.toLowerCase(),
+        email: normalizedEmail,
         passwordHash,
         name,
         role,

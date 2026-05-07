@@ -64,14 +64,17 @@ function generateTempToken(userId: string, type: string = '2fa_pending'): string
 
 router.post('/login', async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const { email: rawEmail, password } = req.body;
 
-    if (!email || !password) {
+    if (!rawEmail || !password) {
       return res.status(400).json({ success: false, error: 'Email et mot de passe requis' });
     }
 
+    // Normalisation NFC + minuscules + trim pour gérer les caractères spéciaux (ç, é, à…)
+    const email = String(rawEmail).normalize('NFC').toLowerCase().trim();
+
     const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() }
+      where: { email }
     });
 
     // Délai constant pour résister aux timing attacks (énumération d'emails)
@@ -619,10 +622,11 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
   const successResponse = { success: true, message: 'Si cet email existe, un lien de réinitialisation vous a été envoyé.' };
 
   try {
-    const { email } = req.body;
-    if (!email) return res.json(successResponse);
+    const { email: rawForgotEmail } = req.body;
+    if (!rawForgotEmail) return res.json(successResponse);
 
-    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    const email = String(rawForgotEmail).normalize('NFC').toLowerCase().trim();
+    const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !user.isActive) return res.json(successResponse);
 
     const plainToken = crypto.randomBytes(32).toString('hex');
