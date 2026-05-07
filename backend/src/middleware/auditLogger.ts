@@ -157,6 +157,14 @@ export function auditLogger(req: Request, res: Response, next: NextFunction): vo
     return;
   }
 
+  // Capture response body so POST handlers can provide the created resource's ID
+  let capturedBody: any = null;
+  const originalJson = res.json.bind(res);
+  (res as any).json = function (body: any) {
+    capturedBody = body;
+    return originalJson(body);
+  };
+
   res.on('finish', () => {
     // Only log successful responses
     if (res.statusCode < 200 || res.statusCode >= 300) return;
@@ -190,6 +198,7 @@ export function auditLogger(req: Request, res: Response, next: NextFunction): vo
       idAt2 ??
       idAt3 ??
       (req.body?.applicationId as string | undefined) ??
+      (req.method === 'POST' ? (capturedBody?.data?.id as string | undefined) ?? null : null) ??
       null;
 
     // Sub-verb: the first non-ID path segment after the entity name

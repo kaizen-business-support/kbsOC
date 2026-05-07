@@ -1706,7 +1706,12 @@ export const creditPolicyApi = {
       const res = await api.post(`/credit-policies/${id}/activate`);
       return { success: true, data: res.data };
     } catch (e: any) {
-      return { success: false, error: e.response?.data?.message || e.response?.data?.error || 'Erreur lors de l\'activation' };
+      const body = e.response?.data;
+      return {
+        success: false,
+        error: body?.message || body?.error || 'Erreur lors de l\'activation',
+        errors: body?.errors || [],
+      };
     }
   },
 

@@ -146,7 +146,14 @@ export function WorkflowPolicyBuilder() {
       if (res.data?.steps) setSteps(res.data.steps);
       setSnack({ msg: `Sauvegardé — v${v}`, sev: 'success' });
     } else if (res.conflict) {
-      setSnack({ msg: res.error, sev: 'warning' });
+      // Version mismatch: reload the current policy's version from server, then ask user to retry
+      const fresh = await creditPolicyApi.getPolicies();
+      if (fresh.success) {
+        setPolicies(fresh.data);
+        const updated = fresh.data.find((p: CreditPolicyFull) => p.id === selectedPolicyId);
+        if (updated) setCurrentVersion(updated.version);
+      }
+      setSnack({ msg: 'Conflit de version corrigé — cliquez à nouveau sur Enregistrer', sev: 'warning' });
     } else {
       setSnack({ msg: res.error, sev: 'error' });
     }
@@ -167,7 +174,10 @@ export function WorkflowPolicyBuilder() {
     if (!selectedPolicyId) return;
     const res = await creditPolicyApi.activatePolicy(selectedPolicyId);
     if (res.success) { setSnack({ msg: 'Politique activée', sev: 'success' }); await loadData(); }
-    else setSnack({ msg: res.error, sev: 'error' });
+    else {
+      const errs = (res.errors || []).map((e: any) => e.message).join(' · ');
+      setSnack({ msg: errs || res.error || 'Erreur lors de l\'activation', sev: 'error' });
+    }
   };
 
   const handleArchive = async () => {
