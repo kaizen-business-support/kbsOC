@@ -302,7 +302,8 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
     new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', minimumFractionDigits: 0 }).format(amount);
 
   const handleSubmitApplication = async () => {
-    if (!selectedClientId || !userState.currentUser?.id) return;
+    if (!selectedClientId) throw new Error('Aucun client sélectionné. Veuillez sélectionner un client.');
+    if (!userState.currentUser?.id) throw new Error('Session expirée. Veuillez vous reconnecter.');
     setIsSubmitting(true);
     try {
       const result = await ApiService.createApplication({
@@ -320,8 +321,6 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
 
         analysisResults: {
           preliminaryAnalysis,
-          // Wrap each year's flat data into the structure WorkflowDetailsDialog expects:
-          // financialData[year].multiyear_data.N.data
           financialData: Object.fromEntries(
             Object.entries(financialData).map(([year, data]) => [
               year,
@@ -331,40 +330,38 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
         },
       });
 
-      if (result.success) {
-        clearFormDraft(DRAFT_KEY);
-        const realAppId = result.data?.id || (result.data as any)?.application?.id;
-        if (realAppId && pendingDocuments.length > 0) {
-          const token = localStorage.getItem('optimus_access_token');
-          const uploadUrl = `${window.location.origin}/api/documents/${realAppId}/upload`;
-          let uploadErrors = 0;
-          for (const doc of pendingDocuments) {
-            if (!doc.file) continue;
-            const fd = new FormData();
-            fd.append('documents', doc.file, doc.name);
-            fd.append('category', (doc.category || 'other').toUpperCase());
-            try {
-              const up = await fetch(uploadUrl, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
-              if (!up.ok) {
-                uploadErrors++;
-                const err = await up.json().catch(() => ({}));
-                console.error('Upload failed:', up.status, err);
-              }
-            } catch (e) {
+      if (!result.success) {
+        throw new Error(result.error || 'Erreur lors de la création de la demande');
+      }
+
+      clearFormDraft(DRAFT_KEY);
+      const realAppId = result.data?.id || (result.data as any)?.application?.id;
+      if (realAppId && pendingDocuments.length > 0) {
+        const token = localStorage.getItem('optimus_access_token');
+        const uploadUrl = `${window.location.origin}/api/documents/${realAppId}/upload`;
+        let uploadErrors = 0;
+        for (const doc of pendingDocuments) {
+          if (!doc.file) continue;
+          const fd = new FormData();
+          fd.append('documents', doc.file, doc.name);
+          fd.append('category', (doc.category || 'other').toUpperCase());
+          try {
+            const up = await fetch(uploadUrl, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+            if (!up.ok) {
               uploadErrors++;
-              console.error('Upload network error:', e);
+              const err = await up.json().catch(() => ({}));
+              console.error('Upload failed:', up.status, err);
             }
-          }
-          if (uploadErrors > 0) {
-            console.warn(`${uploadErrors} document(s) n'ont pas pu être téléversés.`);
+          } catch (e) {
+            uploadErrors++;
+            console.error('Upload network error:', e);
           }
         }
-        onNavigate('workflow');
-      } else {
-        alert(`Erreur : ${result.error || 'Une erreur est survenue'}`);
+        if (uploadErrors > 0) {
+          console.warn(`${uploadErrors} document(s) n'ont pas pu être téléversés.`);
+        }
       }
-    } catch (e: any) {
-      alert(`Erreur : ${e?.message || 'Erreur inconnue'}`);
+      onNavigate('workflow');
     } finally {
       setIsSubmitting(false);
     }

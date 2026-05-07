@@ -91,13 +91,20 @@ export const OtpVerificationDialog: React.FC<OtpVerificationDialogProps> = ({
     setError(null);
     try {
       await ApiService.verifyOtp(code, purpose);
-      // OTP vérifié — exécuter l'action
-      await onVerified();
-      handleClose();
     } catch (err: any) {
       setError(err.message || 'Code OTP incorrect');
       setCode('');
       inputRef.current?.focus();
+      setVerifying(false);
+      return;
+    }
+    // OTP vérifié — exécuter l'action
+    try {
+      await onVerified();
+      handleClose();
+    } catch (err: any) {
+      // Erreur de l'action (pas de l'OTP) — afficher sans effacer le code
+      setError(err.message || 'Erreur lors de la soumission');
     } finally {
       setVerifying(false);
     }

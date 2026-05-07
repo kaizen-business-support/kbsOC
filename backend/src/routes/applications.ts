@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
 import { triggerNotification } from '../services/notificationService';
-import { createWorkflowStepsForApplication, getActivePolicyForCreditType, finalizeApplicationDuration } from '../services/workflowService';
+import { createWorkflowStepsForApplication, getActivePolicyForCreditType, buildWorkflowPlan, finalizeApplicationDuration } from '../services/workflowService';
 import { authenticate, requireCompany } from '../middleware/auth';
 
 const router = Router();
@@ -206,13 +206,18 @@ router.post('/', async (req: Request, res: Response) => {
     const count = await prisma.creditApplication.count();
     const applicationNumber = `APP-${new Date().getFullYear()}-${String(count + 1).padStart(6, '0')}`;
 
-    // Vérifier qu'une politique de crédit active existe — blocage immédiat sinon
+    // Vérifier qu'une politique active existe ET qu'elle a des étapes pour ce montant/type
     const activePolicy = await getActivePolicyForCreditType(creditTypeId, req.companyId);
     if (!activePolicy) {
       return res.status(422).json({
         success: false,
         error: 'Aucune politique de crédit active. Un administrateur doit activer une politique de crédit avant de soumettre un dossier.'
       });
+    }
+    try {
+      await buildWorkflowPlan(creditTypeId, Number(amount), req.companyId);
+    } catch (planErr: any) {
+      return res.status(422).json({ success: false, error: planErr.message });
     }
 
     // Vérifier que le client appartient bien à cette company
