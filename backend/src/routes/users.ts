@@ -263,6 +263,7 @@ router.post('/',
     res.status(201).json({
       success: true,
       message: `Utilisateur créé. Mot de passe temporaire transmis à ${newUser.email} par email.`,
+      temporaryPassword,
       user: {
         id: newUser.id,
         email: newUser.email,
@@ -273,8 +274,7 @@ router.post('/',
         jobTitle: newUser.jobTitle,
         isActive: newUser.isActive,
         createdAt: newUser.createdAt.toISOString()
-      }
-      // temporaryPassword omis volontairement — ne jamais exposer un secret en API
+      },
     });
   })
 );
@@ -386,13 +386,15 @@ router.post('/:id/reset-password',
 
     res.json({
       success: true,
-      message: `Mot de passe réinitialisé pour ${user.name}. Le mot de passe temporaire a été envoyé à ${user.email}.`,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name
-      }
-      // temporaryPassword omis volontairement — ne jamais exposer un secret en API
+      message: `Mot de passe réinitialisé pour ${user.name}.`,
+      data: {
+        temporaryPassword,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+        },
+      },
     });
   })
 );

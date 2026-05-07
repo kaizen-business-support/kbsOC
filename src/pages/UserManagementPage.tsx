@@ -1110,7 +1110,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
 
     try {
       const response = await ApiService.resetUserPassword(user.id);
-      if (response.success && response.data) {
+      if (response.success && response.data?.temporaryPassword) {
         setTemporaryPasswordDialog({
           open: true,
           password: response.data.temporaryPassword,

@@ -764,7 +764,10 @@ export class ApiService {
       const response = await api.post('/users', userData);
       return {
         success: true,
-        data: response.data.user,
+        data: {
+          ...response.data.user,
+          temporaryPassword: response.data.temporaryPassword,
+        },
         message: response.data.message
       };
     } catch (error: any) {
@@ -804,7 +807,7 @@ export class ApiService {
       return {
         success: true,
         data: {
-          temporaryPassword: response.data.temporaryPassword
+          temporaryPassword: response.data.data?.temporaryPassword,
         },
         message: response.data.message
       };
