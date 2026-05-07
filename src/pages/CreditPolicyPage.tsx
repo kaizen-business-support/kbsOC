@@ -129,6 +129,9 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
   const [creditTypes, setCreditTypes] = useState<{ id: string; name: string }[]>([]);
   const [approvalLimits, setApprovalLimits] = useState<any[]>([]);
 
+  const [savingPolicy, setSavingPolicy] = useState(false);
+  const [savingStep, setSavingStep]     = useState(false);
+
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'info' });
 
   const showSnack = (message: string, severity: 'success' | 'error' | 'info' = 'success') =>
@@ -183,33 +186,39 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
 
   const savePolicy = async () => {
     if (!policyForm.name || !policyForm.code) return;
-    const payload = {
-      name: policyForm.name,
-      code: policyForm.code,
-      description: policyForm.description || null,
-      validFrom: policyForm.validFrom || undefined,
-      validTo: policyForm.validTo || null,
-    };
-    if (editingPolicy) {
-      const res = await creditPolicyApi.updatePolicy(editingPolicy.id, payload);
-      if (res.success) {
-        showSnack('Politique mise à jour');
-        setPolicyDialogOpen(false);
-        setPolicyDialogError(null);
-        loadPolicies();
+    setSavingPolicy(true);
+    setPolicyDialogError(null);
+    try {
+      const payload = {
+        name: policyForm.name,
+        code: policyForm.code,
+        description: policyForm.description || null,
+        validFrom: policyForm.validFrom || undefined,
+        validTo: policyForm.validTo || null,
+      };
+      if (editingPolicy) {
+        const res = await creditPolicyApi.updatePolicy(editingPolicy.id, payload);
+        if (res.success) {
+          showSnack('Politique mise à jour');
+          setPolicyDialogOpen(false);
+          loadPolicies();
+        } else {
+          setPolicyDialogError(res.error || 'Erreur lors de la sauvegarde. Vérifiez que le serveur est accessible.');
+        }
       } else {
-        setPolicyDialogError(res.error || 'Erreur lors de la sauvegarde. Vérifiez que le serveur est accessible.');
+        const res = await creditPolicyApi.createPolicy(payload);
+        if (res.success) {
+          showSnack('Politique créée');
+          setPolicyDialogOpen(false);
+          loadPolicies();
+        } else {
+          setPolicyDialogError(res.error || 'Erreur lors de la création. Vérifiez que le code est unique.');
+        }
       }
-    } else {
-      const res = await creditPolicyApi.createPolicy(payload);
-      if (res.success) {
-        showSnack('Politique créée');
-        setPolicyDialogOpen(false);
-        setPolicyDialogError(null);
-        loadPolicies();
-      } else {
-        setPolicyDialogError(res.error || 'Erreur lors de la création. Vérifiez que le code est unique.');
-      }
+    } catch (e: any) {
+      setPolicyDialogError(e?.message || 'Erreur inattendue. Vérifiez votre connexion.');
+    } finally {
+      setSavingPolicy(false);
     }
   };
 
@@ -240,16 +249,23 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
 
   const saveStep = async () => {
     if (!selectedPolicy || !stepForm.stepName || !stepForm.stepLabel) return;
-    const res = editingStep
-      ? await creditPolicyApi.updateStep(selectedPolicy.id, editingStep.id, stepForm)
-      : await creditPolicyApi.createStep(selectedPolicy.id, stepForm);
-    if (res.success) {
-      showSnack(editingStep ? 'Étape mise à jour' : 'Étape ajoutée');
-      setStepDialogOpen(false);
-      setStepDialogError(null);
-      loadPolicies();
-    } else {
-      setStepDialogError(res.error || 'Erreur lors de la sauvegarde. Vérifiez que le serveur est accessible.');
+    setSavingStep(true);
+    setStepDialogError(null);
+    try {
+      const res = editingStep
+        ? await creditPolicyApi.updateStep(selectedPolicy.id, editingStep.id, stepForm)
+        : await creditPolicyApi.createStep(selectedPolicy.id, stepForm);
+      if (res.success) {
+        showSnack(editingStep ? 'Étape mise à jour' : 'Étape ajoutée');
+        setStepDialogOpen(false);
+        loadPolicies();
+      } else {
+        setStepDialogError(res.error || 'Erreur lors de la sauvegarde. Vérifiez que le serveur est accessible.');
+      }
+    } catch (e: any) {
+      setStepDialogError(e?.message || 'Erreur inattendue. Vérifiez votre connexion.');
+    } finally {
+      setSavingStep(false);
     }
   };
 
@@ -757,11 +773,12 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setPolicyDialogOpen(false); setPolicyDialogError(null); }}>Annuler</Button>
+          <Button onClick={() => { setPolicyDialogOpen(false); setPolicyDialogError(null); }} disabled={savingPolicy}>Annuler</Button>
           <Button
             variant="contained"
             onClick={savePolicy}
-            disabled={!policyForm.name || !policyForm.code}
+            disabled={!policyForm.name || !policyForm.code || savingPolicy}
+            startIcon={savingPolicy ? <CircularProgress size={16} color="inherit" /> : undefined}
           >
             {editingPolicy ? 'Mettre à jour' : 'Créer'}
           </Button>
@@ -947,11 +964,12 @@ export function CreditPolicyPage({ initialTab = 0, compact = false }: { initialT
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setStepDialogOpen(false); setStepDialogError(null); }}>Annuler</Button>
+          <Button onClick={() => { setStepDialogOpen(false); setStepDialogError(null); }} disabled={savingStep}>Annuler</Button>
           <Button
             variant="contained"
             onClick={saveStep}
-            disabled={!stepForm.stepName || !stepForm.stepLabel}
+            disabled={!stepForm.stepName || !stepForm.stepLabel || savingStep}
+            startIcon={savingStep ? <CircularProgress size={16} color="inherit" /> : undefined}
           >
             {editingStep ? 'Mettre à jour' : 'Ajouter l\'étape'}
           </Button>
