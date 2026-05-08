@@ -370,12 +370,60 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   const years = Object.keys(financialData).map(Number).sort((a, b) => a - b);
   const latestYear = years[years.length - 1];
 
-  // Resolve year data: handle both nested {multiyear_data.N.data} and flat {field: value} formats
+  // Convertit le format OHADA (OhadaFinancialTable) en champs plats attendus par ce dialog
+  const flattenOhadaData = (data: any): any => {
+    const is = data.incomeStatement || {};
+    const cf = data.cashFlow || {};
+    const brut = data.balance?.brut || {};
+    return {
+      // Compte de résultat
+      chiffre_affaires:       is.XB  ?? 0,
+      valeur_ajoutee:         is.XD  ?? 0,
+      ebe:                    is.XE  ?? 0,
+      resultat_exploitation:  is.XF  ?? 0,
+      produits_financiers:    (is.SA ?? 0) + (is.SB ?? 0) + (is.SC ?? 0),
+      charges_financieres:    (is.SD ?? 0) + (is.SE ?? 0),
+      resultat_financier:     is.XG  ?? 0,
+      resultat_net:           is.XJ  ?? 0,
+      // Flux de trésorerie
+      flux_exploitation:      cf.ZC  ?? 0,
+      flux_investissement:    cf.ZD  ?? 0,
+      flux_financement:       cf.ZG  ?? 0,
+      variation_tresorerie:   cf.ZH  ?? 0,
+      tresorerie_nette:       cf.ZI  ?? 0,
+      // Bilan actif
+      actif_immobilise:       brut.AO ?? 0,
+      immobilisations_incorporelles: brut.AF ?? 0,
+      immobilisations_corporelles:   brut.AJ ?? 0,
+      immobilisations_financieres:   brut.AN ?? 0,
+      actif_circulant:        brut.AZ ?? 0,
+      stocks:                 (brut.AQ ?? 0) + (brut.AR ?? 0) + (brut.AS ?? 0) + (brut.AT ?? 0),
+      creances_clients:       brut.AW ?? 0,
+      autres_creances:        brut.AX ?? 0,
+      tresorerie:             brut.BT ?? 0,
+      total_actif:            brut.BZ ?? 0,
+      // Bilan passif
+      capitaux_propres:       brut.CP ?? 0,
+      dettes_financieres:     brut.DF ?? 0,
+      ressources_stables:     brut.DG ?? 0,
+      passif_circulant:       brut.DP ?? 0,
+      tresorerie_passif:      brut.DT ?? 0,
+    };
+  };
+
+  // Resolve year data: gère les 3 formats possibles
   const resolveYearData = (entry: any): any | null => {
     if (!entry) return null;
-    // New format (after fix): { multiyear_data: { N: { data: {...} } } }
-    if (entry?.multiyear_data?.N?.data) return entry.multiyear_data.N.data;
-    // Old flat format: { chiffre_affaires: ..., total_actif: ... }
+    // Format intermédiaire : { multiyear_data: { N: { data: {...} } } }
+    if (entry?.multiyear_data?.N?.data) {
+      const inner = entry.multiyear_data.N.data;
+      // Si l'inner contient le format OHADA, le convertir
+      if (inner?.incomeStatement || inner?.balance) return flattenOhadaData(inner);
+      return inner;
+    }
+    // Format OHADA direct : { incomeStatement, cashFlow, balance }
+    if (entry?.incomeStatement || entry?.balance) return flattenOhadaData(entry);
+    // Format plat legacy : { chiffre_affaires: ..., total_actif: ... }
     const hasFinancialFields = entry && typeof entry === 'object' &&
       Object.keys(entry).some(k => ['chiffre_affaires', 'total_actif', 'capitaux_propres',
         'resultat_net', 'actif_immobilise', 'stocks'].includes(k));
