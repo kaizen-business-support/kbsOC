@@ -83,6 +83,60 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// PUT /api/clients/:id - Update client
+router.put('/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      companyName, rccm, ninea, legalForm, sector, branch,
+      headquarters, phone, email, contactPerson, establishedYear, isActive,
+    } = req.body;
+
+    const existing = await prisma.client.findFirst({ where: { id, companyId: req.companyId } });
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Client non trouvé' });
+    }
+
+    if (!companyName) {
+      return res.status(400).json({ success: false, error: 'La raison sociale est obligatoire' });
+    }
+
+    // RCCM/NINEA unicité (exclude self)
+    if (rccm && rccm !== existing.rccm) {
+      const dup = await prisma.client.findFirst({ where: { companyId: req.companyId, rccm, NOT: { id } } });
+      if (dup) return res.status(409).json({ success: false, error: `Un client avec le RCCM ${rccm} existe déjà` });
+    }
+    if (ninea && ninea !== existing.ninea) {
+      const dup = await prisma.client.findFirst({ where: { companyId: req.companyId, ninea, NOT: { id } } });
+      if (dup) return res.status(409).json({ success: false, error: `Un client avec le NINEA ${ninea} existe déjà` });
+    }
+
+    const client = await prisma.client.update({
+      where: { id },
+      data: {
+        companyName,
+        rccm: rccm || null,
+        ninea: ninea || null,
+        legalForm: legalForm || null,
+        sector: sector || null,
+        branch: branch || null,
+        headquarters: headquarters || null,
+        phone: phone || null,
+        email: email || null,
+        contactPerson: contactPerson || null,
+        establishedYear: establishedYear ? Number(establishedYear) : null,
+        ...(isActive !== undefined && { isActive }),
+      },
+      include: { creator: true },
+    });
+
+    res.json({ success: true, data: client, client });
+  } catch (error) {
+    console.error('Error updating client:', error);
+    res.status(500).json({ success: false, error: 'Erreur lors de la modification du client' });
+  }
+});
+
 // GET /api/clients/:id - Get client by ID
 router.get('/:id', async (req: Request, res: Response) => {
   try {

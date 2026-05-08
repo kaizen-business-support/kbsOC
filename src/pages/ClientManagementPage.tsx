@@ -111,6 +111,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
   const { t } = useTranslation();
   const [currentTab, setCurrentTab] = useState(0);
   const [clients, setClients] = useState<Client[]>([]);
+  const [rawClientsMap, setRawClientsMap] = useState<Record<string, any>>({});
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -118,11 +119,84 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
   const [createNotif, setCreateNotif] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
+  // Edit state
+  const emptyEditForm = { companyName: '', rccm: '', ninea: '', legalForm: '', sector: '', branch: '', headquarters: '', phone: '', email: '', contactPerson: '' };
+  const [openEditDialog, setOpenEditDialog] = useState(false);
+  const [editingClientId, setEditingClientId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState(emptyEditForm);
+  const [isEditSaving, setIsEditSaving] = useState(false);
+  const [editNotif, setEditNotif] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
+
   const emptyForm = { companyName: '', rccm: '', ninea: '', legalForm: '', sector: '', branch: '', headquarters: '', phone: '', email: '', contactPerson: '' };
   const [newClientForm, setNewClientForm] = useState(emptyForm);
 
+  const mapRawClient = (c: any): Client => ({
+    id: c.id,
+    name: c.companyName,
+    rccm: c.rccm || 'N/A',
+    ninea: c.ninea || 'N/A',
+    cofi: c.legalForm || 'N/A',
+    industry: c.sector || 'Non spécifié',
+    branch: c.branch || c.creator?.department || 'Non spécifié',
+    relationshipManager: c.creator?.name || 'Non assigné',
+    createdDate: c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : '',
+    status: c.isActive ? 'active' : 'inactive',
+  });
+
   const handleFormChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement | { value: unknown }>) =>
     setNewClientForm(prev => ({ ...prev, [field]: e.target.value as string }));
+
+  const handleEditFormChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement | { value: unknown }>) =>
+    setEditForm(prev => ({ ...prev, [field]: e.target.value as string }));
+
+  const handleOpenEdit = (client: Client, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const raw = rawClientsMap[client.id];
+    setEditingClientId(client.id);
+    setEditForm({
+      companyName: raw?.companyName || client.name,
+      rccm: raw?.rccm || '',
+      ninea: raw?.ninea || '',
+      legalForm: raw?.legalForm || client.cofi !== 'N/A' ? (raw?.legalForm || '') : '',
+      sector: raw?.sector || (client.industry !== 'Non spécifié' ? client.industry : ''),
+      branch: raw?.branch || '',
+      headquarters: raw?.headquarters || '',
+      phone: raw?.phone || '',
+      email: raw?.email || '',
+      contactPerson: raw?.contactPerson || '',
+    });
+    setEditNotif(null);
+    setOpenEditDialog(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingClientId) return;
+    if (!editForm.companyName.trim()) {
+      setEditNotif({ msg: 'La raison sociale est obligatoire', sev: 'error' });
+      return;
+    }
+    setIsEditSaving(true);
+    try {
+      const res = await ApiService.updateClient(editingClientId, editForm);
+      if (res.success) {
+        setEditNotif({ msg: 'Client modifié avec succès', sev: 'success' });
+        const refreshed = await ApiService.getClients();
+        if (refreshed.success && refreshed.data) {
+          const raw: Record<string, any> = {};
+          refreshed.data.forEach((c: any) => { raw[c.id] = c; });
+          setRawClientsMap(raw);
+          setClients(refreshed.data.map(mapRawClient));
+        }
+        setTimeout(() => setOpenEditDialog(false), 1000);
+      } else {
+        setEditNotif({ msg: res.error || 'Erreur lors de la modification', sev: 'error' });
+      }
+    } catch {
+      setEditNotif({ msg: 'Erreur lors de la modification du client', sev: 'error' });
+    } finally {
+      setIsEditSaving(false);
+    }
+  };
 
   const handleCreateClient = async () => {
     if (!newClientForm.companyName.trim()) {
@@ -138,18 +212,10 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
         // Refresh client list and switch to list tab
         const refreshed = await ApiService.getClients();
         if (refreshed.success && refreshed.data) {
-          setClients(refreshed.data.map((c: any) => ({
-            id: c.id,
-            name: c.companyName,
-            rccm: c.rccm || 'N/A',
-            ninea: c.ninea || 'N/A',
-            cofi: c.legalForm || 'N/A',
-            industry: c.sector || 'Non spécifié',
-            branch: c.creator?.department || 'Non spécifié',
-            relationshipManager: c.creator?.name || 'Non assigné',
-            createdDate: c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : '',
-            status: c.isActive ? 'active' : 'inactive',
-          })));
+          const raw: Record<string, any> = {};
+          refreshed.data.forEach((c: any) => { raw[c.id] = c; });
+          setRawClientsMap(raw);
+          setClients(refreshed.data.map(mapRawClient));
         }
         setTimeout(() => setCurrentTab(0), 1200);
       } else {
@@ -225,20 +291,10 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
         setLoading(true);
         const response = await ApiService.getClients();
         if (response.success && response.data) {
-          // Map API response to frontend Client interface
-          const mappedClients: Client[] = response.data.map((client: any) => ({
-            id: client.id,
-            name: client.companyName,
-            rccm: client.rccm || 'N/A',
-            ninea: client.ninea || 'N/A',
-            cofi: client.legalForm || 'N/A',
-            industry: client.sector || 'Non spécifié',
-            branch: client.creator?.department || 'Non spécifié',
-            relationshipManager: client.creator?.name || 'Non assigné',
-            createdDate: client.createdAt ? new Date(client.createdAt).toISOString().split('T')[0] : '',
-            status: client.isActive ? 'active' : 'inactive',
-          }));
-          setClients(mappedClients);
+          const raw: Record<string, any> = {};
+          response.data.forEach((c: any) => { raw[c.id] = c; });
+          setRawClientsMap(raw);
+          setClients(response.data.map(mapRawClient));
         }
       } catch (error) {
         console.error('Error loading clients:', error);
@@ -247,6 +303,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
       }
     };
     loadClients();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -380,7 +437,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                           >
                             <AnalysisIcon />
                           </IconButton>
-                          <IconButton size="small" color="default">
+                          <IconButton size="small" color="default" onClick={(e) => handleOpenEdit(client, e)}>
                             <EditIcon />
                           </IconButton>
                           <IconButton size="small" color="error">
@@ -701,9 +758,76 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
         </CardContent>
       </Card>
 
+      {/* Edit Client Dialog */}
+      <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Modifier le Client</DialogTitle>
+        <DialogContent>
+          {editNotif && (
+            <Alert severity={editNotif.sev} onClose={() => setEditNotif(null)} sx={{ mb: 2, mt: 1 }}>
+              {editNotif.msg}
+            </Alert>
+          )}
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            <Grid item xs={12} md={6}>
+              <TextField fullWidth label="Raison Sociale *" value={editForm.companyName} onChange={handleEditFormChange('companyName')} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField fullWidth label="RCCM" value={editForm.rccm} onChange={handleEditFormChange('rccm')} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField fullWidth label="NINEA" value={editForm.ninea} onChange={handleEditFormChange('ninea')} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Forme Juridique</InputLabel>
+                <Select label="Forme Juridique" value={editForm.legalForm} onChange={handleEditFormChange('legalForm') as any}>
+                  {['SA', 'SARL', 'SAS', 'SNC', 'GIE', 'Établissement Public', 'Association', 'Autre'].map(f => (
+                    <MenuItem key={f} value={f}>{f}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Secteur d'Activité</InputLabel>
+                <Select label="Secteur d'Activité" value={editForm.sector} onChange={handleEditFormChange('sector') as any}>
+                  {industries.map(i => <MenuItem key={i} value={i}>{i}</MenuItem>)}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField fullWidth label="Agence" value={editForm.branch} onChange={handleEditFormChange('branch')} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField fullWidth label="Siège Social" value={editForm.headquarters} onChange={handleEditFormChange('headquarters')} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField fullWidth label="Téléphone" value={editForm.phone} onChange={handleEditFormChange('phone')} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField fullWidth label="Email" value={editForm.email} onChange={handleEditFormChange('email')} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField fullWidth label="Personne de Contact" value={editForm.contactPerson} onChange={handleEditFormChange('contactPerson')} />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenEditDialog(false)} disabled={isEditSaving}>Annuler</Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveEdit}
+            disabled={isEditSaving}
+            startIcon={isEditSaving ? <CircularProgress size={16} color="inherit" /> : <EditIcon />}
+          >
+            Enregistrer
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Client Details Dialog */}
-      <Dialog 
-        open={openDialog} 
+      <Dialog
+        open={openDialog}
         onClose={() => setOpenDialog(false)}
         maxWidth="md"
         fullWidth
@@ -749,7 +873,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenDialog(false)}>Fermer</Button>
-          <Button variant="contained" startIcon={<EditIcon />}>
+          <Button variant="contained" startIcon={<EditIcon />} onClick={() => { setOpenDialog(false); if (selectedClient) handleOpenEdit(selectedClient); }}>
             Modifier
           </Button>
         </DialogActions>

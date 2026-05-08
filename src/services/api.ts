@@ -476,7 +476,19 @@ export class ApiService {
     } catch (error: any) {
       return {
         success: false,
-        error: error.response?.data?.message || 'Erreur lors de la création du client',
+        error: error.response?.data?.error || error.response?.data?.message || 'Erreur lors de la création du client',
+      };
+    }
+  }
+
+  static async updateClient(id: string, clientData: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.put(`/clients/${id}`, clientData);
+      return response.data;
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.response?.data?.message || 'Erreur lors de la modification du client',
       };
     }
   }
