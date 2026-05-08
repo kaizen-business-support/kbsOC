@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -878,31 +878,33 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
   };
 
   // Filtering function
-  const getFilteredUsers = () => {
+  const filteredUsers = useMemo(() => {
     return users.filter((user) => {
-      // Search term filter (name or email)
-      const searchMatch = !filters.searchTerm || 
+      const searchMatch = !filters.searchTerm ||
         user.name.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
         user.email.toLowerCase().includes(filters.searchTerm.toLowerCase());
 
-      // Department filter
       const departmentMatch = !filters.department || user.department === filters.department;
 
-      // Role filter  
       const roleMatch = !filters.role || user.role === filters.role;
 
-      // Status filter
-      const statusMatch = filters.status === 'all' || 
+      const statusMatch = filters.status === 'all' ||
         (filters.status === 'active' && user.isActive) ||
         (filters.status === 'inactive' && !user.isActive);
 
-      // Branch filter — '__none__' cible les utilisateurs sans agence assignée
       const branchMatch = !filters.branch
         || (filters.branch === '__none__' ? !user.branch : user.branch === filters.branch);
 
       return searchMatch && departmentMatch && roleMatch && statusMatch && branchMatch;
     });
-  };
+  }, [users, filters]);
+
+  // Rôles réellement présents dans la liste (options dynamiques)
+  const rolesInList = useMemo(() => {
+    const present = Array.from(new Set(users.map(u => u.role).filter(Boolean))).sort();
+    return present.map(r => ({ value: r, label: roleLabels[r] || r }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [users]);
 
   // Helper functions for filter options
   const getUniqueOptions = (field: keyof User) => {
@@ -1637,7 +1639,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                       label="Rôle"
                     >
                       <MenuItem value="">Tous</MenuItem>
-                      {availableRoles.map((r) => (
+                      {rolesInList.map((r) => (
                         <MenuItem key={r.value} value={r.value}>
                           {r.label}
                         </MenuItem>
@@ -1689,7 +1691,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
               {/* Filter Results Summary */}
               <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
-                  {getFilteredUsers().length} utilisateur(s) trouvé(s) sur {users.length} total
+                  {filteredUsers.length} utilisateur(s) trouvé(s) sur {users.length} total
                 </Typography>
               </Box>
             </CardContent>
@@ -1715,7 +1717,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {getFilteredUsers().map((user) => (
+                  {filteredUsers.map((user) => (
                     <TableRow key={user.id} hover>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
