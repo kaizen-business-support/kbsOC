@@ -83,7 +83,7 @@ interface Props {
   item: ApprovalItem | null;
   open: boolean;
   onClose: () => void;
-  onSuccess: (itemId: string) => void;
+  onSuccess: (itemId: string, decision?: string, comment?: string) => void;
 }
 
 type OtpAction = 'approve' | 'reject' | 'save_analysis';
@@ -216,7 +216,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
       });
       if (!res.success) throw new Error(res.error || 'Erreur');
       setActionOk(`${ACTION_CFG[action].label} — décision enregistrée`);
-      setTimeout(() => { onSuccess(item.id); onClose(); }, 1500);
+      setTimeout(() => { onSuccess(item.id, ACTION_CFG[action].label, overrideComment ?? comment.trim()); onClose(); }, 1500);
     } catch (e: any) {
       setActionError(e.message);
     } finally {
@@ -249,7 +249,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
       });
       if (!res.success) throw new Error(res.error || 'Erreur sauvegarde');
       setActionOk('Analyse validée — étape complétée');
-      setTimeout(() => { onSuccess(item.id); onClose(); }, 1500);
+      setTimeout(() => { onSuccess(item.id, 'Analyse validée', overallAnalysis.trim()); onClose(); }, 1500);
     } catch (e: any) {
       setActionError(e.message);
     } finally {
@@ -266,6 +266,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
     setShowInfoDialog(false);
     setComment(builtComment);
     await submitDecision('request_info', builtComment);
+    // onSuccess est appelé dans submitDecision avec label "Demander des infos"
   };
 
   // ── OTP handler ─────────────────────────────────────────────────────────────
