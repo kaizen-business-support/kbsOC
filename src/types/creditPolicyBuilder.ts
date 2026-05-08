@@ -33,6 +33,7 @@ export interface PolicyStep {
   creditTypeIds: string[];
   guards: GuardsJson | null;
   allowedActions: string[];
+  dispatchTargetRole: string | null;
   _error?: string; // validation error, frontend only
 }
 

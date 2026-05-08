@@ -132,12 +132,28 @@ export function StepConfigPanel({
 
           {/* Rôle */}
           <FormControl size="small" fullWidth>
-            <InputLabel>Assignée à</InputLabel>
-            <Select value={step.assignedRole} label="Assignée à" disabled={readOnly}
+            <InputLabel>Assignée à (profil qui exécute)</InputLabel>
+            <Select value={step.assignedRole} label="Assignée à (profil qui exécute)" disabled={readOnly}
               onChange={(e) => onChange({ assignedRole: e.target.value })}>
               {availableRoles.map((r) => <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>)}
             </Select>
           </FormControl>
+
+          {/* Rôle cible du dispatch — uniquement pour les étapes DISPATCH */}
+          {step.stepType === 'DISPATCH' && (
+            <FormControl size="small" fullWidth>
+              <InputLabel>Dispatche vers (profil cible)</InputLabel>
+              <Select
+                value={step.dispatchTargetRole ?? ''}
+                label="Dispatche vers (profil cible)"
+                disabled={readOnly}
+                onChange={(e) => onChange({ dispatchTargetRole: e.target.value || null })}
+              >
+                <MenuItem value=""><em>— Non défini —</em></MenuItem>
+                {availableRoles.map((r) => <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>)}
+              </Select>
+            </FormControl>
+          )}
 
           {/* SLA */}
           <Box sx={{ display: 'flex', gap: 1.5 }}>

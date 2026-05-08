@@ -396,7 +396,7 @@ router.post('/:id/steps', async (req: Request, res: Response) => {
       conditionMinAmount, conditionMaxAmount,
       approvalMinAmount, approvalMaxAmount,
       expectedDurationHours, maxDurationHours,
-      isRequired, description, creditTypeIds, allowedActions,
+      isRequired, description, creditTypeIds, allowedActions, dispatchTargetRole,
     } = req.body;
 
     if (!stepName || !stepLabel || !stepType || !assignedRole) {
@@ -451,6 +451,7 @@ router.post('/:id/steps', async (req: Request, res: Response) => {
         order: stepOrder,
         stepType,
         assignedRole,
+        dispatchTargetRole: dispatchTargetRole ?? null,
         conditionMinAmount: conditionMinAmount ?? null,
         conditionMaxAmount: conditionMaxAmount ?? null,
         approvalMinAmount: approvalMinAmount ?? null,
@@ -489,7 +490,7 @@ router.put('/:id/steps/:stepId', async (req: Request, res: Response) => {
       conditionMinAmount, conditionMaxAmount,
       approvalMinAmount, approvalMaxAmount,
       expectedDurationHours, maxDurationHours,
-      isRequired, isActive, description, creditTypeIds, allowedActions,
+      isRequired, isActive, description, creditTypeIds, allowedActions, dispatchTargetRole,
     } = req.body;
 
     // Validation cohérence des plages de montant
@@ -533,6 +534,7 @@ router.put('/:id/steps/:stepId', async (req: Request, res: Response) => {
         ...(description !== undefined && { description }),
         ...(creditTypeIds !== undefined && { creditTypeIds }),
         ...(allowedActions !== undefined && { allowedActions }),
+        ...(dispatchTargetRole !== undefined && { dispatchTargetRole: dispatchTargetRole || null }),
       },
     });
 

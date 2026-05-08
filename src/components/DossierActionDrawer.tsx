@@ -11,7 +11,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Drawer, Box, Typography, IconButton, Divider, Chip, Button,
   TextField, Alert, CircularProgress, Stack, Paper, Tooltip,
-  Tab, Tabs,
+  Tab, Tabs, Dialog, DialogTitle, DialogContent, DialogActions,
+  FormGroup, FormControlLabel, Checkbox,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -26,6 +27,7 @@ import {
   RadioButtonUnchecked as PendingStepIcon,
   ErrorOutline as RejectedStepIcon,
   OpenInNew as OpenIcon,
+  AssignmentLate as RequestInfoIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { ApprovalItem } from '../types';
@@ -127,6 +129,23 @@ export const DossierActionDrawer: React.FC<Props> = ({
     open: false, action: null,
   });
 
+  // ── Demande d'infos modal ───────────────────────────────────────────────────
+  const INFO_ITEMS = [
+    "Pièce d'identité du dirigeant",
+    "Statuts de la société / RCCM",
+    "Bilan comptable (3 derniers exercices)",
+    "Relevés bancaires (6 derniers mois)",
+    "Plan d'affaires / Business plan",
+    "Justificatif d'activité",
+    "Documents de garantie / Sûretés",
+    "Attestation fiscale (NINEA / quitus)",
+    "Liasse fiscale",
+    "Devis / Factures pro-forma",
+  ];
+  const [showInfoDialog,   setShowInfoDialog]   = useState(false);
+  const [infoChecked,      setInfoChecked]      = useState<string[]>([]);
+  const [infoFreeText,     setInfoFreeText]     = useState('');
+
   // ── Load full application ────────────────────────────────────────────────────
   const loadApp = useCallback(async () => {
     if (!item?.applicationId) return;
@@ -174,7 +193,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
     : ALL_ACTIONS.filter(a => item.allowedActions.includes(a));
 
   // ── Submit decision (non-ANALYSIS) ──────────────────────────────────────────
-  const submitDecision = async (action: ActionKey) => {
+  const submitDecision = async (action: ActionKey, overrideComment?: string) => {
     if (!userState.currentUser) return;
     setSubmitting(true);
     setActionError('');
@@ -182,7 +201,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
       const res = await ApiService.approveWorkflow(item.applicationId, {
         userId:   userState.currentUser.id,
         decision: ACTION_CFG[action].decision,
-        comments: comment.trim() || undefined,
+        comments: overrideComment ?? (comment.trim() || undefined),
         stepId:   item.id,
         stepName: item.stepName,
       });
@@ -227,6 +246,17 @@ export const DossierActionDrawer: React.FC<Props> = ({
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // ── Confirmer la demande d'infos ────────────────────────────────────────────
+  const handleConfirmRequestInfo = async () => {
+    const parts: string[] = [];
+    if (infoChecked.length > 0) parts.push('Documents manquants : ' + infoChecked.join(', '));
+    if (infoFreeText.trim()) parts.push(infoFreeText.trim());
+    const builtComment = parts.join('\n') || 'Informations complémentaires demandées';
+    setShowInfoDialog(false);
+    setComment(builtComment);
+    await submitDecision('request_info', builtComment);
   };
 
   // ── OTP handler ─────────────────────────────────────────────────────────────
@@ -598,17 +628,25 @@ export const DossierActionDrawer: React.FC<Props> = ({
                 {visibleActions.map(action => {
                   const cfg = ACTION_CFG[action];
                   const needsOtp = action === 'approve' || action === 'reject';
+                  const isRequestInfo = action === 'request_info';
                   return (
                     <Button
                       key={action}
                       variant={action === 'approve' ? 'contained' : 'outlined'}
                       color={cfg.color}
                       size="small"
-                      startIcon={submitting ? <CircularProgress size={13} /> : undefined}
-                      onClick={() => needsOtp
-                        ? setOtp({ open: true, action: action as OtpAction })
-                        : submitDecision(action)
-                      }
+                      startIcon={submitting && !isRequestInfo ? <CircularProgress size={13} /> : undefined}
+                      onClick={() => {
+                        if (isRequestInfo) {
+                          setInfoChecked([]);
+                          setInfoFreeText('');
+                          setShowInfoDialog(true);
+                        } else if (needsOtp) {
+                          setOtp({ open: true, action: action as OtpAction });
+                        } else {
+                          submitDecision(action);
+                        }
+                      }}
                       disabled={submitting}
                       sx={{
                         borderRadius: '10px', px: 2, fontSize: 13,
@@ -625,6 +663,80 @@ export const DossierActionDrawer: React.FC<Props> = ({
           )}
         </Box>
       </Drawer>
+
+      {/* ── Modal Demande d'informations ── */}
+      <Dialog
+        open={showInfoDialog}
+        onClose={() => setShowInfoDialog(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle sx={{ pb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <RequestInfoIcon color="warning" />
+          <Box>
+            <Typography fontWeight={700}>Demande d'informations complémentaires</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {item.clientName} — {item.applicationNumber}
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <Divider />
+        <DialogContent sx={{ pt: 2 }}>
+          <Typography variant="body2" color="text.secondary" mb={2}>
+            Sélectionnez les documents ou informations manquants. Le demandeur sera notifié.
+          </Typography>
+          <FormGroup>
+            {INFO_ITEMS.map(label => (
+              <FormControlLabel
+                key={label}
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={infoChecked.includes(label)}
+                    onChange={() => setInfoChecked(prev =>
+                      prev.includes(label) ? prev.filter(x => x !== label) : [...prev, label]
+                    )}
+                  />
+                }
+                label={<Typography variant="body2">{label}</Typography>}
+                sx={{ mb: 0.25 }}
+              />
+            ))}
+          </FormGroup>
+          <TextField
+            label="Précisions supplémentaires (optionnel)"
+            multiline
+            minRows={3}
+            maxRows={5}
+            fullWidth
+            size="small"
+            value={infoFreeText}
+            onChange={e => setInfoFreeText(e.target.value)}
+            placeholder="Décrivez les informations spécifiques attendues..."
+            sx={{ mt: 2 }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+          <Button
+            onClick={() => setShowInfoDialog(false)}
+            disabled={submitting}
+            sx={{ textTransform: 'none', color: '#636366' }}
+          >
+            Annuler
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            disabled={submitting || (infoChecked.length === 0 && !infoFreeText.trim())}
+            startIcon={submitting ? <CircularProgress size={14} color="inherit" /> : <RequestInfoIcon />}
+            onClick={handleConfirmRequestInfo}
+            sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2, boxShadow: 'none' }}
+          >
+            Envoyer la demande
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* OTP */}
       <OtpVerificationDialog

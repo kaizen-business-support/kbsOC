@@ -45,7 +45,7 @@ function createStep(type: PolicyStepType, order: number, existingSteps: PolicySt
     conditionMinAmount: null, conditionMaxAmount: null,
     expectedDurationHours: 24, maxDurationHours: 72,
     isRequired: true, isActive: true, description: null,
-    creditTypeIds: [], guards: null, allowedActions: [],
+    creditTypeIds: [], guards: null, allowedActions: [], dispatchTargetRole: null,
   };
 }
 

@@ -445,6 +445,9 @@ model CreditPolicyStep {
   // Phase d'affichage dans la matrice RACI (ex: "Montage dossier", "Analyse risques")
   phase         String?          @map("phase")
 
+  // Pour les étapes DISPATCH : rôle cible vers lequel le dispatch est effectué
+  dispatchTargetRole String?     @map("dispatch_target_role")
+
   // Règles de transition conditionnelles (builder v2) — priorité sur conditionMin/MaxAmount
   guards        Json?            @map("guards")
 
