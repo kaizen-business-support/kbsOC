@@ -107,6 +107,9 @@ interface AssignDialog {
   isReassign: boolean;
 }
 
+// Trace locale des affectations faites dans cette session (appId → agent)
+interface LocalDispatch { agent: Agent; dispatchedAt: Date; }
+
 export const DispatchingPage: React.FC = () => {
   const [agents, setAgents]           = useState<Agent[]>([]);
   const [pending, setPending]         = useState<Application[]>([]);
@@ -119,6 +122,11 @@ export const DispatchingPage: React.FC = () => {
   const [branchFilter, setBranchFilter] = useState('all');
   const [countdown, setCountdown]     = useState(REFRESH_INTERVAL);
   const lastReloadRef                 = useRef(Date.now());
+
+  // Dossiers affectés dans cette session : restent visibles (mode "affecté") jusqu'au prochain reload
+  const [localDispatched, setLocalDispatched] = useState<Record<string, LocalDispatch>>({});
+  // Apps retirées du pending mais gardées pour affichage "affecté"
+  const [pendingSnapshot, setPendingSnapshot] = useState<Record<string, Application>>({});
 
   const [dialog, setDialog] = useState<AssignDialog>({
     open: false, app: null, neededRole: null, suggestedAgent: null,
@@ -194,14 +202,29 @@ export const DispatchingPage: React.FC = () => {
     setDialog(d => ({ ...d, loading: true }));
     setDialogError('');
     const appId = (dialog.app as any).id || (dialog.app as any).applicationId;
+    const chosenAgent = agents.find(a => a.id === dialog.selectedAgentId) ?? dialog.suggestedAgent;
+
     const res = await dispatchingApi.assignAnalyst(
       appId, dialog.selectedAgentId, dialog.comment, dialog.isReassign
     );
     if (res.success) {
       setSuccess(res.data?.message || (dialog.isReassign ? 'Ré-affectation validée' : 'Affectation validée'));
+
       if (!dialog.isReassign) {
+        // Sauvegarder l'app avant de la retirer du pending (pour garder les données d'affichage)
+        const app = pending.find(p => p.id === appId);
+        if (app) setPendingSnapshot(prev => ({ ...prev, [appId]: app }));
         setPending(prev => prev.filter(p => p.id !== appId));
       }
+
+      // Mémoriser l'affectation pour affichage en mode "affecté"
+      if (chosenAgent) {
+        setLocalDispatched(prev => ({
+          ...prev,
+          [appId]: { agent: chosenAgent, dispatchedAt: new Date() },
+        }));
+      }
+
       setDialog(d => ({ ...d, open: false, loading: false }));
       setDialogError('');
       reload(true);
@@ -397,13 +420,90 @@ export const DispatchingPage: React.FC = () => {
                     </Box>
                   )}
 
-                  {filteredPending.length === 0 ? (
+                  {/* Dossiers affectés dans cette session (affichage "affecté + réaffecter") */}
+                  {Object.keys(localDispatched).length > 0 && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" fontWeight={700} sx={{ color: '#16a34a', display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+                        <CheckIcon sx={{ fontSize: 14 }} /> Affectés dans cette session
+                      </Typography>
+                      <Paper variant="outlined" sx={{ borderRadius: 2.5, overflow: 'hidden', borderColor: '#bbf7d0' }}>
+                        <Box sx={{ overflowX: 'auto' }}>
+                          <Table size="small" sx={{ minWidth: 580 }}>
+                            <TableBody>
+                              {Object.entries(localDispatched).map(([appId, dispatch]) => {
+                                const app = pendingSnapshot[appId];
+                                if (!app) return null;
+                                return (
+                                  <TableRow key={appId} sx={{ bgcolor: '#f0fdf4', '&:hover td': { bgcolor: '#dcfce7' } }}>
+                                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                                      <Typography variant="caption" fontWeight={800} sx={{ color: ACCENT }}>{app.applicationNumber}</Typography>
+                                      <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: 10 }}>
+                                        {app.creditType || app.accountManager}
+                                      </Typography>
+                                    </TableCell>
+                                    <TableCell>
+                                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+                                        <BizIcon sx={{ fontSize: 13, color: '#94a3b8', mt: 0.2, flexShrink: 0 }} />
+                                        <Box>
+                                          <Typography variant="caption" fontWeight={600} display="block" noWrap sx={{ maxWidth: 160 }}>{app.clientName}</Typography>
+                                          <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 160, fontSize: 10 }}>
+                                            {app.clientSector || app.branch || ''}
+                                          </Typography>
+                                        </Box>
+                                      </Box>
+                                    </TableCell>
+                                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                                      <Typography variant="caption" fontWeight={700}>{fmtAmount(app.amount, app.currency)}</Typography>
+                                    </TableCell>
+                                    {/* Affecté à */}
+                                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                        <CheckIcon sx={{ fontSize: 14, color: '#16a34a' }} />
+                                        <Avatar sx={{ width: 22, height: 22, bgcolor: '#16a34a', color: '#fff', fontSize: '0.62rem', fontWeight: 700 }}>
+                                          {dispatch.agent.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                                        </Avatar>
+                                        <Box>
+                                          <Typography variant="caption" fontWeight={700} display="block" noWrap>{dispatch.agent.name}</Typography>
+                                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
+                                            {roleLabel(dispatch.agent.role)} · {dispatch.dispatchedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                                          </Typography>
+                                        </Box>
+                                      </Box>
+                                    </TableCell>
+                                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        startIcon={autoLoading[appId] ? <CircularProgress size={11} /> : <ReassignIcon sx={{ fontSize: 13 }} />}
+                                        onClick={() => openAssignDialog(app, true)}
+                                        disabled={!!autoLoading[appId] || agents.length === 0}
+                                        sx={{
+                                          fontSize: '0.72rem', px: 1.5, borderRadius: 1.5,
+                                          color: '#d97706', borderColor: '#d97706',
+                                          '&:hover': { bgcolor: '#fef3c7', borderColor: '#b45309' },
+                                          textTransform: 'none', fontWeight: 700, whiteSpace: 'nowrap'
+                                        }}
+                                      >
+                                        Réaffecter
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                            </TableBody>
+                          </Table>
+                        </Box>
+                      </Paper>
+                    </Box>
+                  )}
+
+                  {filteredPending.length === 0 && Object.keys(localDispatched).length === 0 ? (
                     <Card variant="outlined" sx={{ borderRadius: 2.5, textAlign: 'center', py: 7 }}>
                       <CheckIcon sx={{ fontSize: 44, color: '#16a34a', mb: 1 }} />
                       <Typography variant="h6" fontWeight={700} color="#16a34a">Tous les dossiers sont affectés</Typography>
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Aucun dossier en attente d'affectation.</Typography>
                     </Card>
-                  ) : (
+                  ) : filteredPending.length === 0 ? null : (
                     <Paper variant="outlined" sx={{ borderRadius: 2.5, overflow: 'hidden' }}>
                       <Box sx={{ overflowX: 'auto' }}>
                       <Table size="small" sx={{ minWidth: 580 }}>
