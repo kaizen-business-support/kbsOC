@@ -7,21 +7,26 @@ import { createWorkflowStepsForApplication } from '../services/workflowService';
 
 const router = Router();
 
-// ─── Middleware : RESPONSABLE_RISQUES, ADMIN, ou délégué avec DISPATCH_APPLICATION ──
+// ─── Middleware : permission dispatch_applications, rôle autorisé, ou délégation ──
 const requireSupervisorOrDelegate = async (req: Request, res: Response, next: any) => {
   const user = (req as any).user;
   if (!user) return res.status(403).json({ success: false, error: 'Non authentifié' });
 
-  if (['RESPONSABLE_RISQUES', 'ADMIN'].includes(user.role)) return next();
+  // Tout utilisateur ayant la permission dispatch_applications peut dispatcher
+  const permissions: string[] = Array.isArray(user.permissions) ? user.permissions : [];
+  if (permissions.includes('dispatch_applications')) return next();
+
+  // Fallback rôle : RESPONSABLE_RISQUES, ADMIN, SUPER_ADMIN
+  if (['RESPONSABLE_RISQUES', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)) return next();
 
   const userId = user?.userId || user?.id;
   const delegation = await resolveDelegation(userId, 'DISPATCH_APPLICATION');
-  if (delegation && ['RESPONSABLE_RISQUES', 'ADMIN'].includes(delegation.delegatorRole)) {
+  if (delegation) {
     (req as any).delegationContext = delegation;
     return next();
   }
 
-  return res.status(403).json({ success: false, error: 'Accès réservé au Responsable Analyste' });
+  return res.status(403).json({ success: false, error: "Vous n'avez pas la permission de dispatcher des dossiers" });
 };
 
 router.use(requireSupervisorOrDelegate);
