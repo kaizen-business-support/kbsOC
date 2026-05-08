@@ -192,28 +192,31 @@ async function main() {
     console.log(`  ${u.role.padEnd(25)} ${u.email}`);
   }
 
-  // ── 3. Clients de démonstration (RESET : suppression + recréation) ──────────
-  console.log('\n── Clients (reset) ──');
+  // ── 3. Clients de démonstration (idempotent — ne crée que si aucun client n'existe) ──
+  console.log('\n── Clients ──');
   const adminUser = createdUsers.find(u => u.email === 'admin@bci.sn') || createdUsers[0];
-  const deleted = await prisma.client.deleteMany({ where: { companyId: bci.id } });
-  console.log(`  Supprimés : ${deleted.count} client(s) + demandes en cascade`);
+  const existingClientCount = await prisma.client.count({ where: { companyId: bci.id } });
   const createdClients = [];
-  for (const c of TEST_CLIENTS) {
-    const client = await prisma.client.create({
-      data: {
-        ...c,
-        companyId: bci.id,
-        isActive: true,
-        contactPerson: null,
-        phone: null,
-        email: null,
-        cofi: null,
-        establishedYear: 2010 + Math.floor(Math.random() * 10),
-        createdBy: adminUser.id,
-      },
-    });
-    createdClients.push(client);
-    console.log(`  Créé : ${c.companyName}`);
+  if (existingClientCount > 0) {
+    console.log(`  Existants : ${existingClientCount} client(s) — données préservées`);
+  } else {
+    for (const c of TEST_CLIENTS) {
+      const client = await prisma.client.create({
+        data: {
+          ...c,
+          companyId: bci.id,
+          isActive: true,
+          contactPerson: null,
+          phone: null,
+          email: null,
+          cofi: null,
+          establishedYear: 2010 + Math.floor(Math.random() * 10),
+          createdBy: adminUser.id,
+        },
+      });
+      createdClients.push(client);
+      console.log(`  Créé : ${c.companyName}`);
+    }
   }
 
   // ── 4. Limites d'approbation BCI ───────────────────────────────────────────
@@ -613,7 +616,7 @@ async function main() {
   // ── 8. Résumé ──────────────────────────────────────────────────────────────
   console.log('\n═══════════════════════════════════════════════════════════');
   console.log(`✓ ${TEST_USERS.length} utilisateurs (upsert)`);
-  console.log(`✓ ${createdClients.length} clients`);
+  console.log(`✓ clients : ${createdClients.length > 0 ? createdClients.length + ' créés' : existingClientCount + ' existants (préservés)'}`);
   console.log(`✓ Mot de passe commun : ${PASSWORD}`);
   console.log('✓ Mur Chinois + RACI');
   console.log('✓ Notifications : canal + templates + règles');

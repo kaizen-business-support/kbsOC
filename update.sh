@@ -304,7 +304,7 @@ if [[ -f "$APP_DIR/backend/prisma/seed-policies.js" ]]; then
 fi
 if [[ -f "$APP_DIR/backend/prisma/seed-bci.js" ]]; then
   node "$APP_DIR/backend/prisma/seed-bci.js" \
-    && dep_ok "Utilisateurs et clients BCI seedés (reset clients)" \
+    && dep_ok "Utilisateurs BCI seedés (clients préservés si existants)" \
     || warn "seed-bci.js : erreur (non bloquant)"
 fi
 
