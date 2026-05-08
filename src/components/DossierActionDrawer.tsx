@@ -248,6 +248,15 @@ export const DossierActionDrawer: React.FC<Props> = ({
         }
       });
       if (!res.success) throw new Error(res.error || 'Erreur sauvegarde');
+      // Compléter l'étape workflow pour qu'elle quitte la liste pending
+      const stepRes = await ApiService.approveWorkflow(item.applicationId, {
+        userId:   userState.currentUser!.id,
+        decision: 'APPROVED',
+        comments: `Analyse validée — score global : ${overallScore ?? 0}`,
+        stepId:   item.id,
+        stepName: item.stepName,
+      });
+      if (!stepRes.success) throw new Error(stepRes.error || 'Erreur finalisation étape');
       setActionOk('Analyse validée — étape complétée');
       setTimeout(() => { onSuccess(item.id, 'Analyse validée', overallAnalysis.trim()); onClose(); }, 1500);
     } catch (e: any) {

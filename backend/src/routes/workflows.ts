@@ -467,10 +467,15 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
 
     // REQUEST_INFO : l'étape reste IN_REVIEW, le workflow ne progresse pas
     if (decision === 'REQUEST_INFO') {
+      // Finaliser l'étape : l'utilisateur a fait son action, elle ne doit plus
+      // apparaître dans sa liste. completedAt est positionné par finalizeStepDuration.
+      const dur = await finalizeStepDuration(currentStep.id);
       await prisma.workflowStep.update({
         where: { id: currentStep.id },
         data: {
+          status: 'IN_REVIEW' as any,
           assigneeId: userId,
+          durationMinutes: dur ?? undefined,
           comments: comments || `Informations complémentaires demandées par ${user.name}`,
         },
       });
@@ -483,15 +488,30 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       });
     }
 
-    // TRANSFER : réinitialiser l'étape pour qu'un autre agent puisse la reprendre
+    // TRANSFER : créer une nouvelle étape PENDING sans assignee pour que
+    // quelqu'un d'autre la reprenne ; compléter l'étape courante pour retirer
+    // l'élément de la liste de l'utilisateur qui transfère.
     if (decision === 'TRANSFER') {
+      const durT = await finalizeStepDuration(currentStep.id);
       await prisma.workflowStep.update({
         where: { id: currentStep.id },
         data: {
-          status: 'PENDING',
-          assigneeId: null,
-          startedAt: null,
+          status: 'IN_REVIEW' as any,
+          assigneeId: userId,
+          durationMinutes: durT ?? undefined,
           comments: comments || `Transféré par ${user.name}`,
+        },
+      });
+      // Créer une nouvelle étape identique non assignée pour reprise
+      await prisma.workflowStep.create({
+        data: {
+          applicationId,
+          stepName: currentStep.stepName,
+          role: currentStep.role,
+          status: 'PENDING',
+          policyStepId: currentStep.policyStepId ?? undefined,
+          deadline: currentStep.deadline ?? undefined,
+          comments: `Transféré depuis l'étape précédente par ${user.name}`,
         },
       });
       triggerNotification('STEP_ASSIGNED', applicationId);
