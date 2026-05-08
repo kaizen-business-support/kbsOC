@@ -96,9 +96,12 @@ export const ApprovalsPage: React.FC = () => {
   const [drawer, setDrawer]             = useState<ApprovalItem | null>(null);
   const lastReloadRef                   = useRef(Date.now());
 
-  // Éléments traités dans cette session
-  const [localTreated, setLocalTreated] = useState<TreatedItem[]>([]);
+  // IDs traités dans cette session — ref pour éviter les fermetures rassis dans reload
+  const treatedIdsRef                    = useRef<Set<string>>(new Set());
+  const [localTreated, setLocalTreated]  = useState<TreatedItem[]>([]);
 
+  // reload n'a aucune dépendance variable : il lit treatedIdsRef.current
+  // directement, donc il ne change jamais de référence → pas de boucle infinie
   const reload = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setError('');
@@ -106,9 +109,7 @@ export const ApprovalsPage: React.FC = () => {
       const res = await ApiService.getPendingApprovals();
       if (res.success) {
         const fresh: ApprovalItem[] = res.data || [];
-        // Ne pas réintroduire les items déjà traités localement
-        const treatedIds = new Set(localTreated.map(t => t.item.id));
-        setItems(fresh.filter(i => !treatedIds.has(i.id)));
+        setItems(fresh.filter(i => !treatedIdsRef.current.has(i.id)));
       } else {
         setError(res.error || 'Erreur chargement');
       }
@@ -116,7 +117,7 @@ export const ApprovalsPage: React.FC = () => {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [localTreated]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -152,11 +153,17 @@ export const ApprovalsPage: React.FC = () => {
   });
 
   const handleSuccess = (itemId: string, decision = '', comment = '') => {
-    const treated = items.find(i => i.id === itemId);
-    if (treated) {
-      setLocalTreated(prev => [{ item: treated, decision, comment, treatedAt: new Date() }, ...prev]);
-    }
-    setItems(prev => prev.filter(i => i.id !== itemId));
+    // Marquer immédiatement dans le ref — reload() lira toujours la valeur à jour
+    treatedIdsRef.current.add(itemId);
+
+    // Capturer les données complètes pour l'onglet "Traités" (meilleur effort)
+    setItems(prev => {
+      const treated = prev.find(i => i.id === itemId);
+      if (treated) {
+        setLocalTreated(lt => [{ item: treated, decision, comment, treatedAt: new Date() }, ...lt]);
+      }
+      return prev.filter(i => i.id !== itemId);
+    });
   };
 
   const openDrawer = (item: ApprovalItem) => {
