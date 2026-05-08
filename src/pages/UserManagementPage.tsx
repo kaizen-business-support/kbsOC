@@ -899,18 +899,6 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     });
   }, [users, filters]);
 
-  // Rôles réellement présents dans la liste (options dynamiques)
-  const rolesInList = useMemo(() => {
-    const present = Array.from(new Set(users.map(u => u.role).filter(Boolean))).sort();
-    return present.map(r => ({ value: r, label: roleLabels[r] || r }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [users]);
-
-  // Helper functions for filter options
-  const getUniqueOptions = (field: keyof User) => {
-    return Array.from(new Set(users.map(user => user[field]).filter(Boolean) as string[])).sort();
-  };
-
   // Helper functions for UI display — alignés sur l'enum Prisma UserRole
   const roleLabels: Record<string, string> = {
     ADMIN:                   'Administrateur',
@@ -923,6 +911,18 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     CHARGE_AFFAIRES:         "Chargé d'Affaires",
     ANALYSTE_RISQUES:        'Analyste Risques',
     BACK_OFFICE:             'Back Office',
+  };
+
+  // Rôles réellement présents dans la liste (options dynamiques)
+  const rolesInList = useMemo(() => {
+    const present = Array.from(new Set(users.map(u => u.role).filter(Boolean))).sort();
+    return present.map(r => ({ value: r, label: roleLabels[r] || r }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [users]);
+
+  // Helper functions for filter options
+  const getUniqueOptions = (field: keyof User) => {
+    return Array.from(new Set(users.map(user => user[field]).filter(Boolean) as string[])).sort();
   };
 
   const getRoleIcon = (role: string) => {
