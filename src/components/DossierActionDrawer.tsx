@@ -184,9 +184,18 @@ export const DossierActionDrawer: React.FC<Props> = ({
 
   if (!item) return null;
 
+  const userPermissions: string[] = Array.isArray(userState.currentUser?.permissions)
+    ? (userState.currentUser!.permissions as string[])
+    : [];
+  const canAccessDispatchPage = userPermissions.includes('dispatch_applications')
+    || userState.currentUser?.role === 'ADMIN'
+    || userState.currentUser?.role === 'SUPER_ADMIN';
+
   const isAnalysis = item.stepType === 'ANALYSIS';
   const isLegal    = item.stepType === 'LEGAL';
-  const isDispatch = item.stepType === 'DISPATCH';
+  // DISPATCH uniquement si l'utilisateur peut accéder à la page dispatching
+  // Sinon, l'étape DISPATCH est traitée comme une étape classique (approve/transfer)
+  const isDispatch = item.stepType === 'DISPATCH' && canAccessDispatchPage;
 
   const visibleActions: ActionKey[] = item.allowedActions.length === 0
     ? ALL_ACTIONS
