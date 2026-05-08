@@ -467,7 +467,10 @@ export const DossierActionDrawer: React.FC<Props> = ({
                       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                         <StepIcon status={s.status} />
                         {i < steps.length - 1 && (
-                          <Box sx={{ width: 1, flex: 1, bgcolor: '#e5e7eb', mt: 0.5 }} />
+                          <Box sx={{
+                            width: 1, flex: 1, mt: 0.5,
+                            bgcolor: (s.status === 'COMPLETED' || s.status === 'APPROVED') ? 'success.main' : '#e5e7eb',
+                          }} />
                         )}
                       </Box>
                       <Box sx={{ pb: 1, flex: 1 }}>
