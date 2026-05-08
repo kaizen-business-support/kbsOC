@@ -454,6 +454,7 @@ router.post('/assign', async (req: Request, res: Response) => {
       : ((supervisorUser as any)?.branch || (supervisorUser as any)?.department);
 
     if (!GLOBAL_ROLES.includes(effectiveRole)) {
+      // Vérifier que le dossier appartient bien à l'agence du dispatcher
       const creatorBranch = (application as any).creator?.branch || (application as any).creator?.department;
       if (effectiveBranch && creatorBranch && effectiveBranch !== creatorBranch) {
         return res.status(403).json({
@@ -461,13 +462,8 @@ router.post('/assign', async (req: Request, res: Response) => {
           error: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez affecter que les dossiers de votre agence ("${effectiveBranch}").`,
         });
       }
-      const agentBranch = (agent as any).branch || (agent as any).department;
-      if (effectiveBranch && agentBranch && agentBranch !== effectiveBranch) {
-        return res.status(403).json({
-          success: false,
-          error: `Le responsable "${agent.name}" n'appartient pas à votre agence ("${effectiveBranch}").`,
-        });
-      }
+      // Pas de restriction sur la branche de l'analyste : les analystes risques sont
+      // centralisés et peuvent recevoir des dossiers de toutes les agences.
     }
 
     const dateStr = new Date().toLocaleDateString('fr-FR');
