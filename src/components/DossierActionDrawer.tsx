@@ -459,51 +459,58 @@ export const DossierActionDrawer: React.FC<Props> = ({
 
               {/* ── Tab Historique ── */}
               {tab === (isAnalysis ? 2 : 1) && (
-                <Stack spacing={0}>
+                <Box>
                   {steps.length === 0 ? (
                     <Typography color="text.secondary" variant="body2">Aucune étape enregistrée.</Typography>
-                  ) : steps.map((s: any, i: number) => (
-                    <Box key={s.id ?? i} sx={{ display: 'flex', gap: 2, pb: 2 }}>
-                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                        <StepIcon status={s.status} />
-                        {i < steps.length - 1 && (
-                          <Box sx={{
-                            width: 1, flex: 1, mt: 0.5,
-                            bgcolor: (s.status === 'COMPLETED' || s.status === 'APPROVED') ? 'success.main' : '#e5e7eb',
-                          }} />
-                        )}
-                      </Box>
-                      <Box sx={{ pb: 1, flex: 1 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                          <Typography variant="body2" fontWeight={600}>
-                            {s.policyStep?.stepLabel ?? s.stepName}
-                          </Typography>
-                          <Chip
-                            label={STATUS_LABEL[s.status] ?? s.status}
-                            color={STATUS_COLOR[s.status] ?? 'default'}
-                            size="small"
-                            variant="outlined"
-                          />
+                  ) : steps.map((s: any, i: number) => {
+                    const isDone = s.status === 'COMPLETED' || s.status === 'APPROVED';
+                    return (
+                      <Box key={s.id ?? i} sx={{ display: 'flex', gap: 2 }}>
+                        {/* Colonne icône + connecteur */}
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 24 }}>
+                          <StepIcon status={s.status} />
+                          {i < steps.length - 1 && (
+                            <Box sx={{
+                              width: '2px',
+                              flex: '1 0 24px',
+                              my: 0.5,
+                              bgcolor: isDone ? 'success.main' : '#e5e7eb',
+                            }} />
+                          )}
                         </Box>
-                        {s.assignee && (
-                          <Typography variant="caption" color="text.secondary">
-                            {s.assignee.name}
-                          </Typography>
-                        )}
-                        {s.completedAt && (
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                            {fmtDate(s.completedAt)}
-                          </Typography>
-                        )}
-                        {s.comments && (
-                          <Typography variant="caption" color="text.secondary" fontStyle="italic">
-                            "{s.comments}"
-                          </Typography>
-                        )}
+                        {/* Contenu de l'étape */}
+                        <Box sx={{ pb: 2, flex: 1, minWidth: 0 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                            <Typography variant="body2" fontWeight={600}>
+                              {s.policyStep?.stepLabel ?? s.stepName}
+                            </Typography>
+                            <Chip
+                              label={STATUS_LABEL[s.status] ?? s.status}
+                              color={STATUS_COLOR[s.status] ?? 'default'}
+                              size="small"
+                              variant="outlined"
+                            />
+                          </Box>
+                          {s.assignee && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                              {s.assignee.name}
+                            </Typography>
+                          )}
+                          {(s.completedAt || s.startedAt) && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                              {fmtDate(s.completedAt ?? s.startedAt)}
+                            </Typography>
+                          )}
+                          {s.comments && (
+                            <Typography variant="caption" color="text.secondary" fontStyle="italic" sx={{ display: 'block' }}>
+                              "{s.comments}"
+                            </Typography>
+                          )}
+                        </Box>
                       </Box>
-                    </Box>
-                  ))}
-                </Stack>
+                    );
+                  })}
+                </Box>
               )}
             </>
           )}
