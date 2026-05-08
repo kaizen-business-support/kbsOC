@@ -662,11 +662,16 @@ export async function canApproveStep(
 
   // ── 2. Vérification de l'agence (basée sur le délégant si délégation) ─────
   // Les rôles globaux (DG, Admin, Comité) ont une portée transversale.
+  // Exceptions supplémentaires :
+  //  - utilisateur explicitement assigné à cette étape (via dispatching)
+  //  - utilisateur rattaché au Siège Social (portée multi-agences par nature)
   if (!GLOBAL_SCOPE_ROLES.includes(effectiveRole)) {
     const approverBranch = effectiveBranch || effectiveDept;
     const creatorBranch  = application.creator?.branch || application.creator?.department;
+    const isExplicitlyAssigned = step.assigneeId === userId;
+    const isHeadOffice = !!approverBranch && /si[eè]ge/i.test(approverBranch);
 
-    if (approverBranch && creatorBranch && approverBranch !== creatorBranch) {
+    if (!isExplicitlyAssigned && !isHeadOffice && approverBranch && creatorBranch && approverBranch !== creatorBranch) {
       return {
         allowed: false,
         reason: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez traiter que les dossiers de votre agence ("${approverBranch}").`,

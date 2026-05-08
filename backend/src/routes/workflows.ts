@@ -337,7 +337,9 @@ router.post('/:applicationId/start-step/:stepId', async (req: Request, res: Resp
       if (!GLOBAL_ROLES.includes(effectiveRole)) {
         const userBranch    = effectiveBranch || effectiveDept;
         const creatorBranch = application.creator?.branch || application.creator?.department;
-        if (userBranch && creatorBranch && userBranch !== creatorBranch) {
+        const isExplicitlyAssigned = step?.assigneeId === userId;
+        const isHeadOffice = !!userBranch && /si[eè]ge/i.test(userBranch);
+        if (!isExplicitlyAssigned && !isHeadOffice && userBranch && creatorBranch && userBranch !== creatorBranch) {
           return res.status(403).json({
             success: false,
             error: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez traiter que les dossiers de votre agence.`,
