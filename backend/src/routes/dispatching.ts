@@ -52,7 +52,7 @@ router.get('/workload', async (req: Request, res: Response) => {
       where: {
         role: { in: policyRoles as any[] },
         isActive: true,
-        ...(companyId ? { companyMemberships: { some: { companyId, isActive: true } } } : {}),
+        ...(companyId ? { memberships: { some: { companyId, isActive: true } } } : {}),
       },
       select: {
         id: true,
@@ -232,7 +232,7 @@ router.get('/suggest/:applicationId', async (req: Request, res: Response) => {
       where: {
         role: neededRole as any,
         isActive: true,
-        ...(companyId ? { companyMemberships: { some: { companyId, isActive: true } } } : {}),
+        ...(companyId ? { memberships: { some: { companyId, isActive: true } } } : {}),
       },
       include: {
         assignedSteps: {
