@@ -49,7 +49,11 @@ router.get('/workload', async (req: Request, res: Response) => {
     const policyRoles = await getActivePolicyRoles(companyId);
 
     const agents = await prisma.user.findMany({
-      where: { role: { in: policyRoles as any[] }, isActive: true },
+      where: {
+        role: { in: policyRoles as any[] },
+        isActive: true,
+        ...(companyId ? { companyMemberships: { some: { companyId, isActive: true } } } : {}),
+      },
       select: {
         id: true,
         name: true,
@@ -223,8 +227,13 @@ router.get('/suggest/:applicationId', async (req: Request, res: Response) => {
       neededRole = (policy?.steps[0]?.assignedRole as string) ?? 'ANALYSTE_RISQUES';
     }
 
+    const companyId = (req as any).companyId as string | undefined;
     const agents = await prisma.user.findMany({
-      where: { role: neededRole as any, isActive: true },
+      where: {
+        role: neededRole as any,
+        isActive: true,
+        ...(companyId ? { companyMemberships: { some: { companyId, isActive: true } } } : {}),
+      },
       include: {
         assignedSteps: {
           where: { status: { in: ['PENDING', 'IN_REVIEW'] } }
@@ -349,6 +358,20 @@ router.post('/assign', async (req: Request, res: Response) => {
 
     if (!application) return res.status(404).json({ success: false, error: 'Demande non trouvée' });
     if (!agent) return res.status(400).json({ success: false, error: 'Utilisateur introuvable' });
+
+    // Guard multi-tenant : l'agent doit appartenir à la même société
+    const companyId = (req as any).companyId as string | undefined;
+    if (companyId) {
+      const membership = await prisma.companyMembership.findFirst({
+        where: { userId: targetUserId, companyId, isActive: true },
+      });
+      if (!membership) {
+        return res.status(403).json({
+          success: false,
+          error: "Cet utilisateur n'appartient pas à votre organisation.",
+        });
+      }
+    }
 
     // Find the step to assign: for reassign, first PENDING/IN_REVIEW; for initial, first PENDING unassigned
     let targetStep = isReassign
