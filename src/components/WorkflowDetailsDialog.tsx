@@ -53,7 +53,6 @@ import {
   Autorenew as AutorenewIcon,
 } from '@mui/icons-material';
 import { WorkflowTimestamps } from '../types';
-import { WorkflowTimeline } from './WorkflowTimeline';
 import { useUser } from '../contexts/UserContext';
 import { ApiService } from '../services/api';
 import { OtpVerificationDialog } from './OtpVerificationDialog';
