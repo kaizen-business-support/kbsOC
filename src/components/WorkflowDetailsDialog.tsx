@@ -1077,112 +1077,114 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
         </TabPanel>
 
 
-        {/* Tab 5: Documents */}
-        <TabPanel value={activeTab} index={5}>
-          {/* Hidden file input */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.doc,.docx"
-            style={{ display: 'none' }}
-            onChange={(e) => uploadDocuments(e.target.files)}
-          />
-
-          {/* Header row: title + upload button */}
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-            <Typography variant="h6">Documents justificatifs</Typography>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={docsUploading ? <CircularProgress size={14} /> : <DownloadIcon sx={{ transform: 'rotate(180deg)' }} />}
-              disabled={docsUploading}
-              onClick={() => fileInputRef.current?.click()}
-              sx={{ borderRadius: 6, textTransform: 'none', fontSize: '13px', px: 2 }}
-            >
-              {docsUploading ? 'Envoi…' : 'Ajouter des fichiers'}
-            </Button>
+        {/* Tab 2: Documents */}
+        <TabPanel value={activeTab} index={2}>
+          {/* Zone d'upload */}
+          <Box
+            onClick={() => fileInputRef.current?.click()}
+            sx={{
+              border: '2px dashed',
+              borderColor: 'grey.300',
+              borderRadius: 2,
+              bgcolor: 'grey.50',
+              p: 3,
+              textAlign: 'center',
+              cursor: 'pointer',
+              mb: 2,
+              transition: 'border-color 0.15s, background-color 0.15s',
+              '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(25,118,210,0.04)' },
+            }}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              style={{ display: 'none' }}
+              onChange={e => uploadDocuments(e.target.files)}
+            />
+            {docsUploading ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                <CircularProgress size={18} />
+                <Typography variant="body2" color="text.secondary">Téléversement en cours…</Typography>
+              </Box>
+            ) : (
+              <>
+                <CloudUploadIcon sx={{ fontSize: 32, color: 'grey.400', mb: 0.5 }} />
+                <Typography variant="body2" color="text.secondary">
+                  Glissez vos fichiers ici ou{' '}
+                  <Box component="span" sx={{ color: 'primary.main', fontWeight: 600 }}>cliquez pour parcourir</Box>
+                </Typography>
+              </>
+            )}
           </Box>
 
           {docsUploadError && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setDocsUploadError(null)}>
+            <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => setDocsUploadError(null)}>
               {docsUploadError}
             </Alert>
           )}
 
+          {/* Liste des documents */}
           {docsLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-              <CircularProgress />
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <CircularProgress size={28} />
             </Box>
           ) : documents.length === 0 ? (
-            <Alert severity="info">
-              Aucun document joint à cette demande. Cliquez sur « Ajouter des fichiers » pour en téléverser.
-            </Alert>
+            <Box sx={{ textAlign: 'center', py: 5 }}>
+              <FolderIcon sx={{ fontSize: 48, color: 'grey.300', mb: 1 }} />
+              <Typography variant="body2" color="text.secondary">
+                Aucun document attaché à ce dossier.
+              </Typography>
+            </Box>
           ) : (
-            <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none', overflowX: 'auto' }}>
-              <Table size="small" sx={{ minWidth: 560 }}>
-                <TableHead>
-                  <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                    <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Nom du fichier</TableCell>
-                    <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Catégorie</TableCell>
-                    <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Taille</TableCell>
-                    <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Ajouté par</TableCell>
-                    <TableCell sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Date</TableCell>
-                    <TableCell align="center" sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280' }}>Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {documents.map((doc) => {
-                    const ext = doc.filename?.split('.').pop()?.toLowerCase() || '';
-                    const canPreview = ['pdf', 'png', 'jpg', 'jpeg'].includes(ext);
-                    const sizeKb = doc.fileSize ? (doc.fileSize / 1024).toFixed(0) : '?';
-                    return (
-                      <TableRow key={doc.id} sx={{ '&:hover': { bgcolor: 'rgba(31,78,121,0.03)' }, borderBottom: '1px solid #f1f5f9' }}>
-                        <TableCell sx={{ py: 1.5 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <FileIcon sx={{ fontSize: 16, color: '#9ca3af' }} />
-                            <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '13px' }}>{doc.filename}</Typography>
-                          </Box>
-                        </TableCell>
-                        <TableCell sx={{ py: 1.5 }}>
-                          <Chip label={doc.category || 'OTHER'} size="small" variant="outlined" sx={{ fontSize: '11px' }} />
-                        </TableCell>
-                        <TableCell sx={{ py: 1.5, color: '#6b7280', fontSize: '13px' }}>{sizeKb} Ko</TableCell>
-                        <TableCell sx={{ py: 1.5, fontSize: '13px' }}>{doc.uploader?.name || '—'}</TableCell>
-                        <TableCell sx={{ py: 1.5, color: '#6b7280', fontSize: '13px' }}>
-                          {new Date(doc.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                        </TableCell>
-                        <TableCell align="center" sx={{ py: 1.5 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
-                            {canPreview ? (
-                              <Tooltip title="Prévisualiser">
-                                <IconButton size="small" color="primary" onClick={() => openPreview(doc)}>
-                                  <VisibilityIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                            ) : (
-                              <Tooltip title="Aperçu non disponible pour ce type de fichier">
-                                <span>
-                                  <IconButton size="small" disabled>
-                                    <VisibilityIcon fontSize="small" />
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
-                            )}
-                            <Tooltip title="Télécharger">
-                              <IconButton size="small" onClick={() => downloadDoc(doc)}>
-                                <DownloadIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+              {documents.map((doc: any) => {
+                const ext = (doc.filename as string)?.split('.').pop()?.toLowerCase();
+                const isPdf   = ext === 'pdf';
+                const isImg   = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext || '');
+                const isSheet = ['xlsx', 'xls', 'csv'].includes(ext || '');
+                const IconComp = isPdf ? PictureAsPdfIcon : isImg ? ImageIcon : isSheet ? TableChartIcon : FileIcon;
+                const iconColor = isPdf ? '#f44336' : isImg ? '#9c27b0' : isSheet ? '#4caf50' : '#1976d2';
+                return (
+                  <Box
+                    key={doc.id}
+                    sx={{
+                      display: 'flex', alignItems: 'center', gap: 1.5,
+                      px: 1.5, py: 1, borderRadius: 1.5,
+                      border: '1px solid', borderColor: 'grey.100',
+                      transition: 'all 0.1s',
+                      '&:hover': { bgcolor: 'grey.50', borderColor: 'grey.200' },
+                    }}
+                  >
+                    <IconComp sx={{ fontSize: 26, color: iconColor, flexShrink: 0 }} />
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="body2" fontWeight={600} noWrap>{doc.filename}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {doc.size ? `${Math.round(doc.size / 1024)} Ko · ` : ''}
+                        {doc.uploadedByName || doc.uploadedBy || ''}
+                        {doc.createdAt
+                          ? ` · ${new Date(doc.createdAt).toLocaleDateString('fr-FR')}`
+                          : ''}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
+                      <Tooltip title="Aperçu">
+                        <IconButton size="small" onClick={() => openPreview(doc)} sx={{ color: 'grey.600' }}>
+                          <VisibilityIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Télécharger">
+                        <IconButton size="small" onClick={() => downloadDoc(doc)} sx={{ color: 'grey.600' }}>
+                          <DownloadIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+                );
+              })}
+            </Box>
           )}
+
         </TabPanel>
       </DialogContent>
 
