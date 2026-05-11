@@ -137,6 +137,7 @@ model Client {
   contactPerson   String?             @map("contact_person")
   phone           String?
   email           String?
+  accountNumber   String?             @unique @map("account_number")
   isActive        Boolean             @default(true) @map("is_active")
   createdBy       String              @map("created_by")
   companyId       String?             @map("company_id")

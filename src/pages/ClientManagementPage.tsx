@@ -39,8 +39,12 @@ import {
   Close as CloseIcon,
   ToggleOn as ToggleOnIcon,
   ToggleOff as ToggleOffIcon,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import { ApiService } from '../services/api';
+import { useUser } from '../contexts/UserContext';
+import { DossierActionDrawer } from '../components/DossierActionDrawer';
+import { ApprovalItem } from '../types';
 
 interface ClientManagementPageProps {
   onNavigate: (page: any) => void;
@@ -49,6 +53,7 @@ interface ClientManagementPageProps {
 interface RawClient {
   id: string;
   companyName: string;
+  accountNumber?: string | null;
   rccm: string | null;
   ninea: string | null;
   legalForm: string | null;
@@ -103,6 +108,11 @@ const APP_STATUS_CONFIG: Record<string, { label: string; color: string; bg: stri
   DISBURSED:    { label: 'Décaissé',       color: '#7c3aed', bg: '#f5f3ff' },
   CANCELLED:    { label: 'Annulé',         color: '#374151', bg: '#f9fafb' },
 };
+
+// Roles that can create and edit clients
+const CAN_CREATE_ROLES = ['CHARGE_AFFAIRES', 'ASSISTANT_COMMERCIAL', 'ADMIN', 'SUPER_ADMIN'];
+// Roles that can toggle client active/inactive status
+const CAN_TOGGLE_STATUS_ROLES = ['ADMIN', 'SUPER_ADMIN', 'RESPONSABLE_ENGAGEMENTS', 'DIR_AG'];
 
 function stringToColor(str: string): string {
   let hash = 0;
@@ -186,6 +196,13 @@ const emptyForm = {
 
 export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNavigate: _onNavigate }) => {
   const { t } = useTranslation();
+  const { state: userState } = useUser();
+  const userRole = userState.currentUser?.role ?? '';
+
+  const canCreate = CAN_CREATE_ROLES.includes(userRole);
+  const canEdit = CAN_CREATE_ROLES.includes(userRole);
+  const canToggle = CAN_TOGGLE_STATUS_ROLES.includes(userRole);
+
   const [currentTab, setCurrentTab] = useState(0);
   const [rawClients, setRawClients] = useState<RawClient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -208,6 +225,10 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
   const [selectedAppId, setSelectedAppId] = useState<string>('');
 
   const [toggleLoadingId, setToggleLoadingId] = useState<string | null>(null);
+
+  // DossierActionDrawer
+  const [dossierDrawerOpen, setDossierDrawerOpen] = useState(false);
+  const [dossierItem, setDossierItem] = useState<ApprovalItem | null>(null);
 
   const loadClients = useCallback(async () => {
     try {
@@ -335,12 +356,37 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
     }
   };
 
+  const handleOpenDossier = (app: RawApplication) => {
+    const item: ApprovalItem = {
+      id: app.id,
+      applicationId: app.id,
+      applicationNumber: app.applicationNumber || app.id.slice(0, 8).toUpperCase(),
+      clientName: drawerClient?.companyName || '',
+      amount: Number(app.amount),
+      currency: app.currency,
+      stepName: '',
+      stepLabel: '',
+      stepType: '',
+      allowedActions: [],
+      type: 'financial',
+      creditType: app.creditType?.name || null,
+      branch: drawerClient?.branch || null,
+      purpose: app.purpose || '',
+      daysWaiting: Math.floor((Date.now() - new Date(app.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
+      deadline: null,
+      isOverdue: false,
+    };
+    setDossierItem(item);
+    setDossierDrawerOpen(true);
+  };
+
   const filtered = rawClients.filter((c) => {
     const q = searchTerm.toLowerCase();
     return (
       c.companyName.toLowerCase().includes(q) ||
       (c.rccm || '').toLowerCase().includes(q) ||
-      (c.sector || '').toLowerCase().includes(q)
+      (c.sector || '').toLowerCase().includes(q) ||
+      (c.accountNumber || '').toLowerCase().includes(q)
     );
   });
 
@@ -371,7 +417,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs value={currentTab} onChange={(_, v) => setCurrentTab(v)} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
             <Tab label="Liste des Clients" />
-            <Tab label="Nouveau Client" />
+            {canCreate && <Tab label="Nouveau Client" />}
           </Tabs>
         </Box>
 
@@ -380,16 +426,18 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
             <Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 2 }}>
                 <TextField
-                  placeholder="Rechercher par nom, RCCM ou secteur..."
+                  placeholder="Rechercher par nom, N° compte, RCCM ou secteur..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   size="small"
                   InputProps={{ startAdornment: <SearchIcon sx={{ color: 'text.secondary', mr: 1 }} /> }}
-                  sx={{ minWidth: 300 }}
+                  sx={{ minWidth: 320 }}
                 />
-                <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCurrentTab(1)}>
-                  Nouveau Client
-                </Button>
+                {canCreate && (
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCurrentTab(1)}>
+                    Nouveau Client
+                  </Button>
+                )}
               </Box>
 
               {loading ? (
@@ -401,7 +449,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                   <Table>
                     <TableHead>
                       <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                        {['Client', 'Dossiers', 'Exposition', 'Agence', 'Chargé', 'Statut', 'Actions'].map((col) => (
+                        {['Client', 'N° Compte', 'Dossiers', 'Exposition', 'Agence', 'Chargé', 'Statut', 'Actions'].map((col) => (
                           <TableCell
                             key={col}
                             align={col === 'Actions' ? 'center' : 'left'}
@@ -419,7 +467,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                     <TableBody>
                       {filtered.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} align="center" sx={{ py: 6, color: '#9ca3af' }}>
+                          <TableCell colSpan={8} align="center" sx={{ py: 6, color: '#9ca3af' }}>
                             Aucun client trouvé
                           </TableCell>
                         </TableRow>
@@ -434,6 +482,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                               transition: 'background 0.15s',
                             }}
                           >
+                            {/* Client */}
                             <TableCell sx={{ py: 1.5 }}>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                                 <Avatar
@@ -455,6 +504,24 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                               </Box>
                             </TableCell>
 
+                            {/* N° Compte */}
+                            <TableCell sx={{ py: 1.5 }}>
+                              {client.accountNumber ? (
+                                <Typography
+                                  sx={{
+                                    fontSize: '12px', fontFamily: 'monospace', fontWeight: 600,
+                                    color: '#1f4e79', bgcolor: '#eff6ff', px: 1, py: 0.3,
+                                    borderRadius: 1, display: 'inline-block',
+                                  }}
+                                >
+                                  {client.accountNumber}
+                                </Typography>
+                              ) : (
+                                <Typography variant="caption" color="text.secondary">—</Typography>
+                              )}
+                            </TableCell>
+
+                            {/* Dossiers */}
                             <TableCell sx={{ py: 1.5, minWidth: 110 }}>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 <Chip
@@ -477,12 +544,14 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                               )}
                             </TableCell>
 
+                            {/* Exposition */}
                             <TableCell sx={{ py: 1.5 }}>
                               <Typography sx={{ fontSize: '13.5px', fontWeight: 600, color: '#1f4e79' }}>
                                 {fmtXOF(client.totalExposure ?? 0)}
                               </Typography>
                             </TableCell>
 
+                            {/* Agence */}
                             <TableCell sx={{ py: 1.5 }}>
                               {client.branch ? (
                                 <Chip label={client.branch} size="small" variant="outlined" sx={{ fontSize: '11px', height: 22 }} />
@@ -491,10 +560,12 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                               )}
                             </TableCell>
 
+                            {/* Chargé */}
                             <TableCell sx={{ py: 1.5, fontSize: '13px', color: '#374151' }}>
                               {client.creator?.name || '—'}
                             </TableCell>
 
+                            {/* Statut */}
                             <TableCell sx={{ py: 1.5 }}>
                               <Chip
                                 label={client.isActive ? 'Actif' : 'Inactif'}
@@ -508,33 +579,38 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                               />
                             </TableCell>
 
+                            {/* Actions */}
                             <TableCell align="center" sx={{ py: 1.5 }}>
                               <Tooltip title="Fiche client">
                                 <IconButton size="small" color="primary" onClick={() => handleOpenDrawer(client)}>
                                   <ViewIcon fontSize="small" />
                                 </IconButton>
                               </Tooltip>
-                              <Tooltip title="Modifier">
-                                <IconButton size="small" onClick={(e) => handleOpenEdit(client, e)}>
-                                  <EditIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title={client.isActive ? 'Désactiver' : 'Activer'}>
-                                <span>
-                                  <IconButton
-                                    size="small"
-                                    color={client.isActive ? 'success' : 'default'}
-                                    disabled={toggleLoadingId === client.id}
-                                    onClick={(e) => handleToggleStatus(client, e)}
-                                  >
-                                    {toggleLoadingId === client.id
-                                      ? <CircularProgress size={16} />
-                                      : client.isActive
-                                        ? <ToggleOnIcon fontSize="small" />
-                                        : <ToggleOffIcon fontSize="small" />}
+                              {canEdit && (
+                                <Tooltip title="Modifier">
+                                  <IconButton size="small" onClick={(e) => handleOpenEdit(client, e)}>
+                                    <EditIcon fontSize="small" />
                                   </IconButton>
-                                </span>
-                              </Tooltip>
+                                </Tooltip>
+                              )}
+                              {canToggle && (
+                                <Tooltip title={client.isActive ? 'Désactiver' : 'Activer'}>
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      color={client.isActive ? 'success' : 'default'}
+                                      disabled={toggleLoadingId === client.id}
+                                      onClick={(e) => handleToggleStatus(client, e)}
+                                    >
+                                      {toggleLoadingId === client.id
+                                        ? <CircularProgress size={16} />
+                                        : client.isActive
+                                          ? <ToggleOnIcon fontSize="small" />
+                                          : <ToggleOffIcon fontSize="small" />}
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))
@@ -546,7 +622,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
             </Box>
           )}
 
-          {currentTab === 1 && (
+          {canCreate && currentTab === 1 && (
             <Box>
               <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
                 Création d'un Nouveau Client Corporatif
@@ -653,7 +729,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                   {editNotif.msg}
                 </Alert>
               )}
-              <Grid container spacing={2}>
+              <Grid container spacing={2.5}>
                 <Grid item xs={12} md={6}>
                   <TextField fullWidth label="Raison Sociale *" value={editForm.companyName} onChange={handleEditFormChange('companyName')} />
                 </Grid>
@@ -667,9 +743,11 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                   <FormControl fullWidth>
                     <InputLabel>Forme Juridique</InputLabel>
                     <Select label="Forme Juridique" value={editForm.legalForm} onChange={handleEditFormChange('legalForm') as any}>
-                      {['SA', 'SARL', 'SAS', 'SNC', 'GIE', 'Établissement Public', 'Association', 'Autre'].map((f) => (
-                        <MenuItem key={f} value={f}>{f}</MenuItem>
-                      ))}
+                      <MenuItem value="SARL">SARL</MenuItem>
+                      <MenuItem value="SA">SA</MenuItem>
+                      <MenuItem value="GIE">GIE</MenuItem>
+                      <MenuItem value="SNC">SNC</MenuItem>
+                      <MenuItem value="EI">EI</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
@@ -677,12 +755,22 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                   <FormControl fullWidth>
                     <InputLabel>Secteur d'Activité</InputLabel>
                     <Select label="Secteur d'Activité" value={editForm.sector} onChange={handleEditFormChange('sector') as any}>
-                      {industries.map((i) => <MenuItem key={i} value={i}>{i}</MenuItem>)}
+                      {industries.map((ind) => <MenuItem key={ind} value={ind}>{ind}</MenuItem>)}
                     </Select>
                   </FormControl>
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <TextField fullWidth label="Agence" value={editForm.branch} onChange={handleEditFormChange('branch')} />
+                  <FormControl fullWidth>
+                    <InputLabel>Agence</InputLabel>
+                    <Select label="Agence" value={editForm.branch} onChange={handleEditFormChange('branch') as any}>
+                      {['Dakar Centre', 'Dakar Plateau', 'Thiès', 'Kaolack', 'Saint-Louis', 'Ziguinchor'].map((b) => (
+                        <MenuItem key={b} value={b}>{b}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField fullWidth label="Personne de Contact" value={editForm.contactPerson} onChange={handleEditFormChange('contactPerson')} />
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <TextField fullWidth label="Siège Social" value={editForm.headquarters} onChange={handleEditFormChange('headquarters')} />
@@ -691,10 +779,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                   <TextField fullWidth label="Téléphone" value={editForm.phone} onChange={handleEditFormChange('phone')} />
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <TextField fullWidth label="Email" value={editForm.email} onChange={handleEditFormChange('email')} />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField fullWidth label="Personne de Contact" value={editForm.contactPerson} onChange={handleEditFormChange('contactPerson')} />
+                  <TextField fullWidth label="Email" type="email" value={editForm.email} onChange={handleEditFormChange('email')} />
                 </Grid>
               </Grid>
             </CardContent>
@@ -718,10 +803,10 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
         anchor="right"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        PaperProps={{ sx: { width: 620, bgcolor: '#fafafa' } }}
+        PaperProps={{ sx: { width: 640, bgcolor: '#fafafa' } }}
       >
         <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-          {/* Drawer header */}
+          {/* Header */}
           <Box
             sx={{
               px: 3, py: 2.5, bgcolor: '#1f4e79', color: '#fff',
@@ -744,20 +829,33 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                 <Typography sx={{ fontWeight: 700, fontSize: '16px', lineHeight: 1.2 }}>
                   {drawerClient?.companyName}
                 </Typography>
-                <Typography sx={{ fontSize: '12px', opacity: 0.8 }}>
-                  {drawerClient?.legalForm || 'Forme juridique non précisée'}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.3 }}>
+                  {drawerClient?.accountNumber && (
+                    <Typography
+                      sx={{
+                        fontSize: '11px', fontFamily: 'monospace', fontWeight: 600,
+                        bgcolor: 'rgba(255,255,255,0.15)', px: 1, py: 0.2,
+                        borderRadius: 0.8, letterSpacing: '0.3px',
+                      }}
+                    >
+                      {drawerClient.accountNumber}
+                    </Typography>
+                  )}
+                  <Typography sx={{ fontSize: '12px', opacity: 0.75 }}>
+                    {drawerClient?.legalForm || ''}
+                  </Typography>
                   {drawerClient?.isActive !== undefined && (
                     <Chip
                       label={drawerClient.isActive ? 'Actif' : 'Inactif'}
                       size="small"
                       sx={{
-                        ml: 1, height: 18, fontSize: '10px',
+                        height: 18, fontSize: '10px',
                         bgcolor: drawerClient.isActive ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.3)',
                         color: '#fff', border: 'none',
                       }}
                     />
                   )}
-                </Typography>
+                </Box>
               </Box>
             </Box>
             <IconButton onClick={() => setDrawerOpen(false)} sx={{ color: '#fff' }}>
@@ -765,7 +863,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
             </IconButton>
           </Box>
 
-          {/* Drawer tabs */}
+          {/* Tabs */}
           <Box sx={{ borderBottom: '1px solid #e8ecf0', bgcolor: '#fff' }}>
             <Tabs value={drawerTab} onChange={(_, v) => setDrawerTab(v)} variant="fullWidth">
               <Tab label="Identité" sx={{ fontSize: '13px' }} />
@@ -780,10 +878,10 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
             </Box>
           ) : (
             <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
+
               {/* Onglet Identité */}
               {drawerTab === 0 && drawerClient && (
                 <Box>
-                  {/* KPIs */}
                   <Grid container spacing={2} sx={{ mb: 3 }}>
                     {[
                       { label: 'Total dossiers', value: (drawerClient.applications?.length ?? drawerClient.appCount ?? 0).toString() },
@@ -791,12 +889,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                       { label: 'Relation depuis', value: relationDuration(drawerClient.createdAt) },
                     ].map((kpi) => (
                       <Grid item xs={4} key={kpi.label}>
-                        <Paper
-                          sx={{
-                            p: 2, textAlign: 'center', borderRadius: 2,
-                            border: '1px solid #e8ecf0', boxShadow: 'none',
-                          }}
-                        >
+                        <Paper sx={{ p: 2, textAlign: 'center', borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none' }}>
                           <Typography sx={{ fontSize: '18px', fontWeight: 700, color: '#1f4e79' }}>
                             {kpi.value}
                           </Typography>
@@ -808,12 +901,13 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                     ))}
                   </Grid>
 
-                  {/* Info grid */}
                   <Paper sx={{ p: 2.5, borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none' }}>
                     <Grid container spacing={2}>
                       {[
+                        { label: 'N° de Compte', value: drawerClient.accountNumber },
                         { label: 'RCCM', value: drawerClient.rccm },
                         { label: 'NINEA', value: drawerClient.ninea },
+                        { label: 'Forme Juridique', value: drawerClient.legalForm },
                         { label: 'Secteur', value: drawerClient.sector },
                         { label: 'Siège Social', value: drawerClient.headquarters },
                         { label: 'Personne de Contact', value: drawerClient.contactPerson },
@@ -827,7 +921,12 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.2 }}>
                             {item.label}
                           </Typography>
-                          <Typography sx={{ fontSize: '13.5px', fontWeight: 500, color: '#111827' }}>
+                          <Typography
+                            sx={{
+                              fontSize: '13.5px', fontWeight: 500, color: '#111827',
+                              fontFamily: item.label === 'N° de Compte' ? 'monospace' : 'inherit',
+                            }}
+                          >
                             {item.value || '—'}
                           </Typography>
                         </Grid>
@@ -857,18 +956,29 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                               '&:hover': { boxShadow: '0 2px 8px rgba(0,0,0,0.08)' },
                             }}
                           >
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                              <Typography sx={{ fontSize: '13px', fontWeight: 700, fontFamily: 'monospace', color: '#1f4e79' }}>
-                                {app.applicationNumber || app.id.slice(0, 8).toUpperCase()}
-                              </Typography>
-                              <Chip
-                                label={cfg.label}
-                                size="small"
-                                sx={{
-                                  fontSize: '11px', height: 22, fontWeight: 600,
-                                  bgcolor: cfg.bg, color: cfg.color, border: 'none',
-                                }}
-                              />
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                                <Typography sx={{ fontSize: '13px', fontWeight: 700, fontFamily: 'monospace', color: '#1f4e79' }}>
+                                  {app.applicationNumber || app.id.slice(0, 8).toUpperCase()}
+                                </Typography>
+                                <Chip
+                                  label={cfg.label}
+                                  size="small"
+                                  sx={{ fontSize: '11px', height: 22, fontWeight: 600, bgcolor: cfg.bg, color: cfg.color, border: 'none' }}
+                                />
+                              </Box>
+                              <Tooltip title="Voir le détail du dossier">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleOpenDossier(app)}
+                                  sx={{
+                                    bgcolor: '#eff6ff', color: '#1d4ed8',
+                                    '&:hover': { bgcolor: '#dbeafe' },
+                                  }}
+                                >
+                                  <OpenInNewIcon sx={{ fontSize: 16 }} />
+                                </IconButton>
+                              </Tooltip>
                             </Box>
                             <Grid container spacing={1.5}>
                               <Grid item xs={6}>
@@ -950,13 +1060,10 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                             <Table size="small">
                               <TableHead>
                                 <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                                  {['N°', 'Date', 'Échéance', 'Capital', 'Intérêts', 'Capital restant', 'Statut'].map((col) => (
+                                  {['N°', 'Date', 'Échéance', 'Capital', 'Intérêts', 'Capital restant'].map((col) => (
                                     <TableCell
                                       key={col}
-                                      sx={{
-                                        fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
-                                        color: '#6b7280', py: 1, letterSpacing: '0.4px',
-                                      }}
+                                      sx={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#6b7280', py: 1, letterSpacing: '0.4px' }}
                                     >
                                       {col}
                                     </TableCell>
@@ -977,32 +1084,27 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                                     <TableCell sx={{ py: 0.8, fontSize: '12px', color: '#d97706' }}>
                                       {new Intl.NumberFormat('fr-FR').format(Math.round(row.interest))}
                                     </TableCell>
-                                    <TableCell sx={{ py: 0.8, fontSize: '12px', color: '#1f4e79' }}>
+                                    <TableCell sx={{ py: 0.8, fontSize: '12px', color: '#6b7280' }}>
                                       {new Intl.NumberFormat('fr-FR').format(Math.round(row.remaining))}
-                                    </TableCell>
-                                    <TableCell sx={{ py: 0.8 }}>
-                                      <Chip
-                                        label="À venir"
-                                        size="small"
-                                        sx={{ fontSize: '10px', height: 18, bgcolor: '#f3f4f6', color: '#6b7280', border: 'none' }}
-                                      />
                                     </TableCell>
                                   </TableRow>
                                 ))}
-                                <TableRow sx={{ bgcolor: '#f8fafc', fontWeight: 700 }}>
-                                  <TableCell colSpan={2} sx={{ py: 1, fontSize: '12px', fontWeight: 700 }}>TOTAL</TableCell>
-                                  <TableCell sx={{ py: 1, fontSize: '12px', fontWeight: 700 }}>
+                              </TableBody>
+                              <TableHead>
+                                <TableRow sx={{ bgcolor: '#f0fdf4' }}>
+                                  <TableCell colSpan={2} sx={{ py: 1, fontSize: '12px', fontWeight: 700, color: '#15803d' }}>Total</TableCell>
+                                  <TableCell sx={{ py: 1, fontSize: '12px', fontWeight: 700, color: '#15803d' }}>
                                     {new Intl.NumberFormat('fr-FR').format(Math.round(totalPayment))}
                                   </TableCell>
-                                  <TableCell sx={{ py: 1, fontSize: '12px', fontWeight: 700 }}>
+                                  <TableCell sx={{ py: 1, fontSize: '12px', fontWeight: 700, color: '#15803d' }}>
                                     {new Intl.NumberFormat('fr-FR').format(Math.round(totalPrincipal))}
                                   </TableCell>
                                   <TableCell sx={{ py: 1, fontSize: '12px', fontWeight: 700, color: '#d97706' }}>
                                     {new Intl.NumberFormat('fr-FR').format(Math.round(totalInterest))}
                                   </TableCell>
-                                  <TableCell colSpan={2} />
+                                  <TableCell />
                                 </TableRow>
-                              </TableBody>
+                              </TableHead>
                             </Table>
                           </TableContainer>
                         </>
@@ -1015,6 +1117,19 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
           )}
         </Box>
       </Drawer>
+
+      {/* DossierActionDrawer — ouvert depuis la fiche client */}
+      <DossierActionDrawer
+        item={dossierItem}
+        open={dossierDrawerOpen}
+        onClose={() => setDossierDrawerOpen(false)}
+        onSuccess={() => {
+          setDossierDrawerOpen(false);
+          if (drawerClient) handleOpenDrawer(drawerClient);
+        }}
+      />
     </Box>
   );
 };
+
+export default ClientManagementPage;

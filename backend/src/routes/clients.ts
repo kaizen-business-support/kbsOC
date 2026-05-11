@@ -6,6 +6,35 @@ const router = Router();
 router.use(authenticate);
 router.use(requireCompany);
 
+// Roles that can only see clients they personally created
+const CREATOR_ONLY_ROLES = ['CHARGE_AFFAIRES', 'ASSISTANT_COMMERCIAL'];
+// Roles that see clients where they have an assigned workflow step
+const ASSIGNEE_ROLES = ['ANALYSTE_RISQUES'];
+// All other roles see all company clients (ADMIN, SUPER_ADMIN, DIRECTION_GENERALE,
+// RESPONSABLE_RISQUES, RESPONSABLE_ENGAGEMENTS, COMITE_CREDIT, DIRECTION_JURIDIQUE,
+// BACK_OFFICE, DIR_AG)
+
+function buildClientWhereFilter(req: Request) {
+  const base: any = { companyId: req.companyId };
+  const role = req.user!.role as string;
+  const userId = req.user!.id;
+
+  if (CREATOR_ONLY_ROLES.includes(role)) {
+    base.createdBy = userId;
+  } else if (ASSIGNEE_ROLES.includes(role)) {
+    base.applications = {
+      some: { workflowSteps: { some: { assigneeId: userId } } },
+    };
+  }
+  return base;
+}
+
+function generateAccountNumber(): string {
+  const year = new Date().getFullYear();
+  const rand = Math.floor(100000 + Math.random() * 900000); // 6-digit
+  return `CLT-${year}-${rand}`;
+}
+
 // POST /api/clients - Create a new client
 router.post('/', async (req: Request, res: Response) => {
   try {
@@ -27,9 +56,20 @@ router.post('/', async (req: Request, res: Response) => {
       if (existing) return res.status(409).json({ success: false, error: `Un client avec le NINEA ${ninea} existe déjà` });
     }
 
+    // Generate unique account number with collision retry
+    let accountNumber = generateAccountNumber();
+    let attempts = 0;
+    while (attempts < 5) {
+      const dup = await prisma.client.findUnique({ where: { accountNumber } });
+      if (!dup) break;
+      accountNumber = generateAccountNumber();
+      attempts++;
+    }
+
     const client = await prisma.client.create({
       data: {
         companyName,
+        accountNumber,
         rccm: rccm || null,
         ninea: ninea || null,
         legalForm: legalForm || null,
@@ -54,13 +94,15 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/clients - Get all clients
+// GET /api/clients - Get all clients (role-filtered)
 router.get('/', async (req: Request, res: Response) => {
   try {
+    const where = buildClientWhereFilter(req);
+
     const clients = await prisma.client.findMany({
-      where: { companyId: req.companyId },
+      where,
       include: {
-        creator: true,
+        creator: { select: { id: true, name: true, department: true } },
         applications: {
           select: {
             id: true,
@@ -175,14 +217,16 @@ router.patch('/:id/toggle-status', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/clients/:id - Get client by ID
+// GET /api/clients/:id - Get client by ID (role-filtered)
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const baseWhere = buildClientWhereFilter(req);
+
     const client = await prisma.client.findFirst({
-      where: { id, companyId: req.companyId },
+      where: { id, ...baseWhere },
       include: {
-        creator: true,
+        creator: { select: { id: true, name: true, department: true } },
         applications: {
           include: {
             creditType: { select: { name: true } },
