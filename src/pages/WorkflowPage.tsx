@@ -1,959 +1,683 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  Box,
-  Container,
-  Typography,
-  Tabs,
-  Tab,
-  Card,
-  CardContent,
-  Grid,
-  Alert,
-  LinearProgress,
-  CircularProgress,
-  Chip,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Button,
-  List,
-  ListItem,
-  ListItemText,
-  Divider,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  TablePagination,
-  Avatar,
-  Tooltip,
-  IconButton,
+  Box, Typography, Tabs, Tab, Table, TableBody, TableCell,
+  TableHead, TableRow, Paper, Chip, Button, CircularProgress,
+  Alert, IconButton, TextField, InputAdornment, Select, MenuItem,
+  FormControl, InputLabel, LinearProgress, Avatar, Tooltip,
+  TablePagination, Divider,
 } from '@mui/material';
 import {
-  Assessment as AnalysisIcon,
-  PlayArrow as StartIcon,
-  Business as BusinessIcon,
+  FolderSpecial as MyDocsIcon,
+  HourglassTop as InProgressIcon,
+  CheckCircle as ApprovedIcon,
+  Cancel as RejectedIcon,
+  History as HistoryIcon,
   Refresh as RefreshIcon,
-  AssignmentLate as OverdueIcon,
+  Search as SearchIcon,
+  Business as BizIcon,
+  OpenInNew as OpenIcon,
+  TrendingUp as TrendingIcon,
+  AccountBalance as BankIcon,
+  Warning as WarningIcon,
+  BeachAccess as DelegationIcon,
+  FilterList as FilterIcon,
+  MonetizationOn as MoneyIcon,
+  CheckCircleOutline as DoneIcon,
+  CancelOutlined as RejectOutIcon,
+  PendingActions as PendingIcon,
+  Payments as DisbursedIcon,
 } from '@mui/icons-material';
 import { useUser } from '../contexts/UserContext';
-import {
-  WorkflowTimestamps,
-  WorkflowStepId,
-  WorkflowStep
-} from '../types';
-import {
-  FIXED_WORKFLOW_STEPS,
-  getExpectedWorkflowSteps
-} from '../utils/workflowConfig';
-import { WorkflowTimeline } from '../components/WorkflowTimeline';
+import { WorkflowTimestamps } from '../types';
 import { WorkflowDetailsDialog } from '../components/WorkflowDetailsDialog';
 import { ApiService } from '../services/api';
 import { PowerDelegation } from '../types/delegation';
-import BeachAccessIcon from '@mui/icons-material/BeachAccess';
 
-// Local type definitions
-export type ApplicationStatus =
-  | 'draft'
-  | 'submitted'
-  | 'under_review'
-  | 'approved'
-  | 'rejected'
-  | 'disbursed';
+// ─── Constantes ───────────────────────────────────────────────────────────────
 
-// Mapping des étapes workflow → libellés affichés
-const STEP_DISPLAY: Record<string, { label: string; color: 'default' | 'primary' | 'info' | 'warning' | 'success' | 'error' }> = {
-  application_created:     { label: 'Création',             color: 'default'  },
-  credit_analysis:         { label: 'Analyse Crédit',       color: 'info'     },
-  branch_manager_review:   { label: "Dir. d'Agence",        color: 'warning'  },
-  credit_committee_review: { label: 'Comité de Crédit',     color: 'warning'  },
-  management_review:       { label: 'Direction Générale',   color: 'warning'  },
-  final_decision:          { label: 'Décision Finale',      color: 'info'     },
-  contract_preparation:    { label: 'Préparation Contrat',  color: 'info'     },
-  disbursement:            { label: 'Déblocage',            color: 'success'  },
+const ACCENT = '#5c35b5';
+
+function fmtAmount(v: number, currency = 'XOF') {
+  return new Intl.NumberFormat('fr-FR', {
+    style: 'currency', currency, minimumFractionDigits: 0,
+  }).format(v);
+}
+
+function fmtDate(dateStr?: string) {
+  if (!dateStr) return '—';
+  return new Date(dateStr).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function fmtDuration(ms?: number) {
+  if (!ms) return '—';
+  const days = Math.ceil(ms / 86_400_000);
+  return `${days} j`;
+}
+
+const STATUS_CFG: Record<string, { label: string; color: 'default' | 'info' | 'warning' | 'success' | 'error'; bg: string }> = {
+  draft:        { label: 'Brouillon',   color: 'default',  bg: '#f3f4f6' },
+  submitted:    { label: 'Soumise',     color: 'info',     bg: '#eff6ff' },
+  under_review: { label: 'En analyse',  color: 'warning',  bg: '#fffbeb' },
+  approved:     { label: 'Approuvée',   color: 'success',  bg: '#f0fdf4' },
+  rejected:     { label: 'Rejetée',     color: 'error',    bg: '#fef2f2' },
+  disbursed:    { label: 'Débloquée',   color: 'success',  bg: '#ecfdf5' },
+  DRAFT:        { label: 'Brouillon',   color: 'default',  bg: '#f3f4f6' },
+  SUBMITTED:    { label: 'Soumise',     color: 'info',     bg: '#eff6ff' },
+  UNDER_REVIEW: { label: 'En analyse',  color: 'warning',  bg: '#fffbeb' },
+  APPROVED:     { label: 'Approuvée',   color: 'success',  bg: '#f0fdf4' },
+  REJECTED:     { label: 'Rejetée',     color: 'error',    bg: '#fef2f2' },
+  DISBURSED:    { label: 'Débloquée',   color: 'success',  bg: '#ecfdf5' },
 };
 
-export interface CreditApplication {
-  id: string;
-  clientName: string;
-  amount: number;
-  status: ApplicationStatus;
-  applicationNumber?: string;
-  createdAt?: string;
-  [key: string]: any;
+function StatusChip({ status }: { status: string }) {
+  const cfg = STATUS_CFG[status] ?? { label: status, color: 'default' as const, bg: '#f3f4f6' };
+  return (
+    <Chip
+      label={cfg.label}
+      color={cfg.color}
+      size="small"
+      sx={{ fontWeight: 600, fontSize: 11, borderRadius: '6px' }}
+    />
+  );
 }
+
+// ─── KPI Card ────────────────────────────────────────────────────────────────
+
+interface KpiCardProps {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+  color: string;
+  bg: string;
+  active?: boolean;
+  onClick?: () => void;
+}
+
+function KpiCard({ label, value, icon, color, bg, active, onClick }: KpiCardProps) {
+  return (
+    <Box
+      onClick={onClick}
+      sx={{
+        flex: 1, minWidth: 130, px: 2.5, py: 2, borderRadius: 3,
+        bgcolor: active ? color : bg,
+        border: `1.5px solid ${active ? color : 'transparent'}`,
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'all .18s',
+        '&:hover': onClick ? { boxShadow: `0 4px 16px ${color}33`, transform: 'translateY(-1px)' } : {},
+        display: 'flex', alignItems: 'center', gap: 1.5,
+      }}
+    >
+      <Box sx={{
+        width: 40, height: 40, borderRadius: 2,
+        bgcolor: active ? 'rgba(255,255,255,0.25)' : `${color}18`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      }}>
+        {React.cloneElement(icon as any, { sx: { fontSize: 20, color: active ? '#fff' : color } })}
+      </Box>
+      <Box>
+        <Typography variant="h5" fontWeight={800} sx={{ color: active ? '#fff' : color, lineHeight: 1.1 }}>
+          {value}
+        </Typography>
+        <Typography variant="caption" sx={{ color: active ? 'rgba(255,255,255,0.85)' : '#6b7280', fontWeight: 500 }}>
+          {label}
+        </Typography>
+      </Box>
+    </Box>
+  );
+}
+
+// ─── Composant principal ──────────────────────────────────────────────────────
 
 interface WorkflowPageProps {
   onNavigate: (page: any) => void;
 }
 
-// Rôles qui ont des étapes en attente dans la politique — tous sauf ADMIN/SUPER_ADMIN
-const ADMIN_ROLES = ['admin', 'super_admin', 'ADMIN', 'SUPER_ADMIN'];
+const ROWS_PER_PAGE = 10;
 
 export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
-  const { state: userState, isRole } = useUser();
-  const navigate = useNavigate();
+  const { state: userState } = useUser();
+  const currentUser = userState.currentUser;
 
-  // Tout rôle non-admin a des étapes en attente → rediriger vers "Mes Dossiers" (ApprovalsPage)
-  const isAdminRole = ADMIN_ROLES.includes(userState.currentUser?.role || '');
-
-  const [activeTab, setActiveTab] = useState(0);
-  const [workflows, setWorkflows] = useState<WorkflowTimestamps[]>([]);
-  const [applications, setApplications] = useState<CreditApplication[]>([]);
-  const [myAssignedApps, setMyAssignedApps] = useState<any[]>([]);
-  const [myAppsLoading, setMyAppsLoading] = useState(false);
+  const [activeTab, setActiveTab]           = useState(0);
+  const [applications, setApplications]     = useState<any[]>([]);
+  const [workflows, setWorkflows]           = useState<WorkflowTimestamps[]>([]);
+  const [loading, setLoading]               = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowTimestamps | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [filterBranch, setFilterBranch] = useState<string>('all');
-  const [filterDateFrom, setFilterDateFrom] = useState<string>('');
-  const [filterDateTo, setFilterDateTo] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [activeDelegationReceived, setActiveDelegationReceived] = useState<PowerDelegation | null>(null);
+  const [dialogOpen, setDialogOpen]         = useState(false);
+  const [search, setSearch]                 = useState('');
+  const [filterStatus, setFilterStatus]     = useState('all');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo]     = useState('');
+  const [page, setPage]                     = useState(0);
+  const [delegation, setDelegation]         = useState<PowerDelegation | null>(null);
 
-  // Chargement des dossiers du CHARGE_AFFAIRES (ses propres créations)
-  const loadMyApps = useCallback(async () => {
-    const userId = userState.currentUser?.id;
-    if (!userId) return;
-    setMyAppsLoading(true);
+  // ── Chargement ──────────────────────────────────────────────────────────────
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await ApiService.getApplications({ userId });
-      if (res.success && res.data) {
-        setMyAssignedApps(res.data);
-      }
-    } catch (e) {
-      console.error('Error loading my apps:', e);
+      const [appRes, wfRes] = await Promise.all([
+        ApiService.getApplications({
+          status: filterStatus !== 'all' ? filterStatus : undefined,
+          dateFrom: filterDateFrom || undefined,
+          dateTo: filterDateTo || undefined,
+        }),
+        ApiService.getWorkflows({}),
+      ]);
+      if (appRes.success) setApplications(appRes.data || []);
+      if (wfRes.success) setWorkflows(wfRes.data || []);
     } finally {
-      setMyAppsLoading(false);
+      setLoading(false);
     }
-  }, [userState.currentUser?.id]);
+  }, [filterStatus, filterDateFrom, filterDateTo]);
 
-  // Charger la délégation active reçue
+  useEffect(() => { loadData(); }, [loadData]);
+
   useEffect(() => {
-    const currentId = userState.currentUser?.id;
-    if (!currentId) return;
+    if (!currentUser?.id) return;
     ApiService.getMyDelegations().then((res: any) => {
       if (!res.success) return;
       const now = new Date();
       const active = (res.data || []).find((d: PowerDelegation) =>
-        d.delegateId === currentId &&
-        d.isActive &&
-        new Date(d.startDate) <= now &&
-        new Date(d.endDate) >= now
+        d.delegateId === currentUser.id && d.isActive &&
+        new Date(d.startDate) <= now && new Date(d.endDate) >= now
       );
-      setActiveDelegationReceived(active || null);
+      setDelegation(active || null);
     }).catch(() => {});
-  }, [userState.currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
 
-  // Load data on component mount
-  useEffect(() => {
-    loadData();
-    loadMyApps();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Ouvrir automatiquement un dossier si la notif a stocké un applicationId
-  useEffect(() => {
-    const pendingAppId = localStorage.getItem('pending_workflow_app');
-    if (!pendingAppId) return;
-    localStorage.removeItem('pending_workflow_app');
-
-    // Attendre que les données soient chargées puis ouvrir le dossier
-    const tryOpen = (retries = 0) => {
-      const wf = workflows.find(w => w.applicationId === pendingAppId);
-      if (wf) {
-        setSelectedWorkflow(wf);
-        setDialogOpen(true);
-      } else if (retries < 10) {
-        setTimeout(() => tryOpen(retries + 1), 300);
-      }
-    };
-    tryOpen();
-  }, [workflows]);
-
-  // Reload data when filters change
-  useEffect(() => {
-    loadData();
-  }, [filterStatus, filterBranch, filterDateFrom, filterDateTo]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const loadData = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const userRole = userState.currentUser?.role;
-      const userId = userState.currentUser?.id;
-      const statusFilter = filterStatus !== 'all' ? filterStatus : undefined;
-
-      const filters: any = {
-        status: statusFilter,
-        branch: filterBranch !== 'all' ? filterBranch : undefined,
-        dateFrom: filterDateFrom || undefined,
-        dateTo: filterDateTo || undefined,
-        userRole: 'all',
-      };
-
-      // ACCOUNT_MANAGER sees only applications they created
-      if (userRole === 'account_manager') {
-        filters.userId = userId;
-      }
-
-      // CREDIT_ANALYST sees only applications assigned to them
-      if (userRole === 'credit_analyst' && userId) {
-        filters.assignedAnalystId = userId;
-      }
-
-      const [workflowsResponse, applicationsResponse] = await Promise.all([
-        ApiService.getWorkflows(filters),
-        ApiService.getApplications(filters),
-      ]);
-
-      if (workflowsResponse.success) {
-        setWorkflows(workflowsResponse.data || []);
-      } else {
-        console.error('Workflows load error:', workflowsResponse.error);
-        setWorkflows([]);
-      }
-
-      if (applicationsResponse.success) {
-        setApplications(applicationsResponse.data || []);
-      } else {
-        console.error('Applications load error:', applicationsResponse.error);
-        setApplications([]);
-      }
-    } catch (error) {
-      console.error('Error loading data:', error);
-      setError('Erreur lors du chargement des données depuis l\'API');
-      setApplications([]);
-      setWorkflows([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getStatusColor = (status: ApplicationStatus): 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' => {
-    switch (status) {
-      case 'approved': return 'success';
-      case 'rejected': return 'error';
-      case 'disbursed': return 'success';
-      case 'under_review': return 'info';
-      case 'submitted': return 'primary';
-      case 'draft': return 'default';
-      default: return 'default';
-    }
-  };
-
-  const getStatusLabel = (status: ApplicationStatus): string => {
-    switch (status) {
-      case 'draft':        return 'Brouillon';
-      case 'submitted':    return 'Soumise';
-      case 'under_review': return 'En analyse';
-      case 'approved':     return 'Approuvée';
-      case 'rejected':     return 'Refusée';
-      case 'disbursed':    return 'Débloquée';
-      default: return status;
-    }
-  };
-
-  const getCurrentStep = (workflow: WorkflowTimestamps): WorkflowStep | undefined => {
-    if (!workflow.steps || !Array.isArray(workflow.steps)) return undefined;
-    return workflow.steps.find(step => step && !step.completedAt);
-  };
-
-  const getProgressPercentage = (workflow: WorkflowTimestamps): number => {
-    if (!workflow.steps || !Array.isArray(workflow.steps) || workflow.steps.length === 0) return 0;
-    const completedSteps = workflow.steps.filter(step => step && step.completedAt).length;
-    return Math.round((completedSteps / workflow.steps.length) * 100);
-  };
-
-  // Unified decision function to get consistent workflow status
-  const getWorkflowDecision = (workflow: WorkflowTimestamps) => {
-    // If there's a finalDecision, use it
-    if (workflow.finalDecision) {
-      return workflow.finalDecision;
-    }
-
-    // If no finalDecision but status is completed, it means it's in progress
-    if (workflow.status === 'completed' && !workflow.finalDecision) {
-      return 'in_progress';
-    }
-
-    // For other statuses, return the status
-    return workflow.status || 'pending';
-  };
-
-  // Get human-readable workflow status
-  const getWorkflowStatusDisplay = (workflow: WorkflowTimestamps): { label: string; color: 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' } => {
-    if (workflow.finalDecision === 'approved') return { label: 'Approuvé',  color: 'success' };
-    if (workflow.finalDecision === 'rejected') return { label: 'Refusé',    color: 'error'   };
-
-    const currentStep = getCurrentStep(workflow);
-    if (currentStep) {
-      const display = STEP_DISPLAY[currentStep.stepId]
-        || STEP_DISPLAY[currentStep.stepName]
-        || { label: FIXED_WORKFLOW_STEPS[currentStep.stepId]?.stepName || currentStep.stepName, color: 'info' as const };
-      return display;
-    }
-
-    return { label: 'En cours', color: 'default' };
-  };
-
-  const filteredApplications = applications.filter(app => {
-    const matchesStatus = filterStatus === 'all' || app.status === filterStatus;
-    const matchesBranch = filterBranch === 'all' || app.branch === filterBranch;
-    const matchesSearch = searchTerm === '' || 
-      app.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      app.accountManager.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    // Date range filtering
-    const appDate = new Date(app.submittedDate);
-    const fromDate = filterDateFrom ? new Date(filterDateFrom) : null;
-    const toDate = filterDateTo ? new Date(filterDateTo) : null;
-    
-    const matchesDateFrom = !fromDate || appDate >= fromDate;
-    const matchesDateTo = !toDate || appDate <= toDate;
-    
-    return matchesStatus && matchesBranch && matchesSearch && matchesDateFrom && matchesDateTo;
+  // ── Données filtrées ────────────────────────────────────────────────────────
+  const filtered = applications.filter(app => {
+    const s = search.toLowerCase();
+    const matchSearch = !s ||
+      (app.clientName || '').toLowerCase().includes(s) ||
+      (app.applicationNumber || '').toLowerCase().includes(s) ||
+      (app.accountManager || '').toLowerCase().includes(s);
+    const matchStatus = filterStatus === 'all' || app.status === filterStatus || app.status === filterStatus.toUpperCase();
+    const appDate = app.createdAt ? new Date(app.createdAt) : null;
+    const matchFrom = !filterDateFrom || !appDate || appDate >= new Date(filterDateFrom);
+    const matchTo   = !filterDateTo   || !appDate || appDate <= new Date(filterDateTo);
+    return matchSearch && matchStatus && matchFrom && matchTo;
   });
 
-  const paginatedApplications = filteredApplications.slice(
-    page * rowsPerPage,
-    (page + 1) * rowsPerPage
+  const myDossiers = applications.filter(a =>
+    a.createdBy === currentUser?.id || a.accountManagerId === currentUser?.id
   );
+  const inProgress = applications.filter(a =>
+    ['under_review', 'submitted', 'UNDER_REVIEW', 'SUBMITTED'].includes(a.status)
+  );
+  const approved = applications.filter(a => ['approved', 'disbursed', 'APPROVED', 'DISBURSED'].includes(a.status));
+  const rejected = applications.filter(a => ['rejected', 'REJECTED'].includes(a.status));
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setActiveTab(newValue);
+  // ── KPIs ────────────────────────────────────────────────────────────────────
+  const kpis = [
+    { label: 'Total',      value: applications.length, icon: <BankIcon />,      color: ACCENT,     bg: '#f5f3ff' },
+    { label: 'En cours',   value: inProgress.length,   icon: <PendingIcon />,   color: '#d97706',  bg: '#fffbeb' },
+    { label: 'Approuvés',  value: approved.length,     icon: <DoneIcon />,      color: '#16a34a',  bg: '#f0fdf4' },
+    { label: 'Rejetés',    value: rejected.length,     icon: <RejectOutIcon />, color: '#dc2626',  bg: '#fef2f2' },
+  ];
+
+  // ── Ouvrir détails ──────────────────────────────────────────────────────────
+  const openDetails = (app: any) => {
+    const wf = workflows.find(w => w.applicationId === app.id);
+    if (wf) { setSelectedWorkflow(wf); setDialogOpen(true); }
   };
 
-  const handleViewWorkflow = (application: CreditApplication) => {
-    // Find workflow for this application (API data only)
-    const workflow = workflows.find(w => w.applicationId === application.id);
-
-    if (!workflow) {
-      console.warn('No workflow found for application:', application.id);
-      console.log('Available workflows:', workflows.map(w => ({ id: w.applicationId, num: w.applicationNumber })));
-      console.log('Looking for application:', application.id);
-      setError('Workflow non trouvé pour cette demande');
-      return;
-    }
-
-    setSelectedWorkflow(workflow);
-    setDialogOpen(true);
-  };
-
-  const handleViewWorkflowDirect = (workflow: WorkflowTimestamps) => {
-    // View workflow directly without needing to find matching application
-    setSelectedWorkflow(workflow);
-    setDialogOpen(true);
-  };
-
-  const handleCloseDialog = () => {
-    setDialogOpen(false);
-    setSelectedWorkflow(null);
-  };
-
-  const TabPanel: React.FC<{ children?: React.ReactNode; value: number; index: number }> = ({ 
-    children, 
-    value, 
-    index 
-  }) => {
+  // ── Table réutilisable ──────────────────────────────────────────────────────
+  const AppTable = ({ rows, showProgress = false }: { rows: any[]; showProgress?: boolean }) => {
+    const paginated = rows.slice(page * ROWS_PER_PAGE, (page + 1) * ROWS_PER_PAGE);
     return (
-      <div
-        role="tabpanel"
-        hidden={value !== index}
-        id={`workflow-tabpanel-${index}`}
-        aria-labelledby={`workflow-tab-${index}`}
-      >
-        {value === index && <Box>{children}</Box>}
-      </div>
-    );
-  };
-
-  return (
-    <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Typography variant="h4" sx={{ mb: 4, fontWeight: 600 }}>
-        Suivi des Workflows de Crédit
-      </Typography>
-
-      {/* Bandeau délégation active reçue */}
-      {activeDelegationReceived && (
-        <Alert
-          severity="info"
-          icon={<BeachAccessIcon />}
-          sx={{ mb: 2 }}
-        >
-          Vous agissez au nom de{' '}
-          <strong>{activeDelegationReceived.delegator.name}</strong>
-          {' '}(délégation active jusqu'au{' '}
-          {new Date(activeDelegationReceived.endDate).toLocaleDateString('fr-FR')})
-        </Alert>
-      )}
-
-      {/* Error Alert */}
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-      )}
-
-      {/* Loading Indicator */}
-      {loading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
-          <CircularProgress />
-        </Box>
-      )}
-
-      <Tabs
-        value={activeTab}
-        onChange={handleTabChange}
-        variant="scrollable"
-        scrollButtons="auto"
-        allowScrollButtonsMobile
-        sx={{ mb: 4 }}
-      >
-        <Tab
-          label={
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              Mes dossiers
-              {myAssignedApps.length > 0 && (
-                <Chip label={myAssignedApps.length} size="small" color="primary" sx={{ height: 18, fontSize: '10px' }} />
-              )}
-            </Box>
-          }
-        />
-        <Tab label="Vue d'ensemble" />
-        <Tab label="Workflows en cours" />
-        <Tab label="Historique complet" />
-      </Tabs>
-
-      {/* ── Mes dossiers (tous rôles) ─────────────────────────────────────── */}
-      <TabPanel value={activeTab} index={0}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              {isAdminRole ? 'Mes dossiers créés' : 'Mes dossiers'}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {isAdminRole
-                ? 'Dossiers créés par votre compte'
-                : 'Vos dossiers en attente de traitement — utilisez la page Mes Dossiers pour agir'}
-            </Typography>
-          </Box>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            {!isAdminRole && (
-              <Button
-                variant="contained"
-                size="small"
-                onClick={() => navigate('/approvals')}
-                sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: 13, boxShadow: 'none' }}
-              >
-                Aller à Mes Dossiers →
-              </Button>
-            )}
-            <Tooltip title="Rafraîchir">
-              <IconButton onClick={loadMyApps} disabled={myAppsLoading}>
-                {myAppsLoading ? <CircularProgress size={20} /> : <RefreshIcon />}
-              </IconButton>
-            </Tooltip>
-          </Box>
-        </Box>
-        {myAppsLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-            <CircularProgress />
-          </Box>
-        ) : myAssignedApps.length === 0 ? (
-          <Alert severity="info" sx={{ borderRadius: 2 }}>
-            Aucun dossier trouvé pour votre compte.
-          </Alert>
-        ) : (
-          <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none', overflowX: 'auto' }}>
-            <Table sx={{ minWidth: 720 }}>
+      <>
+        <Paper variant="outlined" sx={{ borderRadius: 2.5, overflow: 'hidden', border: '1px solid #e8ecf0' }}>
+          <Box sx={{ overflowX: 'auto' }}>
+            <Table size="small" sx={{ minWidth: 680 }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                  {['N° Dossier', 'Client', 'Objet du crédit', 'Montant', 'Statut', 'Avancement', 'Actions'].map(col => (
-                    <TableCell key={col} sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', borderBottom: '1px solid #e8ecf0', py: 1.5 }}>
+                  {['N° Dossier', 'Client', 'Objet', 'Montant', 'Statut',
+                    ...(showProgress ? ['Avancement'] : []),
+                    'Chargé d\'affaires', 'Date', 'Action',
+                  ].map(col => (
+                    <TableCell key={col} sx={{
+                      fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                      letterSpacing: '0.5px', color: '#6b7280',
+                      borderBottom: '1px solid #e8ecf0', py: 1.5, whiteSpace: 'nowrap',
+                    }}>
                       {col}
                     </TableCell>
                   ))}
                 </TableRow>
               </TableHead>
               <TableBody>
-                {myAssignedApps.map((app: any) => {
-                  const currentStep = (app.workflowSteps || []).find((s: any) => !s.completedAt);
-                  const hasAnalysis = !!(app.analysisResults?.preliminaryAnalysis);
+                {paginated.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={showProgress ? 9 : 8} align="center" sx={{ py: 6, color: '#9ca3af' }}>
+                      Aucun dossier trouvé
+                    </TableCell>
+                  </TableRow>
+                ) : paginated.map((app: any) => {
+                  const wf = workflows.find(w => w.applicationId === app.id);
+                  const progress = wf && wf.steps?.length
+                    ? Math.round(wf.steps.filter((s: any) => s.completedAt).length / wf.steps.length * 100)
+                    : 0;
+                  const currentStepName = (app.workflowSteps || []).find((s: any) => !s.completedAt)?.stepName;
+
                   return (
                     <TableRow
                       key={app.id}
-                      sx={{
-                        borderBottom: '1px solid #f1f5f9',
-                        '&:last-child': { borderBottom: 'none' },
-                        '&:hover': { bgcolor: 'rgba(31,78,121,0.03)' },
-                      }}
+                      hover
+                      sx={{ cursor: 'pointer', '&:hover': { bgcolor: `${ACCENT}06` } }}
+                      onClick={() => openDetails(app)}
                     >
-                      <TableCell sx={{ py: 1.5 }}>
-                        <Typography sx={{ fontSize: '13px', fontWeight: 600, fontFamily: 'monospace', color: 'primary.main' }}>
-                          {app.applicationNumber || app.id.slice(0, 8).toUpperCase()}
+                      <TableCell>
+                        <Typography variant="caption" fontWeight={800} sx={{ color: ACCENT, fontFamily: 'monospace' }}>
+                          {app.applicationNumber || app.id?.slice(0, 8).toUpperCase()}
                         </Typography>
                       </TableCell>
-                      <TableCell sx={{ py: 1.5 }}>
+                      <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar sx={{ bgcolor: 'primary.main', width: 28, height: 28 }}>
-                            <BusinessIcon sx={{ fontSize: 14 }} />
+                          <Avatar sx={{ width: 26, height: 26, bgcolor: `${ACCENT}18`, color: ACCENT, fontSize: '0.65rem', fontWeight: 700 }}>
+                            {(app.clientName || '?').slice(0, 2).toUpperCase()}
                           </Avatar>
-                          <Typography sx={{ fontSize: '13.5px', fontWeight: 500, color: '#374151' }}>
+                          <Typography variant="body2" fontWeight={500} noWrap sx={{ maxWidth: 160 }}>
                             {app.clientName}
                           </Typography>
                         </Box>
                       </TableCell>
-                      <TableCell sx={{ py: 1.5, maxWidth: 160 }}>
-                        <Typography variant="body2" noWrap title={app.purpose}>{app.purpose || '—'}</Typography>
-                      </TableCell>
-                      <TableCell sx={{ py: 1.5 }}>
-                        <Typography sx={{ fontSize: '13.5px', fontWeight: 600, color: '#1f4e79' }}>
-                          {Number(app.amount).toLocaleString('fr-FR')} {app.currency || 'XOF'}
+                      <TableCell>
+                        <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 130, display: 'block' }}>
+                          {app.purpose || '—'}
                         </Typography>
                       </TableCell>
-                      <TableCell sx={{ py: 1.5 }}>
-                        <Chip
-                          size="small"
-                          label={app.status || '—'}
-                          color={app.status === 'approved' ? 'success' : app.status === 'rejected' ? 'error' : app.status === 'under_review' ? 'info' : 'default'}
-                          variant="outlined"
-                        />
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={700} sx={{ color: '#1f4e79', whiteSpace: 'nowrap' }}>
+                          {fmtAmount(Number(app.amount), app.currency)}
+                        </Typography>
                       </TableCell>
-                      <TableCell sx={{ py: 1.5 }}>
-                        <Chip
-                          size="small"
-                          label={currentStep ? currentStep.stepName : (hasAnalysis ? 'Terminé' : '—')}
-                          color={currentStep ? 'warning' : 'success'}
-                          variant="outlined"
-                        />
+                      <TableCell>
+                        <StatusChip status={app.status} />
                       </TableCell>
-                      <TableCell sx={{ py: 1.5 }}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => {
-                            const wf = workflows.find(w => w.applicationId === app.id);
-                            if (wf) { setSelectedWorkflow(wf); setDialogOpen(true); }
-                          }}
-                          sx={{ textTransform: 'none', fontSize: '12px' }}
-                        >
-                          Voir
-                        </Button>
+                      {showProgress && (
+                        <TableCell sx={{ minWidth: 120 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <LinearProgress
+                              variant="determinate"
+                              value={progress}
+                              sx={{
+                                flex: 1, height: 6, borderRadius: 3,
+                                bgcolor: '#e5e7eb',
+                                '& .MuiLinearProgress-bar': { bgcolor: ACCENT, borderRadius: 3 },
+                              }}
+                            />
+                            <Typography variant="caption" fontWeight={600} sx={{ color: ACCENT, minWidth: 28 }}>
+                              {progress}%
+                            </Typography>
+                          </Box>
+                          {currentStepName && (
+                            <Typography variant="caption" color="text.disabled" noWrap sx={{ display: 'block', fontSize: 10, mt: 0.25 }}>
+                              {currentStepName}
+                            </Typography>
+                          )}
+                        </TableCell>
+                      )}
+                      <TableCell>
+                        <Typography variant="caption" color="text.secondary">
+                          {app.accountManager || '—'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="caption" color="text.secondary" noWrap>
+                          {fmtDate(app.createdAt || app.submittedDate)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell onClick={e => e.stopPropagation()}>
+                        <Tooltip title="Voir les détails">
+                          <IconButton
+                            size="small"
+                            onClick={() => openDetails(app)}
+                            sx={{ color: ACCENT, '&:hover': { bgcolor: `${ACCENT}12` } }}
+                          >
+                            <OpenIcon sx={{ fontSize: 16 }} />
+                          </IconButton>
+                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
-          </TableContainer>
+          </Box>
+        </Paper>
+        {rows.length > ROWS_PER_PAGE && (
+          <TablePagination
+            rowsPerPageOptions={[10, 25, 50]}
+            component="div"
+            count={rows.length}
+            rowsPerPage={ROWS_PER_PAGE}
+            page={page}
+            onPageChange={(_, p) => setPage(p)}
+            onRowsPerPageChange={() => setPage(0)}
+            labelRowsPerPage="Lignes :"
+            sx={{ borderTop: '1px solid #e8ecf0' }}
+          />
         )}
-      </TabPanel>
+      </>
+    );
+  };
 
-      {/* ── Vue d'ensemble ──────────────────────────────────────────────── */}
-      <TabPanel value={activeTab} index={1}>
-        {/* Overview Tab */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} md={3}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" color="primary" gutterBottom>
-                  Total Demandes
-                </Typography>
-                <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                  {applications.length}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" color="info.main" gutterBottom>
-                  En cours
-                </Typography>
-                <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                  {workflows.filter(w => getWorkflowDecision(w) === 'in_progress').length}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" color="success.main" gutterBottom>
-                  Approuvées
-                </Typography>
-                <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                  {workflows.filter(w => getWorkflowDecision(w) === 'approved').length}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" color="error.main" gutterBottom>
-                  Refusées
-                </Typography>
-                <Typography variant="h4" sx={{ fontWeight: 600 }}>
-                  {workflows.filter(w => getWorkflowDecision(w) === 'rejected').length}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
+  // ── Barre de filtres ────────────────────────────────────────────────────────
+  const FilterBar = () => (
+    <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2.5, alignItems: 'center' }}>
+      <TextField
+        size="small"
+        placeholder="Rechercher un dossier, client…"
+        value={search}
+        onChange={e => { setSearch(e.target.value); setPage(0); }}
+        sx={{ flex: '1 1 220px', minWidth: 180 }}
+        InputProps={{
+          startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: '#9ca3af' }} /></InputAdornment>,
+          sx: { borderRadius: 2, fontSize: 13 },
+        }}
+      />
+      <FormControl size="small" sx={{ minWidth: 140 }}>
+        <InputLabel sx={{ fontSize: 13 }}>Statut</InputLabel>
+        <Select value={filterStatus} label="Statut" onChange={e => { setFilterStatus(e.target.value); setPage(0); }}
+          sx={{ borderRadius: 2, fontSize: 13 }}>
+          <MenuItem value="all">Tous les statuts</MenuItem>
+          <MenuItem value="submitted">Soumise</MenuItem>
+          <MenuItem value="under_review">En analyse</MenuItem>
+          <MenuItem value="approved">Approuvée</MenuItem>
+          <MenuItem value="rejected">Rejetée</MenuItem>
+          <MenuItem value="disbursed">Débloquée</MenuItem>
+        </Select>
+      </FormControl>
+      <TextField size="small" type="date" label="Du" value={filterDateFrom}
+        onChange={e => { setFilterDateFrom(e.target.value); setPage(0); }}
+        InputLabelProps={{ shrink: true }}
+        sx={{ minWidth: 140, '& .MuiInputBase-root': { borderRadius: 2, fontSize: 13 } }}
+      />
+      <TextField size="small" type="date" label="Au" value={filterDateTo}
+        onChange={e => { setFilterDateTo(e.target.value); setPage(0); }}
+        InputLabelProps={{ shrink: true }}
+        sx={{ minWidth: 140, '& .MuiInputBase-root': { borderRadius: 2, fontSize: 13 } }}
+      />
+      {(search || filterStatus !== 'all' || filterDateFrom || filterDateTo) && (
+        <Button size="small" variant="text" onClick={() => { setSearch(''); setFilterStatus('all'); setFilterDateFrom(''); setFilterDateTo(''); setPage(0); }}
+          sx={{ textTransform: 'none', color: '#6b7280', fontSize: 12 }}>
+          Effacer
+        </Button>
+      )}
+    </Box>
+  );
 
-        {/* Current Workflows Summary */}
-        <Card>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Workflows Actifs
-            </Typography>
-            {workflows.filter(w => getWorkflowDecision(w) === 'in_progress').length === 0 ? (
-              <Typography color="text.secondary">
-                Aucun workflow en cours
-              </Typography>
-            ) : (
-              <List>
-                {workflows
-                  .filter(w => getWorkflowDecision(w) === 'in_progress')
-                  .slice(0, 5)
-                  .map((workflow) => {
-                    const currentStep = getCurrentStep(workflow);
-                    const progress = getProgressPercentage(workflow);
-                    const workflowStatus = getWorkflowStatusDisplay(workflow);
-
-                    return (
-                      <ListItem key={workflow.applicationId} divider>
-                        <ListItemText
-                          primary={`${workflow.clientName} - ${workflow.applicationNumber}`}
-                          secondary={
-                            <Box>
-                              <Typography variant="body2" color="text.secondary">
-                                {workflowStatus.label}
-                              </Typography>
-                              <LinearProgress
-                                variant="determinate"
-                                value={progress}
-                                sx={{ mt: 1, borderRadius: 1 }}
-                              />
-                            </Box>
-                          }
-                        />
-                        <Button
-                          size="small"
-                          onClick={() => {
-                            const app = applications.find(app => app.id === workflow.applicationId);
-                            if (app) handleViewWorkflow(app);
-                          }}
-                        >
-                          Voir détails
-                        </Button>
-                      </ListItem>
-                    );
-                  })}
-              </List>
-            )}
-          </CardContent>
-        </Card>
-      </TabPanel>
-
-      <TabPanel value={activeTab} index={2}>
-        {/* In Progress Workflows Tab */}
-        <Box sx={{ mb: 3 }}>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} md={3}>
-              <TextField
-                fullWidth
-                label="Rechercher..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                size="small"
-              />
-            </Grid>
-            <Grid item xs={12} md={2}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Statut</InputLabel>
-                <Select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value as string)}
-                  label="Statut"
-                >
-                  <MenuItem value="all">Tous</MenuItem>
-                  <MenuItem value="submitted">Soumise</MenuItem>
-                  <MenuItem value="under_review">En analyse</MenuItem>
-                  <MenuItem value="approved">Approuvée</MenuItem>
-                  <MenuItem value="rejected">Refusée</MenuItem>
-                  <MenuItem value="disbursed">Débloquée</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={2}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Agence</InputLabel>
-                <Select
-                  value={filterBranch}
-                  onChange={(e) => setFilterBranch(e.target.value as string)}
-                  label="Agence"
-                >
-                  <MenuItem value="all">Toutes</MenuItem>
-                  <MenuItem value="Dakar Centre">Dakar Centre</MenuItem>
-                  <MenuItem value="Dakar Plateau">Dakar Plateau</MenuItem>
-                  <MenuItem value="Thiès">Thiès</MenuItem>
-                  <MenuItem value="Kaolack">Kaolack</MenuItem>
-                  <MenuItem value="Saint-Louis">Saint-Louis</MenuItem>
-                  <MenuItem value="Ziguinchor">Ziguinchor</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={2.5}>
-              <TextField
-                fullWidth
-                label="Date de début"
-                type="date"
-                value={filterDateFrom}
-                onChange={(e) => setFilterDateFrom(e.target.value)}
-                size="small"
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid item xs={12} md={2.5}>
-              <TextField
-                fullWidth
-                label="Date de fin"
-                type="date"
-                value={filterDateTo}
-                onChange={(e) => setFilterDateTo(e.target.value)}
-                size="small"
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-          </Grid>
-        </Box>
-
-        <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none', overflowX: 'auto' }}>
-          <Table sx={{ minWidth: 700 }}>
-            <TableHead>
-              <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                {['Numéro', 'Client', 'Montant', 'Statut / Étape', 'Progrès', "Chargé d'affaires", 'Actions'].map((col) => (
-                  <TableCell key={col} sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', borderBottom: '1px solid #e8ecf0', py: 1.5 }}>
-                    {col}
-                  </TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {paginatedApplications.map((application) => {
-                const workflow = workflows.find(w => w.applicationId === application.id);
-                const progress = workflow ? getProgressPercentage(workflow) : 0;
-                const workflowStatus = workflow ? getWorkflowStatusDisplay(workflow) : { label: 'En attente', color: 'default' as const };
-
-                return (
-                  <TableRow
-                    key={application.id}
-                    sx={{
-                      borderBottom: '1px solid #f1f5f9',
-                      '&:last-child': { borderBottom: 'none' },
-                      '&:hover': { bgcolor: 'rgba(31,78,121,0.03)', cursor: 'pointer' },
-                    }}
-                  >
-                    <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{workflow?.applicationNumber || application.applicationNumber || application.id}</TableCell>
-                    <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{application.clientName}</TableCell>
-                    <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>
-                      {new Intl.NumberFormat('fr-FR', {
-                        style: 'currency',
-                        currency: application.currency
-                      }).format(application.amount)}
+  // ── Historique (tab 4) ──────────────────────────────────────────────────────
+  const HistoryTab = () => {
+    const paginated = workflows.slice(page * ROWS_PER_PAGE, (page + 1) * ROWS_PER_PAGE);
+    return (
+      <>
+        <Paper variant="outlined" sx={{ borderRadius: 2.5, overflow: 'hidden', border: '1px solid #e8ecf0' }}>
+          <Box sx={{ overflowX: 'auto' }}>
+            <Table size="small" sx={{ minWidth: 700 }}>
+              <TableHead>
+                <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                  {['N° Dossier', 'Client', 'Montant', 'Décision', 'Durée', 'Créé le', 'Finalisé le', 'Action'].map(col => (
+                    <TableCell key={col} sx={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', borderBottom: '1px solid #e8ecf0', py: 1.5, whiteSpace: 'nowrap' }}>
+                      {col}
                     </TableCell>
-                    <TableCell sx={{ py: 1.5 }}>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {paginated.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} align="center" sx={{ py: 6, color: '#9ca3af' }}>Aucun historique disponible</TableCell>
+                  </TableRow>
+                ) : paginated.map(wf => (
+                  <TableRow key={wf.applicationId} hover sx={{ cursor: 'pointer' }} onClick={() => { setSelectedWorkflow(wf); setDialogOpen(true); }}>
+                    <TableCell>
+                      <Typography variant="caption" fontWeight={800} sx={{ color: ACCENT, fontFamily: 'monospace' }}>
+                        {wf.applicationNumber}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight={500}>{wf.clientName}</Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight={700} sx={{ color: '#1f4e79', whiteSpace: 'nowrap' }}>
+                        {fmtAmount(wf.requestedAmount, wf.currency)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
                       <Chip
-                        label={workflowStatus.label}
-                        color={workflowStatus.color}
+                        label={wf.finalDecision === 'approved' ? 'Approuvé' : wf.finalDecision === 'rejected' ? 'Rejeté' : 'En cours'}
+                        color={wf.finalDecision === 'approved' ? 'success' : wf.finalDecision === 'rejected' ? 'error' : 'default'}
                         size="small"
-                        variant="outlined"
+                        sx={{ fontWeight: 600, fontSize: 11, borderRadius: '6px' }}
                       />
                     </TableCell>
                     <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <LinearProgress
-                          variant="determinate"
-                          value={progress}
-                          sx={{ flexGrow: 1, borderRadius: 1 }}
-                        />
-                        <Typography variant="body2" color="text.secondary">
-                          {progress}%
-                        </Typography>
-                      </Box>
+                      <Typography variant="caption" color="text.secondary">{fmtDuration(wf.totalDuration)}</Typography>
                     </TableCell>
-                    <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{application.accountManager}</TableCell>
                     <TableCell>
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => {
-                            console.log('=== Voir Workflow Clicked ===');
-                            console.log('Application:', application);
-                            console.log('Workflow found:', workflow);
-                            console.log('Total workflows:', workflows.length);
-                            console.log('Workflows IDs:', workflows.map(w => w.applicationId));
-
-                            if (workflow) {
-                              console.log('Using direct workflow');
-                              handleViewWorkflowDirect(workflow);
-                            } else {
-                              console.log('Using handleViewWorkflow');
-                              handleViewWorkflow(application);
-                            }
-                          }}
-                        >
-                          Voir workflow
-                        </Button>
-                        {/* Bouton Traiter quand le dossier a une étape active pour l'utilisateur */}
-                        {!isAdminRole &&
-                         (application.status === 'submitted' || application.status === 'under_review') &&
-                         (() => {
-                           const workflowSteps = (application as any).workflowSteps || [];
-                           const myStep = workflowSteps.find(
-                             (step: any) => step.assigneeId === userState.currentUser?.id &&
-                               ['PENDING', 'IN_REVIEW'].includes(step.status)
-                           );
-                           return !!myStep;
-                         })() && (
-                          <Button
-                            size="small"
-                            variant="contained"
-                            color="primary"
-                            startIcon={<StartIcon />}
-                            onClick={() => navigate(`/credit-scoring?applicationId=${application.id}`)}
-                            sx={{ textTransform: 'none' }}
-                          >
-                            Analyser
-                          </Button>
-                        )}
-                      </Box>
+                      <Typography variant="caption" color="text.secondary">{fmtDate(wf.totalStartedAt)}</Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="caption" color="text.secondary">{fmtDate(wf.totalCompletedAt)}</Typography>
+                    </TableCell>
+                    <TableCell onClick={e => e.stopPropagation()}>
+                      <Tooltip title="Voir les détails">
+                        <IconButton size="small" onClick={() => { setSelectedWorkflow(wf); setDialogOpen(true); }}
+                          sx={{ color: ACCENT, '&:hover': { bgcolor: `${ACCENT}12` } }}>
+                          <OpenIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
                     </TableCell>
                   </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-          <TablePagination
-            rowsPerPageOptions={[5, 10, 25]}
-            component="div"
-            count={filteredApplications.length}
-            rowsPerPage={rowsPerPage}
-            page={page}
-            onPageChange={(event, newPage) => setPage(newPage)}
-            onRowsPerPageChange={(event) => {
-              setRowsPerPage(parseInt(event.target.value, 10));
-              setPage(0);
-            }}
-          />
-        </TableContainer>
-      </TabPanel>
-
-      <TabPanel value={activeTab} index={3}>
-        {/* Complete History Tab */}
-        <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none', overflowX: 'auto' }}>
-          <Table sx={{ minWidth: 780 }}>
-            <TableHead>
-              <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                {['Numéro', 'Client', 'Montant', 'Statut final', 'Durée totale', 'Date création', 'Date finalisation', 'Actions'].map((col) => (
-                  <TableCell key={col} sx={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', borderBottom: '1px solid #e8ecf0', py: 1.5 }}>
-                    {col}
-                  </TableCell>
                 ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {workflows.map((workflow) => (
-                <TableRow
-                  key={workflow.applicationId}
-                  sx={{
-                    borderBottom: '1px solid #f1f5f9',
-                    '&:last-child': { borderBottom: 'none' },
-                    '&:hover': { bgcolor: 'rgba(31,78,121,0.03)', cursor: 'pointer' },
-                  }}
-                >
-                  <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{workflow.applicationNumber}</TableCell>
-                  <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>{workflow.clientName}</TableCell>
-                  <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>
-                    {new Intl.NumberFormat('fr-FR', {
-                      style: 'currency',
-                      currency: workflow.currency
-                    }).format(workflow.requestedAmount)}
-                  </TableCell>
-                  <TableCell sx={{ py: 1.5 }}>
-                    <Chip
-                      label={workflow.finalDecision === 'approved' ? 'Approuvé' :
-                            workflow.finalDecision === 'rejected' ? 'Refusé' :
-                            'En cours'}
-                      color={workflow.finalDecision === 'approved' ? 'success' :
-                            workflow.finalDecision === 'rejected' ? 'error' :
-                            'default'}
-                      size="small"
-                      variant="outlined"
-                    />
-                  </TableCell>
-                  <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>
-                    {workflow.totalDuration ?
-                      `${Math.ceil(workflow.totalDuration / (1000 * 60 * 60 * 24))} jours` :
-                      'En cours'}
-                  </TableCell>
-                  <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>
-                    {new Date(workflow.totalStartedAt).toLocaleDateString('fr-FR')}
-                  </TableCell>
-                  <TableCell sx={{ py: 1.5, fontSize: '13.5px', color: '#374151' }}>
-                    {workflow.totalCompletedAt ?
-                      new Date(workflow.totalCompletedAt).toLocaleDateString('fr-FR') :
-                      'En cours'}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => {
-                        setSelectedWorkflow(workflow);
-                        setDialogOpen(true);
-                      }}
-                    >
-                      Voir détails
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </TabPanel>
+              </TableBody>
+            </Table>
+          </Box>
+        </Paper>
+        {workflows.length > ROWS_PER_PAGE && (
+          <TablePagination
+            rowsPerPageOptions={[10, 25, 50]}
+            component="div"
+            count={workflows.length}
+            rowsPerPage={ROWS_PER_PAGE}
+            page={page}
+            onPageChange={(_, p) => setPage(p)}
+            onRowsPerPageChange={() => setPage(0)}
+            labelRowsPerPage="Lignes :"
+          />
+        )}
+      </>
+    );
+  };
 
-      {/* Enhanced Workflow Details Dialog */}
+  // ── Rendu ────────────────────────────────────────────────────────────────────
+
+  return (
+    <Box sx={{ bgcolor: '#f7f8fc', minHeight: '100vh', pb: 6 }}>
+
+      {/* ── En-tête ── */}
+      <Box sx={{
+        bgcolor: '#fff', borderBottom: '1px solid #e8ecf0', px: { xs: 2, md: 4 }, py: 2.5,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2,
+      }}>
+        <Box>
+          <Typography variant="h5" fontWeight={800} sx={{ color: '#111827', letterSpacing: '-0.3px' }}>
+            Suivi des dossiers
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+            Vue complète de l'avancement des demandes de crédit
+          </Typography>
+        </Box>
+        <Tooltip title="Rafraîchir">
+          <IconButton onClick={loadData} disabled={loading} sx={{ bgcolor: '#f5f3ff', color: ACCENT, '&:hover': { bgcolor: '#ede9fe' } }}>
+            {loading ? <CircularProgress size={18} sx={{ color: ACCENT }} /> : <RefreshIcon />}
+          </IconButton>
+        </Tooltip>
+      </Box>
+
+      <Box sx={{ px: { xs: 2, md: 4 }, pt: 3 }}>
+
+        {/* ── Bandeau délégation ── */}
+        {delegation && (
+          <Alert severity="info" icon={<DelegationIcon />} sx={{ mb: 2.5, borderRadius: 2.5 }}>
+            Vous agissez au nom de <strong>{delegation.delegator.name}</strong> — délégation active jusqu'au{' '}
+            <strong>{new Date(delegation.endDate).toLocaleDateString('fr-FR')}</strong>
+          </Alert>
+        )}
+
+        {/* ── KPI Cards ── */}
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 3 }}>
+          {kpis.map(k => (
+            <KpiCard key={k.label} {...k} />
+          ))}
+        </Box>
+
+        {/* ── Onglets ── */}
+        <Box sx={{
+          bgcolor: '#fff', borderRadius: 3, border: '1px solid #e8ecf0',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden',
+        }}>
+          <Tabs
+            value={activeTab}
+            onChange={(_, v) => { setActiveTab(v); setPage(0); }}
+            sx={{
+              borderBottom: '1px solid #e8ecf0', px: 2,
+              '& .MuiTab-root': {
+                textTransform: 'none', fontWeight: 600, fontSize: 13,
+                minHeight: 48, color: '#6b7280', gap: 0.75,
+              },
+              '& .Mui-selected': { color: ACCENT },
+              '& .MuiTabs-indicator': { bgcolor: ACCENT, height: 3, borderRadius: 2 },
+            }}
+          >
+            <Tab icon={<MyDocsIcon sx={{ fontSize: 16 }} />} iconPosition="start"
+              label={<span>Mes dossiers {myDossiers.length > 0 && <Chip label={myDossiers.length} size="small" sx={{ height: 18, fontSize: 10, ml: 0.5, bgcolor: `${ACCENT}18`, color: ACCENT }} />}</span>}
+            />
+            <Tab icon={<InProgressIcon sx={{ fontSize: 16 }} />} iconPosition="start"
+              label={<span>En cours {inProgress.length > 0 && <Chip label={inProgress.length} size="small" color="warning" sx={{ height: 18, fontSize: 10, ml: 0.5 }} />}</span>}
+            />
+            <Tab icon={<ApprovedIcon sx={{ fontSize: 16 }} />} iconPosition="start"
+              label={<span>Approuvés {approved.length > 0 && <Chip label={approved.length} size="small" color="success" sx={{ height: 18, fontSize: 10, ml: 0.5 }} />}</span>}
+            />
+            <Tab icon={<RejectedIcon sx={{ fontSize: 16 }} />} iconPosition="start"
+              label={<span>Rejetés {rejected.length > 0 && <Chip label={rejected.length} size="small" color="error" sx={{ height: 18, fontSize: 10, ml: 0.5 }} />}</span>}
+            />
+            <Tab icon={<HistoryIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Historique" />
+          </Tabs>
+
+          <Box sx={{ p: 3 }}>
+
+            {/* ── Tab 0 : Mes dossiers ── */}
+            {activeTab === 0 && (
+              <>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5 }}>
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight={700}>Mes dossiers créés</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Dossiers que vous avez soumis ou dont vous êtes responsable
+                    </Typography>
+                  </Box>
+                </Box>
+                <FilterBar />
+                <AppTable rows={myDossiers.filter(a => {
+                  const s = search.toLowerCase();
+                  return !s ||
+                    (a.clientName || '').toLowerCase().includes(s) ||
+                    (a.applicationNumber || '').toLowerCase().includes(s);
+                })} showProgress />
+              </>
+            )}
+
+            {/* ── Tab 1 : En cours ── */}
+            {activeTab === 1 && (
+              <>
+                <Box sx={{ mb: 2.5 }}>
+                  <Typography variant="subtitle1" fontWeight={700}>Dossiers en cours d'instruction</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Demandes soumises ou en cours d'analyse dans le circuit de crédit
+                  </Typography>
+                </Box>
+                <FilterBar />
+                <AppTable rows={inProgress.filter(a => {
+                  const s = search.toLowerCase();
+                  return !s ||
+                    (a.clientName || '').toLowerCase().includes(s) ||
+                    (a.applicationNumber || '').toLowerCase().includes(s) ||
+                    (a.accountManager || '').toLowerCase().includes(s);
+                })} showProgress />
+              </>
+            )}
+
+            {/* ── Tab 2 : Approuvés ── */}
+            {activeTab === 2 && (
+              <>
+                <Box sx={{ mb: 2.5 }}>
+                  <Typography variant="subtitle1" fontWeight={700}>Dossiers approuvés</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Demandes validées par le circuit d'approbation — approuvées ou en cours de déblocage
+                  </Typography>
+                </Box>
+                <FilterBar />
+                <AppTable rows={approved.filter(a => {
+                  const s = search.toLowerCase();
+                  return !s ||
+                    (a.clientName || '').toLowerCase().includes(s) ||
+                    (a.applicationNumber || '').toLowerCase().includes(s);
+                })} />
+              </>
+            )}
+
+            {/* ── Tab 3 : Rejetés ── */}
+            {activeTab === 3 && (
+              <>
+                <Box sx={{ mb: 2.5 }}>
+                  <Typography variant="subtitle1" fontWeight={700}>Dossiers rejetés</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Demandes ayant reçu une décision de rejet à l'une des étapes du circuit
+                  </Typography>
+                </Box>
+                <FilterBar />
+                <AppTable rows={rejected.filter(a => {
+                  const s = search.toLowerCase();
+                  return !s ||
+                    (a.clientName || '').toLowerCase().includes(s) ||
+                    (a.applicationNumber || '').toLowerCase().includes(s);
+                })} />
+              </>
+            )}
+
+            {/* ── Tab 4 : Historique ── */}
+            {activeTab === 4 && (
+              <>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5 }}>
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight={700}>Historique complet</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Tous les workflows avec leur durée et décision finale
+                    </Typography>
+                  </Box>
+                </Box>
+                <HistoryTab />
+              </>
+            )}
+
+          </Box>
+        </Box>
+      </Box>
+
+      {/* ── Dialogue détails ── */}
       <WorkflowDetailsDialog
         open={dialogOpen}
         workflow={selectedWorkflow}
-        application={applications.find(app => app.id === selectedWorkflow?.applicationId)}
-        onClose={handleCloseDialog}
+        application={applications.find(a => a.id === selectedWorkflow?.applicationId)}
+        onClose={() => { setDialogOpen(false); setSelectedWorkflow(null); }}
         onApprovalSubmitted={loadData}
       />
-
-      {workflows.length === 0 && applications.length > 0 && (
-        <Alert severity="info" sx={{ mt: 2 }}>
-          Les données de workflow sont en cours d'initialisation. Veuillez actualiser la page dans quelques instants.
-        </Alert>
-      )}
-    </Container>
+    </Box>
   );
 };
+
+export type { WorkflowPageProps };
+export default WorkflowPage;

@@ -28,7 +28,7 @@ import {
   EventNoteOutlined as HolidayIcon,
   GroupsOutlined as ClientsIcon,
   NoteAddOutlined as ApplicationIcon,
-  AccountTreeOutlined as WorkflowIcon,
+  FolderCopyOutlined as WorkflowIcon,
   InsightsOutlined as InsightsIcon,
   ManageAccountsOutlined as UserManagementIcon,
   RequestQuoteOutlined as CalculateIcon,
