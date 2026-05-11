@@ -1114,24 +1114,6 @@ export const DossierActionDrawer: React.FC<Props> = ({
                     </Paper>
                   )}
 
-                  <TextField
-                    label="Analyse globale"
-                    multiline minRows={3} maxRows={6}
-                    size="small" fullWidth
-                    value={overallAnalysis}
-                    onChange={e => setOverallAnalysis(e.target.value)}
-                    placeholder="Synthèse de l'analyse du dossier..."
-                  />
-
-                  <TextField
-                    label="Recommandations"
-                    multiline minRows={2} maxRows={4}
-                    size="small" fullWidth
-                    value={recommendations}
-                    onChange={e => setRecommendations(e.target.value)}
-                    placeholder="Conditions, garanties, montant recommandé..."
-                  />
-
                   {/* Commentaires partagés entre analystes */}
                   <Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
