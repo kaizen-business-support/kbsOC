@@ -31,16 +31,26 @@ import {
 } from '@mui/material';
 import {
   TrendingUp as TrendingUpIcon,
-  Assessment as AssessmentIcon,
-  BarChart as BarChartIcon,
-  Star as StarIcon,
+  TrendingDown as TrendingDownIcon,
+  AccountBalance as AccountBalanceIcon,
   CheckCircle as ApproveIcon,
+  CheckCircleOutline as StepDoneIcon,
+  Schedule as ScheduleIcon,
   Cancel as RejectIcon,
   FolderOpen as FolderIcon,
   Download as DownloadIcon,
   Visibility as VisibilityIcon,
   Close as CloseIcon,
-  InsertDriveFile as FileIcon
+  InsertDriveFile as FileIcon,
+  CloudUpload as CloudUploadIcon,
+  PictureAsPdf as PictureAsPdfIcon,
+  Image as ImageIcon,
+  TableChart as TableChartIcon,
+  Person as PersonIcon,
+  CreditScore as CreditScoreIcon,
+  WaterDrop as WaterDropIcon,
+  Balance as BalanceIcon,
+  Autorenew as AutorenewIcon,
 } from '@mui/icons-material';
 import { WorkflowTimestamps } from '../types';
 import { WorkflowTimeline } from './WorkflowTimeline';
@@ -105,6 +115,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [selectedYears, setSelectedYears] = useState<number[]>([]);
 
   const getApiBase = () => `${window.location.origin}/api`;
 
@@ -226,11 +237,12 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
       setComments('');
       setSubmitError(null);
       setSubmitSuccess(null);
+      setSelectedYears([]);
     }
   }, [open, workflow?.applicationId]);
 
   useEffect(() => {
-    if (activeTab === 5 && workflow?.applicationId) {
+    if (activeTab === 2 && workflow?.applicationId) {
       fetchDocuments(workflow.applicationId);
     }
   }, [activeTab, workflow?.applicationId, fetchDocuments]);
@@ -440,6 +452,19 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
 
   const latestYearData = latestYear ? resolveYearData(financialData[latestYear]) : null;
 
+  const filteredYearsData = allYearsData.filter(({ year }) =>
+    selectedYears.length === 0 ? true : selectedYears.includes(year)
+  );
+
+  const toggleYear = (year: number) => {
+    setSelectedYears(prev => {
+      if (prev.includes(year)) {
+        return prev.length > 1 ? prev.filter(y => y !== year) : prev;
+      }
+      return [...prev, year].sort((a, b) => a - b);
+    });
+  };
+
   const getProgressColor = (score: number): 'success' | 'warning' | 'error' | 'info' => {
     if (score >= 80) return 'success';
     if (score >= 65) return 'info';
@@ -590,319 +615,201 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
         <Tabs
           value={activeTab}
           onChange={handleTabChange}
-          variant="scrollable"
-          scrollButtons="auto"
-          allowScrollButtonsMobile
           sx={{
             minHeight: 40,
             '& .MuiTab-root': {
               minHeight: 40, fontSize: '12px', fontWeight: 500,
-              px: 1.5, minWidth: 0, gap: 0.5, color: '#8e8e93',
+              px: 2, minWidth: 0, gap: 0.5, color: '#8e8e93',
               textTransform: 'none', letterSpacing: 0,
             },
             '& .Mui-selected': { color: '#1c1c1e', fontWeight: 650 },
             '& .MuiTabs-indicator': { height: 2, borderRadius: '2px 2px 0 0' },
           }}
         >
-          <Tab label="Workflow"    icon={<AssessmentIcon sx={{ fontSize: 13 }} />} iconPosition="start" />
-          <Tab label="Demande"     icon={<TrendingUpIcon sx={{ fontSize: 13 }} />} iconPosition="start" />
-          <Tab label="Financier"   icon={<TrendingUpIcon sx={{ fontSize: 13 }} />} iconPosition="start" />
-          <Tab label="Ratios"      icon={<BarChartIcon  sx={{ fontSize: 13 }} />} iconPosition="start" />
-          <Tab label="Scoring"     icon={<StarIcon       sx={{ fontSize: 13 }} />} iconPosition="start" />
-          <Tab label="Documents"   icon={<FolderIcon     sx={{ fontSize: 13 }} />} iconPosition="start" />
+          <Tab label="Vue d'ensemble" icon={<PersonIcon sx={{ fontSize: 13 }} />} iconPosition="start" />
+          <Tab label="Financier"      icon={<AccountBalanceIcon sx={{ fontSize: 13 }} />} iconPosition="start" />
+          <Tab label="Documents"      icon={<FolderIcon sx={{ fontSize: 13 }} />} iconPosition="start" />
         </Tabs>
       </Box>
 
       <DialogContent>
-        {/* Tab 0: Workflow Timeline */}
+        {/* Tab 0: Vue d'ensemble */}
         <TabPanel value={activeTab} index={0}>
-          {workflow.steps && workflow.steps.length > 0 ? (
-            <WorkflowTimeline workflow={workflow} />
-          ) : (
-            <Box>
-              <Typography variant="h6" gutterBottom>
-                Workflow en cours d'initialisation
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Les données du workflow sont en cours de chargement ou ne sont pas encore disponibles.
-              </Typography>
-            </Box>
-          )}
-        </TabPanel>
-
-        {/* Tab 1: Application Details */}
-        <TabPanel value={activeTab} index={1}>
-          <Typography variant="h6" gutterBottom>
-            Informations sur la Demande de Crédit
+          {/* ─── Section Demande ─────────────────────────────────────────── */}
+          <Typography variant="overline" sx={{ color: 'text.secondary', fontWeight: 600, letterSpacing: 1 }}>
+            Demande
           </Typography>
-
-          <Grid container spacing={3}>
-            {/* Client Information */}
+          <Grid container spacing={2} sx={{ mt: 0.5, mb: 3 }}>
             <Grid item xs={12} md={6}>
-              <Card>
+              <Card variant="outlined" sx={{ borderRadius: 2, height: '100%' }}>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom color="primary">
-                    Informations Client
-                  </Typography>
-                  <Divider sx={{ mb: 2 }} />
-
-                  <Grid container spacing={2}>
-                    <Grid item xs={5}>
-                      <Typography variant="body2" color="text.secondary">Nom du Client:</Typography>
-                    </Grid>
-                    <Grid item xs={7}>
-                      <Typography variant="body2" fontWeight={600}>{workflow.clientName}</Typography>
-                    </Grid>
-
-                    <Grid item xs={5}>
-                      <Typography variant="body2" color="text.secondary">Chargé de Compte:</Typography>
-                    </Grid>
-                    <Grid item xs={7}>
-                      <Typography variant="body2">{application?.accountManager || application?.creator?.name || 'N/A'}</Typography>
-                    </Grid>
-                  </Grid>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Credit Request Details */}
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom color="primary">
-                    Détails de la Demande
-                  </Typography>
-                  <Divider sx={{ mb: 2 }} />
-
-                  <Grid container spacing={2}>
-                    <Grid item xs={5}>
-                      <Typography variant="body2" color="text.secondary">Montant Demandé:</Typography>
-                    </Grid>
-                    <Grid item xs={7}>
-                      <Typography variant="body2" fontWeight={600} color="primary">
-                        {formatCurrency(application?.amount || 0)}
-                      </Typography>
-                    </Grid>
-
-                    <Grid item xs={5}>
-                      <Typography variant="body2" color="text.secondary">Durée:</Typography>
-                    </Grid>
-                    <Grid item xs={7}>
-                      <Typography variant="body2">
-                        {(application?.durationMonths || application?.duration)
-                          ? `${application?.durationMonths || application?.duration} mois`
-                          : 'Non spécifié'}
-                      </Typography>
-                    </Grid>
-
-                    <Grid item xs={5}>
-                      <Typography variant="body2" color="text.secondary">Type de Crédit:</Typography>
-                    </Grid>
-                    <Grid item xs={7}>
-                      <Typography variant="body2">{application?.creditType?.name || 'Non spécifié'}</Typography>
-                    </Grid>
-
-                    {application?.proposedRate && (
-                      <>
-                        <Grid item xs={5}>
-                          <Typography variant="body2" color="text.secondary">Taux Proposé:</Typography>
-                        </Grid>
-                        <Grid item xs={7}>
-                          <Typography variant="body2" fontWeight={600}>{application?.proposedRate}%</Typography>
-                        </Grid>
-                      </>
-                    )}
-                  </Grid>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Purpose */}
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom color="primary">
-                    Objet de la Demande
-                  </Typography>
-                  <Divider sx={{ mb: 2 }} />
-                  <Typography variant="body2">{application?.purpose || 'Non spécifié'}</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Collateral & Repayment */}
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom color="primary">
-                    Garanties et Remboursement
-                  </Typography>
-                  <Divider sx={{ mb: 2 }} />
-
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} md={3}>
-                      <Typography variant="body2" color="text.secondary">Type de Garantie:</Typography>
-                    </Grid>
-                    <Grid item xs={12} md={3}>
-                      <Typography variant="body2">{application?.collateralType || 'Non spécifié'}</Typography>
-                    </Grid>
-
-                    <Grid item xs={12} md={3}>
-                      <Typography variant="body2" color="text.secondary">Valeur de la Garantie:</Typography>
-                    </Grid>
-                    <Grid item xs={12} md={3}>
-                      <Typography variant="body2" fontWeight={600}>
-                        {application?.collateralValue ? formatCurrency(application.collateralValue) : 'Non spécifié'}
-                      </Typography>
-                    </Grid>
-
-                    <Grid item xs={12} md={3}>
-                      <Typography variant="body2" color="text.secondary">Échéancier:</Typography>
-                    </Grid>
-                    <Grid item xs={12} md={3}>
-                      <Typography variant="body2">{application?.repaymentSchedule || 'Non spécifié'}</Typography>
-                    </Grid>
-                  </Grid>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Comments from Account Manager and Workflow */}
-            {workflow?.steps && workflow.steps.length > 0 && (
-              <Grid item xs={12}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom color="primary">
-                      Commentaires
-                    </Typography>
-                    <Divider sx={{ mb: 2 }} />
-
-                    {workflow.steps
-                      .filter(step => step.comments && step.comments.trim() !== '')
-                      .map((step, index) => {
-                        const stepName = step.stepName === 'application_created' ? 'Application créée' :
-                                       step.stepName === 'credit_analysis' ? 'Analyse crédit' :
-                                       step.stepName === 'branch_manager_review' ? 'Révision directeur' :
-                                       step.stepName === 'credit_committee_review' ? 'Comité de crédit' :
-                                       step.stepName === 'final_decision' ? 'Décision finale' :
-                                       step.stepName;
-
-                        return (
-                          <Box key={index} sx={{ mb: index < workflow.steps.filter(s => s.comments && s.comments.trim() !== '').length - 1 ? 2 : 0 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                              <Chip
-                                label={stepName}
-                                size="small"
-                                color="primary"
-                                variant="outlined"
-                              />
-                              {step.completedAt && (
-                                <Typography variant="caption" color="text.secondary">
-                                  {new Date(step.completedAt).toLocaleDateString('fr-FR', {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                    year: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })}
-                                </Typography>
-                              )}
-                            </Box>
-                            <Paper
-                              sx={{
-                                p: 2,
-                                bgcolor: 'grey.50',
-                                border: '1px solid',
-                                borderColor: 'grey.200',
-                                '& p': { margin: '0 0 0.5em 0' },
-                                '& p:last-child': { marginBottom: 0 },
-                                '& ul, & ol': { marginTop: 0, marginBottom: '0.5em' },
-                                '& li': { marginBottom: '0.25em' }
-                              }}
-                            >
-                              <Box
-                                sx={{
-                                  fontSize: '0.875rem',
-                                  lineHeight: 1.43,
-                                  color: 'text.primary'
-                                }}
-                                dangerouslySetInnerHTML={{ __html: step.comments || '' }}
-                              />
-                            </Paper>
-                          </Box>
-                        );
-                      })}
-
-                    {workflow.steps.filter(step => step.comments && step.comments.trim() !== '').length === 0 && (
-                      <Typography variant="body2" color="text.secondary">
-                        Aucun commentaire disponible
-                      </Typography>
-                    )}
-                  </CardContent>
-                </Card>
-              </Grid>
-            )}
-
-            {/* Application Dates */}
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom color="primary">
-                    Dates Importantes
-                  </Typography>
-                  <Divider sx={{ mb: 2 }} />
-
-                  <Grid container spacing={2}>
-                    <Grid item xs={6}>
-                      <Typography variant="body2" color="text.secondary">Date de Création:</Typography>
-                    </Grid>
-                    <Grid item xs={6}>
-                      <Typography variant="body2">
-                        {application?.createdAt ? new Date(application.createdAt).toLocaleDateString('fr-FR') : 'N/A'}
-                      </Typography>
-                    </Grid>
-
-                    {application?.submittedAt && (
-                      <>
-                        <Grid item xs={6}>
-                          <Typography variant="body2" color="text.secondary">Date de Soumission:</Typography>
-                        </Grid>
-                        <Grid item xs={6}>
-                          <Typography variant="body2">
-                            {new Date(application.submittedAt).toLocaleDateString('fr-FR')}
-                          </Typography>
-                        </Grid>
-                      </>
-                    )}
-                  </Grid>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Status */}
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom color="primary">
-                    Statut de la Demande
-                  </Typography>
-                  <Divider sx={{ mb: 2 }} />
-
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Chip
-                      label={application?.status?.toUpperCase() || 'INCONNU'}
-                      color={statusDisplay.color}
-                      size="medium"
-                      sx={{ fontWeight: 600 }}
-                    />
-                    <Typography variant="body2" color="text.secondary">
-                      Numéro: {workflow.applicationNumber}
-                    </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                    <PersonIcon sx={{ color: 'primary.main', fontSize: 20 }} />
+                    <Typography variant="subtitle2" fontWeight={700}>Informations Client</Typography>
                   </Box>
+                  <Divider sx={{ mb: 1.5 }} />
+                  {[
+                    { label: 'Nom du client', value: workflow.clientName },
+                    { label: 'Chargé de compte', value: application?.accountManager || application?.creator?.name || '—' },
+                    { label: 'Secteur', value: application?.sector || application?.client?.sector || '—' },
+                    { label: 'Agence', value: application?.branch || workflow.steps?.[0]?.branch || '—' },
+                  ].map(({ label, value }) => (
+                    <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5 }}>
+                      <Typography variant="body2" color="text.secondary">{label}</Typography>
+                      <Typography variant="body2" fontWeight={600} sx={{ textAlign: 'right', maxWidth: '55%' }}>{value}</Typography>
+                    </Box>
+                  ))}
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Card variant="outlined" sx={{ borderRadius: 2, height: '100%' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                    <CreditScoreIcon sx={{ color: 'primary.main', fontSize: 20 }} />
+                    <Typography variant="subtitle2" fontWeight={700}>Détails de la Demande</Typography>
+                  </Box>
+                  <Divider sx={{ mb: 1.5 }} />
+                  <Typography variant="h5" fontWeight={800} color="primary.main" sx={{ mb: 1 }}>
+                    {new Intl.NumberFormat('fr-FR').format(workflow.requestedAmount)} {workflow.currency || 'XOF'}
+                  </Typography>
+                  {[
+                    { label: 'Type de crédit', value: application?.creditType?.name || application?.creditTypeName || '—' },
+                    { label: 'Durée', value: application?.duration ? `${application.duration} mois` : '—' },
+                    { label: 'Objet', value: application?.purpose || '—' },
+                    { label: 'Soumis le', value: workflow.totalStartedAt ? new Date(workflow.totalStartedAt).toLocaleDateString('fr-FR') : '—' },
+                  ].map(({ label, value }) => (
+                    <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5 }}>
+                      <Typography variant="body2" color="text.secondary">{label}</Typography>
+                      <Typography variant="body2" fontWeight={600} sx={{ textAlign: 'right', maxWidth: '55%' }}>{value}</Typography>
+                    </Box>
+                  ))}
                 </CardContent>
               </Card>
             </Grid>
           </Grid>
+
+          {/* ─── Section Parcours du dossier ─────────────────────────────── */}
+          <Divider sx={{ mb: 2 }}>
+            <Chip
+              label={`Parcours du dossier · ${workflow.steps?.length || 0} étape${(workflow.steps?.length || 0) > 1 ? 's' : ''}`}
+              size="small"
+              sx={{ fontWeight: 600, fontSize: '11px' }}
+            />
+          </Divider>
+
+          {workflow.steps && workflow.steps.length > 0 ? (
+            <Box sx={{ pl: 1 }}>
+              {workflow.steps.map((step, idx) => {
+                const isCompleted = !!step.completedAt;
+                const isActive = !step.completedAt && !!step.startedAt;
+                const isLast = idx === (workflow.steps?.length ?? 0) - 1;
+
+                const formatStepDate = (ts: string) =>
+                  new Date(ts).toLocaleDateString('fr-FR', {
+                    day: '2-digit', month: '2-digit', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit',
+                  });
+
+                const formatStepDuration = (ms?: number) => {
+                  if (!ms) return null;
+                  const totalH = Math.floor(ms / 3600000);
+                  const d = Math.floor(totalH / 24);
+                  const h = totalH % 24;
+                  return d > 0 ? `${d}j ${h}h` : `${totalH}h`;
+                };
+
+                const decisionColor: 'success' | 'error' | 'warning' | 'default' =
+                  step.decision === 'approved' ? 'success' :
+                  step.decision === 'rejected' ? 'error' :
+                  step.decision === 'on_hold' ? 'warning' : 'default';
+
+                const decisionLabel =
+                  step.decision === 'approved' ? 'Approuvé' :
+                  step.decision === 'rejected' ? 'Refusé' :
+                  step.decision === 'on_hold' ? 'En attente' :
+                  isActive ? 'En cours' : null;
+
+                const nextStep = isActive && !isLast ? workflow.steps?.[idx + 1] : null;
+
+                return (
+                  <Box
+                    key={step.stepId}
+                    sx={{ display: 'flex', gap: 1.5, opacity: (!isCompleted && !isActive) ? 0.4 : 1 }}
+                  >
+                    {/* Rail */}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 24, flexShrink: 0 }}>
+                      <Box sx={{
+                        width: 22, height: 22, borderRadius: '50%', flexShrink: 0, mt: '1px',
+                        bgcolor: isCompleted ? 'success.main' : isActive ? 'primary.main' : 'grey.300',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {isCompleted && <StepDoneIcon sx={{ fontSize: 14, color: 'white' }} />}
+                        {isActive && <ScheduleIcon sx={{ fontSize: 14, color: 'white' }} />}
+                      </Box>
+                      {!isLast && (
+                        <Box sx={{ width: 2, flex: 1, minHeight: 28, bgcolor: 'grey.200', mt: '2px' }} />
+                      )}
+                    </Box>
+
+                    {/* Contenu */}
+                    <Box sx={{ pb: 2.5, flex: 1, minWidth: 0 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0.4 }}>
+                        <Typography variant="body2" fontWeight={700}>{step.stepName}</Typography>
+                        {decisionLabel && (
+                          <Chip
+                            label={decisionLabel}
+                            color={decisionColor}
+                            size="small"
+                            sx={{ height: 18, fontSize: '10px', fontWeight: 600 }}
+                          />
+                        )}
+                      </Box>
+
+                      {step.userName && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.4 }}>
+                          <Avatar sx={{ width: 18, height: 18, fontSize: 9, bgcolor: '#e3f2fd', color: 'primary.main' }}>
+                            {step.userName.charAt(0).toUpperCase()}
+                          </Avatar>
+                          <Typography variant="caption" color="text.secondary">
+                            {step.userName}{step.userRole ? ` · ${step.userRole}` : ''}
+                          </Typography>
+                        </Box>
+                      )}
+
+                      {step.startedAt && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                          {formatStepDate(step.startedAt)}
+                          {step.duration ? ` · ⏱ ${formatStepDuration(step.duration)}` : ''}
+                        </Typography>
+                      )}
+
+                      {step.comments && (
+                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic', display: 'block', mt: 0.25 }}>
+                          "{step.comments}"
+                        </Typography>
+                      )}
+
+                      {nextStep && (
+                        <Box sx={{
+                          mt: 0.75, px: 1.25, py: 0.5, bgcolor: '#e3f2fd',
+                          borderRadius: 1, display: 'inline-block',
+                        }}>
+                          <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600 }}>
+                            → Prochaine étape : {nextStep.stepName}
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  </Box>
+                );
+              })}
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Aucune étape disponible pour ce dossier.
+            </Typography>
+          )}
         </TabPanel>
 
         {/* Tab 2: Financial Data Summary */}
