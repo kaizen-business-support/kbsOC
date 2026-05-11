@@ -157,6 +157,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onSuccess: (itemId: string, decision?: string, comment?: string) => void;
+  readOnly?: boolean;
 }
 
 type OtpAction = 'approve' | 'reject' | 'save_analysis';
@@ -173,7 +174,7 @@ const ALL_ACTIONS: ActionKey[] = ['approve', 'reject', 'request_info', 'transfer
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const DossierActionDrawer: React.FC<Props> = ({
-  item, open, onClose, onSuccess,
+  item, open, onClose, onSuccess, readOnly = false,
 }) => {
   const { state: userState } = useUser();
   const navigate = useNavigate();
@@ -1207,11 +1208,18 @@ export const DossierActionDrawer: React.FC<Props> = ({
           borderTop: '1px solid #e5e7eb', p: 2.5, flexShrink: 0,
           bgcolor: '#fafafa',
         }}>
-          {actionError && <Alert severity="error"   sx={{ mb: 1.5, py: 0.5 }}>{actionError}</Alert>}
-          {actionOk   && <Alert severity="success"  sx={{ mb: 1.5, py: 0.5 }}>{actionOk}</Alert>}
+          {/* Mode lecture seule */}
+          {readOnly && (
+            <Button fullWidth onClick={onClose} sx={{ textTransform: 'none', color: '#636366' }}>
+              Fermer
+            </Button>
+          )}
+
+          {!readOnly && actionError && <Alert severity="error"  sx={{ mb: 1.5, py: 0.5 }}>{actionError}</Alert>}
+          {!readOnly && actionOk    && <Alert severity="success" sx={{ mb: 1.5, py: 0.5 }}>{actionOk}</Alert>}
 
           {/* Bouton annulation — toujours visible si autorisé */}
-          {canCancel && (
+          {!readOnly && canCancel && (
             <Box sx={{ mb: 1.5, pb: 1.5, borderBottom: '1px dashed #f3c6c6' }}>
               <Button
                 variant="outlined"
@@ -1232,7 +1240,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
           )}
 
           {/* LEGAL : lien vers la page juridique */}
-          {isLegal && (
+          {!readOnly && isLegal && (
             <Button
               variant="contained"
               startIcon={<LegalIcon />}
@@ -1246,7 +1254,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
           )}
 
           {/* DISPATCH : lien vers dispatching */}
-          {isDispatch && (
+          {!readOnly && isDispatch && (
             <Button
               variant="contained"
               startIcon={<DispatchIcon />}
@@ -1259,7 +1267,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
           )}
 
           {/* ANALYSIS : valider l'analyse */}
-          {isAnalysis && (
+          {!readOnly && isAnalysis && (
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Button
                 onClick={onClose}
@@ -1287,7 +1295,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
           )}
 
           {/* Autres étapes : décisions classiques */}
-          {!isLegal && !isDispatch && !isAnalysis && (
+          {!readOnly && !isLegal && !isDispatch && !isAnalysis && (
             <>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 <Button onClick={onClose} disabled={submitting}

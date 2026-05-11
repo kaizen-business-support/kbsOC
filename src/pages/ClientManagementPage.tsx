@@ -1118,15 +1118,13 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
         </Box>
       </Drawer>
 
-      {/* DossierActionDrawer — ouvert depuis la fiche client */}
+      {/* DossierActionDrawer — ouvert depuis la fiche client, lecture seule */}
       <DossierActionDrawer
         item={dossierItem}
         open={dossierDrawerOpen}
+        readOnly
         onClose={() => setDossierDrawerOpen(false)}
-        onSuccess={() => {
-          setDossierDrawerOpen(false);
-          if (drawerClient) handleOpenDrawer(drawerClient);
-        }}
+        onSuccess={() => setDossierDrawerOpen(false)}
       />
     </Box>
   );
