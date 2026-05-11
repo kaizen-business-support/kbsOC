@@ -162,6 +162,109 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/workflows/active-pipeline
+// Ruban de suivi : dossiers en cours + timeline animée, filtrée par rôle
+router.get('/active-pipeline', async (req: Request, res: Response) => {
+  try {
+    const userId   = (req as any).user?.id;
+    const userRole = (req as any).user?.role as string | undefined;
+    if (!userId || !userRole) {
+      return res.status(401).json({ success: false, error: 'Authentification requise' });
+    }
+
+    const CREDIT_ROLES = [
+      'CHARGE_AFFAIRES', 'ANALYSTE_RISQUES', 'RESPONSABLE_RISQUES',
+      'RESPONSABLE_ENGAGEMENTS', 'COMITE_CREDIT', 'DIRECTION_GENERALE',
+      'BACK_OFFICE', 'DIRECTION_JURIDIQUE', 'ADMIN', 'SUPER_ADMIN',
+    ];
+    if (!CREDIT_ROLES.includes(userRole)) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const applications = await prisma.creditApplication.findMany({
+      where: {
+        companyId: req.companyId,
+        status: { notIn: ['APPROVED', 'REJECTED', 'DISBURSED'] },
+      },
+      include: {
+        client:     { select: { companyName: true } },
+        creditType: { select: { name: true } },
+        creator:    { select: { name: true, branch: true } },
+        policy: {
+          include: { steps: { where: { isActive: true }, orderBy: { order: 'asc' } } },
+        },
+        workflowSteps: {
+          include: {
+            policyStep: { select: { id: true, order: true, stepLabel: true, stepType: true, assignedRole: true } },
+            assignee:   { select: { name: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 50,
+    });
+
+    const data = applications.map((app) => {
+      const policySteps = app.policy?.steps ?? [];
+
+      const wsMap = new Map<string, typeof app.workflowSteps[0]>();
+      for (const ws of app.workflowSteps) {
+        if (ws.policyStepId && !wsMap.has(ws.policyStepId)) {
+          wsMap.set(ws.policyStepId, ws);
+        }
+      }
+
+      const timeline = policySteps.map((ps) => {
+        const ws = wsMap.get(ps.id);
+        let status: 'completed' | 'active' | 'pending' = 'pending';
+        if (ws?.completedAt)            status = 'completed';
+        else if (ws && !ws.completedAt) status = 'active';
+        return {
+          order:        ps.order,
+          label:        ps.stepLabel,
+          stepType:     ps.stepType,
+          assignedRole: (ps as any).assignedRole ?? null,
+          status,
+          assigneeName: ws?.assignee?.name ?? null,
+          completedAt:  ws?.completedAt?.toISOString() ?? null,
+        };
+      });
+
+      const completedCount = timeline.filter((s) => s.status === 'completed').length;
+      const progress = policySteps.length > 0
+        ? Math.round((completedCount / policySteps.length) * 100) : 0;
+      const currentStep = timeline.find((s) => s.status === 'active') ?? null;
+
+      const roleInvolved = policySteps.some((ps) => (ps as any).assignedRole === userRole)
+        || ['ADMIN', 'SUPER_ADMIN', 'DIRECTION_GENERALE'].includes(userRole);
+      if (!roleInvolved) return null;
+
+      return {
+        applicationId:     app.id,
+        applicationNumber: app.applicationNumber,
+        clientName:        app.client.companyName,
+        amount:            Number(app.amount),
+        currency:          app.currency || 'XOF',
+        creditType:        app.creditType?.name ?? null,
+        status:            app.status,
+        creatorBranch:     app.creator?.branch ?? null,
+        currentStepLabel:  currentStep?.label ?? '—',
+        currentStepType:   currentStep?.stepType ?? null,
+        progress,
+        completedSteps:    completedCount,
+        totalSteps:        policySteps.length,
+        timeline,
+      };
+    }).filter(Boolean);
+
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error('[workflows] GET /active-pipeline error:', error);
+    return res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
 // GET /api/workflows/pending-approvals
 router.get('/pending-approvals', async (req: Request, res: Response) => {
   try {
@@ -176,11 +279,16 @@ router.get('/pending-approvals', async (req: Request, res: Response) => {
         completedAt: null,
         application: { companyId: req.companyId },
         OR: [
-          // Étapes PENDING pour mon rôle (non assignées ou assignées à moi)
-          { status: 'PENDING', role: userRole },
-          // Étapes PENDING directement assignées à moi
-          { status: 'PENDING', assigneeId: userId },
-          // Étapes IN_REVIEW assignées à moi (ex: après REQUEST_INFO)
+          // Étapes ANALYSIS : visibles uniquement si explicitement affectées à moi
+          // (le dispatcher choisit qui traite, l'analyste ne se saisit pas lui-même)
+          { status: 'PENDING',   assigneeId: userId, policyStep: { stepType: 'ANALYSIS' } },
+          { status: 'IN_REVIEW', assigneeId: userId, policyStep: { stepType: 'ANALYSIS' } },
+          // Étapes non-ANALYSIS pour mon rôle (APPROVAL, COMMITTEE, LEGAL, DISPATCH)
+          // → n'importe quel utilisateur du bon rôle peut les traiter
+          { status: 'PENDING',   role: userRole, policyStep: { stepType: { not: 'ANALYSIS' } } },
+          // Étapes legacy (pas de policyStep) pour mon rôle
+          { status: 'PENDING',   role: userRole, policyStep: null },
+          // IN_REVIEW assignées à moi (toutes étapes — ex: après REQUEST_INFO)
           { status: 'IN_REVIEW', assigneeId: userId },
         ],
       },
@@ -206,7 +314,28 @@ router.get('/pending-approvals', async (req: Request, res: Response) => {
     const FINANCIAL_STEP_TYPES = ['APPROVAL', 'COMMITTEE'];
     const now = Date.now();
 
-    const data = steps.map((step) => {
+    // Filtrer les étapes dont une étape précédente (order inférieur) n'est pas encore
+    // complétée : elles ne doivent pas apparaître dans la liste de travail.
+    const orderedSteps: typeof steps = [];
+    for (const step of steps) {
+      const policyStepOrder: number | null = (step as any).policyStep?.order ?? null;
+      if (policyStepOrder === null) {
+        // Étape legacy sans politique : toujours visible
+        orderedSteps.push(step);
+        continue;
+      }
+      const blocker = await prisma.workflowStep.findFirst({
+        where: {
+          applicationId: step.applicationId,
+          completedAt: null,
+          id: { not: step.id },
+          policyStep: { order: { lt: policyStepOrder } },
+        },
+      });
+      if (!blocker) orderedSteps.push(step);
+    }
+
+    const data = orderedSteps.map((step) => {
       const policyStep = (step as any).policyStep;
       const app = (step as any).application;
       const stepType: string = policyStep?.stepType ?? 'ANALYSIS';
@@ -252,8 +381,10 @@ router.get('/pending-approvals/count', async (req: Request, res: Response) => {
         completedAt: null,
         application: { companyId: req.companyId },
         OR: [
-          { status: 'PENDING', role: userRole },
-          { status: 'PENDING', assigneeId: userId },
+          { status: 'PENDING',   assigneeId: userId, policyStep: { stepType: 'ANALYSIS' } },
+          { status: 'IN_REVIEW', assigneeId: userId, policyStep: { stepType: 'ANALYSIS' } },
+          { status: 'PENDING',   role: userRole, policyStep: { stepType: { not: 'ANALYSIS' } } },
+          { status: 'PENDING',   role: userRole, policyStep: null },
           { status: 'IN_REVIEW', assigneeId: userId },
         ],
       },

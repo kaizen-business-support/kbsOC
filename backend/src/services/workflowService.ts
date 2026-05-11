@@ -595,7 +595,37 @@ export async function canApproveStep(
   if (!application) return { allowed: false, reason: 'Demande introuvable' };
   if (!step) return { allowed: false, reason: 'Étape introuvable ou déjà traitée' };
 
-  // ── 0. Chinese Wall check (BCEAO non-cumul — hard block before any other check) ──
+  // ── 0. Vérification de l'ordre séquentiel ────────────────────────────────────
+  // Toutes les étapes de la politique ayant un ordre inférieur doivent être
+  // complétées avant qu'on puisse traiter l'étape courante.
+  if (step.policyStepId) {
+    const currentPolicyStep = await prisma.creditPolicyStep.findUnique({
+      where: { id: step.policyStepId },
+      select: { order: true, stepLabel: true },
+    });
+    if (currentPolicyStep) {
+      const blocker = await prisma.workflowStep.findFirst({
+        where: {
+          applicationId,
+          completedAt: null,
+          id: { not: step.id },
+          policyStep: { order: { lt: currentPolicyStep.order } },
+        },
+        include: { policyStep: { select: { stepLabel: true, order: true } } },
+        orderBy: { policyStep: { order: 'asc' } },
+      });
+      if (blocker) {
+        const blockerLabel = (blocker as any).policyStep?.stepLabel ?? blocker.stepName;
+        const blockerOrder = (blocker as any).policyStep?.order ?? '?';
+        return {
+          allowed: false,
+          reason: `Étape bloquée : "${blockerLabel}" (étape ${blockerOrder}) doit être complétée en premier. Le circuit doit être respecté dans l'ordre défini par la politique de crédit.`,
+        };
+      }
+    }
+  }
+
+  // ── 1. Chinese Wall check (BCEAO non-cumul — hard block before any other check) ──
   // Les règles sont stockées par tenant dans TenantChineseWallRule (plus de dict hardcodé).
   if (!application.companyId) {
     return { allowed: false, reason: 'Application non liée à un tenant — approbation impossible' };
@@ -607,7 +637,7 @@ export async function canApproveStep(
   const blocked = wallRules.find((r) => r.forbiddenStep === stepName);
   if (blocked) return { allowed: false, reason: blocked.reason ?? 'Mur chinois : opération non autorisée pour ce rôle' };
 
-  // ── 0b. Non-cumul analyse / contre-analyse (même personne physique) ────────
+  // ── 2. Non-cumul analyse / contre-analyse (même personne physique) ────────
   // Un analyste qui a déjà complété une étape ANALYSIS sur ce dossier
   // ne peut pas en traiter une seconde (contre-analyse).
   if (step.policyStepId) {
@@ -634,7 +664,7 @@ export async function canApproveStep(
     }
   }
 
-  // ── 1. Vérification du rôle (direct ou par délégation) ────────────────────
+  // ── 3. Vérification du rôle (direct ou par délégation) ────────────────────
   let effectiveRole   = user.role as UserRole;
   let effectiveBranch = (user as any).branch as string | null;
   let effectiveDept   = (user as any).department as string | null;
@@ -660,7 +690,7 @@ export async function canApproveStep(
     };
   }
 
-  // ── 2. Vérification de l'agence (basée sur le délégant si délégation) ─────
+  // ── 4. Vérification de l'agence (basée sur le délégant si délégation) ─────
   // Les rôles globaux (DG, Admin, Comité) ont une portée transversale.
   // Exceptions supplémentaires :
   //  - utilisateur explicitement assigné à cette étape (via dispatching)
@@ -679,7 +709,7 @@ export async function canApproveStep(
     }
   }
 
-  // ── 3. Vérification du plafond d'approbation ───────────────────────────────
+  // ── 5. Vérification du plafond d'approbation ───────────────────────────────
   // Le plafond ne s'applique qu'aux étapes décisionnelles de la politique moderne
   // (stepType APPROVAL ou COMMITTEE, avec policyStepId renseigné).
   // Les étapes legacy (sans policyStepId) ignorent ce check : elles ont été

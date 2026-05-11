@@ -1106,6 +1106,36 @@ export class ApiService {
     }
   }
 
+  static async getActivePipeline(): Promise<ApiResponse<any[]>> {
+    try {
+      const response = await api.get('/workflows/active-pipeline');
+      return { success: true, data: response.data.data ?? [] };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur pipeline' };
+    }
+  }
+
+  static async saveAnalysisComment(
+    applicationId: string,
+    payload: { synthesis: string; recommendations: string },
+  ): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.put(`/applications/${applicationId}/analysis-comment`, payload);
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur enregistrement commentaire' };
+    }
+  }
+
+  static async cancelApplication(applicationId: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.patch(`/applications/${applicationId}/cancel`);
+      return { success: true, data: response.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur lors de l\'annulation' };
+    }
+  }
+
   static async getCreditAnalysts(): Promise<ApiResponse<any[]>> {
     try {
       const response = await api.get('/users/credit-analysts');

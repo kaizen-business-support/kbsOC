@@ -417,7 +417,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       backdropFilter: 'blur(20px) saturate(180%)',
       WebkitBackdropFilter: 'blur(20px) saturate(180%)',
     }}>
-      <Toolbar />
 
       {/* Logo tenant */}
       <Box sx={{
@@ -722,6 +721,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             boxShadow:   SB.shadow,
             background:  'transparent',
             transition:  'width 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
+            top:         { xs: '56px', sm: '64px' },
+            height:      { xs: 'calc(100% - 56px)', sm: 'calc(100% - 64px)' },
           },
         }}
       >

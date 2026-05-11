@@ -616,6 +616,7 @@ enum ApplicationStatus {
   APPROVED     @map("approved")
   REJECTED     @map("rejected")
   DISBURSED    @map("disbursed")
+  CANCELLED    @map("cancelled")
 
   @@map("application_status")
 }
@@ -663,6 +664,7 @@ enum StepStatus {
   APPROVED  @map("approved")
   REJECTED  @map("rejected")
   COMPLETED @map("completed")
+  CANCELLED @map("cancelled")
 
   @@map("step_status")
 }

@@ -15,6 +15,7 @@ import { AnnouncementModal, useAnnouncements } from './components/AnnouncementMo
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DialogHeader } from './components/ui/DialogHeader';
 import { SessionTimeoutDialog } from './components/SessionTimeoutDialog';
+import { FloatingWorkflowTracker } from './components/FloatingWorkflowTracker';
 import ProtectedRoute from './components/ProtectedRoute';
 
 // ── Lazy-loaded pages (code splitting) ────────────────────────────────────────
@@ -451,6 +452,9 @@ const AppContent: React.FC = () => {
 
       {/* Session timeout — avertissement 2 min avant, déconnexion auto à 15 min */}
       <SessionTimeoutDialog />
+
+      {/* Ruban flottant — suivi pipeline de crédit (toutes pages) */}
+      <FloatingWorkflowTracker />
 
       {/* Reset Confirmation Dialog */}
       {/* Announcement Modal */}

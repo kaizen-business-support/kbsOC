@@ -123,6 +123,10 @@ router.get('/:id', async (req: Request, res: Response) => {
           },
           orderBy: { createdAt: 'asc' },
         },
+        documents: {
+          include: { uploader: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'desc' },
+        },
       }
     });
 
@@ -157,8 +161,20 @@ router.get('/:id', async (req: Request, res: Response) => {
       collateralValue: application.collateralValue ? Number(application.collateralValue) : null,
       repaymentSchedule: application.repaymentSchedule?.toLowerCase(),
       creditType: application.creditType,
-      analysisResults: application.analysisResults, // Include the financial data
-      workflowSteps: application.workflowSteps
+      analysisResults: application.analysisResults,
+      workflowSteps: application.workflowSteps,
+      documents: application.documents.map(d => ({
+        id:         d.id,
+        filename:   d.filename,
+        mimeType:   d.mimeType,
+        fileSize:   d.fileSize,
+        category:   d.category,
+        status:     d.status,
+        uploadedBy: d.uploader?.name ?? null,
+        createdAt:  d.createdAt.toISOString(),
+        previewUrl: `/api/documents/preview/${d.id}`,
+        downloadUrl:`/api/documents/download/${d.id}`,
+      }))
     };
 
     res.json({
@@ -550,6 +566,155 @@ router.post('/:id/disburse', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Disburse error:', error);
     res.status(500).json({ success: false, error: error.message || 'Erreur lors du décaissement' });
+  }
+});
+
+// PUT /api/applications/:id/analysis-comment — upsert du commentaire de l'utilisateur courant
+router.put('/:id/analysis-comment', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = (req as any).user?.id as string | undefined;
+    const { synthesis, recommendations } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Utilisateur non identifié' });
+    }
+    if (!synthesis?.trim() && !recommendations?.trim()) {
+      return res.status(400).json({ success: false, error: 'Synthèse ou recommandations requises' });
+    }
+
+    const application = await prisma.creditApplication.findUnique({
+      where: { id, companyId: req.companyId },
+      select: { analysisResults: true },
+    });
+    if (!application) {
+      return res.status(404).json({ success: false, error: 'Application non trouvée' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, role: true, branch: true },
+    });
+
+    const analysisResults = (application.analysisResults as any) || {};
+    const comments: any[] = [...(analysisResults.comments || [])];
+    const now = new Date().toISOString();
+
+    const idx = comments.findIndex((c: any) => c.userId === userId);
+    if (idx >= 0) {
+      comments[idx] = {
+        ...comments[idx],
+        synthesis:       synthesis?.trim()       ?? comments[idx].synthesis       ?? '',
+        recommendations: recommendations?.trim() ?? comments[idx].recommendations ?? '',
+        updatedAt:       now,
+        isModified:      true,
+        userName:        user?.name   ?? comments[idx].userName,
+        userRole:        user?.role   ?? comments[idx].userRole,
+        userBranch:      user?.branch ?? comments[idx].userBranch,
+      };
+    } else {
+      comments.push({
+        userId,
+        userName:        user?.name   ?? 'Inconnu',
+        userRole:        user?.role   ?? null,
+        userBranch:      user?.branch ?? null,
+        synthesis:       synthesis?.trim()       ?? '',
+        recommendations: recommendations?.trim() ?? '',
+        createdAt:       now,
+        updatedAt:       now,
+        isModified:      false,
+      });
+    }
+
+    await prisma.creditApplication.update({
+      where: { id },
+      data: { analysisResults: { ...analysisResults, comments } },
+    });
+
+    return res.json({ success: true, data: comments });
+  } catch (error: any) {
+    console.error('Analysis comment error:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Erreur' });
+  }
+});
+
+// PATCH /api/applications/:id/cancel — annulation d'un dossier (avec OTP déjà vérifié côté frontend)
+const CANCEL_ROLES = ['CHARGE_AFFAIRES', 'ADMIN', 'SUPER_ADMIN'];
+const TERMINAL_STATUSES = ['APPROVED', 'REJECTED', 'DISBURSED', 'CANCELLED'];
+
+router.patch('/:id/cancel', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const user = (req as any).user;
+
+    if (!user || !CANCEL_ROLES.includes(user.role)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Seul un Chargé d\'Affaires ou un Administrateur peut annuler un dossier',
+      });
+    }
+
+    const application = await prisma.creditApplication.findFirst({
+      where: { id, companyId: req.companyId },
+      select: { id: true, status: true, applicationNumber: true, createdBy: true },
+    });
+
+    if (!application) {
+      return res.status(404).json({ success: false, error: 'Dossier introuvable' });
+    }
+
+    if (TERMINAL_STATUSES.includes(application.status as string)) {
+      return res.status(409).json({
+        success: false,
+        error: `Ce dossier ne peut pas être annulé (statut : ${application.status})`,
+      });
+    }
+
+    // Seul le créateur ou un admin peut annuler
+    const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(user.role);
+    if (!isAdmin && application.createdBy !== user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Seul le Chargé d\'Affaires ayant créé le dossier peut l\'annuler',
+      });
+    }
+
+    const now = new Date();
+
+    await prisma.$transaction([
+      // Passer le dossier en CANCELLED
+      prisma.creditApplication.update({
+        where: { id },
+        data: { status: 'CANCELLED' },
+      }),
+      // Marquer toutes les étapes en attente comme annulées
+      prisma.workflowStep.updateMany({
+        where: { applicationId: id, completedAt: null },
+        data: { status: 'CANCELLED' },
+      }),
+      // Tracer l'annulation
+      prisma.workflowStep.create({
+        data: {
+          applicationId: id,
+          stepName:      'cancellation',
+          role:          user.role,
+          assigneeId:    user.id,
+          status:        'COMPLETED',
+          completedAt:   now,
+          comments:      `Dossier annulé par ${user.name ?? user.email}`,
+        },
+      }),
+    ]);
+
+    return res.json({
+      success: true,
+      message:           `Dossier ${application.applicationNumber} annulé avec succès`,
+      applicationNumber: application.applicationNumber,
+      status:            'CANCELLED',
+    });
+  } catch (error: any) {
+    console.error('[applications] PATCH /:id/cancel error:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Erreur lors de l\'annulation' });
   }
 });
 

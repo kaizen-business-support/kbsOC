@@ -20,11 +20,11 @@ const STEPS = [
   { stepName: 'avis_risques',             stepLabel: 'Avis risques',                   order: 6,  stepType: 'APPROVAL',  assignedRole: 'RESPONSABLE_RISQUES',    expectedDurationHours: 24, maxDurationHours: 72,  phase: 'Analyse risques' },
   { stepName: 'validation_comite',        stepLabel: 'Validation comité de crédit',    order: 7,  stepType: 'COMMITTEE', assignedRole: 'COMITE_CREDIT',          expectedDurationHours: 48, maxDurationHours: 120, phase: 'Approbation' },
   { stepName: 'decision_direction',       stepLabel: 'Décision direction générale',    order: 8,  stepType: 'APPROVAL',  assignedRole: 'DIRECTION_GENERALE',     expectedDurationHours: 48, maxDurationHours: 120, phase: 'Approbation' },
-  { stepName: 'mise_en_place_sib',        stepLabel: 'Mise en place SIB',              order: 9,  stepType: 'DISPATCH',  assignedRole: 'RESPONSABLE_ENGAGEMENTS',expectedDurationHours: 48, maxDurationHours: 120, phase: 'Mise en place' },
-  { stepName: 'formalisation_garanties',  stepLabel: 'Formalisation des garanties',   order: 10, stepType: 'DISPATCH',  assignedRole: 'DIRECTION_JURIDIQUE',    expectedDurationHours: 48, maxDurationHours: 120, phase: 'Mise en place' },
-  { stepName: 'saisie_garanties',         stepLabel: 'Saisie des garanties',           order: 11, stepType: 'DISPATCH',  assignedRole: 'DIRECTION_JURIDIQUE',    expectedDurationHours: 24, maxDurationHours: 72,  phase: 'Mise en place' },
-  { stepName: 'tirage_fonds',             stepLabel: 'Tirage des fonds',               order: 12, stepType: 'DISPATCH',  assignedRole: 'BACK_OFFICE',            expectedDurationHours: 24, maxDurationHours: 48,  phase: 'Mise en place' },
-  { stepName: 'back_office_setup',        stepLabel: 'Mise en place back-office',      order: 13, stepType: 'DISPATCH',  assignedRole: 'BACK_OFFICE',            expectedDurationHours: 24, maxDurationHours: 48,  phase: 'Mise en place' },
+  { stepName: 'mise_en_place_sib',        stepLabel: 'Mise en place SIB',              order: 9,  stepType: 'ANALYSIS',  assignedRole: 'RESPONSABLE_ENGAGEMENTS',expectedDurationHours: 48, maxDurationHours: 120, phase: 'Mise en place' },
+  { stepName: 'formalisation_garanties',  stepLabel: 'Formalisation des garanties',   order: 10, stepType: 'LEGAL',     assignedRole: 'DIRECTION_JURIDIQUE',    expectedDurationHours: 48, maxDurationHours: 120, phase: 'Mise en place' },
+  { stepName: 'saisie_garanties',         stepLabel: 'Saisie des garanties',           order: 11, stepType: 'LEGAL',     assignedRole: 'DIRECTION_JURIDIQUE',    expectedDurationHours: 24, maxDurationHours: 72,  phase: 'Mise en place' },
+  { stepName: 'tirage_fonds',             stepLabel: 'Tirage des fonds',               order: 12, stepType: 'ANALYSIS',  assignedRole: 'BACK_OFFICE',            expectedDurationHours: 24, maxDurationHours: 48,  phase: 'Mise en place' },
+  { stepName: 'back_office_setup',        stepLabel: 'Mise en place back-office',      order: 13, stepType: 'ANALYSIS',  assignedRole: 'BACK_OFFICE',            expectedDurationHours: 24, maxDurationHours: 48,  phase: 'Mise en place' },
 ];
 
 async function seedPolicyForCompany(company) {
