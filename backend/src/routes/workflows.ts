@@ -937,6 +937,70 @@ router.post('/fix-prematurely-approved', async (req: Request, res: Response) => 
   }
 });
 
+// GET /api/workflows/policy-guide
+// Retourne la politique active + ses étapes ordonnées pour l'affichage du guide
+router.get('/policy-guide', async (req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const policy = await prisma.creditPolicy.findFirst({
+      where: {
+        status: 'ACTIVE' as any,
+        isActive: true,
+        validFrom: { lte: now },
+        OR: [{ validTo: null }, { validTo: { gte: now } }],
+        companyId: req.companyId,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        description: true,
+        version: true,
+        validFrom: true,
+        validTo: true,
+        steps: {
+          where: { isActive: true },
+          orderBy: { order: 'asc' },
+          select: {
+            id: true,
+            order: true,
+            stepName: true,
+            stepLabel: true,
+            stepType: true,
+            assignedRole: true,
+            expectedDurationHours: true,
+            conditionMinAmount: true,
+            conditionMaxAmount: true,
+            isRequired: true,
+          },
+        },
+      },
+    });
+
+    if (!policy) {
+      return res.json({ success: true, policy: null });
+    }
+
+    return res.json({
+      success: true,
+      policy: {
+        ...policy,
+        validFrom: policy.validFrom.toISOString(),
+        validTo: policy.validTo?.toISOString() ?? null,
+        steps: policy.steps.map(s => ({
+          ...s,
+          conditionMinAmount: s.conditionMinAmount ? Number(s.conditionMinAmount) : null,
+          conditionMaxAmount: s.conditionMaxAmount ? Number(s.conditionMaxAmount) : null,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error('Policy guide error:', error);
+    res.status(500).json({ success: false, error: 'Erreur chargement guide politique' });
+  }
+});
+
 // GET /api/workflows/creation-permission
 // Vérifie si l'utilisateur courant peut créer une demande selon la politique active
 router.get('/creation-permission', async (req: Request, res: Response) => {

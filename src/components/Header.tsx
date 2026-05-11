@@ -23,6 +23,7 @@ import {
   Person as PersonIcon,
   Work as WorkIcon,
   Lock as LockIcon,
+  InfoOutlined as PolicyInfoIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { PageType } from '../types';
@@ -36,6 +37,8 @@ import AppleIcon from '@mui/icons-material/Apple';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
+import { PolicyGuideDialog } from './PolicyGuideDialog';
+import { usePolicyGuide } from '../hooks/usePolicyGuide';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -61,6 +64,7 @@ const HDR = {
 export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onPageChange, onChangePassword }) => {
   const { t } = useTranslation();
   const { state: userState, logout, getRoleLabel } = useUser();
+  const { open: policyGuideOpen, policy: policyGuide, openGuide, closeGuide } = usePolicyGuide(userState.isAuthenticated);
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
   const { canInstall, isInstalled, installViaPWA, downloadWindowsInstaller, downloadMacInstaller } = usePWAInstall();
   const [installMenuAnchor, setInstallMenuAnchor] = useState<null | HTMLElement>(null);
@@ -293,6 +297,26 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onPage
             </>
           )}
 
+          {userState.isAuthenticated && policyGuide && (
+            <Tooltip title="Politique de crédit active" enterDelay={300}>
+              <IconButton
+                onClick={openGuide}
+                size="small"
+                sx={{
+                  color: HDR.brand,
+                  border: `1.5px solid ${HDR.brand}40`,
+                  borderRadius: '8px',
+                  p: '5px',
+                  transition: 'all 0.18s cubic-bezier(0.34,1.56,0.64,1)',
+                  '&:hover': { bgcolor: `${HDR.brand}12`, borderColor: HDR.brand, transform: 'scale(1.08)' },
+                  '&:active': { transform: 'scale(0.92)' },
+                }}
+              >
+                <PolicyInfoIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          )}
+
           {userState.isAuthenticated && (
             <NotificationBell onPageChange={onPageChange} />
           )}
@@ -465,6 +489,12 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onPage
           <strong>Script téléchargé !</strong> Ouvrez le fichier téléchargé et exécutez-le — un raccourci OptimusCredit apparaîtra sur votre Bureau.
         </Alert>
       </Snackbar>
+
+      <PolicyGuideDialog
+        open={policyGuideOpen}
+        policy={policyGuide}
+        onClose={closeGuide}
+      />
     </AppBar>
   );
 };
