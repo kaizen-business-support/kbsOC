@@ -555,13 +555,18 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       });
     }
 
-    // Trouver l'étape courante — priorité : stepId (exact) > stepName > première non complétée
+    // Trouver l'étape courante — priorité : stepId > stepName > step dont le rôle correspond > première non complétée
+    const requestingUserRole = (req as any).user?.role as string | undefined;
     const pendingSteps = application.workflowSteps.filter(s => !s.completedAt);
     const currentStep = stepId
       ? (pendingSteps.find(s => s.id === stepId) ?? pendingSteps.find(s => s.stepName === stepName) ?? pendingSteps[0])
       : stepName
         ? (pendingSteps.find(s => s.stepName === stepName) ?? pendingSteps[0])
-        : pendingSteps[0];
+        // Fallback : si aucun identifiant fourni, chercher le step dont le rôle correspond à l'utilisateur
+        // pour éviter de prendre le mauvais step (ex: ANALYSTE_RISQUES au lieu de DIRECTION_JURIDIQUE)
+        : (requestingUserRole
+            ? (pendingSteps.find(s => s.role === requestingUserRole) ?? pendingSteps[0])
+            : pendingSteps[0]);
 
     if (!currentStep) {
       return res.status(400).json({

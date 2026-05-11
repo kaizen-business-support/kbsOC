@@ -62,12 +62,20 @@ export function LegalStepPage({ applicationId }: Props) {
       if (!ok) return;
     }
 
+    // Trouver l'étape LEGAL dans le workflow pour passer le stepId explicitement.
+    // Sans stepId, le backend prend pendingSteps[0] qui peut être un step ANALYSTE_RISQUES.
+    const legalStep = application?.workflowSteps?.find(
+      (s: any) => !s.completedAt && (s.policyStep?.stepType === 'LEGAL' || s.stepName?.toLowerCase().includes('legal') || s.stepName?.toLowerCase().includes('juridique'))
+    );
+
     setCompleting(true);
     try {
       const r = await ApiService.approveWorkflow(applicationId, {
         userId: currentUser?.id || '',
         decision: 'APPROVED',
         comments: `Étape juridique clôturée — ${contracts.length} contrat(s) traité(s).`,
+        stepId: legalStep?.id,
+        stepName: legalStep?.stepName,
       });
       if (r.success) {
         setSnack({ msg: 'Étape juridique clôturée', sev: 'success' });
