@@ -1195,8 +1195,8 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                                 <Table size="small">
                                   <TableHead>
                                     <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                                      {['N°', 'Date échéance', 'Mensualité', 'Capital', 'Intérêts', 'Capital restant', 'Statut', ''].map((col) => (
-                                        <TableCell key={col} sx={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#6b7280', py: 1, letterSpacing: '0.4px', whiteSpace: 'nowrap' }}>
+                                      {['N°', 'Échéance', 'Annuité', 'Principal', 'Int.', 'Restant', 'Statut', 'SIB'].map((col) => (
+                                        <TableCell key={col} sx={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#6b7280', py: 1, px: col === 'SIB' ? 1 : 1.5, letterSpacing: '0.4px', whiteSpace: 'nowrap' }}>
                                           {col}
                                         </TableCell>
                                       ))}
