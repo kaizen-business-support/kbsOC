@@ -381,13 +381,18 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
     };
   };
 
-  // Resolve year data: gère les 3 formats possibles
+  // Resolve year data: gère les 3 formats possibles + double-wrapping via CreditApplicationPage
   const resolveYearData = (entry: any): any | null => {
     if (!entry) return null;
-    // Format intermédiaire : { multiyear_data: { N: { data: {...} } } }
+    // Format stocké : { multiyear_data: { N: { data: ... } } }
     if (entry?.multiyear_data?.N?.data) {
       const inner = entry.multiyear_data.N.data;
-      // Si l'inner contient le format OHADA, le convertir
+      // Double-wrapping : inner = { multiyear_data: { N: { data: flatData } }, score, ... }
+      if (inner?.multiyear_data?.N?.data) {
+        const flat = inner.multiyear_data.N.data;
+        if (flat?.incomeStatement || flat?.balance) return flattenOhadaData(flat);
+        return flat;
+      }
       if (inner?.incomeStatement || inner?.balance) return flattenOhadaData(inner);
       return inner;
     }

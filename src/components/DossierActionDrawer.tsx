@@ -102,6 +102,12 @@ function resolveFinancialData(entry: any): any | null {
   if (!entry) return null;
   if (entry?.multiyear_data?.N?.data) {
     const inner = entry.multiyear_data.N.data;
+    // Double-wrapping : inner = { multiyear_data: { N: { data: flatData } }, score, ... }
+    if (inner?.multiyear_data?.N?.data) {
+      const flat = inner.multiyear_data.N.data;
+      if (flat?.incomeStatement || flat?.balance) return flattenOhadaData(flat);
+      return flat;
+    }
     if (inner?.incomeStatement || inner?.balance) return flattenOhadaData(inner);
     return inner;
   }
