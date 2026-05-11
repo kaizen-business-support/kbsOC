@@ -889,7 +889,8 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
         anchor="right"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        PaperProps={{ sx: { width: 640, bgcolor: '#fafafa' } }}
+        sx={{ zIndex: 1250 }}
+        PaperProps={{ sx: { width: { xs: '100vw', sm: 820 }, bgcolor: '#fafafa' } }}
       >
         <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
           {/* Header */}
