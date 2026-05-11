@@ -277,14 +277,18 @@ router.post('/', async (req: Request, res: Response) => {
       if (activePolicy) {
         const creationStep = await prisma.creditPolicyStep.findFirst({
           where: { policyId: activePolicy.id, stepName: 'application_created', isActive: true },
-          select: { assignedRole: true, stepLabel: true },
+          select: { assignedRole: true },
         });
 
-        if (creationStep && userExists.role !== creationStep.assignedRole) {
+        // Fallback identique à createWorkflowStepsForApplication :
+        // si aucun step 'application_created' n'est en politique, le rôle requis est CHARGE_AFFAIRES.
+        const requiredRole = creationStep?.assignedRole ?? 'CHARGE_AFFAIRES';
+
+        if (userExists.role !== requiredRole) {
           return res.status(403).json({
             success: false,
-            error: `Votre rôle (${userExists.role}) ne vous permet pas de créer une demande de crédit. Cette action est réservée au rôle "${creationStep.assignedRole}" selon la politique de crédit active.`,
-            requiredRole: creationStep.assignedRole,
+            error: `Votre rôle (${userExists.role}) ne vous permet pas de créer une demande de crédit. Cette action est réservée au rôle "${requiredRole}" selon la politique de crédit active.`,
+            requiredRole,
           });
         }
       }

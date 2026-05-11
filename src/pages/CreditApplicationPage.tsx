@@ -264,8 +264,9 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
           requiredRoleLabel: r.data.requiredRoleLabel,
         });
       } else {
-        // En cas d'erreur réseau, on laisse passer (l'API bloquera si besoin)
-        setCreationPermission({ canCreate: true, requiredRole: null, requiredRoleLabel: null });
+        // Erreur API : on bloque par défaut — le backend est le vrai garde-fou.
+        // Afficher canCreate: null pour distinguer "pas encore chargé" de "refusé".
+        setCreationPermission({ canCreate: false, requiredRole: null, requiredRoleLabel: null });
       }
     });
   }, []);
@@ -394,28 +395,44 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
 
   // ── Blocage si le rôle ne correspond pas à l'étape de création ───────────────
   if (creationPermission.canCreate === false) {
-    const roleLabel = creationPermission.requiredRoleLabel || creationPermission.requiredRole || 'rôle requis';
-    const userRoleLabel = (userState.currentUser as any)?.role || 'votre rôle';
+    const hasRoleInfo = !!creationPermission.requiredRole;
+    const roleLabel = creationPermission.requiredRoleLabel || creationPermission.requiredRole || '';
+    const userRoleLabel = (userState.currentUser as any)?.role || '';
     return (
       <Box sx={{ bgcolor: BG, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 4 }}>
-        <Box sx={{ maxWidth: 560, width: '100%' }}>
+        <Box sx={{ maxWidth: 540, width: '100%' }}>
           <Alert
-            severity="info"
+            severity={hasRoleInfo ? 'warning' : 'error'}
             icon={<InfoIcon fontSize="large" />}
             sx={{ borderRadius: 3, py: 3, px: 3, boxShadow: CARD_SHADOW, '& .MuiAlert-message': { width: '100%' } }}
           >
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
-              Accès non autorisé
+              {hasRoleInfo ? 'Accès restreint par la politique de crédit' : 'Vérification des droits impossible'}
             </Typography>
-            <Typography variant="body2" sx={{ mb: 1 }}>
-              La politique de crédit active réserve la création de demandes au rôle <strong>{roleLabel}</strong>.
-            </Typography>
-            <Typography variant="body2">
-              Votre rôle actuel (<strong>{userRoleLabel}</strong>) ne vous permet pas d'accéder à cette étape.
-              Veuillez contacter votre administrateur ou passer par le profil habilité.
-            </Typography>
+            {hasRoleInfo ? (
+              <>
+                <Typography variant="body2" sx={{ mb: 0.5 }}>
+                  La politique de crédit active réserve la création de demandes au rôle <strong>{roleLabel}</strong>.
+                </Typography>
+                {userRoleLabel && (
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    Votre rôle (<strong>{userRoleLabel}</strong>) ne vous donne pas accès à cette étape.
+                    Contactez votre administrateur.
+                  </Typography>
+                )}
+              </>
+            ) : (
+              <Typography variant="body2">
+                Impossible de contacter le serveur pour vérifier vos droits. Vérifiez votre connexion et réessayez.
+              </Typography>
+            )}
           </Alert>
-          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center', gap: 2 }}>
+            {!hasRoleInfo && (
+              <Button variant="contained" onClick={() => window.location.reload()} sx={{ borderRadius: 2 }}>
+                Réessayer
+              </Button>
+            )}
             <Button variant="outlined" onClick={() => onNavigate('workflows')} sx={{ borderRadius: 2 }}>
               Retour au suivi des dossiers
             </Button>

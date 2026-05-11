@@ -1033,15 +1033,17 @@ router.get('/creation-permission', async (req: Request, res: Response) => {
       select: { assignedRole: true, stepLabel: true },
     });
 
-    if (!creationStep) {
-      return res.json({ success: true, canCreate: true, requiredRole: null, requiredRoleLabel: null, userRole });
-    }
+    // Fallback identique à createWorkflowStepsForApplication :
+    // si aucun step 'application_created' n'est défini dans la politique,
+    // le rôle requis est CHARGE_AFFAIRES (comportement hardcodé du service).
+    const requiredRole = creationStep?.assignedRole ?? 'CHARGE_AFFAIRES';
+    const requiredRoleLabel = creationStep?.stepLabel ?? 'Chargé d\'Affaires';
 
     return res.json({
       success: true,
-      canCreate: userRole === creationStep.assignedRole,
-      requiredRole: creationStep.assignedRole,
-      requiredRoleLabel: creationStep.stepLabel,
+      canCreate: userRole === requiredRole,
+      requiredRole,
+      requiredRoleLabel,
       userRole,
     });
   } catch (error) {
