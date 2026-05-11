@@ -1,26 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import {
   Dialog,
-  DialogContent,
   Box,
   Typography,
   Button,
   Chip,
-  Divider,
   IconButton,
   Tooltip,
 } from '@mui/material';
 import {
   Close as CloseIcon,
   CheckCircle as CheckIcon,
+  ArrowForward as ArrowIcon,
   AccountBalance as BankIcon,
-  Person as PersonIcon,
-  Gavel as GavelIcon,
-  Group as CommitteeIcon,
-  LocalShipping as DispatchIcon,
-  Analytics as AnalysisIcon,
-  Assignment as AssignmentIcon,
-  KeyboardArrowRight as ArrowIcon,
+  Schedule as ScheduleIcon,
+  Verified as VerifiedIcon,
+  CalendarMonth as CalIcon,
+  Route as RouteIcon,
 } from '@mui/icons-material';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -55,149 +51,213 @@ interface PolicyGuideDialogProps {
   onClose: () => void;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
+
+const DARK  = '#0D1B2A';
+const DARK2 = '#132030';
+const DARK3 = '#1A2B3C';
+const ACCENT = '#14B8A6';     // teal
+const GOLD   = '#F59E0B';
+const WHITE  = '#FFFFFF';
+const MUTED  = 'rgba(255,255,255,0.5)';
+const BORDER = 'rgba(255,255,255,0.08)';
+
+// ─── Step type config ─────────────────────────────────────────────────────────
+
+type StepTypeCfg = { label: string; color: string; bg: string; dot: string };
+
+const STEP_CFG: Record<string, StepTypeCfg> = {
+  CREATION:  { label: 'Création',    color: '#6366F1', bg: '#EEF2FF', dot: '#6366F1' },
+  DISPATCH:  { label: 'Dispatching', color: '#0EA5E9', bg: '#E0F2FE', dot: '#0EA5E9' },
+  ANALYSIS:  { label: 'Analyse',     color: '#8B5CF6', bg: '#F5F3FF', dot: '#8B5CF6' },
+  APPROVAL:  { label: 'Approbation', color: '#F59E0B', bg: '#FFFBEB', dot: '#F59E0B' },
+  COMMITTEE: { label: 'Comité',      color: '#EC4899', bg: '#FDF2F8', dot: '#EC4899' },
+  LEGAL:     { label: 'Juridique',   color: '#14B8A6', bg: '#F0FDFA', dot: '#14B8A6' },
+};
 
 const ROLE_LABELS: Record<string, string> = {
-  CHARGE_AFFAIRES: 'Chargé d\'Affaires',
-  ANALYSTE_RISQUES: 'Analyste Risques',
-  RESPONSABLE_RISQUES: 'Responsable Risques',
-  RESPONSABLE_ENGAGEMENTS: 'Responsable Engagements',
-  DIRECTION_GENERALE: 'Direction Générale',
-  DIRECTION_JURIDIQUE: 'Direction Juridique',
-  COMITE_CREDIT: 'Comité de Crédit',
-  BACK_OFFICE: 'Back Office',
-  ADMIN: 'Administrateur',
-  SUPER_ADMIN: 'Super Administrateur',
+  CHARGE_AFFAIRES:         'Chargé d\'Affaires',
+  ANALYSTE_RISQUES:        'Analyste Risques',
+  RESPONSABLE_RISQUES:     'Resp. Risques',
+  RESPONSABLE_ENGAGEMENTS: 'Resp. Engagements',
+  DIRECTION_GENERALE:      'Direction Générale',
+  DIRECTION_JURIDIQUE:     'Direction Juridique',
+  COMITE_CREDIT:           'Comité de Crédit',
+  BACK_OFFICE:             'Back Office',
+  ADMIN:                   'Administrateur',
+  SUPER_ADMIN:             'Super Admin',
 };
 
-const STEP_TYPE_CONFIG: Record<string, { color: string; icon: React.ReactNode; bg: string }> = {
-  CREATION:  { color: '#0F766E', bg: '#F0FDFA', icon: <AssignmentIcon sx={{ fontSize: 18 }} /> },
-  DISPATCH:  { color: '#0369A1', bg: '#EFF6FF', icon: <DispatchIcon  sx={{ fontSize: 18 }} /> },
-  ANALYSIS:  { color: '#7C3AED', bg: '#F5F3FF', icon: <AnalysisIcon  sx={{ fontSize: 18 }} /> },
-  APPROVAL:  { color: '#B45309', bg: '#FFFBEB', icon: <GavelIcon     sx={{ fontSize: 18 }} /> },
-  COMMITTEE: { color: '#BE185D', bg: '#FDF2F8', icon: <CommitteeIcon sx={{ fontSize: 18 }} /> },
-  LEGAL:     { color: '#0F766E', bg: '#F0FDFA', icon: <BankIcon      sx={{ fontSize: 18 }} /> },
-};
+function cfg(type: string): StepTypeCfg {
+  return STEP_CFG[type] ?? { label: type, color: '#64748B', bg: '#F8FAFC', dot: '#94A3B8' };
+}
 
-function roleLabel(role: string) {
+function rl(role: string) {
   return ROLE_LABELS[role] || role;
 }
 
-function stepConfig(type: string) {
-  return STEP_TYPE_CONFIG[type] || { color: '#64748B', bg: '#F8FAFC', icon: <PersonIcon sx={{ fontSize: 18 }} /> };
-}
-
-function formatDuration(hours: number): string {
-  if (hours < 24) return `${hours}h`;
+function sla(hours: number) {
+  if (hours < 24) return `${hours} h`;
   const d = Math.round(hours / 24);
-  return `${d}j`;
+  return `${d} j`;
 }
 
-function formatAmount(n: number) {
-  return new Intl.NumberFormat('fr-FR', { notation: 'compact', maximumFractionDigits: 0 }).format(n);
+function fmtAmount(n: number) {
+  return new Intl.NumberFormat('fr-FR', { notation: 'compact', maximumFractionDigits: 1 }).format(n) + ' FCFA';
 }
 
-// ─── Step card ────────────────────────────────────────────────────────────────
+// ─── Left sidebar stat pill ───────────────────────────────────────────────────
 
-const StepCard: React.FC<{ step: PolicyStep; index: number; total: number; delay: number }> = ({
-  step, index, total, delay,
+const StatPill: React.FC<{ icon: React.ReactNode; label: string; value: string; delay: number }> = ({
+  icon, label, value, delay,
 }) => {
-  const [visible, setVisible] = useState(false);
-  const cfg = stepConfig(step.stepType);
+  const [vis, setVis] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setVis(true), delay); return () => clearTimeout(t); }, [delay]);
+  return (
+    <Box sx={{
+      display: 'flex', alignItems: 'center', gap: 1.5,
+      opacity: vis ? 1 : 0, transform: vis ? 'none' : 'translateX(-12px)',
+      transition: 'opacity 0.5s ease, transform 0.5s ease',
+    }}>
+      <Box sx={{
+        width: 36, height: 36, borderRadius: 2,
+        bgcolor: 'rgba(20,184,166,0.15)',
+        border: '1px solid rgba(20,184,166,0.2)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: ACCENT, flexShrink: 0,
+      }}>
+        {icon}
+      </Box>
+      <Box>
+        <Typography sx={{ color: MUTED, fontSize: '10.5px', fontWeight: 600, letterSpacing: 0.6, textTransform: 'uppercase' }}>
+          {label}
+        </Typography>
+        <Typography sx={{ color: WHITE, fontSize: '13px', fontWeight: 700, lineHeight: 1.2, mt: 0.1 }}>
+          {value}
+        </Typography>
+      </Box>
+    </Box>
+  );
+};
 
-  useEffect(() => {
-    const t = setTimeout(() => setVisible(true), delay);
-    return () => clearTimeout(t);
-  }, [delay]);
+// ─── Step row ─────────────────────────────────────────────────────────────────
 
-  const hasCondition = step.conditionMinAmount !== null || step.conditionMaxAmount !== null;
+const StepRow: React.FC<{ step: PolicyStep; index: number; isLast: boolean; delay: number }> = ({
+  step, index, isLast, delay,
+}) => {
+  const [vis, setVis] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setVis(true), delay); return () => clearTimeout(t); }, [delay]);
+
+  const c = cfg(step.stepType);
+  const hasMin = step.conditionMinAmount !== null;
+  const hasMax = step.conditionMaxAmount !== null;
 
   return (
     <Box sx={{
-      opacity: visible ? 1 : 0,
-      transform: visible ? 'translateY(0)' : 'translateY(16px)',
+      display: 'flex', gap: 0,
+      opacity: vis ? 1 : 0, transform: vis ? 'none' : 'translateY(14px)',
       transition: 'opacity 0.45s ease, transform 0.45s ease',
-      display: 'flex',
-      alignItems: 'stretch',
-      gap: 0,
     }}>
-      {/* Numéro + ligne verticale */}
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mr: 2, minWidth: 36 }}>
+      {/* Timeline rail */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mr: 2.5, pt: 0.5 }}>
+        {/* Dot */}
         <Box sx={{
-          width: 36, height: 36, borderRadius: '50%',
-          bgcolor: cfg.color, color: 'white',
+          width: 32, height: 32, borderRadius: '50%',
+          border: `2px solid ${c.color}`,
+          bgcolor: `${c.color}12`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '13px', fontWeight: 700, flexShrink: 0,
-          boxShadow: `0 2px 8px ${cfg.color}50`,
+          flexShrink: 0, zIndex: 1,
         }}>
-          {index + 1}
+          <Typography sx={{ fontWeight: 800, fontSize: '11px', color: c.color }}>
+            {index + 1}
+          </Typography>
         </Box>
-        {index < total - 1 && (
-          <Box sx={{ width: 2, flexGrow: 1, mt: 0.5, mb: 0.5, bgcolor: '#E2E8F0', borderRadius: 1, minHeight: 20 }} />
+        {/* Connector */}
+        {!isLast && (
+          <Box sx={{
+            width: '2px', flexGrow: 1, mt: 0.75,
+            background: `linear-gradient(to bottom, ${c.color}60, ${c.color}10)`,
+            minHeight: 28,
+          }} />
         )}
       </Box>
 
-      {/* Contenu */}
+      {/* Card */}
       <Box sx={{
         flex: 1,
-        mb: index < total - 1 ? 2.5 : 0,
-        bgcolor: cfg.bg,
-        borderRadius: 2.5,
-        border: `1px solid ${cfg.color}25`,
-        p: 2,
+        mb: isLast ? 0 : 2.5,
+        p: '14px 16px',
+        borderRadius: '12px',
+        bgcolor: WHITE,
+        border: `1px solid #F1F5F9`,
+        boxShadow: '0 1px 4px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04)',
         position: 'relative',
         overflow: 'hidden',
+        transition: 'box-shadow 0.2s ease, border-color 0.2s ease',
+        '&:hover': {
+          boxShadow: `0 4px 24px ${c.color}18`,
+          borderColor: `${c.color}40`,
+        },
+        // Left accent bar
         '&::before': {
           content: '""',
-          position: 'absolute',
-          left: 0, top: 0, bottom: 0,
-          width: 3,
-          bgcolor: cfg.color,
-          borderRadius: '4px 0 0 4px',
+          position: 'absolute', left: 0, top: 0, bottom: 0,
+          width: '3px',
+          background: `linear-gradient(to bottom, ${c.color}, ${c.color}60)`,
+          borderRadius: '12px 0 0 12px',
         },
       }}>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
-            <Box sx={{
-              width: 30, height: 30, borderRadius: 1.5,
-              bgcolor: `${cfg.color}18`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: cfg.color, flexShrink: 0,
-            }}>
-              {cfg.icon}
-            </Box>
-            <Box>
-              <Typography sx={{ fontWeight: 700, fontSize: '13px', color: '#0F172A', lineHeight: 1.3 }}>
+        {/* Row top */}
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
+          <Box sx={{ flex: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: '13.5px', color: '#0F172A', lineHeight: 1.3 }}>
                 {step.stepLabel}
               </Typography>
-              <Typography sx={{ fontSize: '11.5px', color: '#64748B', mt: 0.2 }}>
-                {roleLabel(step.assignedRole)}
-              </Typography>
+              {!step.isRequired && (
+                <Chip
+                  label="Conditionnel"
+                  size="small"
+                  sx={{ height: 18, fontSize: '9.5px', fontWeight: 600, bgcolor: '#FEF3C7', color: '#B45309', border: 'none', px: 0.2 }}
+                />
+              )}
             </Box>
+            <Typography sx={{ fontSize: '12px', color: '#64748B', fontWeight: 500 }}>
+              {rl(step.assignedRole)}
+            </Typography>
           </Box>
 
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5, flexShrink: 0 }}>
+          {/* Right badges */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.6, flexShrink: 0 }}>
             <Chip
-              label={formatDuration(step.expectedDurationHours)}
+              label={c.label}
               size="small"
-              sx={{ bgcolor: `${cfg.color}15`, color: cfg.color, fontWeight: 600, fontSize: '11px', height: 20 }}
+              sx={{
+                height: 20, fontSize: '10px', fontWeight: 700,
+                bgcolor: c.bg, color: c.color,
+                border: `1px solid ${c.color}30`,
+              }}
             />
-            {!step.isRequired && (
-              <Chip label="Conditionnel" size="small" sx={{ bgcolor: '#FEF3C7', color: '#B45309', fontSize: '10px', height: 18 }} />
-            )}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <ScheduleIcon sx={{ fontSize: 11, color: '#94A3B8' }} />
+              <Typography sx={{ fontSize: '11px', color: '#94A3B8', fontWeight: 600 }}>
+                {sla(step.expectedDurationHours)}
+              </Typography>
+            </Box>
           </Box>
         </Box>
 
-        {hasCondition && (
-          <Box sx={{ mt: 1, pt: 1, borderTop: `1px dashed ${cfg.color}25`, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            {step.conditionMinAmount !== null && (
+        {/* Condition badge */}
+        {(hasMin || hasMax) && (
+          <Box sx={{ mt: 1.2, pt: 1.2, borderTop: '1px dashed #E2E8F0', display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {hasMin && (
               <Typography sx={{ fontSize: '11px', color: '#64748B' }}>
-                Dossiers ≥ <strong>{formatAmount(step.conditionMinAmount)} FCFA</strong>
+                Applicable si montant ≥ <Box component="span" sx={{ fontWeight: 700, color: '#0F172A' }}>{fmtAmount(step.conditionMinAmount!)}</Box>
               </Typography>
             )}
-            {step.conditionMaxAmount !== null && (
+            {hasMax && (
               <Typography sx={{ fontSize: '11px', color: '#64748B' }}>
-                Dossiers ≤ <strong>{formatAmount(step.conditionMaxAmount)} FCFA</strong>
+                Applicable si montant ≤ <Box component="span" sx={{ fontWeight: 700, color: '#0F172A' }}>{fmtAmount(step.conditionMaxAmount!)}</Box>
               </Typography>
             )}
           </Box>
@@ -210,174 +270,241 @@ const StepCard: React.FC<{ step: PolicyStep; index: number; total: number; delay
 // ─── Main dialog ──────────────────────────────────────────────────────────────
 
 export const PolicyGuideDialog: React.FC<PolicyGuideDialogProps> = ({ open, policy, onClose }) => {
-  const [headerVisible, setHeaderVisible] = useState(false);
+  const [sideVis, setSideVis] = useState(false);
 
   useEffect(() => {
     if (open) {
-      const t = setTimeout(() => setHeaderVisible(true), 80);
+      const t = setTimeout(() => setSideVis(true), 60);
       return () => clearTimeout(t);
     } else {
-      setHeaderVisible(false);
+      setSideVis(false);
     }
   }, [open]);
 
   if (!policy) return null;
 
-  const validFromDate = new Date(policy.validFrom).toLocaleDateString('fr-FR', {
-    day: '2-digit', month: 'long', year: 'numeric',
-  });
-
-  // Filtrer l'étape application_created du schéma (c'est une étape système)
   const visibleSteps = policy.steps.filter(s => s.stepName !== 'application_created');
+  const totalSLA = visibleSteps.reduce((sum, s) => sum + s.expectedDurationHours, 0);
+
+  const validFromDate = new Date(policy.validFrom).toLocaleDateString('fr-FR', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  });
 
   return (
     <Dialog
       open={open}
       onClose={onClose}
-      maxWidth="sm"
-      fullWidth
+      maxWidth={false}
       PaperProps={{
         sx: {
-          borderRadius: 4,
+          width: { xs: '96vw', sm: 860 },
+          maxWidth: 860,
+          maxHeight: '88vh',
+          borderRadius: '20px',
           overflow: 'hidden',
-          maxHeight: '90vh',
-          boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
+          display: 'flex',
+          flexDirection: 'row',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.28), 0 0 0 1px rgba(0,0,0,0.06)',
+          m: 2,
         },
       }}
-      TransitionProps={{ timeout: { enter: 350, exit: 200 } }}
+      sx={{ backdropFilter: 'blur(8px)', '& .MuiBackdrop-root': { bgcolor: 'rgba(10,24,44,0.65)' } }}
     >
-      {/* ── Header dégradé ── */}
+      {/* ── LEFT SIDEBAR ── */}
       <Box sx={{
-        background: 'linear-gradient(135deg, #0F766E 0%, #0369A1 100%)',
-        px: 3, pt: 3.5, pb: 3,
+        width: { xs: 0, sm: 280 },
+        display: { xs: 'none', sm: 'flex' },
+        flexDirection: 'column',
+        bgcolor: DARK,
+        p: 3.5,
         position: 'relative',
-        opacity: headerVisible ? 1 : 0,
-        transform: headerVisible ? 'translateY(0)' : 'translateY(-12px)',
-        transition: 'opacity 0.4s ease, transform 0.4s ease',
+        overflow: 'hidden',
+        flexShrink: 0,
+        // Subtle mesh gradient
+        '&::before': {
+          content: '""',
+          position: 'absolute', inset: 0,
+          background: `radial-gradient(ellipse at 20% 20%, rgba(20,184,166,0.12) 0%, transparent 60%),
+                       radial-gradient(ellipse at 80% 80%, rgba(99,102,241,0.10) 0%, transparent 60%)`,
+          pointerEvents: 'none',
+        },
       }}>
-        <IconButton
-          onClick={onClose}
-          size="small"
-          sx={{
-            position: 'absolute', top: 12, right: 12,
-            color: 'rgba(255,255,255,0.8)',
-            '&:hover': { color: 'white', bgcolor: 'rgba(255,255,255,0.15)' },
-          }}
-        >
-          <CloseIcon fontSize="small" />
-        </IconButton>
+        {/* Decorative dots pattern */}
+        <Box sx={{
+          position: 'absolute', top: 0, right: 0,
+          width: 200, height: 200,
+          background: `radial-gradient(circle, rgba(20,184,166,0.06) 1px, transparent 1px)`,
+          backgroundSize: '20px 20px',
+          pointerEvents: 'none',
+        }} />
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
-          <Box sx={{
-            width: 44, height: 44, borderRadius: 2.5,
-            bgcolor: 'rgba(255,255,255,0.18)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <BankIcon sx={{ color: 'white', fontSize: 24 }} />
-          </Box>
-          <Box>
-            <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '11px', fontWeight: 600, letterSpacing: 1.2, textTransform: 'uppercase' }}>
-              Politique de crédit active
-            </Typography>
-            <Typography sx={{ color: 'white', fontWeight: 800, fontSize: '18px', lineHeight: 1.2 }}>
-              {policy.name}
-            </Typography>
-          </Box>
-        </Box>
-
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Chip
-            label={policy.code}
-            size="small"
-            sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 600, fontSize: '11px' }}
-          />
-          <Chip
-            label={`v${policy.version}`}
-            size="small"
-            sx={{ bgcolor: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)', fontSize: '11px' }}
-          />
-          <Chip
-            label={`En vigueur depuis le ${validFromDate}`}
-            size="small"
-            sx={{ bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)', fontSize: '11px' }}
-          />
-        </Box>
-
-        {policy.description && (
-          <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '12.5px', mt: 1.5, lineHeight: 1.5 }}>
-            {policy.description}
+        {/* Badge */}
+        <Box sx={{
+          display: 'inline-flex', alignItems: 'center', gap: 0.8,
+          bgcolor: 'rgba(20,184,166,0.15)',
+          border: '1px solid rgba(20,184,166,0.25)',
+          borderRadius: '20px',
+          px: 1.5, py: 0.6,
+          mb: 3, alignSelf: 'flex-start',
+          opacity: sideVis ? 1 : 0,
+          transform: sideVis ? 'none' : 'translateY(8px)',
+          transition: 'all 0.45s ease',
+        }}>
+          <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ACCENT, boxShadow: `0 0 6px ${ACCENT}` }} />
+          <Typography sx={{ color: ACCENT, fontSize: '10.5px', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>
+            Politique active
           </Typography>
-        )}
+        </Box>
+
+        {/* Title */}
+        <Box sx={{
+          mb: 3,
+          opacity: sideVis ? 1 : 0,
+          transform: sideVis ? 'none' : 'translateY(10px)',
+          transition: 'all 0.5s ease 0.08s',
+        }}>
+          <Typography sx={{
+            color: WHITE,
+            fontSize: '20px',
+            fontWeight: 800,
+            lineHeight: 1.25,
+            letterSpacing: '-0.3px',
+            mb: 1,
+          }}>
+            {policy.name}
+          </Typography>
+          {policy.description && (
+            <Typography sx={{ color: MUTED, fontSize: '12px', lineHeight: 1.6 }}>
+              {policy.description}
+            </Typography>
+          )}
+        </Box>
+
+        {/* Divider */}
+        <Box sx={{ width: '100%', height: '1px', bgcolor: BORDER, mb: 3, opacity: sideVis ? 1 : 0, transition: 'opacity 0.5s ease 0.15s' }} />
+
+        {/* Stats */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+          <StatPill icon={<VerifiedIcon sx={{ fontSize: 16 }} />} label="Référence" value={policy.code} delay={200} />
+          <StatPill icon={<RouteIcon sx={{ fontSize: 16 }} />} label="Étapes du circuit" value={`${visibleSteps.length} étape${visibleSteps.length > 1 ? 's' : ''}`} delay={300} />
+          <StatPill icon={<ScheduleIcon sx={{ fontSize: 16 }} />} label="Délai total estimé" value={sla(totalSLA)} delay={400} />
+          <StatPill icon={<CalIcon sx={{ fontSize: 16 }} />} label="En vigueur depuis" value={validFromDate} delay={500} />
+        </Box>
+
+        {/* Version badge */}
+        <Box sx={{
+          mt: 'auto', pt: 3,
+          opacity: sideVis ? 1 : 0,
+          transition: 'opacity 0.5s ease 0.55s',
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{
+              px: 1.2, py: 0.5, borderRadius: '6px',
+              bgcolor: 'rgba(255,255,255,0.07)',
+              border: '1px solid rgba(255,255,255,0.1)',
+            }}>
+              <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px', fontWeight: 600 }}>
+                VERSION {policy.version}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
       </Box>
 
-      <DialogContent sx={{ px: 3, pt: 3, pb: 2, overflowY: 'auto' }}>
-        <Box sx={{ mb: 2.5 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: '13px', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.8, mb: 0.5 }}>
-            Circuit d'instruction — {visibleSteps.length} étape{visibleSteps.length > 1 ? 's' : ''}
-          </Typography>
-          <Typography sx={{ fontSize: '12px', color: '#94A3B8' }}>
-            Les dossiers de crédit suivent ce circuit dans l'ordre indiqué.
-          </Typography>
+      {/* ── RIGHT PANEL ── */}
+      <Box sx={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        bgcolor: '#F8FAFC',
+        overflow: 'hidden',
+        minWidth: 0,
+      }}>
+        {/* Panel header */}
+        <Box sx={{
+          px: 3, pt: 3, pb: 2.5,
+          bgcolor: WHITE,
+          borderBottom: '1px solid #F1F5F9',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+        }}>
+          <Box>
+            <Typography sx={{ fontWeight: 800, fontSize: '16px', color: '#0F172A', letterSpacing: '-0.2px' }}>
+              Circuit d'instruction
+            </Typography>
+            <Typography sx={{ fontSize: '12px', color: '#94A3B8', mt: 0.3 }}>
+              {visibleSteps.length} étape{visibleSteps.length > 1 ? 's' : ''} · ordre séquentiel obligatoire
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={onClose}
+            size="small"
+            sx={{
+              color: '#94A3B8',
+              bgcolor: '#F1F5F9',
+              borderRadius: '8px',
+              '&:hover': { bgcolor: '#E2E8F0', color: '#475569' },
+            }}
+          >
+            <CloseIcon sx={{ fontSize: 16 }} />
+          </IconButton>
         </Box>
 
-        <Divider sx={{ mb: 2.5 }} />
-
-        {/* Steps */}
-        <Box>
+        {/* Scrollable steps */}
+        <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2.5,
+          '&::-webkit-scrollbar': { width: 4 },
+          '&::-webkit-scrollbar-track': { bgcolor: 'transparent' },
+          '&::-webkit-scrollbar-thumb': { bgcolor: '#CBD5E1', borderRadius: 2 },
+        }}>
           {visibleSteps.map((step, i) => (
-            <StepCard
+            <StepRow
               key={step.id}
               step={step}
               index={i}
-              total={visibleSteps.length}
-              delay={120 + i * 90}
+              isLast={i === visibleSteps.length - 1}
+              delay={180 + i * 75}
             />
           ))}
         </Box>
 
-        {/* Légende */}
-        <Box sx={{ mt: 3, p: 2, bgcolor: '#F8FAFC', borderRadius: 2.5, border: '1px solid #E2E8F0' }}>
-          <Typography sx={{ fontSize: '11.5px', color: '#64748B', fontWeight: 600, mb: 1 }}>
-            Légende
+        {/* Footer */}
+        <Box sx={{
+          px: 3, py: 2.5,
+          bgcolor: WHITE,
+          borderTop: '1px solid #F1F5F9',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+          gap: 2,
+        }}>
+          <Typography sx={{ fontSize: '11.5px', color: '#94A3B8', lineHeight: 1.5, maxWidth: 300 }}>
+            Ce guide se réaffiche automatiquement lors de tout changement de politique.
           </Typography>
-          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-            {[
-              { label: 'Obligatoire', color: '#0F766E', bg: '#F0FDFA' },
-              { label: 'Conditionnel', color: '#B45309', bg: '#FEF3C7' },
-            ].map(({ label, color, bg }) => (
-              <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: color }} />
-                <Typography sx={{ fontSize: '11px', color: '#64748B' }}>{label}</Typography>
-              </Box>
-            ))}
-          </Box>
+          <Button
+            onClick={onClose}
+            variant="contained"
+            endIcon={<CheckIcon sx={{ fontSize: 16 }} />}
+            sx={{
+              bgcolor: DARK,
+              color: WHITE,
+              borderRadius: '10px',
+              fontWeight: 700,
+              fontSize: '13px',
+              px: 2.5,
+              py: 1.1,
+              textTransform: 'none',
+              letterSpacing: 0,
+              flexShrink: 0,
+              boxShadow: '0 4px 14px rgba(13,27,42,0.25)',
+              '&:hover': { bgcolor: DARK3, boxShadow: '0 6px 20px rgba(13,27,42,0.32)' },
+            }}
+          >
+            J'ai compris
+          </Button>
         </Box>
-      </DialogContent>
-
-      {/* ── Footer ── */}
-      <Box sx={{
-        px: 3, py: 2.5,
-        borderTop: '1px solid #F1F5F9',
-        display: 'flex',
-        justifyContent: 'flex-end',
-        bgcolor: 'white',
-      }}>
-        <Button
-          onClick={onClose}
-          variant="contained"
-          startIcon={<CheckIcon />}
-          sx={{
-            bgcolor: '#0F766E',
-            '&:hover': { bgcolor: '#0D6B63' },
-            borderRadius: 2.5,
-            fontWeight: 700,
-            px: 3,
-            textTransform: 'none',
-            boxShadow: '0 4px 12px rgba(15,118,110,0.3)',
-          }}
-        >
-          J'ai compris
-        </Button>
       </Box>
     </Dialog>
   );
