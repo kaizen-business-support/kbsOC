@@ -999,6 +999,15 @@ export class ApiService {
   }
 
   // Workflows API
+  static async getCreationPermission(): Promise<ApiResponse<{ canCreate: boolean; requiredRole: string | null; requiredRoleLabel: string | null; userRole: string }>> {
+    try {
+      const response = await api.get('/workflows/creation-permission');
+      return { success: true, data: response.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur vérification permission' };
+    }
+  }
+
   static async getWorkflows(filters?: {
     status?: string;
     branch?: string;

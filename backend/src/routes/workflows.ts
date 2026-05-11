@@ -937,4 +937,53 @@ router.post('/fix-prematurely-approved', async (req: Request, res: Response) => 
   }
 });
 
+// GET /api/workflows/creation-permission
+// Vérifie si l'utilisateur courant peut créer une demande selon la politique active
+router.get('/creation-permission', async (req: Request, res: Response) => {
+  try {
+    const userRole = (req as any).user?.role as string | undefined;
+
+    if (userRole === 'SUPER_ADMIN') {
+      return res.json({ success: true, canCreate: true, requiredRole: null, requiredRoleLabel: null, userRole });
+    }
+
+    const now = new Date();
+    const activePolicy = await prisma.creditPolicy.findFirst({
+      where: {
+        status: 'ACTIVE' as any,
+        isActive: true,
+        validFrom: { lte: now },
+        OR: [{ validTo: null }, { validTo: { gte: now } }],
+        companyId: req.companyId,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+
+    if (!activePolicy) {
+      return res.json({ success: true, canCreate: true, requiredRole: null, requiredRoleLabel: null, userRole });
+    }
+
+    const creationStep = await prisma.creditPolicyStep.findFirst({
+      where: { policyId: activePolicy.id, stepName: 'application_created', isActive: true },
+      select: { assignedRole: true, stepLabel: true },
+    });
+
+    if (!creationStep) {
+      return res.json({ success: true, canCreate: true, requiredRole: null, requiredRoleLabel: null, userRole });
+    }
+
+    return res.json({
+      success: true,
+      canCreate: userRole === creationStep.assignedRole,
+      requiredRole: creationStep.assignedRole,
+      requiredRoleLabel: creationStep.stepLabel,
+      userRole,
+    });
+  } catch (error) {
+    console.error('Creation permission error:', error);
+    res.status(500).json({ success: false, error: 'Erreur vérification permission création' });
+  }
+});
+
 export default router;

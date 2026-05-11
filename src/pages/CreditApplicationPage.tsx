@@ -181,6 +181,11 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
   const [draftRestored, setDraftRestored] = useState(false);
   const [showDraftBanner, setShowDraftBanner] = useState(false);
   const [otpOpen, setOtpOpen] = useState(false);
+  const [creationPermission, setCreationPermission] = useState<{
+    canCreate: boolean | null;
+    requiredRole: string | null;
+    requiredRoleLabel: string | null;
+  }>({ canCreate: null, requiredRole: null, requiredRoleLabel: null });
 
   // Data
   const [clients, setClients] = useState<any[]>([]);
@@ -248,6 +253,22 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
     clientInfo, creditRequest, preliminaryAnalysis,
     financialData, referenceYear, numberOfYears,
   });
+
+  // ── Vérification permission création ─────────────────────────────────────────
+  useEffect(() => {
+    ApiService.getCreationPermission().then(r => {
+      if (r.success && r.data) {
+        setCreationPermission({
+          canCreate: r.data.canCreate,
+          requiredRole: r.data.requiredRole,
+          requiredRoleLabel: r.data.requiredRoleLabel,
+        });
+      } else {
+        // En cas d'erreur réseau, on laisse passer (l'API bloquera si besoin)
+        setCreationPermission({ canCreate: true, requiredRole: null, requiredRoleLabel: null });
+      }
+    });
+  }, []);
 
   // ── Load data ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -370,6 +391,39 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
   const selectedCreditType = creditTypes.find(ct => ct.id === creditRequest.creditTypeId);
   const financialYears = Array.from({ length: numberOfYears }, (_, i) => referenceYear - i);
   const filledYears = financialYears.filter(y => !!financialData[y]).length;
+
+  // ── Blocage si le rôle ne correspond pas à l'étape de création ───────────────
+  if (creationPermission.canCreate === false) {
+    const roleLabel = creationPermission.requiredRoleLabel || creationPermission.requiredRole || 'rôle requis';
+    const userRoleLabel = (userState.currentUser as any)?.role || 'votre rôle';
+    return (
+      <Box sx={{ bgcolor: BG, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 4 }}>
+        <Box sx={{ maxWidth: 560, width: '100%' }}>
+          <Alert
+            severity="info"
+            icon={<InfoIcon fontSize="large" />}
+            sx={{ borderRadius: 3, py: 3, px: 3, boxShadow: CARD_SHADOW, '& .MuiAlert-message': { width: '100%' } }}
+          >
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+              Accès non autorisé
+            </Typography>
+            <Typography variant="body2" sx={{ mb: 1 }}>
+              La politique de crédit active réserve la création de demandes au rôle <strong>{roleLabel}</strong>.
+            </Typography>
+            <Typography variant="body2">
+              Votre rôle actuel (<strong>{userRoleLabel}</strong>) ne vous permet pas d'accéder à cette étape.
+              Veuillez contacter votre administrateur ou passer par le profil habilité.
+            </Typography>
+          </Alert>
+          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+            <Button variant="outlined" onClick={() => onNavigate('workflows')} sx={{ borderRadius: 2 }}>
+              Retour au suivi des dossiers
+            </Button>
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (

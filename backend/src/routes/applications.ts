@@ -259,6 +259,37 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
+    // Vérifier que le rôle de l'utilisateur correspond à l'étape application_created de la politique active
+    if (userExists.role !== 'SUPER_ADMIN') {
+      const now = new Date();
+      const activePolicy = await prisma.creditPolicy.findFirst({
+        where: {
+          status: 'ACTIVE' as any,
+          isActive: true,
+          validFrom: { lte: now },
+          OR: [{ validTo: null }, { validTo: { gte: now } }],
+          companyId: req.companyId,
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+
+      if (activePolicy) {
+        const creationStep = await prisma.creditPolicyStep.findFirst({
+          where: { policyId: activePolicy.id, stepName: 'application_created', isActive: true },
+          select: { assignedRole: true, stepLabel: true },
+        });
+
+        if (creationStep && userExists.role !== creationStep.assignedRole) {
+          return res.status(403).json({
+            success: false,
+            error: `Votre rôle (${userExists.role}) ne vous permet pas de créer une demande de crédit. Cette action est réservée au rôle "${creationStep.assignedRole}" selon la politique de crédit active.`,
+            requiredRole: creationStep.assignedRole,
+          });
+        }
+      }
+    }
+
     // Create application
     const application = await prisma.creditApplication.create({
       data: {
