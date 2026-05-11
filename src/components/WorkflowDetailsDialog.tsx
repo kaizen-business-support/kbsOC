@@ -250,61 +250,20 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
 
   // Check if current user can approve this workflow
   const canApprove = () => {
-    if (!userState.currentUser || !workflow) {
-      console.log('[canApprove] No user or workflow');
-      return false;
-    }
+    if (!userState.currentUser || !workflow) return false;
 
     const currentStep = workflow.steps?.find(step => !step.completedAt);
-    console.log('[canApprove] Current step:', currentStep);
-    console.log('[canApprove] All steps:', workflow.steps);
-    console.log('[canApprove] Steps detail:', workflow.steps?.map(s => ({
-      stepId: s.stepId,
-      stepName: s.stepName,
-      completedAt: s.completedAt,
-      startedAt: s.startedAt
-    })));
-
-    if (!currentStep) {
-      console.log('[canApprove] No current step found');
-      return false;
-    }
-
-    // Check if the workflow is still in progress
-    if (workflow.finalDecision) {
-      console.log('[canApprove] Workflow has final decision:', workflow.finalDecision);
-      return false;
-    }
+    if (!currentStep) return false;
+    if (workflow.finalDecision) return false;
 
     const userRole = userState.currentUser.role?.toLowerCase();
-    const currentStepId = currentStep.stepId;
+    const stepIdStr = String(currentStep.stepId);
 
-    console.log('[canApprove] User role:', userRole);
-    console.log('[canApprove] Current step ID:', currentStepId);
-    console.log('[canApprove] Current step name:', currentStep.stepName);
+    if (userRole === 'branch_manager' && stepIdStr === 'branch_manager_review') return true;
+    if (userRole === 'credit_committee' && stepIdStr === 'credit_committee_review') return true;
+    if (userRole === 'management' && stepIdStr === 'management_review') return true;
+    if (userRole === 'admin') return true;
 
-    // Match user role to step ID (using string matching to handle dynamic approval steps)
-    const stepIdStr = String(currentStepId);
-    if (userRole === 'branch_manager' && stepIdStr === 'branch_manager_review') {
-      console.log('[canApprove] Branch manager can approve!');
-      return true;
-    }
-    if (userRole === 'credit_committee' && stepIdStr === 'credit_committee_review') {
-      console.log('[canApprove] Credit committee can approve!');
-      return true;
-    }
-    if (userRole === 'management' && stepIdStr === 'management_review') {
-      console.log('[canApprove] Management can approve!');
-      return true;
-    }
-
-    // Admin can approve any step
-    if (userRole === 'admin') {
-      console.log('[canApprove] Admin can approve!');
-      return true;
-    }
-
-    console.log('[canApprove] No match found, cannot approve');
     return false;
   };
 
@@ -1295,23 +1254,6 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
         {/* Zone d'approbation compacte */}
         {canApprove() && !submitSuccess && (
           <>
-            <TextField
-              placeholder="Commentaire (optionnel)"
-              size="small"
-              multiline
-              minRows={1}
-              maxRows={3}
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-              disabled={submitting}
-              sx={{
-                flex: 1, minWidth: { xs: '100%', sm: 200 },
-                '& .MuiOutlinedInput-root': {
-                  borderRadius: '10px', fontSize: '13px',
-                  bgcolor: 'white',
-                },
-              }}
-            />
             {isActionAllowed('reject') && (
             <Button
               variant="outlined"
