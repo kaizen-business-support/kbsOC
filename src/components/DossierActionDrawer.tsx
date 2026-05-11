@@ -14,6 +14,7 @@ import {
   Tab, Tabs, Dialog, DialogTitle, DialogContent, DialogActions,
   FormGroup, FormControlLabel, Checkbox,
   Accordion, AccordionSummary, AccordionDetails,
+  Slider,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -1054,39 +1055,95 @@ export const DossierActionDrawer: React.FC<Props> = ({
               {isAnalysis && tab === 2 && (
                 <Stack spacing={2.5}>
                   <Typography variant="body2" color="text.secondary">
-                    Renseignez vos scores d'analyse. La décision sera validée par OTP.
+                    Glissez les curseurs pour définir vos scores. La décision sera validée par OTP.
                   </Typography>
 
-                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-                    <TextField
-                      label="Score analyste (0-100)"
-                      type="number"
-                      size="small"
-                      value={analystScore}
-                      onChange={e => setAnalystScore(e.target.value)}
-                      inputProps={{ min: 0, max: 100 }}
-                      fullWidth
-                    />
-                    <TextField
-                      label="Score financier (0-100)"
-                      type="number"
-                      size="small"
-                      value={financialScore}
-                      onChange={e => setFinancialScore(e.target.value)}
-                      inputProps={{ min: 0, max: 100 }}
-                      fullWidth
-                    />
-                  </Box>
+                  {/* ── Sliders de scoring ───────────────────────────────── */}
+                  {[
+                    { label: 'Score Analyste', value: analystScore, set: setAnalystScore },
+                    { label: 'Score Financier', value: financialScore, set: setFinancialScore },
+                  ].map(({ label, value, set }) => {
+                    const num = Number(value) || 0;
+                    const sliderColor = num >= 70 ? '#16a34a' : num >= 50 ? '#d97706' : num > 0 ? '#dc2626' : '#94a3b8';
+                    const bgColor = num >= 70 ? 'rgba(22,163,74,0.06)' : num >= 50 ? 'rgba(217,119,6,0.06)' : num > 0 ? 'rgba(220,38,38,0.06)' : 'rgba(0,0,0,0.03)';
+                    const labelColor = num >= 70 ? '#15803d' : num >= 50 ? '#b45309' : num > 0 ? '#b91c1c' : '#64748b';
+                    return (
+                      <Box key={label} sx={{ bgcolor: bgColor, borderRadius: 2, px: 2, pt: 1.5, pb: 1, border: '1px solid', borderColor: num > 0 ? sliderColor + '40' : 'rgba(0,0,0,0.08)' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mb: 0.5 }}>
+                          <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '10px' }}>
+                            {label}
+                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.25 }}>
+                            <Typography variant="h5" fontWeight={800} sx={{ color: labelColor, lineHeight: 1 }}>
+                              {num}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">/100</Typography>
+                          </Box>
+                        </Box>
+                        <Slider
+                          value={num}
+                          onChange={(_, val) => set(String(val))}
+                          min={0}
+                          max={100}
+                          step={1}
+                          marks={[
+                            { value: 50, label: '' },
+                            { value: 70, label: '' },
+                          ]}
+                          sx={{
+                            color: sliderColor,
+                            height: 6,
+                            py: 0.75,
+                            '& .MuiSlider-thumb': {
+                              width: 18, height: 18,
+                              bgcolor: 'white',
+                              border: `2px solid ${sliderColor}`,
+                              boxShadow: `0 0 0 4px ${sliderColor}22`,
+                              '&:hover': { boxShadow: `0 0 0 6px ${sliderColor}33` },
+                            },
+                            '& .MuiSlider-rail': { bgcolor: 'rgba(0,0,0,0.12)' },
+                            '& .MuiSlider-mark': { bgcolor: 'rgba(0,0,0,0.2)', width: 2, height: 2 },
+                            '& .MuiSlider-markLabel': { display: 'none' },
+                          }}
+                        />
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: -0.5 }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '10px' }}>0 — Insuffisant</Typography>
+                          <Typography variant="caption" sx={{ fontSize: '10px', color: '#d97706', fontWeight: 600 }}>50</Typography>
+                          <Typography variant="caption" sx={{ fontSize: '10px', color: '#16a34a', fontWeight: 600 }}>70+</Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '10px' }}>100 — Excellent</Typography>
+                        </Box>
+                      </Box>
+                    );
+                  })}
 
-                  {overallScore !== null && (
-                    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, textAlign: 'center', bgcolor: '#f8faff' }}>
-                      <Typography variant="caption" color="text.secondary">Score global (calculé)</Typography>
-                      <Typography variant="h4" fontWeight={800} color={
-                        overallScore >= 70 ? 'success.main' : overallScore >= 50 ? 'warning.main' : 'error.main'
-                      }>
-                        {overallScore}<Typography component="span" variant="body2" color="text.secondary"> / 100</Typography>
+                  {/* ── Score global calculé ────────────────────────────── */}
+                  {overallScore !== null && analystScore && financialScore && (
+                    <Box sx={{
+                      p: 2, borderRadius: 2, textAlign: 'center',
+                      bgcolor: overallScore >= 70 ? 'rgba(22,163,74,0.08)' : overallScore >= 50 ? 'rgba(217,119,6,0.08)' : 'rgba(220,38,38,0.08)',
+                      border: '1px solid',
+                      borderColor: overallScore >= 70 ? 'rgba(22,163,74,0.25)' : overallScore >= 50 ? 'rgba(217,119,6,0.25)' : 'rgba(220,38,38,0.25)',
+                    }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '10px', display: 'block', mb: 0.5 }}>
+                        Score global (moyenne)
                       </Typography>
-                    </Paper>
+                      <Typography variant="h3" fontWeight={800} sx={{
+                        lineHeight: 1,
+                        color: overallScore >= 70 ? '#15803d' : overallScore >= 50 ? '#b45309' : '#b91c1c',
+                      }}>
+                        {overallScore}
+                        <Typography component="span" variant="body2" color="text.secondary"> / 100</Typography>
+                      </Typography>
+                      <Chip
+                        label={overallScore >= 70 ? 'Risque Faible' : overallScore >= 50 ? 'Risque Modéré' : 'Risque Élevé'}
+                        size="small"
+                        sx={{
+                          mt: 1, fontWeight: 700, fontSize: '10px',
+                          bgcolor: overallScore >= 70 ? 'rgba(22,163,74,0.15)' : overallScore >= 50 ? 'rgba(217,119,6,0.15)' : 'rgba(220,38,38,0.15)',
+                          color: overallScore >= 70 ? '#15803d' : overallScore >= 50 ? '#b45309' : '#b91c1c',
+                        }}
+                      />
+                    </Box>
                   )}
 
                   {/* Commentaires partagés entre analystes */}
