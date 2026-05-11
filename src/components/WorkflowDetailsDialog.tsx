@@ -812,1376 +812,270 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
           )}
         </TabPanel>
 
-        {/* Tab 2: Financial Data Summary */}
-        <TabPanel value={activeTab} index={2}>
-          <Typography variant="h6" gutterBottom>
-            Évolution des Données Financières
-          </Typography>
+        {/* Tab 1: Financier */}
+        <TabPanel value={activeTab} index={1}>
+          {/* Sélecteur d'années */}
+          {years.length > 1 && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.75, mb: 2, flexWrap: 'wrap' }}>
+              {years.map(year => (
+                <Chip
+                  key={year}
+                  label={year}
+                  size="small"
+                  variant={selectedYears.length === 0 || selectedYears.includes(year) ? 'filled' : 'outlined'}
+                  onClick={() => toggleYear(year)}
+                  color={selectedYears.length === 0 || selectedYears.includes(year) ? 'primary' : 'default'}
+                  sx={{ cursor: 'pointer', fontWeight: 600, fontSize: '11px' }}
+                />
+              ))}
+            </Box>
+          )}
 
           {allYearsData.length > 0 ? (
-            <Grid container spacing={3}>
-              {/* Grandes Masses du Bilan */}
-              <Grid item xs={12}>
-                <Card sx={{ bgcolor: 'info.50', border: '2px solid', borderColor: 'info.main' }}>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'info.main' }}>
-                      🏛️ Grandes Masses du Bilan (SYSCOHADA)
-                    </Typography>
-                    <Divider sx={{ mb: 2 }} />
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
-                    <Grid container spacing={3}>
-                      {/* ACTIF - Grandes Masses */}
-                      <Grid item xs={12} md={6}>
-                        <Card variant="outlined">
-                          <CardContent>
-                            <Typography variant="subtitle1" fontWeight={600} gutterBottom color="primary">
-                              ACTIF
+              {/* ─── Bloc 1 : Grandes Masses du Bilan ───────────────────── */}
+              <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                <CardContent sx={{ pb: '16px !important' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                    <AccountBalanceIcon sx={{ color: 'primary.main', fontSize: 18 }} />
+                    <Typography variant="subtitle2" fontWeight={700}>Grandes Masses du Bilan (SYSCOHADA)</Typography>
+                  </Box>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: 'rgba(25,118,210,0.06)' }}>
+                          <TableCell sx={{ fontWeight: 700, py: 0.75 }}>Poste</TableCell>
+                          <TableCell sx={{ fontWeight: 700, py: 0.75, width: 80 }}>Cat.</TableCell>
+                          {filteredYearsData.map(({ year }) => (
+                            <TableCell key={year} align="right" sx={{ fontWeight: 700, py: 0.75 }}>{year}</TableCell>
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {[
+                          { label: 'Actif Immobilisé', field: 'actif_immobilise', cat: 'ACTIF', catColor: 'rgba(25,118,210,0.1)', catText: '#1565c0' },
+                          { label: 'Actif Circulant',  field: 'actif_circulant',  cat: 'ACTIF', catColor: 'rgba(25,118,210,0.1)', catText: '#1565c0' },
+                          { label: 'Trésorerie Actif', field: 'tresorerie',       cat: 'ACTIF', catColor: 'rgba(25,118,210,0.1)', catText: '#1565c0' },
+                        ].map(({ label, field, cat, catColor, catText }) => (
+                          <TableRow key={label} sx={{ '&:hover': { bgcolor: 'grey.50' } }}>
+                            <TableCell sx={{ py: 0.5 }}>{label}</TableCell>
+                            <TableCell sx={{ py: 0.5 }}>
+                              <Chip label={cat} size="small" sx={{ height: 16, fontSize: '9px', fontWeight: 700, bgcolor: catColor, color: catText }} />
+                            </TableCell>
+                            {filteredYearsData.map(({ year, data }) => (
+                              <TableCell key={year} align="right" sx={{ py: 0.5 }}>{formatCurrency(getNumericValue(data, field))}</TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                        <TableRow sx={{ bgcolor: 'rgba(25,118,210,0.08)' }}>
+                          <TableCell sx={{ fontWeight: 700, py: 0.75 }}>TOTAL ACTIF</TableCell>
+                          <TableCell />
+                          {filteredYearsData.map(({ year, data }) => (
+                            <TableCell key={year} align="right" sx={{ fontWeight: 700, py: 0.75 }}>
+                              {formatCurrency(computeBalanceTotals(data).totalActif)}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                        {[
+                          { label: 'Capitaux Propres',   field: 'capitaux_propres',   cat: 'PASSIF', catColor: 'rgba(76,175,80,0.12)', catText: '#2e7d32' },
+                          { label: 'Dettes Financières', field: 'dettes_financieres',  cat: 'PASSIF', catColor: 'rgba(76,175,80,0.12)', catText: '#2e7d32' },
+                          { label: 'Passif Circulant',   field: 'passif_circulant',   cat: 'PASSIF', catColor: 'rgba(76,175,80,0.12)', catText: '#2e7d32' },
+                          { label: 'Trésorerie Passif',  field: 'tresorerie_passif',  cat: 'PASSIF', catColor: 'rgba(76,175,80,0.12)', catText: '#2e7d32' },
+                        ].map(({ label, field, cat, catColor, catText }) => (
+                          <TableRow key={label} sx={{ '&:hover': { bgcolor: 'grey.50' } }}>
+                            <TableCell sx={{ py: 0.5 }}>{label}</TableCell>
+                            <TableCell sx={{ py: 0.5 }}>
+                              <Chip label={cat} size="small" sx={{ height: 16, fontSize: '9px', fontWeight: 700, bgcolor: catColor, color: catText }} />
+                            </TableCell>
+                            {filteredYearsData.map(({ year, data }) => (
+                              <TableCell key={year} align="right" sx={{ py: 0.5 }}>{formatCurrency(getNumericValue(data, field))}</TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                        <TableRow sx={{ bgcolor: 'rgba(76,175,80,0.08)' }}>
+                          <TableCell sx={{ fontWeight: 700, py: 0.75 }}>TOTAL PASSIF</TableCell>
+                          <TableCell />
+                          {filteredYearsData.map(({ year, data }) => (
+                            <TableCell key={year} align="right" sx={{ fontWeight: 700, py: 0.75 }}>
+                              {formatCurrency(computeBalanceTotals(data).totalPassif)}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+
+              {/* ─── Bloc 2 : Compte de Résultat ──────────────────────── */}
+              <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                <CardContent sx={{ pb: '16px !important' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                    <TrendingUpIcon sx={{ color: 'success.main', fontSize: 18 }} />
+                    <Typography variant="subtitle2" fontWeight={700}>Compte de Résultat</Typography>
+                  </Box>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: 'grey.50' }}>
+                          <TableCell sx={{ fontWeight: 700, py: 0.75 }}>Indicateur</TableCell>
+                          {filteredYearsData.map(({ year }) => (
+                            <TableCell key={year} align="right" sx={{ fontWeight: 700, py: 0.75 }}>{year}</TableCell>
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {[
+                          { label: "Chiffre d'Affaires",   field: 'chiffre_affaires' },
+                          { label: 'Valeur Ajoutée',        field: 'valeur_ajoutee' },
+                          { label: 'EBE',                   field: 'ebe' },
+                          { label: 'Résultat Exploitation', field: 'resultat_exploitation' },
+                          { label: 'Résultat Net',          field: 'resultat_net' },
+                        ].map(({ label, field }) => (
+                          <TableRow key={label} sx={{ '&:hover': { bgcolor: 'grey.50' } }}>
+                            <TableCell sx={{ py: 0.5 }}>{label}</TableCell>
+                            {filteredYearsData.map(({ year, data }, i) => {
+                              const val = getNumericValue(data, field);
+                              const prevData = i > 0 ? filteredYearsData[i - 1].data : null;
+                              const prevVal = prevData ? getNumericValue(prevData, field) : null;
+                              const trend = prevVal !== null && prevVal !== 0
+                                ? val > prevVal ? 'up' : val < prevVal ? 'down' : null
+                                : null;
+                              return (
+                                <TableCell key={year} align="right" sx={{ py: 0.5 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.4 }}>
+                                    <span>{formatCurrency(val)}</span>
+                                    {trend === 'up' && <TrendingUpIcon sx={{ fontSize: 13, color: 'success.main' }} />}
+                                    {trend === 'down' && <TrendingDownIcon sx={{ fontSize: 13, color: 'error.main' }} />}
+                                  </Box>
+                                </TableCell>
+                              );
+                            })}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+
+              {/* ─── Bloc 3 : Ratios clés ─────────────────────────────── */}
+              <Box>
+                <Typography variant="overline" sx={{ color: 'text.secondary', fontWeight: 600, letterSpacing: 1, display: 'block', mb: 1 }}>
+                  Ratios Clés (dernière année)
+                </Typography>
+                <Grid container spacing={1.5}>
+                  {(() => {
+                    const r = calculateRatios(latestYearData);
+                    const cards = [
+                      {
+                        label: 'Liquidité Générale', value: r?.currentRatio ?? 'N/A', unit: 'x',
+                        norm: '≥ 1.5', ok: parseFloat(r?.currentRatio || '0') >= 1.5,
+                        icon: <WaterDropIcon sx={{ fontSize: 16 }} />, color: '#1976d2',
+                      },
+                      {
+                        label: 'Marge Nette', value: r?.netMargin ?? 'N/A', unit: '%',
+                        norm: '≥ 10 %', ok: parseFloat(r?.netMargin || '0') >= 10,
+                        icon: <TrendingUpIcon sx={{ fontSize: 16 }} />, color: '#388e3c',
+                      },
+                      {
+                        label: 'Dette / Capitaux', value: r?.debtToEquity ?? 'N/A', unit: 'x',
+                        norm: '≤ 1.0', ok: parseFloat(r?.debtToEquity || '99') <= 1,
+                        icon: <BalanceIcon sx={{ fontSize: 16 }} />, color: '#f57c00',
+                      },
+                      {
+                        label: 'Rotation Actif', value: r?.assetTurnover ?? 'N/A', unit: 'x',
+                        norm: '≥ 1.0', ok: parseFloat(r?.assetTurnover || '0') >= 1,
+                        icon: <AutorenewIcon sx={{ fontSize: 16 }} />, color: '#7b1fa2',
+                      },
+                    ];
+                    return cards.map(card => (
+                      <Grid item xs={6} md={3} key={card.label}>
+                        <Card variant="outlined" sx={{
+                          borderRadius: 2,
+                          borderLeft: '3px solid',
+                          borderLeftColor: card.value === 'N/A' ? 'grey.400' : card.ok ? 'success.main' : 'error.main',
+                        }}>
+                          <CardContent sx={{ p: 1.5, pb: '12px !important' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: card.color, mb: 0.5 }}>
+                              {card.icon}
+                              <Typography variant="caption" fontWeight={600} sx={{ lineHeight: 1.2 }}>{card.label}</Typography>
+                            </Box>
+                            <Typography variant="h6" fontWeight={700} sx={{ lineHeight: 1.1 }}>
+                              {card.value === 'N/A' ? '—' : `${card.value}${card.unit}`}
                             </Typography>
-                            <TableContainer sx={{ overflowX: 'auto' }}>
-                              <Table size="small">
-                                <TableHead>
-                                  <TableRow>
-                                    <TableCell><strong>Poste</strong></TableCell>
-                                    {allYearsData.map(({ year }) => (
-                                      <TableCell key={year} align="right"><strong>{year}</strong></TableCell>
-                                    ))}
-                                  </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                  <TableRow sx={{ bgcolor: 'grey.100' }}>
-                                    <TableCell><strong>Actif Immobilisé</strong></TableCell>
-                                    {allYearsData.map(({ year, data: yearData }) => {
-                                      // Calculate from components if actif_immobilise is not populated
-                                      const actifImmobilise = getNumericValue(yearData, 'actif_immobilise') ||
-                                        (getNumericValue(yearData, 'immobilisations_incorporelles') +
-                                         getNumericValue(yearData, 'immobilisations_corporelles') +
-                                         getNumericValue(yearData, 'immobilisations_financieres'));
-                                      return (
-                                        <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                          {formatCurrency(actifImmobilise)}
-                                        </TableCell>
-                                      );
-                                    })}
-                                  </TableRow>
-                                  <TableRow sx={{ bgcolor: 'grey.100' }}>
-                                    <TableCell><strong>Actif Circulant</strong></TableCell>
-                                    {allYearsData.map(({ year, data: yearData }) => {
-                                      // Calculate from components: stocks + receivables (excluding cash)
-                                      const actifCirculantHAO = getNumericValue(yearData, 'stocks') +
-                                        getNumericValue(yearData, 'creances_clients') +
-                                        getNumericValue(yearData, 'autres_creances');
-                                      return (
-                                        <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                          {formatCurrency(actifCirculantHAO)}
-                                        </TableCell>
-                                      );
-                                    })}
-                                  </TableRow>
-                                  <TableRow sx={{ bgcolor: 'grey.100' }}>
-                                    <TableCell><strong>Trésorerie Actif</strong></TableCell>
-                                    {allYearsData.map(({ year, data: yearData }) => (
-                                      <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                        {formatCurrency(getNumericValue(yearData, 'tresorerie'))}
-                                      </TableCell>
-                                    ))}
-                                  </TableRow>
-                                  <TableRow sx={{ bgcolor: 'primary.main', borderTop: '2px solid', borderColor: 'grey.600' }}>
-                                    <TableCell>
-                                      <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>TOTAL ACTIF</Typography>
-                                    </TableCell>
-                                    {allYearsData.map(({ year, data: yearData }) => {
-                                      const totalActif = getNumericValue(yearData, 'total_actif') || computeBalanceTotals(yearData).totalActif;
-                                      return (
-                                        <TableCell key={year} align="right">
-                                          <Typography variant="body2" sx={{ color: 'white', fontWeight: 700 }}>
-                                            {formatCurrency(totalActif)}
-                                          </Typography>
-                                        </TableCell>
-                                      );
-                                    })}
-                                  </TableRow>
-                                </TableBody>
-                              </Table>
-                            </TableContainer>
-                          </CardContent>
-                        </Card>
-                      </Grid>
-
-                      {/* PASSIF - Grandes Masses */}
-                      <Grid item xs={12} md={6}>
-                        <Card variant="outlined">
-                          <CardContent>
-                            <Typography variant="subtitle1" fontWeight={600} gutterBottom color="secondary">
-                              PASSIF
-                            </Typography>
-                            <TableContainer sx={{ overflowX: 'auto' }}>
-                              <Table size="small">
-                                <TableHead>
-                                  <TableRow>
-                                    <TableCell><strong>Poste</strong></TableCell>
-                                    {allYearsData.map(({ year }) => (
-                                      <TableCell key={year} align="right"><strong>{year}</strong></TableCell>
-                                    ))}
-                                  </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                  <TableRow sx={{ bgcolor: 'grey.100' }}>
-                                    <TableCell><strong>Ressources Stables</strong></TableCell>
-                                    {allYearsData.map(({ year, data: yearData }) => {
-                                      // Ressources Stables = Capitaux Propres + Dettes Financières (LT)
-                                      const capitauxPropres = getNumericValue(yearData, 'capitaux_propres') ||
-                                        (getNumericValue(yearData, 'capital_social') +
-                                         getNumericValue(yearData, 'reserves') +
-                                         getNumericValue(yearData, 'resultat_exercice'));
-                                      const dettesFinancieres = getNumericValue(yearData, 'dettes_financieres') ||
-                                        (getNumericValue(yearData, 'emprunts_bancaires_lt') +
-                                         getNumericValue(yearData, 'autres_dettes_financieres'));
-                                      return (
-                                        <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                          {formatCurrency(capitauxPropres + dettesFinancieres)}
-                                        </TableCell>
-                                      );
-                                    })}
-                                  </TableRow>
-                                  <TableRow sx={{ bgcolor: 'grey.100' }}>
-                                    <TableCell><strong>Passif Circulant</strong></TableCell>
-                                    {allYearsData.map(({ year, data: yearData }) => {
-                                      // Passif Circulant HAO = Current liabilities excluding short-term bank loans
-                                      const passifCirculantHAO = getNumericValue(yearData, 'dettes_fournisseurs') +
-                                        getNumericValue(yearData, 'dettes_fiscales_sociales') +
-                                        getNumericValue(yearData, 'autres_dettes_courantes');
-                                      return (
-                                        <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                          {formatCurrency(passifCirculantHAO)}
-                                        </TableCell>
-                                      );
-                                    })}
-                                  </TableRow>
-                                  <TableRow sx={{ bgcolor: 'grey.100' }}>
-                                    <TableCell><strong>Trésorerie Passif</strong></TableCell>
-                                    {allYearsData.map(({ year, data: yearData }) => (
-                                      <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                        {formatCurrency(getNumericValue(yearData, 'emprunts_bancaires_ct'))}
-                                      </TableCell>
-                                    ))}
-                                  </TableRow>
-                                  <TableRow sx={{ bgcolor: 'secondary.main', borderTop: '2px solid', borderColor: 'grey.600' }}>
-                                    <TableCell>
-                                      <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>TOTAL PASSIF</Typography>
-                                    </TableCell>
-                                    {allYearsData.map(({ year, data: yearData }) => {
-                                      const totalPassif = getNumericValue(yearData, 'total_passif') || computeBalanceTotals(yearData).totalPassif;
-                                      return (
-                                        <TableCell key={year} align="right">
-                                          <Typography variant="body2" sx={{ color: 'white', fontWeight: 700 }}>
-                                            {formatCurrency(totalPassif)}
-                                          </Typography>
-                                        </TableCell>
-                                      );
-                                    })}
-                                  </TableRow>
-                                </TableBody>
-                              </Table>
-                            </TableContainer>
-                          </CardContent>
-                        </Card>
-                      </Grid>
-                    </Grid>
-
-                    <Alert severity="info" sx={{ mt: 2 }}>
-                      <Typography variant="body2">
-                        <strong>Grandes Masses:</strong> Vue synthétique du bilan selon le référentiel SYSCOHADA,
-                        permettant une analyse rapide de la structure financière (emplois stables vs. ressources stables,
-                        fonds de roulement, besoin en fonds de roulement).
-                      </Typography>
-                    </Alert>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              {/* Balance Sheet */}
-              <Grid item xs={12}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      📊 Bilan Détaillé
-                    </Typography>
-                    <Divider sx={{ mb: 2 }} />
-
-                    <TableContainer sx={{ overflowX: 'auto' }}>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell><strong>Poste</strong></TableCell>
-                            {allYearsData.map(({ year }) => (
-                              <TableCell key={year} align="right"><strong>{year}</strong></TableCell>
-                            ))}
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {/* ACTIF SECTION */}
-                          <TableRow sx={{ bgcolor: 'primary.main' }}>
-                            <TableCell colSpan={allYearsData.length + 1}>
-                              <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>ACTIF</Typography>
-                            </TableCell>
-                          </TableRow>
-
-                          {/* Actif Immobilisé (Non-current Assets) */}
-                          <TableRow sx={{ bgcolor: 'grey.100' }}>
-                            <TableCell><strong>Actif Immobilisé</strong></TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => {
-                              // Calculate from components if actif_immobilise is not populated
-                              const actifImmobilise = getNumericValue(yearData, 'actif_immobilise') ||
-                                (getNumericValue(yearData, 'immobilisations_incorporelles') +
-                                 getNumericValue(yearData, 'immobilisations_corporelles') +
-                                 getNumericValue(yearData, 'immobilisations_financieres'));
-                              return (
-                                <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                  {formatCurrency(actifImmobilise)}
-                                </TableCell>
-                              );
-                            })}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Immobilisations incorporelles</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'immobilisations_incorporelles'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Immobilisations corporelles</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'immobilisations_corporelles'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Immobilisations financières</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'immobilisations_financieres'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-
-                          {/* Actif Circulant HAO (Current Assets excluding cash) */}
-                          <TableRow sx={{ bgcolor: 'grey.100' }}>
-                            <TableCell><strong>Actif Circulant HAO</strong></TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => {
-                              // Actif Circulant HAO = Stocks + Créances (excluding trésorerie)
-                              const actifCirculantHAO = getNumericValue(yearData, 'stocks') +
-                                getNumericValue(yearData, 'creances_clients') +
-                                getNumericValue(yearData, 'autres_creances');
-                              return (
-                                <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                  {formatCurrency(actifCirculantHAO)}
-                                </TableCell>
-                              );
-                            })}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Stocks</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'stocks'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Créances clients</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'creances_clients'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Autres créances</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'autres_creances'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-
-                          {/* Trésorerie-Actif (Separate section in SYSCOHADA) */}
-                          <TableRow sx={{ bgcolor: 'grey.100' }}>
-                            <TableCell><strong>Trésorerie-Actif</strong></TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                {formatCurrency(getNumericValue(yearData, 'tresorerie'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Banques, chèques postaux, caisse</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'tresorerie'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-
-                          {/* Total Actif */}
-                          <TableRow sx={{ bgcolor: 'grey.200', borderTop: '2px solid', borderColor: 'grey.400' }}>
-                            <TableCell><strong>TOTAL ACTIF</strong></TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right" sx={{ fontWeight: 700, fontSize: '1rem' }}>
-                                {formatCurrency(getNumericValue(yearData, 'total_actif') || computeBalanceTotals(yearData).totalActif)}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-
-                          {/* Spacer */}
-                          <TableRow sx={{ height: 20 }}>
-                            <TableCell colSpan={allYearsData.length + 1} sx={{ borderBottom: 'none' }} />
-                          </TableRow>
-
-                          {/* PASSIF SECTION */}
-                          <TableRow sx={{ bgcolor: 'primary.main' }}>
-                            <TableCell colSpan={allYearsData.length + 1}>
-                              <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>PASSIF</Typography>
-                            </TableCell>
-                          </TableRow>
-
-                          {/* Capitaux Propres (Equity) */}
-                          <TableRow sx={{ bgcolor: 'grey.100' }}>
-                            <TableCell><strong>Capitaux Propres</strong></TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => {
-                              // Calculate from components if capitaux_propres is not populated
-                              const capitauxPropres = getNumericValue(yearData, 'capitaux_propres') ||
-                                (getNumericValue(yearData, 'capital_social') +
-                                 getNumericValue(yearData, 'reserves') +
-                                 getNumericValue(yearData, 'resultat_exercice'));
-                              return (
-                                <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                  {formatCurrency(capitauxPropres)}
-                                </TableCell>
-                              );
-                            })}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Capital social</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'capital_social'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Réserves</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'reserves'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Résultat de l'exercice</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'resultat_exercice'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-
-                          {/* Dettes Non Courantes (Non-current Liabilities) */}
-                          <TableRow sx={{ bgcolor: 'grey.100' }}>
-                            <TableCell><strong>Dettes Non Courantes</strong></TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => {
-                              // Calculate from components if dettes_financieres is not populated
-                              const dettesFinancieres = getNumericValue(yearData, 'dettes_financieres') ||
-                                (getNumericValue(yearData, 'emprunts_bancaires_lt') +
-                                 getNumericValue(yearData, 'autres_dettes_financieres'));
-                              return (
-                                <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                  {formatCurrency(dettesFinancieres)}
-                                </TableCell>
-                              );
-                            })}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Emprunts bancaires LT</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'emprunts_bancaires_lt'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Autres dettes financières</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'autres_dettes_financieres'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-
-                          {/* Passif Circulant HAO (Current Liabilities excluding bank overdrafts) */}
-                          <TableRow sx={{ bgcolor: 'grey.100' }}>
-                            <TableCell><strong>Passif Circulant HAO</strong></TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => {
-                              // Passif Circulant HAO = Dettes courantes excluding short-term bank loans
-                              const passifCirculantHAO = getNumericValue(yearData, 'dettes_fournisseurs') +
-                                getNumericValue(yearData, 'dettes_fiscales_sociales') +
-                                getNumericValue(yearData, 'autres_dettes_courantes');
-                              return (
-                                <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                  {formatCurrency(passifCirculantHAO)}
-                                </TableCell>
-                              );
-                            })}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Dettes fournisseurs</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'dettes_fournisseurs'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Dettes fiscales et sociales</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'dettes_fiscales_sociales'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Autres dettes courantes</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'autres_dettes_courantes'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-
-                          {/* Trésorerie-Passif (Separate section in SYSCOHADA) */}
-                          <TableRow sx={{ bgcolor: 'grey.100' }}>
-                            <TableCell><strong>Trésorerie-Passif</strong></TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                {formatCurrency(getNumericValue(yearData, 'emprunts_bancaires_ct'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Emprunts bancaires CT, découverts</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'emprunts_bancaires_ct'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-
-                          {/* Total Passif */}
-                          <TableRow sx={{ bgcolor: 'grey.200', borderTop: '2px solid', borderColor: 'grey.400' }}>
-                            <TableCell><strong>TOTAL PASSIF</strong></TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right" sx={{ fontWeight: 700, fontSize: '1rem' }}>
-                                {formatCurrency(getNumericValue(yearData, 'total_passif') || computeBalanceTotals(yearData).totalPassif)}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              {/* Income Statement */}
-              <Grid item xs={12}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      💰 Compte de Résultat
-                    </Typography>
-                    <Divider sx={{ mb: 2 }} />
-
-                    <TableContainer sx={{ overflowX: 'auto' }}>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell><strong>Poste</strong></TableCell>
-                            {allYearsData.map(({ year }) => (
-                              <TableCell key={year} align="right"><strong>{year}</strong></TableCell>
-                            ))}
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {/* Revenue Section */}
-                          <TableRow sx={{ bgcolor: 'success.main' }}>
-                            <TableCell colSpan={allYearsData.length + 1}>
-                              <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>PRODUITS D'EXPLOITATION</Typography>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow sx={{ bgcolor: 'grey.100' }}>
-                            <TableCell><strong>Chiffre d'Affaires</strong></TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                {formatCurrency(getNumericValue(yearData, 'chiffre_affaires'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Ventes de marchandises</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'ventes_marchandises'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Production vendue</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'production_vendue'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell sx={{ pl: 4 }}>Prestations de services</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'prestations_services'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell>Autres produits</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'autres_produits'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-
-                          {/* Spacer */}
-                          <TableRow sx={{ height: 10 }}>
-                            <TableCell colSpan={allYearsData.length + 1} sx={{ borderBottom: 'none' }} />
-                          </TableRow>
-
-                          {/* Operating Expenses */}
-                          <TableRow sx={{ bgcolor: 'error.main' }}>
-                            <TableCell colSpan={allYearsData.length + 1}>
-                              <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>CHARGES D'EXPLOITATION</Typography>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell>Achats consommés</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'achats_consommes'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell>Services extérieurs</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'services_exterieurs'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell>Impôts et taxes</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'impots_taxes'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell>Charges de personnel</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'charges_personnel'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell>Dotations aux amortissements</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'dotations_amortissements'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell>Autres charges</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'autres_charges'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-
-                          {/* Operating Result */}
-                          <TableRow sx={{ bgcolor: 'grey.200', borderTop: '2px solid', borderColor: 'grey.400' }}>
-                            <TableCell><strong>RÉSULTAT D'EXPLOITATION</strong></TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right" sx={{ fontWeight: 700, fontSize: '1rem' }}>
-                                {formatCurrency(getNumericValue(yearData, 'resultat_exploitation'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-
-                          {/* Spacer */}
-                          <TableRow sx={{ height: 10 }}>
-                            <TableCell colSpan={allYearsData.length + 1} sx={{ borderBottom: 'none' }} />
-                          </TableRow>
-
-                          {/* Financial Items */}
-                          <TableRow sx={{ bgcolor: 'warning.main' }}>
-                            <TableCell colSpan={allYearsData.length + 1}>
-                              <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>RÉSULTAT FINANCIER</Typography>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell>Produits financiers</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'produits_financiers'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell>Charges financières</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'charges_financieres'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow sx={{ bgcolor: 'grey.100' }}>
-                            <TableCell><strong>Résultat Financier</strong></TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                {formatCurrency(
-                                  getNumericValue(yearData, 'resultat_financier') ||
-                                  (getNumericValue(yearData, 'produits_financiers') - getNumericValue(yearData, 'charges_financieres'))
-                                )}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-
-                          {/* Spacer */}
-                          <TableRow sx={{ height: 10 }}>
-                            <TableCell colSpan={allYearsData.length + 1} sx={{ borderBottom: 'none' }} />
-                          </TableRow>
-
-                          {/* Pre-tax Result */}
-                          <TableRow sx={{ bgcolor: 'grey.200' }}>
-                            <TableCell><strong>RÉSULTAT AVANT IMPÔT</strong></TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                {formatCurrency(
-                                  getNumericValue(yearData, 'resultat_avant_impot') ||
-                                  (getNumericValue(yearData, 'resultat_exploitation') +
-                                   (getNumericValue(yearData, 'produits_financiers') - getNumericValue(yearData, 'charges_financieres')))
-                                )}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-
-                          {/* Tax */}
-                          <TableRow>
-                            <TableCell>Impôt sur les bénéfices</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'impot_benefices'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-
-                          {/* Net Result */}
-                          <TableRow sx={{ bgcolor: 'primary.main', borderTop: '3px solid', borderColor: 'grey.600' }}>
-                            <TableCell>
-                              <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>RÉSULTAT NET</Typography>
-                            </TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                <Typography variant="body2" sx={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>
-                                  {formatCurrency(getNumericValue(yearData, 'resultat_net'))}
-                                </Typography>
-                              </TableCell>
-                            ))}
-                          </TableRow>
-
-                          {/* Spacer */}
-                          <TableRow sx={{ height: 10 }}>
-                            <TableCell colSpan={allYearsData.length + 1} sx={{ borderBottom: 'none' }} />
-                          </TableRow>
-
-                          {/* Additional Metrics */}
-                          <TableRow sx={{ bgcolor: 'info.light' }}>
-                            <TableCell colSpan={allYearsData.length + 1}>
-                              <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>INDICATEURS COMPLÉMENTAIRES</Typography>
-                            </TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell>EBITDA</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right" sx={{ fontWeight: 600 }}>
-                                {formatCurrency(
-                                  getNumericValue(yearData, 'ebitda') ||
-                                  (getNumericValue(yearData, 'resultat_exploitation') + getNumericValue(yearData, 'dotations_amortissements'))
-                                )}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell>Valeur ajoutée</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'valeur_ajoutee'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                          <TableRow>
-                            <TableCell>Excédent brut d'exploitation (EBE)</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => (
-                              <TableCell key={year} align="right">
-                                {formatCurrency(getNumericValue(yearData, 'excedent_brut_exploitation'))}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              Aucune donnée financière disponible
-            </Typography>
-          )}
-        </TabPanel>
-
-        {/* Tab 3: Ratios Summary */}
-        <TabPanel value={activeTab} index={3}>
-          <Typography variant="h6" gutterBottom>
-            Évolution des Ratios Financiers
-          </Typography>
-
-          {allYearsData.length > 0 ? (
-            <Grid container spacing={3}>
-              {/* Liquidity Ratios */}
-              <Grid item xs={12}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Avatar sx={{ bgcolor: 'info.main', width: 32, height: 32 }}>💧</Avatar>
-                      Ratios de Liquidité
-                    </Typography>
-                    <Divider sx={{ mb: 2 }} />
-                    <TableContainer sx={{ overflowX: 'auto' }}>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell><strong>Ratio</strong></TableCell>
-                            {allYearsData.map(({ year }) => (
-                              <TableCell key={year} align="right"><strong>{year}</strong></TableCell>
-                            ))}
-                            <TableCell align="right"><strong>Norme</strong></TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          <TableRow>
-                            <TableCell>Liquidité Générale</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => {
-                              const ratios = calculateRatios(yearData);
-                              return (
-                                <TableCell key={year} align="right">{ratios?.currentRatio || 'N/A'}</TableCell>
-                              );
-                            })}
-                            <TableCell align="right">≥ 1.5</TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              {/* Profitability Ratios */}
-              <Grid item xs={12}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Avatar sx={{ bgcolor: 'success.main', width: 32, height: 32 }}>📈</Avatar>
-                      Ratios de Rentabilité
-                    </Typography>
-                    <Divider sx={{ mb: 2 }} />
-                    <TableContainer sx={{ overflowX: 'auto' }}>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell><strong>Ratio</strong></TableCell>
-                            {allYearsData.map(({ year }) => (
-                              <TableCell key={year} align="right"><strong>{year}</strong></TableCell>
-                            ))}
-                            <TableCell align="right"><strong>Norme</strong></TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          <TableRow>
-                            <TableCell>Marge Nette</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => {
-                              const ratios = calculateRatios(yearData);
-                              return (
-                                <TableCell key={year} align="right">{ratios?.netMargin || 'N/A'}%</TableCell>
-                              );
-                            })}
-                            <TableCell align="right">≥ 5%</TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell>ROA</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => {
-                              const ratios = calculateRatios(yearData);
-                              return (
-                                <TableCell key={year} align="right">{ratios?.roa || 'N/A'}%</TableCell>
-                              );
-                            })}
-                            <TableCell align="right">≥ 8%</TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              {/* Leverage Ratios */}
-              <Grid item xs={12}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Avatar sx={{ bgcolor: 'warning.main', width: 32, height: 32 }}>⚖️</Avatar>
-                      Ratios d'Endettement
-                    </Typography>
-                    <Divider sx={{ mb: 2 }} />
-                    <TableContainer sx={{ overflowX: 'auto' }}>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell><strong>Ratio</strong></TableCell>
-                            {allYearsData.map(({ year }) => (
-                              <TableCell key={year} align="right"><strong>{year}</strong></TableCell>
-                            ))}
-                            <TableCell align="right"><strong>Norme</strong></TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          <TableRow>
-                            <TableCell>Dette / Capitaux Propres</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => {
-                              const ratios = calculateRatios(yearData);
-                              return (
-                                <TableCell key={year} align="right">{ratios?.debtToEquity || 'N/A'}</TableCell>
-                              );
-                            })}
-                            <TableCell align="right">≤ 1.0</TableCell>
-                          </TableRow>
-                          <TableRow>
-                            <TableCell>Autonomie Financière</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => {
-                              const ratios = calculateRatios(yearData);
-                              return (
-                                <TableCell key={year} align="right">{ratios?.equityRatio || 'N/A'}%</TableCell>
-                              );
-                            })}
-                            <TableCell align="right">≥ 30%</TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              {/* Efficiency Ratios */}
-              <Grid item xs={12}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Avatar sx={{ bgcolor: 'primary.main', width: 32, height: 32 }}>⚡</Avatar>
-                      Ratios d'Efficacité
-                    </Typography>
-                    <Divider sx={{ mb: 2 }} />
-                    <TableContainer sx={{ overflowX: 'auto' }}>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell><strong>Ratio</strong></TableCell>
-                            {allYearsData.map(({ year }) => (
-                              <TableCell key={year} align="right"><strong>{year}</strong></TableCell>
-                            ))}
-                            <TableCell align="right"><strong>Norme</strong></TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          <TableRow>
-                            <TableCell>Rotation des Actifs</TableCell>
-                            {allYearsData.map(({ year, data: yearData }) => {
-                              const ratios = calculateRatios(yearData);
-                              return (
-                                <TableCell key={year} align="right">{ratios?.assetTurnover || 'N/A'}</TableCell>
-                              );
-                            })}
-                            <TableCell align="right">≥ 1.0</TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              Impossible de calculer les ratios - données financières manquantes
-            </Typography>
-          )}
-        </TabPanel>
-
-        {/* Tab 4: Scoring Summary */}
-        <TabPanel value={activeTab} index={4}>
-          <Typography variant="h6" gutterBottom>
-            Résumé du Scoring de Crédit
-          </Typography>
-
-          <Grid container spacing={3}>
-            {/* Overall Score */}
-            <Grid item xs={12}>
-              <Card sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                <CardContent>
-                  <Box sx={{ textAlign: 'center', py: 2 }}>
-                    <Avatar sx={{ width: 100, height: 100, mx: 'auto', mb: 2, bgcolor: 'white', color: 'primary.main' }}>
-                      <Typography variant="h3" sx={{ fontWeight: 700 }}>
-                        {overallScore}
-                      </Typography>
-                    </Avatar>
-                    <Typography variant="h5" sx={{ color: 'white', fontWeight: 600, mb: 1 }}>
-                      Score Global
-                    </Typography>
-                    <Chip
-                      label={getRiskLevel(overallScore).label}
-                      color={getRiskLevel(overallScore).color}
-                      sx={{ fontWeight: 600 }}
-                    />
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Financial Score */}
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Box sx={{ textAlign: 'center' }}>
-                    <Avatar sx={{ width: 64, height: 64, mx: 'auto', mb: 2, bgcolor: 'primary.main' }}>
-                      <BarChartIcon sx={{ fontSize: 32 }} />
-                    </Avatar>
-                    <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, color: 'primary.main' }}>
-                      {financialScore}
-                    </Typography>
-                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                      Score Financier
-                    </Typography>
-                    <LinearProgress
-                      variant="determinate"
-                      value={financialScore}
-                      color={getProgressColor(financialScore)}
-                      sx={{ mt: 2, height: 10, borderRadius: 5 }}
-                    />
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                      Basé sur les ratios SYSCOHADA et l'analyse des tendances financières
-                    </Typography>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Analyst Score */}
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Box sx={{ textAlign: 'center' }}>
-                    <Avatar sx={{ width: 64, height: 64, mx: 'auto', mb: 2, bgcolor: 'secondary.main' }}>
-                      <StarIcon sx={{ fontSize: 32 }} />
-                    </Avatar>
-                    <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, color: 'secondary.main' }}>
-                      {analystScore}
-                    </Typography>
-                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
-                      Score Analyste
-                    </Typography>
-                    <LinearProgress
-                      variant="determinate"
-                      value={analystScore}
-                      color={getProgressColor(analystScore)}
-                      sx={{ mt: 2, height: 10, borderRadius: 5 }}
-                    />
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                      Évaluation qualitative de l'analyste crédit
-                    </Typography>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Financial Score Breakdown */}
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
-                    Détail du Score Financier
-                  </Typography>
-
-                  <Grid container spacing={2}>
-                    {/* Liquidity */}
-                    <Grid item xs={12} sm={6} md={3}>
-                      <Card variant="outlined" sx={{ bgcolor: 'info.50', borderColor: 'info.main' }}>
-                        <CardContent>
-                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                            <Avatar sx={{ bgcolor: 'info.main', width: 32, height: 32, mr: 1 }}>💧</Avatar>
-                            <Typography variant="subtitle2" fontWeight={600}>Liquidité</Typography>
-                          </Box>
-                          <Typography variant="h4" color="info.main" sx={{ fontWeight: 700, mb: 1 }}>
-                            85<Typography component="span" variant="h6" color="text.secondary">/100</Typography>
-                          </Typography>
-                          <LinearProgress
-                            variant="determinate"
-                            value={85}
-                            color="info"
-                            sx={{ height: 6, borderRadius: 3, mb: 1 }}
-                          />
-                          <Typography variant="caption" color="text.secondary">
-                            Pondération: 25%
-                          </Typography>
-                          <Divider sx={{ my: 1 }} />
-                          <Typography variant="caption" display="block">
-                            • Liquidité générale: Excellent
-                          </Typography>
-                          <Typography variant="caption" display="block">
-                            • Liquidité réduite: Excellent
-                          </Typography>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-
-                    {/* Profitability */}
-                    <Grid item xs={12} sm={6} md={3}>
-                      <Card variant="outlined" sx={{ bgcolor: 'success.50', borderColor: 'success.main' }}>
-                        <CardContent>
-                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                            <Avatar sx={{ bgcolor: 'success.main', width: 32, height: 32, mr: 1 }}>📈</Avatar>
-                            <Typography variant="subtitle2" fontWeight={600}>Rentabilité</Typography>
-                          </Box>
-                          <Typography variant="h4" color="success.main" sx={{ fontWeight: 700, mb: 1 }}>
-                            70<Typography component="span" variant="h6" color="text.secondary">/100</Typography>
-                          </Typography>
-                          <LinearProgress
-                            variant="determinate"
-                            value={70}
-                            color="success"
-                            sx={{ height: 6, borderRadius: 3, mb: 1 }}
-                          />
-                          <Typography variant="caption" color="text.secondary">
-                            Pondération: 30%
-                          </Typography>
-                          <Divider sx={{ my: 1 }} />
-                          <Typography variant="caption" display="block">
-                            • Marge nette: Bon
-                          </Typography>
-                          <Typography variant="caption" display="block">
-                            • ROA: Bon
-                          </Typography>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-
-                    {/* Leverage */}
-                    <Grid item xs={12} sm={6} md={3}>
-                      <Card variant="outlined" sx={{ bgcolor: 'warning.50', borderColor: 'warning.main' }}>
-                        <CardContent>
-                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                            <Avatar sx={{ bgcolor: 'warning.main', width: 32, height: 32, mr: 1 }}>⚖️</Avatar>
-                            <Typography variant="subtitle2" fontWeight={600}>Endettement</Typography>
-                          </Box>
-                          <Typography variant="h4" color="warning.main" sx={{ fontWeight: 700, mb: 1 }}>
-                            90<Typography component="span" variant="h6" color="text.secondary">/100</Typography>
-                          </Typography>
-                          <LinearProgress
-                            variant="determinate"
-                            value={90}
-                            color="warning"
-                            sx={{ height: 6, borderRadius: 3, mb: 1 }}
-                          />
-                          <Typography variant="caption" color="text.secondary">
-                            Pondération: 25%
-                          </Typography>
-                          <Divider sx={{ my: 1 }} />
-                          <Typography variant="caption" display="block">
-                            • Dette/Capitaux propres: Excellent
-                          </Typography>
-                          <Typography variant="caption" display="block">
-                            • Autonomie financière: Excellent
-                          </Typography>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-
-                    {/* Efficiency */}
-                    <Grid item xs={12} sm={6} md={3}>
-                      <Card variant="outlined" sx={{ bgcolor: 'primary.50', borderColor: 'primary.main' }}>
-                        <CardContent>
-                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                            <Avatar sx={{ bgcolor: 'primary.main', width: 32, height: 32, mr: 1 }}>⚡</Avatar>
-                            <Typography variant="subtitle2" fontWeight={600}>Efficacité</Typography>
-                          </Box>
-                          <Typography variant="h4" color="primary.main" sx={{ fontWeight: 700, mb: 1 }}>
-                            85<Typography component="span" variant="h6" color="text.secondary">/100</Typography>
-                          </Typography>
-                          <LinearProgress
-                            variant="determinate"
-                            value={85}
-                            color="primary"
-                            sx={{ height: 6, borderRadius: 3, mb: 1 }}
-                          />
-                          <Typography variant="caption" color="text.secondary">
-                            Pondération: 20%
-                          </Typography>
-                          <Divider sx={{ my: 1 }} />
-                          <Typography variant="caption" display="block">
-                            • Rotation des actifs: Bon
-                          </Typography>
-                          <Typography variant="caption" display="block">
-                            • Utilisation des ressources: Bon
-                          </Typography>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                  </Grid>
-
-                  {/* Score Calculation Summary */}
-                  <Card variant="outlined" sx={{ mt: 3, bgcolor: 'grey.50' }}>
-                    <CardContent>
-                      <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                        Calcul du Score Financier
-                      </Typography>
-                      <TableContainer sx={{ overflowX: 'auto' }}>
-                        <Table size="small">
-                          <TableHead>
-                            <TableRow>
-                              <TableCell><strong>Catégorie</strong></TableCell>
-                              <TableCell align="center"><strong>Score</strong></TableCell>
-                              <TableCell align="center"><strong>Pondération</strong></TableCell>
-                              <TableCell align="right"><strong>Contribution</strong></TableCell>
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            <TableRow>
-                              <TableCell>Liquidité</TableCell>
-                              <TableCell align="center">85/100</TableCell>
-                              <TableCell align="center">25%</TableCell>
-                              <TableCell align="right">{(85 * 0.25).toFixed(1)} pts</TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell>Rentabilité</TableCell>
-                              <TableCell align="center">70/100</TableCell>
-                              <TableCell align="center">30%</TableCell>
-                              <TableCell align="right">{(70 * 0.30).toFixed(1)} pts</TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell>Endettement</TableCell>
-                              <TableCell align="center">90/100</TableCell>
-                              <TableCell align="center">25%</TableCell>
-                              <TableCell align="right">{(90 * 0.25).toFixed(1)} pts</TableCell>
-                            </TableRow>
-                            <TableRow>
-                              <TableCell>Efficacité</TableCell>
-                              <TableCell align="center">85/100</TableCell>
-                              <TableCell align="center">20%</TableCell>
-                              <TableCell align="right">{(85 * 0.20).toFixed(1)} pts</TableCell>
-                            </TableRow>
-                            <TableRow sx={{ bgcolor: 'primary.main' }}>
-                              <TableCell colSpan={3}>
-                                <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>
-                                  SCORE FINANCIER TOTAL
-                                </Typography>
-                              </TableCell>
-                              <TableCell align="right">
-                                <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 700 }}>
-                                  {financialScore}/100
-                                </Typography>
-                              </TableCell>
-                            </TableRow>
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
-                      <Alert severity="info" sx={{ mt: 2 }}>
-                        <Typography variant="body2">
-                          <strong>Note:</strong> Le score inclut un ajustement basé sur l'analyse des tendances financières multi-années.
-                          Les ratios sont évalués selon les normes SYSCOHADA et les benchmarks du secteur UEMOA.
-                        </Typography>
-                      </Alert>
-                    </CardContent>
-                  </Card>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* Analysis & Recommendations */}
-            {(preliminaryAnalysis?.overallAnalysis || preliminaryAnalysis?.recommendations) && (
-              <Grid item xs={12}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      Analyse et Recommandations
-                    </Typography>
-                    <Divider sx={{ mb: 2 }} />
-
-                    {preliminaryAnalysis.overallAnalysis && (
-                      <Box sx={{ mb: 3 }}>
-                        <Typography variant="subtitle2" color="primary" gutterBottom>
-                          Analyse Globale
-                        </Typography>
-                        <Paper
-                          sx={{
-                            p: 2,
-                            bgcolor: 'grey.50',
-                            '& p': { margin: '0 0 0.5em 0' },
-                            '& p:last-child': { marginBottom: 0 },
-                            '& ul, & ol': { marginTop: 0, marginBottom: '0.5em' },
-                            '& li': { marginBottom: '0.25em' }
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              fontSize: '0.875rem',
-                              lineHeight: 1.43,
-                              color: 'text.primary'
-                            }}
-                            dangerouslySetInnerHTML={{ __html: preliminaryAnalysis.overallAnalysis || '' }}
-                          />
-                        </Paper>
-                      </Box>
-                    )}
-
-                    {preliminaryAnalysis.recommendations && (
-                      <Box>
-                        <Typography variant="subtitle2" color="primary" gutterBottom>
-                          Recommandations
-                        </Typography>
-                        <Paper
-                          sx={{
-                            p: 2,
-                            bgcolor: 'grey.50',
-                            '& p': { margin: '0 0 0.5em 0' },
-                            '& p:last-child': { marginBottom: 0 },
-                            '& ul, & ol': { marginTop: 0, marginBottom: '0.5em' },
-                            '& li': { marginBottom: '0.25em' }
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              fontSize: '0.875rem',
-                              lineHeight: 1.43,
-                              color: 'text.primary'
-                            }}
-                            dangerouslySetInnerHTML={{ __html: preliminaryAnalysis.recommendations || '' }}
-                          />
-                        </Paper>
-                      </Box>
-                    )}
-                  </CardContent>
-                </Card>
-              </Grid>
-            )}
-
-            {/* Comments from Workflow Steps */}
-            {workflow?.steps && workflow.steps.length > 0 && (
-              <Grid item xs={12}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      Commentaires
-                    </Typography>
-                    <Divider sx={{ mb: 2 }} />
-
-                    {workflow.steps
-                      .filter(step => step.comments && step.comments.trim() !== '')
-                      .map((step, index) => {
-                        const stepName = step.stepName === 'application_created' ? 'Application créée' :
-                                       step.stepName === 'credit_analysis' ? 'Analyse crédit' :
-                                       step.stepName;
-
-                        return (
-                          <Box key={index} sx={{ mb: 2 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                              <Chip
-                                label={stepName}
-                                size="small"
-                                color="primary"
-                                variant="outlined"
-                              />
-                              {step.completedAt && (
-                                <Typography variant="caption" color="text.secondary">
-                                  {new Date(step.completedAt).toLocaleDateString('fr-FR', {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                    year: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })}
-                                </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>
+                              <Typography variant="caption" color="text.secondary">{card.norm}</Typography>
+                              {card.value !== 'N/A' && (
+                                <Chip
+                                  label={card.ok ? 'OK' : 'Attention'}
+                                  size="small"
+                                  color={card.ok ? 'success' : 'warning'}
+                                  sx={{ height: 16, fontSize: '9px', fontWeight: 700 }}
+                                />
                               )}
                             </Box>
-                            <Paper
-                              sx={{
-                                p: 2,
-                                bgcolor: 'grey.50',
-                                border: '1px solid',
-                                borderColor: 'grey.200',
-                                '& p': { margin: '0 0 0.5em 0' },
-                                '& p:last-child': { marginBottom: 0 },
-                                '& ul, & ol': { marginTop: 0, marginBottom: '0.5em' },
-                                '& li': { marginBottom: '0.25em' }
-                              }}
-                            >
-                              <Box
-                                sx={{
-                                  fontSize: '0.875rem',
-                                  lineHeight: 1.43,
-                                  color: 'text.primary'
-                                }}
-                                dangerouslySetInnerHTML={{ __html: step.comments || '' }}
-                              />
-                            </Paper>
-                          </Box>
-                        );
-                      })}
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    ));
+                  })()}
+                </Grid>
+              </Box>
 
-                    {workflow.steps.filter(step => step.comments && step.comments.trim() !== '').length === 0 && (
-                      <Typography variant="body2" color="text.secondary">
-                        Aucun commentaire disponible
-                      </Typography>
-                    )}
+              {/* ─── Bloc 4 : Scoring ─────────────────────────────────── */}
+              {overallScore > 0 && (
+                <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                  <CardContent sx={{ pb: '16px !important' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <Box sx={{ textAlign: 'center', flexShrink: 0 }}>
+                        <Typography
+                          variant="h2"
+                          fontWeight={800}
+                          sx={{
+                            lineHeight: 1,
+                            color: getProgressColor(overallScore) === 'success' ? '#2e7d32' :
+                                   getProgressColor(overallScore) === 'warning' ? '#e65100' : '#c62828',
+                          }}
+                        >
+                          {overallScore}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">/100</Typography>
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                          <Typography variant="subtitle2" fontWeight={700}>Score Global</Typography>
+                          <Chip
+                            label={getRiskLevel(overallScore).label}
+                            color={getRiskLevel(overallScore).color}
+                            size="small"
+                            sx={{ fontWeight: 600 }}
+                          />
+                        </Box>
+                        <LinearProgress
+                          variant="determinate"
+                          value={overallScore}
+                          color={getProgressColor(overallScore)}
+                          sx={{ height: 10, borderRadius: 5, bgcolor: 'grey.200', mb: 0.75 }}
+                        />
+                        <Typography variant="caption" color="text.secondary">
+                          Financier : {financialScore} · Analyste : {analystScore}
+                        </Typography>
+                      </Box>
+                    </Box>
                   </CardContent>
                 </Card>
-              </Grid>
-            )}
-          </Grid>
+              )}
+
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+              Aucune donnée financière disponible pour ce dossier.
+            </Typography>
+          )}
         </TabPanel>
+
 
         {/* Tab 5: Documents */}
         <TabPanel value={activeTab} index={5}>
