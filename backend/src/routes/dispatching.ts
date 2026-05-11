@@ -3,7 +3,8 @@ import { PolicyStatus } from '@prisma/client';
 import { prisma } from '../server';
 import { createInAppNotification } from '../services/notificationService';
 import { resolveDelegation } from '../services/delegationService';
-import { createWorkflowStepsForApplication } from '../services/workflowService';
+import { createWorkflowStepsForApplication, finalizeStepDuration } from '../services/workflowService';
+import { triggerNotification } from '../services/notificationService';
 
 const router = Router();
 
@@ -485,6 +486,32 @@ router.post('/assign', async (req: Request, res: Response) => {
         where: { id: applicationId },
         data: { status: 'UNDER_REVIEW' }
       });
+    }
+
+    // Compléter l'étape DISPATCH du dispatcher (uniquement sur l'affectation initiale)
+    // Cela retire le dossier de la liste pending du dispatcher et empêche un re-dispatch.
+    if (!isReassign) {
+      const dispatchStep = await prisma.workflowStep.findFirst({
+        where: {
+          applicationId,
+          completedAt: null,
+          policyStep: { stepType: 'DISPATCH' },
+        },
+      });
+      if (dispatchStep) {
+        const dur = await finalizeStepDuration(dispatchStep.id);
+        await prisma.workflowStep.update({
+          where: { id: dispatchStep.id },
+          data: {
+            status: 'APPROVED' as any,
+            completedAt: new Date(),
+            assigneeId: supervisorId,
+            durationMinutes: dur ?? undefined,
+            comments: `Dispatch complété par ${supervisorName} le ${dateStr} — affecté à ${agent.name}`,
+          },
+        });
+        triggerNotification('STEP_ASSIGNED', applicationId);
+      }
     }
 
     const clientName = (application as any).client?.companyName ?? 'Client';
