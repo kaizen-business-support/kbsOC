@@ -218,8 +218,59 @@ export const WorkflowPage: React.FC<WorkflowPageProps> = ({ onNavigate }) => {
 
   // ── Ouvrir détails ──────────────────────────────────────────────────────────
   const openDetails = (app: any) => {
+    // Chercher d'abord dans les workflows chargés (données enrichies)
     const wf = workflows.find(w => w.applicationId === app.id);
-    if (wf) { setSelectedWorkflow(wf); setDialogOpen(true); }
+    if (wf) {
+      setSelectedWorkflow(wf);
+      setDialogOpen(true);
+      return;
+    }
+    // Fallback : certains dossiers sont filtrés par rôle dans /workflows mais
+    // visibles dans /applications — construire WorkflowTimestamps depuis app
+    const statusMap: Record<string, WorkflowTimestamps['status']> = {
+      approved: 'approved', APPROVED: 'approved',
+      disbursed: 'approved', DISBURSED: 'approved',
+      rejected: 'rejected', REJECTED: 'rejected',
+    };
+    const fallback: WorkflowTimestamps = {
+      applicationId:   app.id,
+      clientId:        app.clientId || '',
+      clientName:      app.clientName || '',
+      applicationNumber: app.applicationNumber || app.id?.slice(0, 8).toUpperCase(),
+      requestedAmount: app.amount || 0,
+      currency:        app.currency || 'XOF',
+      totalStartedAt:  app.createdAt,
+      totalCompletedAt: statusMap[app.status] ? app.updatedAt : undefined,
+      currentStepId:   (app.workflowSteps || []).find((s: any) => !s.completedAt)?.stepName || 'final_decision',
+      finalDecision:   app.status === 'approved' || app.status === 'APPROVED' ? 'approved'
+                     : app.status === 'rejected' || app.status === 'REJECTED' ? 'rejected'
+                     : undefined,
+      steps: (app.workflowSteps || []).map((s: any) => ({
+        stepId:    s.stepName,
+        stepName:  s.stepName,
+        startedAt: s.createdAt,
+        completedAt: s.completedAt,
+        duration:  s.completedAt
+          ? new Date(s.completedAt).getTime() - new Date(s.createdAt).getTime()
+          : undefined,
+        userId:    s.assigneeId,
+        userName:  s.assignee?.name,
+        userRole:  s.assignee?.role || s.role,
+        branch:    '',
+        decision:  s.status === 'APPROVED' ? 'approved'
+                 : s.status === 'REJECTED' ? 'rejected'
+                 : s.status === 'PENDING'  ? 'pending'
+                 : 'on_hold',
+        comments:  s.comments,
+        allowedActions: s.policyStep?.allowedActions ?? [],
+      })),
+      createdBy:     app.createdBy || '',
+      createdByName: app.accountManager || '',
+      branch:        '',
+      status:        statusMap[app.status] ?? 'in_progress',
+    };
+    setSelectedWorkflow(fallback);
+    setDialogOpen(true);
   };
 
   // ── Table réutilisable ──────────────────────────────────────────────────────
