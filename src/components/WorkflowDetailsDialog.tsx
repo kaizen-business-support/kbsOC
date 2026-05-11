@@ -3,7 +3,6 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
   Button,
   Box,
   Typography,
@@ -24,7 +23,6 @@ import {
   Avatar,
   LinearProgress,
   Alert,
-  TextField,
   CircularProgress,
   IconButton,
   Tooltip
@@ -33,10 +31,8 @@ import {
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
   AccountBalance as AccountBalanceIcon,
-  CheckCircle as ApproveIcon,
   CheckCircleOutline as StepDoneIcon,
   Schedule as ScheduleIcon,
-  Cancel as RejectIcon,
   FolderOpen as FolderIcon,
   Download as DownloadIcon,
   Visibility as VisibilityIcon,
@@ -53,9 +49,7 @@ import {
   Autorenew as AutorenewIcon,
 } from '@mui/icons-material';
 import { WorkflowTimestamps } from '../types';
-import { useUser } from '../contexts/UserContext';
 import { ApiService } from '../services/api';
-import { OtpVerificationDialog } from './OtpVerificationDialog';
 
 interface WorkflowDetailsDialogProps {
   open: boolean;
@@ -92,17 +86,6 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   onApprovalSubmitted
 }) => {
   const [activeTab, setActiveTab] = useState(0);
-  const [comments, setComments] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
-  const { state: userState } = useUser();
-
-  // OTP dialog state
-  const [otpDialog, setOtpDialog] = useState<{
-    open: boolean;
-    pendingDecision: 'APPROVED' | 'REJECTED' | null;
-  }>({ open: false, pendingDecision: null });
 
   // Documents tab state
   const [documents, setDocuments] = useState<any[]>([]);
@@ -233,9 +216,6 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
     if (open) {
       setActiveTab(0);
       setDocuments([]);
-      setComments('');
-      setSubmitError(null);
-      setSubmitSuccess(null);
       setSelectedYears([]);
     }
   }, [open, workflow?.applicationId]);
@@ -247,68 +227,6 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   }, [activeTab, workflow?.applicationId, fetchDocuments]);
 
   if (!workflow) return null;
-
-  // Check if current user can approve this workflow
-  const canApprove = () => {
-    if (!userState.currentUser || !workflow) return false;
-
-    const currentStep = workflow.steps?.find(step => !step.completedAt);
-    if (!currentStep) return false;
-    if (workflow.finalDecision) return false;
-
-    const userRole = userState.currentUser.role?.toLowerCase();
-    const stepIdStr = String(currentStep.stepId);
-
-    if (userRole === 'branch_manager' && stepIdStr === 'branch_manager_review') return true;
-    if (userRole === 'credit_committee' && stepIdStr === 'credit_committee_review') return true;
-    if (userRole === 'management' && stepIdStr === 'management_review') return true;
-    if (userRole === 'admin') return true;
-
-    return false;
-  };
-
-  const isActionAllowed = (action: string): boolean => {
-    const currentStep = workflow?.steps?.find(step => !step.completedAt);
-    if (!currentStep?.allowedActions || currentStep.allowedActions.length === 0) return true;
-    return currentStep.allowedActions.includes(action);
-  };
-
-  const handleApproval = async (decision: 'APPROVED' | 'REJECTED') => {
-    if (!userState.currentUser || !workflow) return;
-
-    setSubmitting(true);
-    setSubmitError(null);
-    setSubmitSuccess(null);
-
-    try {
-      const data = await ApiService.approveWorkflow(workflow.applicationId, {
-        userId: userState.currentUser.id,
-        decision,
-        comments: comments.trim() || undefined,
-      });
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to submit decision');
-      }
-
-      setSubmitSuccess(data.message || 'Décision soumise avec succès');
-      setComments('');
-
-      if (onApprovalSubmitted) {
-        onApprovalSubmitted();
-      }
-
-      setTimeout(() => {
-        onClose();
-      }, 2000);
-
-    } catch (error: any) {
-      console.error('Error submitting approval:', error);
-      setSubmitError(error.message || 'Erreur lors de la soumission');
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
@@ -1289,103 +1207,6 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* ── Barre d'action Apple-style ─────────────────────────────────── */}
-      <DialogActions
-        sx={{
-          px: 2.5, py: 1.5,
-          borderTop: '1px solid rgba(0,0,0,0.07)',
-          bgcolor: '#fafafa',
-          gap: 1,
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          minHeight: 56,
-        }}
-      >
-        {/* Feedback compact */}
-        {submitSuccess && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flex: 1 }}>
-            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'success.main', flexShrink: 0 }} />
-            <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 600, fontSize: '12px' }}>
-              {submitSuccess}
-            </Typography>
-          </Box>
-        )}
-        {submitError && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flex: 1 }}>
-            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'error.main', flexShrink: 0 }} />
-            <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 600, fontSize: '12px' }}>
-              {submitError}
-            </Typography>
-          </Box>
-        )}
-
-        {/* Zone d'approbation compacte */}
-        {canApprove() && !submitSuccess && (
-          <>
-            {isActionAllowed('reject') && (
-            <Button
-              variant="outlined"
-              color="error"
-              size="small"
-              startIcon={submitting ? <CircularProgress size={13} /> : <RejectIcon sx={{ fontSize: 14 }} />}
-              onClick={() => setOtpDialog({ open: true, pendingDecision: 'REJECTED' })}
-              disabled={submitting}
-              sx={{
-                borderRadius: '10px', px: 2, fontSize: '13px', fontWeight: 600,
-                textTransform: 'none', whiteSpace: 'nowrap',
-              }}
-            >
-              Rejeter
-            </Button>
-            )}
-            {isActionAllowed('approve') && (
-            <Button
-              variant="contained"
-              color="success"
-              size="small"
-              startIcon={submitting ? <CircularProgress size={13} /> : <ApproveIcon sx={{ fontSize: 14 }} />}
-              onClick={() => setOtpDialog({ open: true, pendingDecision: 'APPROVED' })}
-              disabled={submitting}
-              sx={{
-                borderRadius: '10px', px: 2, fontSize: '13px', fontWeight: 600,
-                textTransform: 'none', whiteSpace: 'nowrap',
-                boxShadow: 'none', '&:hover': { boxShadow: 'none' },
-              }}
-            >
-              Approuver
-            </Button>
-            )}
-          </>
-        )}
-
-        {/* Fermer toujours visible à droite */}
-        {!canApprove() && !submitSuccess && !submitError && <Box sx={{ flex: 1 }} />}
-        <Button
-          onClick={onClose}
-          disabled={submitting}
-          size="small"
-          sx={{
-            borderRadius: '10px', px: 2, fontSize: '13px',
-            textTransform: 'none', color: '#636366',
-            '&:hover': { bgcolor: 'rgba(0,0,0,0.05)' },
-          }}
-        >
-          Fermer
-        </Button>
-      </DialogActions>
-
-      {/* OTP Verification */}
-      <OtpVerificationDialog
-        open={otpDialog.open}
-        actionLabel={otpDialog.pendingDecision === 'APPROVED' ? 'Approuver la demande' : 'Rejeter la demande'}
-        purpose={otpDialog.pendingDecision === 'APPROVED' ? 'approve_credit' : 'reject_credit'}
-        onClose={() => setOtpDialog({ open: false, pendingDecision: null })}
-        onVerified={async () => {
-          if (otpDialog.pendingDecision) {
-            await handleApproval(otpDialog.pendingDecision);
-          }
-        }}
-      />
     </Dialog>
   );
 };
