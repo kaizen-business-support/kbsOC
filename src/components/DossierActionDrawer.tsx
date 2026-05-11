@@ -501,18 +501,6 @@ export const DossierActionDrawer: React.FC<Props> = ({
         </Box>
       )}
 
-      {/* Recommandations */}
-      {c.recommendations && (
-        <Box>
-          <Typography variant="caption" color="text.secondary" fontWeight={700}
-            sx={{ textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.4 }}>
-            Recommandations
-          </Typography>
-          <Typography variant="body2" fontSize={12} sx={{ lineHeight: 1.6, mt: 0.25, color: '#374151' }}>
-            {c.recommendations}
-          </Typography>
-        </Box>
-      )}
     </Box>
   );
 
@@ -543,16 +531,6 @@ export const DossierActionDrawer: React.FC<Props> = ({
             value={mySynthesis}
             onChange={e => setMySynthesis(e.target.value)}
             placeholder="Résumé de votre analyse du dossier, points forts et points faibles..."
-            disabled={savingComment}
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px' } }}
-          />
-          <TextField
-            label="Recommandations"
-            multiline minRows={2} maxRows={5}
-            fullWidth size="small"
-            value={myReco}
-            onChange={e => setMyReco(e.target.value)}
-            placeholder="Conditions, montant recommandé, garanties exigées, réserves..."
             disabled={savingComment}
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px' } }}
           />
@@ -710,18 +688,6 @@ export const DossierActionDrawer: React.FC<Props> = ({
                           </Box>
                         ))}
                       </Box>
-                      {app.analysisResults.preliminaryAnalysis.overallAnalysis && (
-                        <Box mb={1}>
-                          <Typography variant="caption" color="text.secondary" fontWeight={600}>Analyse</Typography>
-                          <Typography variant="body2" mt={0.25}>{app.analysisResults.preliminaryAnalysis.overallAnalysis}</Typography>
-                        </Box>
-                      )}
-                      {app.analysisResults.preliminaryAnalysis.recommendations && (
-                        <Box>
-                          <Typography variant="caption" color="text.secondary" fontWeight={600}>Recommandations</Typography>
-                          <Typography variant="body2" mt={0.25}>{app.analysisResults.preliminaryAnalysis.recommendations}</Typography>
-                        </Box>
-                      )}
                     </Paper>
                   )}
                 </Stack>
@@ -1040,18 +1006,6 @@ export const DossierActionDrawer: React.FC<Props> = ({
                             </Box>
                           ))}
                         </Box>
-                        {app.analysisResults.preliminaryAnalysis.overallAnalysis && (
-                          <Box mb={1.5}>
-                            <Typography variant="caption" color="text.secondary" fontWeight={600}>Analyse</Typography>
-                            <Typography variant="body2" mt={0.25}>{app.analysisResults.preliminaryAnalysis.overallAnalysis}</Typography>
-                          </Box>
-                        )}
-                        {app.analysisResults.preliminaryAnalysis.recommendations && (
-                          <Box>
-                            <Typography variant="caption" color="text.secondary" fontWeight={600}>Recommandations</Typography>
-                            <Typography variant="body2" mt={0.25}>{app.analysisResults.preliminaryAnalysis.recommendations}</Typography>
-                          </Box>
-                        )}
                       </AccordionDetails>
                     </Accordion>
                   )}
