@@ -1388,6 +1388,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
         item={dossierItem}
         open={dossierDrawerOpen}
         readOnly
+        zIndex={1300}
         onClose={() => setDossierDrawerOpen(false)}
         onSuccess={() => setDossierDrawerOpen(false)}
       />

@@ -158,6 +158,7 @@ interface Props {
   onClose: () => void;
   onSuccess: (itemId: string, decision?: string, comment?: string) => void;
   readOnly?: boolean;
+  zIndex?: number;
 }
 
 type OtpAction = 'approve' | 'reject' | 'save_analysis';
@@ -174,7 +175,7 @@ const ALL_ACTIONS: ActionKey[] = ['approve', 'reject', 'request_info', 'transfer
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const DossierActionDrawer: React.FC<Props> = ({
-  item, open, onClose, onSuccess, readOnly = false,
+  item, open, onClose, onSuccess, readOnly = false, zIndex,
 }) => {
   const { state: userState } = useUser();
   const navigate = useNavigate();
@@ -592,6 +593,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
         anchor="right"
         open={open}
         onClose={onClose}
+        sx={zIndex ? { zIndex } : undefined}
         PaperProps={{
           sx: {
             width: { xs: '100vw', sm: 860 },
