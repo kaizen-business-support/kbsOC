@@ -704,11 +704,16 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
     const nextStep = await getNextWorkflowStep(applicationId, currentStep.stepName);
 
     if (nextStep) {
-      // Si l'étape suivante existe déjà en PENDING (créée par createWorkflowStepsForApplication),
-      // ne pas la recréer — évite les doublons d'étapes.
-      const existingNext = await prisma.workflowStep.findFirst({
-        where: { applicationId, stepName: nextStep.stepName, status: 'PENDING' },
-      });
+      // Chercher si le step suivant existe déjà (peu importe son statut) pour éviter tout doublon.
+      // La vérification par policyStepId est prioritaire ; à défaut par stepName.
+      // Ne jamais recréer un step déjà existant, même s'il est APPROVED/COMPLETED.
+      const existingNext = nextStep.policyStepId
+        ? await prisma.workflowStep.findFirst({
+            where: { applicationId, policyStepId: nextStep.policyStepId },
+          })
+        : await prisma.workflowStep.findFirst({
+            where: { applicationId, stepName: nextStep.stepName },
+          });
       if (!existingNext) {
         await prisma.workflowStep.create({
           data: {
