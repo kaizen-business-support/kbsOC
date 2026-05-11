@@ -28,18 +28,27 @@ import {
   Alert,
   Drawer,
   LinearProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Visibility as ViewIcon,
-  Business as BusinessIcon,
   Search as SearchIcon,
   Close as CloseIcon,
   ToggleOn as ToggleOnIcon,
   ToggleOff as ToggleOffIcon,
   OpenInNew as OpenInNewIcon,
+  CheckCircle as PaidIcon,
+  Cancel as LateIcon,
+  RadioButtonUnchecked as PendingIcon,
+  PieChart as PartialIcon,
+  VerifiedUser as SibIcon,
+  Today as TodayIcon,
 } from '@mui/icons-material';
 import { ApiService } from '../services/api';
 import { useUser } from '../contexts/UserContext';
@@ -147,11 +156,32 @@ function relationDuration(createdAt: string): string {
 interface AmortizationRow {
   n: number;
   date: string;
+  dueDate: Date;
   payment: number;
   principal: number;
   interest: number;
   remaining: number;
 }
+
+type RepaymentStatus = 'PENDING' | 'PAID' | 'LATE' | 'PARTIAL';
+
+interface RepaymentEntry {
+  id: string;
+  periodNumber: number;
+  status: RepaymentStatus;
+  paidAmount?: number | null;
+  paidAt?: string | null;
+  notes?: string | null;
+  verifiedBy?: { name: string } | null;
+  verifiedAt?: string | null;
+}
+
+const REPAYMENT_CFG: Record<RepaymentStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
+  PAID:    { label: 'Réglé',    color: '#15803d', bg: '#f0fdf4', icon: <PaidIcon    sx={{ fontSize: 16, color: '#15803d' }} /> },
+  PARTIAL: { label: 'Partiel',  color: '#b45309', bg: '#fffbeb', icon: <PartialIcon sx={{ fontSize: 16, color: '#b45309' }} /> },
+  LATE:    { label: 'Impayé',   color: '#dc2626', bg: '#fef2f2', icon: <LateIcon    sx={{ fontSize: 16, color: '#dc2626' }} /> },
+  PENDING: { label: 'En attente', color: '#6b7280', bg: '#f9fafb', icon: <PendingIcon sx={{ fontSize: 16, color: '#9ca3af' }} /> },
+};
 
 function buildAmortization(app: RawApplication): AmortizationRow[] {
   const periodsPerYear: Record<string, number> = {
@@ -180,6 +210,7 @@ function buildAmortization(app: RawApplication): AmortizationRow[] {
     rows.push({
       n: i,
       date: d.toLocaleDateString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+      dueDate: new Date(d),
       payment,
       principal,
       interest,
@@ -229,6 +260,18 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
   // DossierActionDrawer
   const [dossierDrawerOpen, setDossierDrawerOpen] = useState(false);
   const [dossierItem, setDossierItem] = useState<ApprovalItem | null>(null);
+
+  // Remboursements
+  const [repaymentEntries, setRepaymentEntries] = useState<RepaymentEntry[]>([]);
+  const [repaymentLoading, setRepaymentLoading] = useState(false);
+  const [sibDialog, setSibDialog] = useState<{
+    open: boolean;
+    row: AmortizationRow | null;
+    status: RepaymentStatus;
+    paidAmount: string;
+    notes: string;
+    saving: boolean;
+  }>({ open: false, row: null, status: 'PAID', paidAmount: '', notes: '', saving: false });
 
   const loadClients = useCallback(async () => {
     try {
@@ -378,6 +421,49 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
     };
     setDossierItem(item);
     setDossierDrawerOpen(true);
+  };
+
+  const loadRepaymentEntries = useCallback(async (appId: string) => {
+    setRepaymentLoading(true);
+    try {
+      const res = await ApiService.getRepaymentEntries(appId);
+      if (res.success && res.data) setRepaymentEntries(res.data);
+      else setRepaymentEntries([]);
+    } catch {
+      setRepaymentEntries([]);
+    } finally {
+      setRepaymentLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedAppId) loadRepaymentEntries(selectedAppId);
+    else setRepaymentEntries([]);
+  }, [selectedAppId, loadRepaymentEntries]);
+
+  const handleSibVerify = async () => {
+    if (!sibDialog.row || !amortApp) return;
+    setSibDialog((prev) => ({ ...prev, saving: true }));
+    try {
+      const row = sibDialog.row!;
+      const res = await ApiService.updateRepaymentEntry(amortApp.id, row.n, {
+        status: sibDialog.status,
+        paidAmount: sibDialog.status === 'PARTIAL' ? Number(sibDialog.paidAmount) : Math.round(row.payment),
+        notes: sibDialog.notes || undefined,
+        dueDate: row.dueDate.toISOString(),
+        expectedAmount: Math.round(row.payment),
+        expectedPrincipal: Math.round(row.principal),
+        expectedInterest: Math.round(row.interest),
+      });
+      if (res.success) {
+        await loadRepaymentEntries(amortApp.id);
+        setSibDialog({ open: false, row: null, status: 'PAID', paidAmount: '', notes: '', saving: false });
+      }
+    } catch {
+      /* silent */
+    } finally {
+      setSibDialog((prev) => ({ ...prev, saving: false }));
+    }
   };
 
   const filtered = rawClients.filter((c) => {
@@ -1038,77 +1124,179 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                         </Select>
                       </FormControl>
 
-                      {amortApp && (
-                        <>
-                          <Paper sx={{ p: 2, mb: 2, borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none' }}>
-                            <Grid container spacing={2}>
+                      {amortApp && (() => {
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+
+                        // Trouver la période courante : la première dont la date d'échéance >= aujourd'hui
+                        const currentPeriod = amortRows.find((r) => {
+                          const d = new Date(r.dueDate);
+                          d.setHours(0, 0, 0, 0);
+                          return d >= today;
+                        })?.n ?? amortRows[amortRows.length - 1]?.n;
+
+                        const entryMap = new Map<number, RepaymentEntry>(
+                          repaymentEntries.map((e) => [e.periodNumber, e])
+                        );
+
+                        // Calculer le statut effectif de chaque ligne
+                        const getEffectiveStatus = (row: AmortizationRow): RepaymentStatus => {
+                          const entry = entryMap.get(row.n);
+                          if (entry) return entry.status;
+                          const d = new Date(row.dueDate); d.setHours(0, 0, 0, 0);
+                          return d < today ? 'LATE' : 'PENDING';
+                        };
+
+                        const paidCount   = amortRows.filter((r) => entryMap.get(r.n)?.status === 'PAID').length;
+                        const lateCount   = amortRows.filter((r) => getEffectiveStatus(r) === 'LATE').length;
+                        const partialCount = amortRows.filter((r) => entryMap.get(r.n)?.status === 'PARTIAL').length;
+
+                        return (
+                          <>
+                            {/* KPIs remboursement */}
+                            <Grid container spacing={1.5} sx={{ mb: 2 }}>
                               {[
-                                { label: 'Capital', value: fmtXOF(amortApp.amount, amortApp.currency) },
-                                { label: 'Durée', value: `${amortApp.durationMonths} mois` },
-                                { label: 'Taux', value: `${amortApp.proposedRate}%` },
-                                { label: 'Fréquence', value: { MONTHLY: 'Mensuelle', QUARTERLY: 'Trimestrielle', SEMIANNUAL: 'Semestrielle', ANNUAL: 'Annuelle' }[amortApp.repaymentSchedule] || amortApp.repaymentSchedule },
-                              ].map((item) => (
-                                <Grid item xs={3} key={item.label} sx={{ textAlign: 'center' }}>
-                                  <Typography variant="caption" color="text.secondary">{item.label}</Typography>
-                                  <Typography sx={{ fontSize: '13px', fontWeight: 600, color: '#1f4e79' }}>{item.value}</Typography>
+                                { label: 'Réglées', value: paidCount, color: '#15803d', bg: '#f0fdf4' },
+                                { label: 'Impayées', value: lateCount, color: '#dc2626', bg: '#fef2f2' },
+                                { label: 'Partielles', value: partialCount, color: '#b45309', bg: '#fffbeb' },
+                                { label: 'Restantes', value: amortRows.length - paidCount - lateCount - partialCount, color: '#6b7280', bg: '#f9fafb' },
+                              ].map((k) => (
+                                <Grid item xs={3} key={k.label}>
+                                  <Paper sx={{ p: 1.5, textAlign: 'center', borderRadius: 2, border: `1px solid ${k.bg === '#f0fdf4' ? '#bbf7d0' : k.bg === '#fef2f2' ? '#fecaca' : k.bg === '#fffbeb' ? '#fde68a' : '#e5e7eb'}`, bgcolor: k.bg, boxShadow: 'none' }}>
+                                    <Typography sx={{ fontSize: '20px', fontWeight: 700, color: k.color, lineHeight: 1 }}>{k.value}</Typography>
+                                    <Typography variant="caption" sx={{ color: k.color, opacity: 0.8 }}>{k.label}</Typography>
+                                  </Paper>
                                 </Grid>
                               ))}
                             </Grid>
-                          </Paper>
 
-                          <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none' }}>
-                            <Table size="small">
-                              <TableHead>
-                                <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                                  {['N°', 'Date', 'Échéance', 'Capital', 'Intérêts', 'Capital restant'].map((col) => (
-                                    <TableCell
-                                      key={col}
-                                      sx={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#6b7280', py: 1, letterSpacing: '0.4px' }}
-                                    >
-                                      {col}
-                                    </TableCell>
-                                  ))}
-                                </TableRow>
-                              </TableHead>
-                              <TableBody>
-                                {amortRows.map((row) => (
-                                  <TableRow key={row.n} sx={{ '&:hover': { bgcolor: '#f8fafc' } }}>
-                                    <TableCell sx={{ py: 0.8, fontSize: '12px', color: '#6b7280' }}>{row.n}</TableCell>
-                                    <TableCell sx={{ py: 0.8, fontSize: '12px' }}>{row.date}</TableCell>
-                                    <TableCell sx={{ py: 0.8, fontSize: '12px', fontWeight: 600 }}>
-                                      {new Intl.NumberFormat('fr-FR').format(Math.round(row.payment))}
-                                    </TableCell>
-                                    <TableCell sx={{ py: 0.8, fontSize: '12px' }}>
-                                      {new Intl.NumberFormat('fr-FR').format(Math.round(row.principal))}
-                                    </TableCell>
-                                    <TableCell sx={{ py: 0.8, fontSize: '12px', color: '#d97706' }}>
-                                      {new Intl.NumberFormat('fr-FR').format(Math.round(row.interest))}
-                                    </TableCell>
-                                    <TableCell sx={{ py: 0.8, fontSize: '12px', color: '#6b7280' }}>
-                                      {new Intl.NumberFormat('fr-FR').format(Math.round(row.remaining))}
-                                    </TableCell>
-                                  </TableRow>
+                            {/* Résumé dossier */}
+                            <Paper sx={{ p: 2, mb: 2, borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none' }}>
+                              <Grid container spacing={2}>
+                                {[
+                                  { label: 'Capital', value: fmtXOF(amortApp.amount, amortApp.currency) },
+                                  { label: 'Durée', value: `${amortApp.durationMonths} mois` },
+                                  { label: 'Taux', value: `${amortApp.proposedRate}%` },
+                                  { label: 'Fréquence', value: ({ MONTHLY: 'Mensuelle', QUARTERLY: 'Trimestrielle', SEMIANNUAL: 'Semestrielle', ANNUAL: 'Annuelle' } as Record<string, string>)[amortApp.repaymentSchedule] || amortApp.repaymentSchedule },
+                                ].map((item) => (
+                                  <Grid item xs={3} key={item.label} sx={{ textAlign: 'center' }}>
+                                    <Typography variant="caption" color="text.secondary">{item.label}</Typography>
+                                    <Typography sx={{ fontSize: '13px', fontWeight: 600, color: '#1f4e79' }}>{item.value}</Typography>
+                                  </Grid>
                                 ))}
-                              </TableBody>
-                              <TableHead>
-                                <TableRow sx={{ bgcolor: '#f0fdf4' }}>
-                                  <TableCell colSpan={2} sx={{ py: 1, fontSize: '12px', fontWeight: 700, color: '#15803d' }}>Total</TableCell>
-                                  <TableCell sx={{ py: 1, fontSize: '12px', fontWeight: 700, color: '#15803d' }}>
-                                    {new Intl.NumberFormat('fr-FR').format(Math.round(totalPayment))}
-                                  </TableCell>
-                                  <TableCell sx={{ py: 1, fontSize: '12px', fontWeight: 700, color: '#15803d' }}>
-                                    {new Intl.NumberFormat('fr-FR').format(Math.round(totalPrincipal))}
-                                  </TableCell>
-                                  <TableCell sx={{ py: 1, fontSize: '12px', fontWeight: 700, color: '#d97706' }}>
-                                    {new Intl.NumberFormat('fr-FR').format(Math.round(totalInterest))}
-                                  </TableCell>
-                                  <TableCell />
-                                </TableRow>
-                              </TableHead>
-                            </Table>
-                          </TableContainer>
-                        </>
-                      )}
+                              </Grid>
+                            </Paper>
+
+                            {repaymentLoading ? (
+                              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={24} /></Box>
+                            ) : (
+                              <TableContainer component={Paper} sx={{ borderRadius: 2, border: '1px solid #e8ecf0', boxShadow: 'none' }}>
+                                <Table size="small">
+                                  <TableHead>
+                                    <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                                      {['N°', 'Date échéance', 'Mensualité', 'Capital', 'Intérêts', 'Capital restant', 'Statut', ''].map((col) => (
+                                        <TableCell key={col} sx={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: '#6b7280', py: 1, letterSpacing: '0.4px', whiteSpace: 'nowrap' }}>
+                                          {col}
+                                        </TableCell>
+                                      ))}
+                                    </TableRow>
+                                  </TableHead>
+                                  <TableBody>
+                                    {amortRows.map((row) => {
+                                      const entry = entryMap.get(row.n);
+                                      const effStatus = getEffectiveStatus(row);
+                                      const cfg = REPAYMENT_CFG[effStatus];
+                                      const isCurrent = row.n === currentPeriod;
+                                      const isPaid = effStatus === 'PAID';
+
+                                      const rowBg = isCurrent
+                                        ? 'rgba(29,78,220,0.06)'
+                                        : effStatus === 'PAID'    ? 'rgba(21,128,61,0.04)'
+                                        : effStatus === 'LATE'    ? 'rgba(220,38,38,0.04)'
+                                        : effStatus === 'PARTIAL' ? 'rgba(180,83,9,0.04)'
+                                        : 'transparent';
+
+                                      return (
+                                        <TableRow
+                                          key={row.n}
+                                          sx={{
+                                            bgcolor: rowBg,
+                                            borderLeft: isCurrent ? '3px solid #1d4ed8' : '3px solid transparent',
+                                            '&:hover': { bgcolor: isCurrent ? 'rgba(29,78,220,0.10)' : 'rgba(0,0,0,0.03)' },
+                                            transition: 'background 0.15s',
+                                          }}
+                                        >
+                                          <TableCell sx={{ py: 1, fontSize: '12px', color: isCurrent ? '#1d4ed8' : '#6b7280', fontWeight: isCurrent ? 700 : 400 }}>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                              {isCurrent && <TodayIcon sx={{ fontSize: 12, color: '#1d4ed8' }} />}
+                                              {row.n}
+                                            </Box>
+                                          </TableCell>
+                                          <TableCell sx={{ py: 1, fontSize: '12px', fontWeight: isCurrent ? 700 : 400, color: isCurrent ? '#1d4ed8' : 'inherit' }}>
+                                            {row.date}
+                                          </TableCell>
+                                          <TableCell sx={{ py: 1, fontSize: '12px', fontWeight: 600, textDecoration: isPaid ? 'line-through' : 'none', color: isPaid ? '#9ca3af' : 'inherit' }}>
+                                            {new Intl.NumberFormat('fr-FR').format(Math.round(row.payment))}
+                                          </TableCell>
+                                          <TableCell sx={{ py: 1, fontSize: '12px', textDecoration: isPaid ? 'line-through' : 'none', color: isPaid ? '#9ca3af' : 'inherit' }}>
+                                            {new Intl.NumberFormat('fr-FR').format(Math.round(row.principal))}
+                                          </TableCell>
+                                          <TableCell sx={{ py: 1, fontSize: '12px', color: isPaid ? '#9ca3af' : '#d97706', textDecoration: isPaid ? 'line-through' : 'none' }}>
+                                            {new Intl.NumberFormat('fr-FR').format(Math.round(row.interest))}
+                                          </TableCell>
+                                          <TableCell sx={{ py: 1, fontSize: '12px', color: '#6b7280' }}>
+                                            {new Intl.NumberFormat('fr-FR').format(Math.round(row.remaining))}
+                                          </TableCell>
+                                          <TableCell sx={{ py: 1 }}>
+                                            <Tooltip title={entry?.verifiedBy ? `Vérifié par ${entry.verifiedBy.name}${entry.notes ? ` — ${entry.notes}` : ''}` : ''}>
+                                              <Chip
+                                                icon={cfg.icon as any}
+                                                label={cfg.label}
+                                                size="small"
+                                                sx={{ fontSize: '10px', height: 22, fontWeight: 600, bgcolor: cfg.bg, color: cfg.color, border: 'none', '& .MuiChip-icon': { ml: '4px' } }}
+                                              />
+                                            </Tooltip>
+                                          </TableCell>
+                                          <TableCell sx={{ py: 1, pr: 1 }}>
+                                            <Tooltip title="Vérifier sur SIB et mettre à jour le statut">
+                                              <IconButton
+                                                size="small"
+                                                onClick={() => setSibDialog({
+                                                  open: true,
+                                                  row,
+                                                  status: effStatus === 'PAID' ? 'PAID' : 'PAID',
+                                                  paidAmount: String(Math.round(row.payment)),
+                                                  notes: entry?.notes || '',
+                                                  saving: false,
+                                                })}
+                                                sx={{
+                                                  bgcolor: '#eff6ff', color: '#1d4ed8', p: 0.5,
+                                                  '&:hover': { bgcolor: '#dbeafe' },
+                                                }}
+                                              >
+                                                <SibIcon sx={{ fontSize: 15 }} />
+                                              </IconButton>
+                                            </Tooltip>
+                                          </TableCell>
+                                        </TableRow>
+                                      );
+                                    })}
+                                  </TableBody>
+                                  <TableHead>
+                                    <TableRow sx={{ bgcolor: '#f0fdf4' }}>
+                                      <TableCell colSpan={2} sx={{ py: 1, fontSize: '12px', fontWeight: 700, color: '#15803d' }}>Total</TableCell>
+                                      <TableCell sx={{ py: 1, fontSize: '12px', fontWeight: 700, color: '#15803d' }}>{new Intl.NumberFormat('fr-FR').format(Math.round(totalPayment))}</TableCell>
+                                      <TableCell sx={{ py: 1, fontSize: '12px', fontWeight: 700, color: '#15803d' }}>{new Intl.NumberFormat('fr-FR').format(Math.round(totalPrincipal))}</TableCell>
+                                      <TableCell sx={{ py: 1, fontSize: '12px', fontWeight: 700, color: '#d97706' }}>{new Intl.NumberFormat('fr-FR').format(Math.round(totalInterest))}</TableCell>
+                                      <TableCell colSpan={3} />
+                                    </TableRow>
+                                  </TableHead>
+                                </Table>
+                              </TableContainer>
+                            )}
+                          </>
+                        );
+                      })()}
                     </>
                   )}
                 </Box>
@@ -1117,6 +1305,82 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
           )}
         </Box>
       </Drawer>
+
+      {/* Dialog vérification SIB */}
+      <Dialog open={sibDialog.open} onClose={() => !sibDialog.saving && setSibDialog((p) => ({ ...p, open: false }))} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1 }}>
+          <SibIcon sx={{ color: '#1d4ed8' }} />
+          <Box>
+            <Typography sx={{ fontWeight: 700, fontSize: '15px' }}>Vérification SIB</Typography>
+            <Typography variant="caption" color="text.secondary">
+              Période {sibDialog.row?.n} — échéance du {sibDialog.row?.date}
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2, borderRadius: 2, fontSize: '12px' }}>
+            Après vérification dans le Système d'Information Bancaire, enregistrez le statut du remboursement.
+          </Alert>
+
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+            Montant attendu
+          </Typography>
+          <Typography sx={{ fontWeight: 700, fontSize: '15px', color: '#1f4e79', mb: 2 }}>
+            {sibDialog.row ? new Intl.NumberFormat('fr-FR').format(Math.round(sibDialog.row.payment)) + ' XOF' : ''}
+          </Typography>
+
+          <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+            <InputLabel>Statut constaté</InputLabel>
+            <Select
+              label="Statut constaté"
+              value={sibDialog.status}
+              onChange={(e) => setSibDialog((p) => ({ ...p, status: e.target.value as RepaymentStatus }))}
+            >
+              <MenuItem value="PAID">Réglé intégralement</MenuItem>
+              <MenuItem value="PARTIAL">Paiement partiel</MenuItem>
+              <MenuItem value="LATE">Impayé</MenuItem>
+              <MenuItem value="PENDING">En attente (annuler la vérification)</MenuItem>
+            </Select>
+          </FormControl>
+
+          {sibDialog.status === 'PARTIAL' && (
+            <TextField
+              fullWidth
+              size="small"
+              label="Montant effectivement réglé (XOF)"
+              type="number"
+              value={sibDialog.paidAmount}
+              onChange={(e) => setSibDialog((p) => ({ ...p, paidAmount: e.target.value }))}
+              sx={{ mb: 2 }}
+            />
+          )}
+
+          <TextField
+            fullWidth
+            size="small"
+            label="Note / référence SIB (optionnel)"
+            placeholder="Ex: Virement reçu le 05/05 — réf. TRF-2026-4412"
+            value={sibDialog.notes}
+            onChange={(e) => setSibDialog((p) => ({ ...p, notes: e.target.value }))}
+            multiline
+            rows={2}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setSibDialog((p) => ({ ...p, open: false }))} disabled={sibDialog.saving}>
+            Annuler
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSibVerify}
+            disabled={sibDialog.saving || (sibDialog.status === 'PARTIAL' && !sibDialog.paidAmount)}
+            startIcon={sibDialog.saving ? <CircularProgress size={14} color="inherit" /> : <SibIcon />}
+            sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, boxShadow: 'none' }}
+          >
+            Enregistrer
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* DossierActionDrawer — ouvert depuis la fiche client, lecture seule */}
       <DossierActionDrawer

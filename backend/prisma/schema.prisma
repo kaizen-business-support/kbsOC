@@ -87,6 +87,7 @@ model User {
   createdApplications CreditApplication[] @relation("UserCreatedApplications")
   uploadedDocuments   Document[]          @relation("UserUploadedDocuments")
   assignedSteps       WorkflowStep[]      @relation("UserAssignedSteps")
+  verifiedRepayments  RepaymentEntry[]    @relation("UserVerifiedRepayments")
   announcements       Announcement[]      @relation("UserCreatedAnnouncements")
   notifications       Notification[]      @relation("UserNotifications")
   delegationsGiven    PowerDelegation[]   @relation("DelegatorRelation")
@@ -188,6 +189,7 @@ model CreditApplication {
   documents            Document[]
   workflowSteps        WorkflowStep[]
   generatedContracts   GeneratedContract[]
+  repaymentEntries     RepaymentEntry[]
 
   @@index([status])
   @@index([clientId])
@@ -703,6 +705,42 @@ enum RaciCode {
   I @map("i")   // Informed — notifié après décision
 
   @@map("raci_code")
+}
+
+// ─── Suivi des remboursements ──────────────────────────────────────────────────
+
+model RepaymentEntry {
+  id              String          @id @default(cuid())
+  applicationId   String          @map("application_id")
+  companyId       String?         @map("company_id")
+  periodNumber    Int             @map("period_number")   // n° de l'échéance (1-based)
+  dueDate         DateTime        @map("due_date")
+  expectedAmount  Decimal         @map("expected_amount") @db.Decimal(15, 2)
+  expectedPrincipal Decimal       @map("expected_principal") @db.Decimal(15, 2)
+  expectedInterest  Decimal       @map("expected_interest") @db.Decimal(15, 2)
+  status          RepaymentStatus @default(PENDING)
+  paidAmount      Decimal?        @map("paid_amount") @db.Decimal(15, 2)
+  paidAt          DateTime?       @map("paid_at")
+  verifiedById    String?         @map("verified_by_id")
+  verifiedAt      DateTime?       @map("verified_at")
+  notes           String?
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  application     CreditApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  verifiedBy      User?           @relation("UserVerifiedRepayments", fields: [verifiedById], references: [id])
+
+  @@unique([applicationId, periodNumber])
+  @@index([applicationId])
+  @@index([companyId])
+  @@map("repayment_entries")
+}
+
+enum RepaymentStatus {
+  PENDING  @map("pending")   // Non encore échu ou non encore vérifié
+  PAID     @map("paid")      // Réglé (vérifié sur SIB)
+  LATE     @map("late")      // Date dépassée et non réglé
+  PARTIAL  @map("partial")   // Paiement partiel
+  @@map("repayment_status")
 }
 
 model BackupNotifyEmail {

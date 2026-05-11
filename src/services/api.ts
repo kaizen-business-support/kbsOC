@@ -1588,6 +1588,37 @@ export class ApiService {
       return { success: false, error: error.response?.data?.error || 'Erreur modification statut' };
     }
   }
+
+  static async getRepaymentEntries(applicationId: string): Promise<ApiResponse<any[]>> {
+    try {
+      const response = await api.get(`/repayments/${applicationId}`);
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur récupération remboursements' };
+    }
+  }
+
+  static async updateRepaymentEntry(
+    applicationId: string,
+    periodNumber: number,
+    payload: {
+      status: 'PAID' | 'PARTIAL' | 'LATE' | 'PENDING';
+      paidAmount?: number;
+      paidAt?: string;
+      notes?: string;
+      dueDate: string;
+      expectedAmount: number;
+      expectedPrincipal: number;
+      expectedInterest: number;
+    }
+  ): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.patch(`/repayments/${applicationId}/${periodNumber}`, payload);
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur mise à jour remboursement' };
+    }
+  }
 }
 
 // ─── Auth: password lifecycle & 2FA admin ─────────────────────────────────────
