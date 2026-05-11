@@ -301,7 +301,7 @@ router.get('/pending-approvals', async (req: Request, res: Response) => {
           },
         },
         policyStep: {
-          select: { stepLabel: true, stepType: true, allowedActions: true },
+          select: { stepLabel: true, stepType: true, allowedActions: true, order: true },
         },
       },
       orderBy: [
@@ -314,14 +314,16 @@ router.get('/pending-approvals', async (req: Request, res: Response) => {
     const FINANCIAL_STEP_TYPES = ['APPROVAL', 'COMMITTEE'];
     const now = Date.now();
 
-    // Filtrer les étapes dont une étape précédente (order inférieur) n'est pas encore
-    // complétée : elles ne doivent pas apparaître dans la liste de travail.
-    const orderedSteps: typeof steps = [];
+    // Pour chaque étape, vérifier si une étape précédente (order inférieur) n'est pas encore
+    // complétée. Si bloquée, l'inclure quand même mais marquer isBlocked + blockingReason
+    // pour que l'UI puisse désactiver les boutons d'action proactivement.
+    type StepWithBlock = (typeof steps)[0] & { isBlocked: boolean; blockingReason?: string };
+    const stepsWithBlockInfo: StepWithBlock[] = [];
+
     for (const step of steps) {
       const policyStepOrder: number | null = (step as any).policyStep?.order ?? null;
       if (policyStepOrder === null) {
-        // Étape legacy sans politique : toujours visible
-        orderedSteps.push(step);
+        stepsWithBlockInfo.push({ ...step, isBlocked: false });
         continue;
       }
       const blocker = await prisma.workflowStep.findFirst({
@@ -331,11 +333,23 @@ router.get('/pending-approvals', async (req: Request, res: Response) => {
           id: { not: step.id },
           policyStep: { order: { lt: policyStepOrder } },
         },
+        include: { policyStep: { select: { stepLabel: true, order: true } } },
+        orderBy: { policyStep: { order: 'asc' } },
       });
-      if (!blocker) orderedSteps.push(step);
+      if (blocker) {
+        const blockerLabel = (blocker as any).policyStep?.stepLabel ?? blocker.stepName;
+        const blockerOrder = (blocker as any).policyStep?.order ?? '?';
+        stepsWithBlockInfo.push({
+          ...step,
+          isBlocked: true,
+          blockingReason: `Étape bloquée : "${blockerLabel}" (étape ${blockerOrder}) doit être complétée en premier. Le circuit doit être respecté dans l'ordre défini par la politique de crédit.`,
+        });
+      } else {
+        stepsWithBlockInfo.push({ ...step, isBlocked: false });
+      }
     }
 
-    const data = orderedSteps.map((step) => {
+    const data = stepsWithBlockInfo.map((step) => {
       const policyStep = (step as any).policyStep;
       const app = (step as any).application;
       const stepType: string = policyStep?.stepType ?? 'ANALYSIS';
@@ -357,6 +371,8 @@ router.get('/pending-approvals', async (req: Request, res: Response) => {
         daysWaiting: Math.floor((now - new Date(step.createdAt).getTime()) / 86_400_000),
         deadline: step.deadline ? step.deadline.toISOString() : null,
         isOverdue: step.isOverdue,
+        isBlocked: step.isBlocked,
+        blockingReason: (step as any).blockingReason ?? null,
       };
     });
 

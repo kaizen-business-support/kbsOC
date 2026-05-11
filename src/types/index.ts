@@ -233,6 +233,8 @@ export interface ApprovalItem {
   daysWaiting: number;
   deadline: string | null;
   isOverdue: boolean;
+  isBlocked?: boolean;
+  blockingReason?: string | null;
 }
 
 export interface WorkflowTimestamps {

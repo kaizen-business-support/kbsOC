@@ -1174,6 +1174,11 @@ export const DossierActionDrawer: React.FC<Props> = ({
             </Button>
           )}
 
+          {!readOnly && item.isBlocked && (
+            <Alert severity="info" sx={{ mb: 1.5, py: 0.5, fontSize: 13 }}>
+              {item.blockingReason ?? 'Une étape précédente doit être complétée avant que vous puissiez agir sur ce dossier.'}
+            </Alert>
+          )}
           {!readOnly && actionError && <Alert severity="error"  sx={{ mb: 1.5, py: 0.5 }}>{actionError}</Alert>}
           {!readOnly && actionOk    && <Alert severity="success" sx={{ mb: 1.5, py: 0.5 }}>{actionOk}</Alert>}
 
@@ -1242,7 +1247,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
                     variant="contained"
                     color="success"
                     startIcon={submitting ? <CircularProgress size={14} color="inherit" /> : <ApproveIcon />}
-                    disabled={submitting || !analystScore || !financialScore}
+                    disabled={submitting || !analystScore || !financialScore || !!item.isBlocked}
                     onClick={() => setOtp({ open: true, action: 'save_analysis' })}
                     sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, boxShadow: 'none' }}
                   >
@@ -1282,7 +1287,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
                           submitDecision(action);
                         }
                       }}
-                      disabled={submitting}
+                      disabled={submitting || !!item.isBlocked}
                       sx={{
                         borderRadius: '10px', px: 2, fontSize: 13,
                         fontWeight: 600, textTransform: 'none', boxShadow: 'none',

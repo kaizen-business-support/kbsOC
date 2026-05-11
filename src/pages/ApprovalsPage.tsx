@@ -17,6 +17,7 @@ import {
   SwapHoriz as TransferIcon,
   Assessment as AnalysisIcon,
   History as HistoryIcon,
+  Lock as LockIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { ApprovalItem } from '../types';
@@ -365,7 +366,10 @@ export const ApprovalsPage: React.FC = () => {
                   <TableRow
                     key={item.id}
                     sx={{
-                      bgcolor: item.isOverdue ? 'rgba(220,38,38,0.03)' : 'white',
+                      bgcolor: item.isBlocked
+                        ? 'rgba(0,0,0,0.025)'
+                        : item.isOverdue ? 'rgba(220,38,38,0.03)' : 'white',
+                      opacity: item.isBlocked ? 0.75 : 1,
                       '&:hover': { bgcolor: 'rgba(92,53,181,0.04)', cursor: 'pointer' },
                     }}
                     onClick={() => openDrawer(item)}
@@ -390,6 +394,11 @@ export const ApprovalsPage: React.FC = () => {
                         <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 140 }}>
                           {item.stepLabel}
                         </Typography>
+                        {item.isBlocked && (
+                          <Tooltip title="En attente d'une étape précédente">
+                            <LockIcon sx={{ fontSize: 14, color: 'text.disabled', flexShrink: 0 }} />
+                          </Tooltip>
+                        )}
                       </Box>
                     </TableCell>
                     <TableCell align="right">
@@ -415,7 +424,25 @@ export const ApprovalsPage: React.FC = () => {
                       <SlaChip item={item} />
                     </TableCell>
                     <TableCell align="center" onClick={e => e.stopPropagation()}>
-                      {item.stepType === 'LEGAL' ? (
+                      {item.isBlocked ? (
+                        <Tooltip title="En attente d'une étape précédente">
+                          <span>
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              startIcon={<LockIcon sx={{ fontSize: 13 }} />}
+                              onClick={() => openDrawer(item)}
+                              sx={{
+                                borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                                textTransform: 'none', boxShadow: 'none', color: 'text.disabled',
+                                borderColor: 'divider',
+                              }}
+                            >
+                              Bloqué
+                            </Button>
+                          </span>
+                        </Tooltip>
+                      ) : item.stepType === 'LEGAL' ? (
                         <Button
                           variant="contained"
                           size="small"

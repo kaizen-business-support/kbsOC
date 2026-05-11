@@ -213,7 +213,7 @@ export async function triggerNotification(
             some: { companyId, isActive: true },
           },
         },
-        select: { id: true, email: true, phone: true, name: true },
+        select: { id: true, email: true, phone: true, name: true, role: true },
       });
 
       for (const user of users) {
