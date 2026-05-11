@@ -323,7 +323,26 @@ router.get('/pending-approvals', async (req: Request, res: Response) => {
     for (const step of steps) {
       const policyStepOrder: number | null = (step as any).policyStep?.order ?? null;
       if (policyStepOrder === null) {
-        stepsWithBlockInfo.push({ ...step, isBlocked: false });
+        // Étape legacy (sans policyStepId) : ordre séquentiel par createdAt
+        const legacyBlocker = await prisma.workflowStep.findFirst({
+          where: {
+            applicationId: step.applicationId,
+            completedAt: null,
+            id: { not: step.id },
+            policyStepId: null,
+            createdAt: { lt: step.createdAt },
+          },
+          orderBy: { createdAt: 'asc' },
+        });
+        stepsWithBlockInfo.push(
+          legacyBlocker
+            ? {
+                ...step,
+                isBlocked: true,
+                blockingReason: `Étape bloquée : "${legacyBlocker.stepName}" doit être complétée en premier. Le circuit doit être respecté dans l'ordre d'instruction.`,
+              }
+            : { ...step, isBlocked: false }
+        );
         continue;
       }
       const blocker = await prisma.workflowStep.findFirst({

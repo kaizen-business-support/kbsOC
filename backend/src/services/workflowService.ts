@@ -596,8 +596,9 @@ export async function canApproveStep(
   if (!step) return { allowed: false, reason: 'Étape introuvable ou déjà traitée' };
 
   // ── 0. Vérification de l'ordre séquentiel ────────────────────────────────────
-  // Toutes les étapes de la politique ayant un ordre inférieur doivent être
-  // complétées avant qu'on puisse traiter l'étape courante.
+  // Toutes les étapes ayant un ordre inférieur doivent être complétées avant
+  // qu'on puisse traiter l'étape courante. Deux cas : politique moderne (policyStepId)
+  // et dossiers legacy (sans policyStepId, ordre déterminé par createdAt).
   if (step.policyStepId) {
     const currentPolicyStep = await prisma.creditPolicyStep.findUnique({
       where: { id: step.policyStepId },
@@ -622,6 +623,24 @@ export async function canApproveStep(
           reason: `Étape bloquée : "${blockerLabel}" (étape ${blockerOrder}) doit être complétée en premier. Le circuit doit être respecté dans l'ordre défini par la politique de crédit.`,
         };
       }
+    }
+  } else {
+    // Dossiers legacy (sans policyStepId) : ordre séquentiel par createdAt
+    const legacyBlocker = await prisma.workflowStep.findFirst({
+      where: {
+        applicationId,
+        completedAt: null,
+        id: { not: step.id },
+        policyStepId: null,
+        createdAt: { lt: step.createdAt },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (legacyBlocker) {
+      return {
+        allowed: false,
+        reason: `Étape bloquée : "${legacyBlocker.stepName}" doit être complétée en premier. Le circuit doit être respecté dans l'ordre d'instruction.`,
+      };
     }
   }
 
