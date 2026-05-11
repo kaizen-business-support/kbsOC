@@ -18,7 +18,6 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'La raison sociale est obligatoire' });
     }
 
-    // Unicité RCCM / NINEA par company
     if (rccm) {
       const existing = await prisma.client.findFirst({ where: { companyId: req.companyId, rccm } });
       if (existing) return res.status(409).json({ success: false, error: `Un client avec le RCCM ${rccm} existe déjà` });
@@ -62,24 +61,44 @@ router.get('/', async (req: Request, res: Response) => {
       where: { companyId: req.companyId },
       include: {
         creator: true,
-        applications: true
+        applications: {
+          select: {
+            id: true,
+            amount: true,
+            status: true,
+            currency: true,
+            creditTypeId: true,
+            createdAt: true,
+            repaymentSchedule: true,
+            durationMonths: true,
+            proposedRate: true,
+          },
+        },
       },
-      orderBy: {
-        createdAt: 'desc'
-      }
+      orderBy: { createdAt: 'desc' },
     });
 
-    res.json({
-      success: true,
-      clients: clients,
-      data: clients
+    const terminalStatuses = new Set(['APPROVED', 'REJECTED', 'DISBURSED', 'CANCELLED']);
+    const exposureStatuses = new Set(['APPROVED', 'DISBURSED']);
+
+    const enriched = clients.map((c) => {
+      const apps = c.applications as Array<{ id: string; amount: any; status: string; createdAt: Date }>;
+      const totalExposure = apps
+        .filter((a) => exposureStatuses.has(a.status))
+        .reduce((sum, a) => sum + Number(a.amount), 0);
+      const appCount = apps.length;
+      const activeAppCount = apps.filter((a) => !terminalStatuses.has(a.status)).length;
+      const sorted = [...apps].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      const lastAppStatus = sorted[0]?.status ?? null;
+      return { ...c, totalExposure, appCount, activeAppCount, lastAppStatus };
     });
+
+    res.json({ success: true, clients: enriched, data: enriched });
   } catch (error) {
     console.error('Error fetching clients:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erreur lors de la récupération des clients'
-    });
+    res.status(500).json({ success: false, error: 'Erreur lors de la récupération des clients' });
   }
 });
 
@@ -101,7 +120,6 @@ router.put('/:id', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'La raison sociale est obligatoire' });
     }
 
-    // RCCM/NINEA unicité (exclude self)
     if (rccm && rccm !== existing.rccm) {
       const dup = await prisma.client.findFirst({ where: { companyId: req.companyId, rccm, NOT: { id } } });
       if (dup) return res.status(409).json({ success: false, error: `Un client avec le RCCM ${rccm} existe déjà` });
@@ -137,40 +155,56 @@ router.put('/:id', async (req: Request, res: Response) => {
   }
 });
 
+// PATCH /api/clients/:id/toggle-status
+router.patch('/:id/toggle-status', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const existing = await prisma.client.findFirst({ where: { id, companyId: req.companyId } });
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Client non trouvé' });
+    }
+    const client = await prisma.client.update({
+      where: { id },
+      data: { isActive: !existing.isActive },
+      include: { creator: true },
+    });
+    res.json({ success: true, data: client, client });
+  } catch (error) {
+    console.error('Error toggling client status:', error);
+    res.status(500).json({ success: false, error: 'Erreur lors de la modification du statut' });
+  }
+});
+
 // GET /api/clients/:id - Get client by ID
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const client = await prisma.client.findUnique({
-      where: { id },
+    const client = await prisma.client.findFirst({
+      where: { id, companyId: req.companyId },
       include: {
         creator: true,
         applications: {
           include: {
-            workflowSteps: true
-          }
-        }
-      }
+            creditType: { select: { name: true } },
+            documents: { select: { id: true } },
+            workflowSteps: {
+              select: { id: true, status: true, completedAt: true },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
     });
 
     if (!client) {
-      return res.status(404).json({
-        success: false,
-        error: 'Client non trouvé'
-      });
+      return res.status(404).json({ success: false, error: 'Client non trouvé' });
     }
 
-    res.json({
-      success: true,
-      client: client,
-      data: client
-    });
+    res.json({ success: true, client, data: client });
   } catch (error) {
     console.error('Error fetching client:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erreur lors de la récupération du client'
-    });
+    res.status(500).json({ success: false, error: 'Erreur lors de la récupération du client' });
   }
 });
 

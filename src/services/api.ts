@@ -1570,6 +1570,24 @@ export class ApiService {
       return { success: false, error: e.response?.data?.error || 'Erreur révocation délégation' };
     }
   }
+
+  static async getClientById(id: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.get(`/clients/${id}`);
+      return { success: true, data: response.data.data ?? response.data.client };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur chargement client' };
+    }
+  }
+
+  static async toggleClientStatus(id: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.patch(`/clients/${id}/toggle-status`);
+      return { success: true, data: response.data.data ?? response.data.client };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur modification statut' };
+    }
+  }
 }
 
 // ─── Auth: password lifecycle & 2FA admin ─────────────────────────────────────
