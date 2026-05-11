@@ -661,6 +661,7 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
               {workflow.steps.map((step, idx) => {
                 const isCompleted = !!step.completedAt;
                 const isActive = !step.completedAt && !!step.startedAt;
+                const isFuture = !step.startedAt && !step.completedAt;
                 const isLast = idx === (workflow.steps?.length ?? 0) - 1;
 
                 const formatStepDate = (ts: string) =>
@@ -677,56 +678,116 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
                   return d > 0 ? `${d}j ${h}h` : `${totalH}h`;
                 };
 
-                const decisionColor: 'success' | 'error' | 'warning' | 'default' =
-                  step.decision === 'approved' ? 'success' :
-                  step.decision === 'rejected' ? 'error' :
-                  step.decision === 'on_hold' ? 'warning' : 'default';
+                // Couleur du cercle selon état + décision
+                const circleColor =
+                  isCompleted
+                    ? step.decision === 'approved' ? '#16a34a'   // vert
+                    : step.decision === 'rejected' ? '#dc2626'   // rouge
+                    : step.decision === 'on_hold'  ? '#d97706'   // orange
+                    : '#64748b'                                   // ardoise (étape système)
+                  : isActive ? '#2563eb'                         // bleu vif
+                  : '#d1d5db';                                   // gris clair (futur)
+
+                // Couleur de la ligne de connexion
+                const railColor =
+                  isCompleted
+                    ? step.decision === 'rejected' ? '#fca5a5'
+                    : step.decision === 'on_hold'  ? '#fcd34d'
+                    : '#86efac'
+                  : '#e5e7eb';
 
                 const decisionLabel =
                   step.decision === 'approved' ? 'Approuvé' :
                   step.decision === 'rejected' ? 'Refusé' :
-                  step.decision === 'on_hold' ? 'En attente' :
+                  step.decision === 'on_hold'  ? 'En attente' :
                   isActive ? 'En cours' : null;
+
+                const decisionBg =
+                  step.decision === 'approved' ? 'rgba(22,163,74,0.1)'  :
+                  step.decision === 'rejected' ? 'rgba(220,38,38,0.1)'  :
+                  step.decision === 'on_hold'  ? 'rgba(217,119,6,0.1)'  :
+                  isActive                     ? 'rgba(37,99,235,0.08)' : 'transparent';
 
                 const nextStep = isActive && !isLast ? workflow.steps?.[idx + 1] : null;
 
                 return (
                   <Box
                     key={step.stepId}
-                    sx={{ display: 'flex', gap: 1.5, opacity: (!isCompleted && !isActive) ? 0.4 : 1 }}
+                    sx={{ display: 'flex', gap: 1.5, opacity: isFuture ? 0.38 : 1 }}
                   >
                     {/* Rail */}
                     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 24, flexShrink: 0 }}>
-                      <Box sx={{
-                        width: 22, height: 22, borderRadius: '50%', flexShrink: 0, mt: '1px',
-                        bgcolor: isCompleted ? 'success.main' : isActive ? 'primary.main' : 'grey.300',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        {isCompleted && <StepDoneIcon sx={{ fontSize: 14, color: 'white' }} />}
-                        {isActive && <ScheduleIcon sx={{ fontSize: 14, color: 'white' }} />}
+                      {/* Anneau pulsant sur l'étape active */}
+                      <Box sx={{ position: 'relative', mt: '1px', flexShrink: 0 }}>
+                        {isActive && (
+                          <Box sx={{
+                            position: 'absolute', inset: -4, borderRadius: '50%',
+                            border: '2px solid #2563eb', opacity: 0.3,
+                            animation: 'pulse 2s ease-in-out infinite',
+                            '@keyframes pulse': {
+                              '0%, 100%': { transform: 'scale(1)', opacity: 0.3 },
+                              '50%': { transform: 'scale(1.25)', opacity: 0 },
+                            },
+                          }} />
+                        )}
+                        <Box sx={{
+                          width: 22, height: 22, borderRadius: '50%',
+                          bgcolor: circleColor,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: isActive ? `0 0 0 3px rgba(37,99,235,0.15)` : 'none',
+                        }}>
+                          {isCompleted && <StepDoneIcon sx={{ fontSize: 13, color: 'white' }} />}
+                          {isActive && <ScheduleIcon sx={{ fontSize: 13, color: 'white' }} />}
+                        </Box>
                       </Box>
                       {!isLast && (
-                        <Box sx={{ width: 2, flex: 1, minHeight: 28, bgcolor: 'grey.200', mt: '2px' }} />
+                        <Box sx={{ width: 2, flex: 1, minHeight: 28, bgcolor: railColor, mt: '2px' }} />
                       )}
                     </Box>
 
                     {/* Contenu */}
-                    <Box sx={{ pb: 2.5, flex: 1, minWidth: 0 }}>
+                    <Box sx={{
+                      pb: 2.5, flex: 1, minWidth: 0,
+                      ...(isActive ? {
+                        bgcolor: decisionBg, borderRadius: 1.5,
+                        px: 1.25, py: 0.75, mb: 0.5,
+                        border: '1px solid rgba(37,99,235,0.15)',
+                      } : {}),
+                    }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0.4 }}>
                         <Typography variant="body2" fontWeight={700}>{step.stepName}</Typography>
                         {decisionLabel && (
-                          <Chip
-                            label={decisionLabel}
-                            color={decisionColor}
-                            size="small"
-                            sx={{ height: 18, fontSize: '10px', fontWeight: 600 }}
-                          />
+                          <Box sx={{
+                            px: 0.75, py: 0.1, borderRadius: 0.75,
+                            bgcolor: decisionBg,
+                            border: '1px solid',
+                            borderColor:
+                              step.decision === 'approved' ? 'rgba(22,163,74,0.3)'  :
+                              step.decision === 'rejected' ? 'rgba(220,38,38,0.3)'  :
+                              step.decision === 'on_hold'  ? 'rgba(217,119,6,0.3)'  :
+                              'rgba(37,99,235,0.25)',
+                          }}>
+                            <Typography sx={{
+                              fontSize: '10px', fontWeight: 700, lineHeight: 1.4,
+                              color:
+                                step.decision === 'approved' ? '#15803d' :
+                                step.decision === 'rejected' ? '#b91c1c' :
+                                step.decision === 'on_hold'  ? '#b45309' :
+                                '#1d4ed8',
+                            }}>
+                              {decisionLabel}
+                            </Typography>
+                          </Box>
                         )}
                       </Box>
 
                       {step.userName && (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.4 }}>
-                          <Avatar sx={{ width: 18, height: 18, fontSize: 9, bgcolor: '#e3f2fd', color: 'primary.main' }}>
+                          <Avatar sx={{
+                            width: 18, height: 18, fontSize: 9,
+                            bgcolor: isActive ? 'rgba(37,99,235,0.12)' : 'rgba(0,0,0,0.06)',
+                            color: isActive ? '#2563eb' : 'text.secondary',
+                          }}>
                             {step.userName.charAt(0).toUpperCase()}
                           </Avatar>
                           <Typography variant="caption" color="text.secondary">
@@ -750,10 +811,12 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
 
                       {nextStep && (
                         <Box sx={{
-                          mt: 0.75, px: 1.25, py: 0.5, bgcolor: '#e3f2fd',
+                          mt: 0.75, px: 1.25, py: 0.5,
+                          bgcolor: 'rgba(37,99,235,0.06)',
+                          border: '1px solid rgba(37,99,235,0.15)',
                           borderRadius: 1, display: 'inline-block',
                         }}>
-                          <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600 }}>
+                          <Typography variant="caption" sx={{ color: '#2563eb', fontWeight: 600 }}>
                             → Prochaine étape : {nextStep.stepName}
                           </Typography>
                         </Box>
