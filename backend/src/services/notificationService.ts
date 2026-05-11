@@ -2,6 +2,30 @@ import nodemailer from 'nodemailer';
 import { prisma } from '../server';
 import { buildEventEmail } from '../utils/emailTemplates';
 
+// ─── Page routing par rôle ────────────────────────────────────────────────────
+
+function resolveActionUrl(role: string, applicationId: string): string {
+  switch (role) {
+    case 'DIRECTION_JURIDIQUE':
+      return `/legal-step/${applicationId}`;
+    case 'CHARGE_AFFAIRES':
+    case 'ASSISTANT_COMMERCIAL':
+      return `/dispatching?applicationId=${applicationId}`;
+    case 'ANALYSTE_RISQUES':
+    case 'RESPONSABLE_RISQUES':
+    case 'RESPONSABLE_ENGAGEMENTS':
+    case 'COMITE_CREDIT':
+    case 'DIRECTION_GENERALE':
+    case 'BACK_OFFICE':
+    case 'DIR_AG':
+    case 'ADMIN':
+    case 'SUPER_ADMIN':
+      return `/approvals?applicationId=${applicationId}`;
+    default:
+      return `/workflow?applicationId=${applicationId}`;
+  }
+}
+
 // ─── Template rendering ────────────────────────────────────────────────────────
 
 export function renderTemplate(body: string, vars: Record<string, string>): string {
@@ -214,7 +238,7 @@ export async function triggerNotification(
                : 'INFO',
           relatedType: 'application',
           relatedId: applicationId,
-          actionUrl: `/workflow?applicationId=${applicationId}`,
+          actionUrl: resolveActionUrl(user.role as string, applicationId),
           companyId,
         });
 

@@ -155,6 +155,22 @@ export const DispatchingPage: React.FC = () => {
 
   useEffect(() => { reload(); }, [reload]);
 
+  // Ouvrir automatiquement un dossier depuis une notification
+  useEffect(() => {
+    const pendingAppId = localStorage.getItem('pending_workflow_app');
+    if (!pendingAppId) return;
+    localStorage.removeItem('pending_workflow_app');
+    const tryOpen = (retries = 0) => {
+      const found = pending.find(a => a.id === pendingAppId);
+      if (found) {
+        openAssignDialog(found);
+      } else if (retries < 12) {
+        setTimeout(() => tryOpen(retries + 1), 300);
+      }
+    };
+    tryOpen();
+  }, [pending]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const interval = setInterval(() => reload(true), REFRESH_INTERVAL * 1000);
     return () => clearInterval(interval);

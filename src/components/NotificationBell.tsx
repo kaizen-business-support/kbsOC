@@ -20,6 +20,7 @@ import {
   CheckCircle as SuccessIcon,
   AssignmentTurnedIn as ActionIcon,
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import { ApiService } from '../services/api';
 import { PageType } from '../types';
 
@@ -67,6 +68,7 @@ const typeBg = (type: NotifItem['type']) => {
 };
 
 export const NotificationBell: React.FC<NotificationBellProps> = ({ onPageChange }) => {
+  const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [notifications, setNotifications] = useState<NotifItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -107,11 +109,26 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ onPageChange
       setUnreadCount(prev => Math.max(0, prev - 1));
     }
     handleClose();
-    // Si la notification est liée à un dossier, le pré-sélectionner dans WorkflowPage
+
+    // Stocker l'applicationId pour que la page cible l'ouvre automatiquement
     if (notif.relatedId) {
       localStorage.setItem('pending_workflow_app', notif.relatedId);
     }
-    onPageChange('workflow');
+
+    // Déterminer la page cible depuis l'actionUrl
+    const actionUrl = notif.actionUrl || '';
+    const path = actionUrl.split('?')[0];
+
+    if (path.startsWith('/legal-step/')) {
+      // Route React Router avec applicationId dans le chemin
+      navigate(path);
+    } else if (path === '/approvals' || path.startsWith('/approvals')) {
+      onPageChange('approvals');
+    } else if (path === '/dispatching' || path.startsWith('/dispatching')) {
+      onPageChange('dispatching');
+    } else {
+      onPageChange('workflow');
+    }
   };
 
   const handleMarkAll = async () => {

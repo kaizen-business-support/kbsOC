@@ -121,6 +121,26 @@ export const ApprovalsPage: React.FC = () => {
 
   useEffect(() => { reload(); }, [reload]);
 
+  // Ouvrir automatiquement un dossier si la notification a stocké un applicationId
+  useEffect(() => {
+    const pendingAppId = localStorage.getItem('pending_workflow_app');
+    if (!pendingAppId) return;
+    localStorage.removeItem('pending_workflow_app');
+    const tryOpen = (retries = 0) => {
+      const found = items.find(i => i.applicationId === pendingAppId);
+      if (found) {
+        if (found.stepType === 'LEGAL') {
+          navigate(`/legal-step/${found.applicationId}`);
+        } else {
+          setDrawer(found);
+        }
+      } else if (retries < 12) {
+        setTimeout(() => tryOpen(retries + 1), 300);
+      }
+    };
+    tryOpen();
+  }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const interval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - lastReloadRef.current) / 1000);
