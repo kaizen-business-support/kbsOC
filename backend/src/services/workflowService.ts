@@ -657,9 +657,10 @@ export async function canApproveStep(
   if (blocked) return { allowed: false, reason: blocked.reason ?? 'Mur chinois : opération non autorisée pour ce rôle' };
 
   // ── 2. Non-cumul analyse / contre-analyse (même personne physique) ────────
-  // Un analyste qui a déjà complété une étape ANALYSIS sur ce dossier
-  // ne peut pas en traiter une seconde (contre-analyse).
-  if (step.policyStepId) {
+  // Seuls les ANALYSTE_RISQUES sont soumis au principe de séparation : l'analyste
+  // qui a fait l'analyse initiale ne peut pas faire la contre-analyse.
+  const ANALYST_ROLES = ['ANALYSTE_RISQUES'];
+  if (step.policyStepId && ANALYST_ROLES.includes(user.role as string)) {
     const currentStepType = await prisma.creditPolicyStep.findUnique({
       where: { id: step.policyStepId },
       select: { stepType: true },

@@ -129,21 +129,30 @@ router.get('/pending', async (req: Request, res: Response) => {
   try {
     const companyId = (req as any).companyId as string | undefined;
 
+    // Une app est "à dispatcher" si et seulement si elle n'a pas encore d'étape
+    // DISPATCH complétée. Cela évite qu'une app réapparaisse dans le tableau
+    // à cause des étapes suivantes (analyse, comité...) créées en PENDING dès le départ.
     const applications = await prisma.creditApplication.findMany({
       where: {
         ...(companyId ? { companyId } : {}),
         status: { in: ['SUBMITTED', 'UNDER_REVIEW'] },
+        NOT: {
+          workflowSteps: {
+            some: {
+              policyStep: { stepType: 'DISPATCH' },
+              completedAt: { not: null },
+            },
+          },
+        },
       },
       include: {
         client: true,
         creator: true,
         creditType: true,
         workflowSteps: {
-          where: { status: 'PENDING', assigneeId: null },
           orderBy: { createdAt: 'asc' },
-          take: 1,
           include: {
-            policyStep: { select: { stepLabel: true, order: true } }
+            policyStep: { select: { stepLabel: true, order: true, stepType: true } }
           }
         }
       },
@@ -151,7 +160,14 @@ router.get('/pending', async (req: Request, res: Response) => {
     });
 
     const data = applications.map(app => {
-      const currentStep = app.workflowSteps[0] ?? null;
+      // Priorité : l'étape DISPATCH en attente ; sinon première étape PENDING sans assignee
+      const dispatchStep = app.workflowSteps.find(
+        s => s.policyStep?.stepType === 'DISPATCH' && !s.completedAt
+      );
+      const currentStep = dispatchStep
+        ?? app.workflowSteps.find(s => s.status === 'PENDING' && !s.assigneeId)
+        ?? null;
+
       const daysPending = Math.floor(
         (Date.now() - new Date(app.submittedAt || app.createdAt).getTime()) / (1000 * 60 * 60 * 24)
       );
@@ -349,7 +365,10 @@ router.post('/assign', async (req: Request, res: Response) => {
       prisma.creditApplication.findUnique({
         where: { id: applicationId },
         include: {
-          workflowSteps: { orderBy: { createdAt: 'asc' } },
+          workflowSteps: {
+            orderBy: { createdAt: 'asc' },
+            include: { policyStep: { select: { stepType: true } } },
+          },
           client: { select: { companyName: true } },
           creator: { select: { branch: true, department: true } }
         }
@@ -374,10 +393,23 @@ router.post('/assign', async (req: Request, res: Response) => {
       }
     }
 
+    // Guard anti-double-dispatch : si le dispatch initial est déjà complété, bloquer.
+    if (!isReassign) {
+      const completedDispatch = application.workflowSteps.find(
+        (s: any) => s.policyStep?.stepType === 'DISPATCH' && s.completedAt !== null
+      );
+      if (completedDispatch) {
+        return res.status(409).json({
+          success: false,
+          error: 'Ce dossier a déjà été dispatché. Utilisez la réaffectation depuis l\'historique pour le modifier.',
+        });
+      }
+    }
+
     // Find the step to assign: for reassign, first PENDING/IN_REVIEW; for initial, first PENDING unassigned
     let targetStep = isReassign
-      ? application.workflowSteps.find(s => ['PENDING', 'IN_REVIEW'].includes(s.status))
-      : application.workflowSteps.find(s => s.status === 'PENDING' && !s.assigneeId);
+      ? application.workflowSteps.find((s: any) => ['PENDING', 'IN_REVIEW'].includes(s.status))
+      : application.workflowSteps.find((s: any) => s.status === 'PENDING' && !s.assigneeId);
 
     // Si aucune étape PENDING et que l'application est SUBMITTED, tenter de générer le circuit
     if (!targetStep && !isReassign && application.creditTypeId) {
@@ -386,9 +418,14 @@ router.post('/assign', async (req: Request, res: Response) => {
         // Recharger les étapes
         const updated = await prisma.creditApplication.findUnique({
           where: { id: applicationId },
-          include: { workflowSteps: { orderBy: { createdAt: 'asc' } } },
+          include: {
+            workflowSteps: {
+              orderBy: { createdAt: 'asc' },
+              include: { policyStep: { select: { stepType: true } } },
+            },
+          },
         });
-        targetStep = updated?.workflowSteps.find(s => s.status === 'PENDING' && !s.assigneeId) ?? undefined;
+        targetStep = updated?.workflowSteps.find((s: any) => s.status === 'PENDING' && !s.assigneeId) ?? undefined;
       } catch (circuitErr: any) {
         console.warn('[dispatching] Circuit non généré :', circuitErr.message);
         return res.status(400).json({
@@ -510,7 +547,11 @@ router.post('/assign', async (req: Request, res: Response) => {
             comments: `Dispatch complété par ${supervisorName} le ${dateStr} — affecté à ${agent.name}`,
           },
         });
-        triggerNotification('STEP_ASSIGNED', applicationId);
+        triggerNotification('STEP_ASSIGNED', applicationId, {
+          targetUserId,
+          assigneeName: agent.name,
+          stepName: isReassign ? 'Ré-affectation' : 'Affectation initiale',
+        });
       }
     }
 
