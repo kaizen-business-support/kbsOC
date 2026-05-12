@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import { prisma } from '../server';
 import { buildEventEmail } from '../utils/emailTemplates';
+import { enqueueEmail } from './emailQueueService';
 
 // ─── Page routing par rôle ────────────────────────────────────────────────────
 
@@ -187,6 +188,18 @@ export async function triggerNotification(
     const latestStep = application.workflowSteps[0];
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3006';
 
+    // Load tenant branding for email header
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { name: true, logoUrl: true },
+    });
+    const tenantBranding = company
+      ? {
+          name: company.name,
+          logoUrl: company.logoUrl ? `${frontendUrl}${company.logoUrl}` : null,
+        }
+      : null;
+
     const templateVars: Record<string, string> = {
       clientName: application.client.companyName,
       applicationNumber: application.applicationNumber,
@@ -205,7 +218,7 @@ export async function triggerNotification(
       const recipientRoles = rule.recipientRoles as string[];
 
       // Find users matching the roles — scoped to this tenant only
-      const users = await prisma.user.findMany({
+      const roleUsers = await prisma.user.findMany({
         where: {
           role: { in: recipientRoles as any[] },
           isActive: true,
@@ -216,8 +229,35 @@ export async function triggerNotification(
         select: { id: true, email: true, phone: true, name: true, role: true },
       });
 
+      // If a specific targetUserId is provided (e.g. the dispatched analyst),
+      // notify that user directly in addition to role-based recipients.
+      const targetUserId = context?.targetUserId;
+      let targetUser: typeof roleUsers[0] | null = null;
+      if (targetUserId) {
+        targetUser = await prisma.user.findFirst({
+          where: { id: targetUserId, isActive: true },
+          select: { id: true, email: true, phone: true, name: true, role: true },
+        });
+      }
+
+      // Merge: targetUser first (if not already in roleUsers), then roleUsers
+      const seen = new Set<string>();
+      const users: typeof roleUsers = [];
+      if (targetUser) {
+        seen.add(targetUser.id);
+        users.push(targetUser);
+      }
+      for (const u of roleUsers) {
+        if (!seen.has(u.id)) { seen.add(u.id); users.push(u); }
+      }
+
       for (const user of users) {
-        const vars: Record<string, string> = { ...templateVars, assigneeName: user.name };
+        const vars: Record<string, string> = {
+          ...templateVars,
+          // Use the target assignee name for context; fall back to the current user
+          assigneeName: (targetUser ? targetUser.name : user.name),
+          recipientName: user.name,
+        };
         const renderedBody = renderTemplate(rule.template.body, vars);
         const renderedSubject = rule.template.subject
           ? renderTemplate(rule.template.subject, vars)
@@ -247,8 +287,6 @@ export async function triggerNotification(
 
         if (channelType === 'EMAIL' && user.email) {
           try {
-            // HTML templates stored in DB (legacy) are sent as-is.
-            // Plain-text bodies are automatically wrapped in the professional HTML template.
             const htmlBody = isHtmlTemplate(renderedBody)
               ? renderedBody
               : buildEventEmail(event, renderedBody, {
@@ -257,10 +295,18 @@ export async function triggerNotification(
                   amount: vars.amount,
                   currency: vars.currency,
                   actionUrl: vars.actionUrl,
-                });
-            await sendEmail(user.email, renderedSubject, htmlBody);
+                }, tenantBranding);
+            await enqueueEmail({
+              to: user.email,
+              subject: renderedSubject,
+              html: htmlBody,
+              event,
+              recipientName: user.name,
+              applicationId,
+              companyId,
+            });
           } catch (err) {
-            console.error(`Email send failed to ${user.email}:`, err);
+            console.error(`Email enqueue failed for ${user.email}:`, err);
           }
         }
 

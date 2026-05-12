@@ -594,6 +594,69 @@ function getPolicyValidationErrors(
   return errors;
 }
 
+// ─── POST /api/credit-policies/:id/duplicate ─────────────────────────────────
+
+router.post('/:id/duplicate', async (req: Request, res: Response) => {
+  try {
+    const source = await prisma.creditPolicy.findUnique({
+      where: { id: req.params.id },
+      include: { steps: { orderBy: { order: 'asc' } } },
+    });
+    if (!source) return res.status(404).json({ success: false, error: 'Politique source introuvable' });
+    if (source.companyId !== req.companyId) return res.status(403).json({ success: false, error: 'Accès interdit' });
+
+    const { name, code } = req.body;
+    if (!name || !code) {
+      return res.status(400).json({ success: false, error: 'name et code sont obligatoires' });
+    }
+
+    const duplicate = await prisma.creditPolicy.create({
+      data: {
+        name,
+        code,
+        description: source.description,
+        isActive: false,
+        status: 'DRAFT',
+        validFrom: new Date(),
+        validTo: null,
+        companyId: req.companyId,
+        steps: {
+          create: source.steps.map((s) => ({
+            stepName:              s.stepName,
+            stepLabel:             s.stepLabel,
+            order:                 s.order,
+            stepType:              s.stepType,
+            assignedRole:          s.assignedRole,
+            dispatchTargetRole:    s.dispatchTargetRole,
+            conditionMinAmount:    s.conditionMinAmount,
+            conditionMaxAmount:    s.conditionMaxAmount,
+            approvalMinAmount:     s.approvalMinAmount,
+            approvalMaxAmount:     s.approvalMaxAmount,
+            expectedDurationHours: s.expectedDurationHours,
+            maxDurationHours:      s.maxDurationHours,
+            isRequired:            s.isRequired,
+            isActive:              s.isActive,
+            description:           s.description,
+            creditTypeIds:         s.creditTypeIds,
+            allowedActions:        s.allowedActions,
+            phase:                 s.phase ?? null,
+            guards:                s.guards ?? undefined,
+          })),
+        },
+      },
+      include: { steps: { orderBy: { order: 'asc' } } },
+    });
+
+    res.status(201).json({ success: true, data: duplicate });
+  } catch (error: any) {
+    console.error('[credit-policy] POST /:id/duplicate', error);
+    if (error.code === 'P2002') {
+      return res.status(409).json({ success: false, error: 'Ce code de politique existe déjà' });
+    }
+    res.status(500).json({ success: false, error: 'Erreur lors de la duplication' });
+  }
+});
+
 // ─── POST /api/credit-policies/:id/validate ───────────────────────────────────
 
 router.post('/:id/validate', async (req: Request, res: Response) => {

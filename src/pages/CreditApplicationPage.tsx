@@ -40,6 +40,7 @@ import { DocumentManager } from '../components/DocumentManager';
 import { FinancialDataInputTabs } from '../components/FinancialDataInputTabs';
 import { ApiService } from '../services/api';
 import { useUser } from '../contexts/UserContext';
+import { useCompany } from '../contexts/CompanyContext';
 import { useFormDraft, loadFormDraft, clearFormDraft, hasSavedDraft } from '../hooks/useFormDraft';
 import { OtpVerificationDialog } from '../components/OtpVerificationDialog';
 
@@ -175,7 +176,8 @@ const FieldBox: React.FC<{ label: string; value: string; icon?: React.ReactNode 
 );
 
 export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ onNavigate }) => {
-  const { state: userState } = useUser();
+  const { state: userState, getRoleLabel } = useUser();
+  const { activeCompany } = useCompany();
   const [activeStep, setActiveStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
@@ -269,7 +271,8 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
         setCreationPermission({ canCreate: false, requiredRole: null, requiredRoleLabel: null });
       }
     });
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCompany?.id]);
 
   // ── Load data ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -397,7 +400,7 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
   if (creationPermission.canCreate === false) {
     const hasRoleInfo = !!creationPermission.requiredRole;
     const roleLabel = creationPermission.requiredRoleLabel || creationPermission.requiredRole || '';
-    const userRoleLabel = (userState.currentUser as any)?.role || '';
+    const userRoleLabel = userState.currentUser?.role ? getRoleLabel(userState.currentUser.role) : '';
     return (
       <Box sx={{ bgcolor: BG, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 4 }}>
         <Box sx={{ maxWidth: 540, width: '100%' }}>

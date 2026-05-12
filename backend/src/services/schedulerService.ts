@@ -10,6 +10,7 @@
 
 import cron from 'node-cron';
 import { createBackup, deleteOldBackups } from './backupService';
+import { processEmailQueue } from './emailQueueService';
 import { logger } from '../utils/logger';
 import { prisma } from '../server';
 
@@ -59,5 +60,17 @@ export function startScheduler(): void {
     }
   });
 
-  logger.info('Scheduler started (backup + audit log cleanup)');
+  // Process email queue every 2 minutes
+  cron.schedule('*/2 * * * *', async () => {
+    try {
+      const { sent, failed } = await processEmailQueue();
+      if (sent > 0 || failed > 0) {
+        logger.info(`Email queue processed: ${sent} sent, ${failed} failed`);
+      }
+    } catch (err) {
+      logger.error('Email queue processing FAILED:', err);
+    }
+  });
+
+  logger.info('Scheduler started (backup + audit log cleanup + email queue)');
 }

@@ -14,45 +14,49 @@ const prisma = new PrismaClient();
 
 const TEMPLATES = [
   {
-    name: 'Nouvelle demande — Analyste crédit',
+    name: 'Nouvelle demande soumise — Dispatchers',
     event: 'APPLICATION_SUBMITTED' as const,
     subject: '[OptimusCredit] Nouvelle demande de crédit — {{applicationNumber}}',
-    body: `Une nouvelle demande de financement vient d'être soumise par {{createdByName}}.
+    body: `Une nouvelle demande de financement vient d'être soumise par {{createdByName}} pour le client {{clientName}}.
 
-Veuillez procéder à l'analyse financière et technique du dossier dans les meilleurs délais et faire avancer le circuit d'approbation.`,
-    recipientRoles: ['CREDIT_ANALYST', 'BRANCH_MANAGER'],
+Montant demandé : {{amount}} {{currency}}
+
+Veuillez affecter ce dossier à un analyste dans les meilleurs délais pour lancer le circuit d'approbation.`,
+    recipientRoles: ['RESPONSABLE_RISQUES', 'RESPONSABLE_ENGAGEMENTS', 'ADMIN'],
   },
 
   {
-    name: 'Action requise — Approbation en attente',
+    name: 'Dossier affecté — Analyste désigné',
     event: 'STEP_ASSIGNED' as const,
-    subject: '[OptimusCredit] ⚡ Action requise — Dossier {{applicationNumber}} en attente de votre décision',
-    body: `Ce dossier a été transmis à votre niveau hiérarchique et nécessite votre décision.
+    subject: '[OptimusCredit] ⚡ Dossier {{applicationNumber}} affecté — Action requise',
+    body: `Le dossier de {{clientName}} ({{applicationNumber}}) vient de vous être affecté et nécessite votre traitement.
 
-Veuillez l'examiner attentivement et approuver ou rejeter en ajoutant un commentaire motivé. Toute décision sera enregistrée dans l'audit du dossier.`,
-    recipientRoles: ['BRANCH_MANAGER', 'CREDIT_COMMITTEE', 'MANAGEMENT'],
+Montant : {{amount}} {{currency}}
+
+Veuillez examiner le dossier attentivement et prendre votre décision (approbation, rejet ou demande d'informations complémentaires) en y ajoutant un commentaire motivé. Chaque décision est enregistrée dans le journal d'audit du dossier.`,
+    recipientRoles: ['ANALYSTE_RISQUES', 'RESPONSABLE_RISQUES', 'RESPONSABLE_ENGAGEMENTS', 'COMITE_CREDIT', 'DIRECTION_GENERALE', 'DIRECTION_JURIDIQUE'],
   },
 
   {
-    name: 'Étape approuvée — Progression du dossier',
+    name: 'Étape approuvée — Suivi de progression',
     event: 'STEP_APPROVED' as const,
-    subject: '[OptimusCredit] ✓ Étape approuvée — Dossier {{applicationNumber}}',
-    body: `L'étape « {{stepName}} » vient d'être approuvée par {{assigneeName}}.
+    subject: '[OptimusCredit] ✓ Étape validée — Dossier {{applicationNumber}}',
+    body: `L'étape « {{stepName}} » du dossier de {{clientName}} vient d'être approuvée par {{assigneeName}}.
 
-Le dossier continue son parcours dans le circuit de validation. Vous pouvez suivre l'avancement en temps réel sur la plateforme.`,
-    recipientRoles: ['ACCOUNT_MANAGER', 'CREDIT_ANALYST'],
+Le dossier progresse dans le circuit de validation. Vous pouvez suivre l'avancement en temps réel sur la plateforme.`,
+    recipientRoles: ['CHARGE_AFFAIRES', 'ANALYSTE_RISQUES', 'BACK_OFFICE'],
   },
 
   {
     name: 'Étape rejetée — Action corrective requise',
     event: 'STEP_REJECTED' as const,
     subject: '[OptimusCredit] ✗ Étape rejetée — Dossier {{applicationNumber}}',
-    body: `L'étape « {{stepName}} » a été rejetée par {{assigneeName}}.
+    body: `L'étape « {{stepName}} » du dossier de {{clientName}} a été rejetée par {{assigneeName}}.
 
-Motif de rejet : {{comments}}
+Motif de la décision : {{comments}}
 
-Veuillez examiner les commentaires du décideur et prendre les mesures nécessaires pour corriger ou compléter le dossier avant toute nouvelle soumission.`,
-    recipientRoles: ['ACCOUNT_MANAGER', 'CREDIT_ANALYST'],
+Veuillez examiner les observations du décideur et prendre les mesures nécessaires pour corriger ou compléter le dossier.`,
+    recipientRoles: ['CHARGE_AFFAIRES', 'ANALYSTE_RISQUES', 'BACK_OFFICE'],
   },
 
   {
@@ -61,20 +65,22 @@ Veuillez examiner les commentaires du décideur et prendre les mesures nécessai
     subject: '[OptimusCredit] 🎉 Dossier approuvé — {{applicationNumber}}',
     body: `Le dossier de {{clientName}} a obtenu toutes les approbations requises et est officiellement validé.
 
+Montant accordé : {{amount}} {{currency}}
+
 Veuillez procéder aux formalités de mise en place du crédit : préparation du contrat, notification du client et déblocage des fonds selon les procédures en vigueur.`,
-    recipientRoles: ['ACCOUNT_MANAGER', 'CREDIT_ANALYST', 'BRANCH_MANAGER'],
+    recipientRoles: ['CHARGE_AFFAIRES', 'ANALYSTE_RISQUES', 'RESPONSABLE_ENGAGEMENTS', 'BACK_OFFICE'],
   },
 
   {
     name: 'Dossier rejeté — Notification finale',
     event: 'APPLICATION_REJECTED' as const,
     subject: '[OptimusCredit] Dossier non retenu — {{applicationNumber}}',
-    body: `Le dossier soumis par {{createdByName}} pour {{clientName}} n'a pas été retenu après examen complet du comité de crédit.
+    body: `Le dossier soumis par {{createdByName}} pour {{clientName}} n'a pas été retenu après examen complet du circuit d'approbation.
 
 Motif de la décision : {{comments}}
 
-Pour toute question concernant cette décision, veuillez vous rapprocher de votre responsable hiérarchique ou consulter les commentaires détaillés sur la plateforme.`,
-    recipientRoles: ['ACCOUNT_MANAGER', 'CREDIT_ANALYST'],
+Pour toute question, veuillez vous rapprocher de votre responsable hiérarchique ou consulter les détails sur la plateforme.`,
+    recipientRoles: ['CHARGE_AFFAIRES', 'ANALYSTE_RISQUES', 'BACK_OFFICE'],
   },
 ];
 
@@ -106,46 +112,59 @@ export async function seedDefaultNotifications(prismaClient: PrismaClient = pris
     console.log('✅ Canal EMAIL créé');
   }
 
-  // 2. Create templates + rules
+  // 2. Upsert templates + rules (idempotent: update existing if found by name+event)
   for (const tpl of TEMPLATES) {
-    // Idempotent: skip if same name+event already exists
     const existing = await prismaClient.notificationTemplate.findFirst({
-      where: { name: tpl.name, event: tpl.event },
+      where: { event: tpl.event },
+      include: { rules: true },
     });
 
+    let template;
     if (existing) {
-      console.log(`⏭  Template "${tpl.name}" — déjà existant, ignoré`);
-      skipped++;
-      continue;
-    }
-
-    const template = await prismaClient.notificationTemplate.create({
-      data: {
-        name: tpl.name,
-        event: tpl.event,
-        channelId: emailChannel.id,
-        subject: tpl.subject,
-        body: tpl.body,
-        isActive: true,
-      },
-    });
-    console.log(`✅ Template "${tpl.name}" créé (${tpl.event})`);
-
-    try {
-      await prismaClient.notificationRule.create({
+      template = await prismaClient.notificationTemplate.update({
+        where: { id: existing.id },
         data: {
-          event: tpl.event,
-          templateId: template.id,
-          recipientRoles: tpl.recipientRoles,
+          name: tpl.name,
+          subject: tpl.subject,
+          body: tpl.body,
           isActive: true,
         },
       });
-      console.log(`   ↳ Règle créée — destinataires: ${tpl.recipientRoles.join(', ')}`);
-    } catch {
-      console.log(`   ↳ Règle déjà existante — ignorée`);
-    }
+      console.log(`♻️  Template "${tpl.name}" mis à jour (${tpl.event})`);
 
-    created++;
+      // Update existing rule if present
+      if (existing.rules[0]) {
+        await prismaClient.notificationRule.update({
+          where: { id: existing.rules[0].id },
+          data: { recipientRoles: tpl.recipientRoles },
+        });
+        console.log(`   ↳ Règle mise à jour — destinataires: ${tpl.recipientRoles.join(', ')}`);
+      } else {
+        await prismaClient.notificationRule.create({
+          data: { event: tpl.event, templateId: template.id, recipientRoles: tpl.recipientRoles, isActive: true },
+        });
+        console.log(`   ↳ Règle créée — destinataires: ${tpl.recipientRoles.join(', ')}`);
+      }
+      skipped++;
+    } else {
+      template = await prismaClient.notificationTemplate.create({
+        data: {
+          name: tpl.name,
+          event: tpl.event,
+          channelId: emailChannel.id,
+          subject: tpl.subject,
+          body: tpl.body,
+          isActive: true,
+        },
+      });
+      console.log(`✅ Template "${tpl.name}" créé (${tpl.event})`);
+
+      await prismaClient.notificationRule.create({
+        data: { event: tpl.event, templateId: template.id, recipientRoles: tpl.recipientRoles, isActive: true },
+      });
+      console.log(`   ↳ Règle créée — destinataires: ${tpl.recipientRoles.join(', ')}`);
+      created++;
+    }
   }
 
   return { created, skipped };

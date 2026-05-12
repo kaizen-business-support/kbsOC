@@ -46,27 +46,34 @@ import {
   AutoAwesome as AutoAwesomeIcon,
   Preview as PreviewIcon,
   Close as CloseIcon,
+  Refresh as RefreshIcon,
+  PlayArrow as PlayArrowIcon,
+  DeleteSweep as DeleteSweepIcon,
+  Queue as QueueIcon,
 } from '@mui/icons-material';
 import { ApiService } from '../services/api';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const NOTIF_EVENTS = [
-  { value: 'APPLICATION_SUBMITTED', label: 'Demande soumise' },
-  { value: 'STEP_ASSIGNED',         label: 'Étape assignée' },
-  { value: 'STEP_APPROVED',         label: 'Étape approuvée' },
-  { value: 'STEP_REJECTED',         label: 'Étape rejetée' },
-  { value: 'APPLICATION_APPROVED',  label: 'Demande approuvée' },
-  { value: 'APPLICATION_REJECTED',  label: 'Demande rejetée' },
+  { value: 'APPLICATION_SUBMITTED', label: 'Demande soumise',      color: '#1565C0' },
+  { value: 'STEP_ASSIGNED',         label: 'Dossier affecté',      color: '#d97706' },
+  { value: 'STEP_APPROVED',         label: 'Étape approuvée',      color: '#16a34a' },
+  { value: 'STEP_REJECTED',         label: 'Étape rejetée',        color: '#dc2626' },
+  { value: 'APPLICATION_APPROVED',  label: 'Dossier approuvé',     color: '#15803d' },
+  { value: 'APPLICATION_REJECTED',  label: 'Dossier rejeté',       color: '#b91c1c' },
 ];
 
 const ROLE_OPTIONS = [
-  { value: 'ACCOUNT_MANAGER',  label: 'Chargé de compte' },
-  { value: 'CREDIT_ANALYST',   label: 'Analyste crédit' },
-  { value: 'BRANCH_MANAGER',   label: 'Directeur d\'agence' },
-  { value: 'CREDIT_COMMITTEE', label: 'Comité de crédit' },
-  { value: 'MANAGEMENT',       label: 'Direction générale' },
-  { value: 'ADMIN',            label: 'Administrateur' },
+  { value: 'CHARGE_AFFAIRES',         label: 'Chargé d\'Affaires' },
+  { value: 'ANALYSTE_RISQUES',        label: 'Analyste Risques' },
+  { value: 'RESPONSABLE_RISQUES',     label: 'Responsable Risques' },
+  { value: 'RESPONSABLE_ENGAGEMENTS', label: 'Responsable Engagements' },
+  { value: 'COMITE_CREDIT',           label: 'Comité de Crédit' },
+  { value: 'DIRECTION_GENERALE',      label: 'Direction Générale' },
+  { value: 'DIRECTION_JURIDIQUE',     label: 'Direction Juridique' },
+  { value: 'BACK_OFFICE',             label: 'Back Office' },
+  { value: 'ADMIN',                   label: 'Administrateur' },
 ];
 
 const TEMPLATE_VARIABLES = [
@@ -150,12 +157,14 @@ const NotificationsConfigPage: React.FC = () => {
           <Tab icon={<EmailIcon />} iconPosition="start" label="Canaux" />
           <Tab label="Modèles" />
           <Tab label="Règles" />
+          <Tab icon={<QueueIcon />} iconPosition="start" label="File d'attente" />
         </Tabs>
       </Paper>
 
       <TabPanel value={tab} index={0}><ChannelsTab /></TabPanel>
       <TabPanel value={tab} index={1}><TemplatesTab /></TabPanel>
       <TabPanel value={tab} index={2}><RulesTab /></TabPanel>
+      <TabPanel value={tab} index={3}><EmailQueueTab /></TabPanel>
     </Box>
   );
 };
@@ -794,6 +803,7 @@ function RulesTab() {
   const [rules, setRules] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [toggling, setToggling] = useState<Record<string, boolean>>({});
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
   const [form, setForm] = useState<any>({ event: '', templateId: '', recipientRoles: [] as string[], isActive: true });
@@ -841,6 +851,17 @@ function RulesTab() {
     else setMsg({ type: 'error', text: res.error || 'Erreur' });
   };
 
+  const handleToggle = async (rule: any) => {
+    setToggling(p => ({ ...p, [rule.id]: true }));
+    const res = await ApiService.updateNotificationRule(rule.id, { isActive: !rule.isActive });
+    setToggling(p => ({ ...p, [rule.id]: false }));
+    if (res.success) {
+      setRules(prev => prev.map(r => r.id === rule.id ? { ...r, isActive: !r.isActive } : r));
+    } else {
+      setMsg({ type: 'error', text: res.error || 'Erreur' });
+    }
+  };
+
   const toggleRole = (role: string) => {
     setForm((p: any) => ({
       ...p,
@@ -854,9 +875,72 @@ function RulesTab() {
     ? templates.filter(t => t.event === form.event && t.isActive)
     : templates.filter(t => t.isActive);
 
+  // Group rules by event for dashboard view
+  const rulesByEvent = NOTIF_EVENTS.map(ev => ({
+    event: ev,
+    rules: rules.filter(r => r.event === ev.value),
+  }));
+
   return (
     <Box>
       {msg && <Alert severity={msg.type} onClose={() => setMsg(null)} sx={{ mb: 2 }}>{msg.text}</Alert>}
+
+      {/* ── Quick-toggle dashboard ─────────────────────────────────────────── */}
+      {!loading && (
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.72rem' }}>
+            Activation rapide des notifications par événement
+          </Typography>
+          <Grid container spacing={1.5}>
+            {rulesByEvent.map(({ event, rules: evRules }) => (
+              evRules.map(rule => (
+                <Grid item xs={12} sm={6} md={4} key={rule.id}>
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      p: 1.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1.5,
+                      borderLeft: `3px solid ${event.color}`,
+                      opacity: rule.isActive ? 1 : 0.55,
+                      transition: 'opacity 0.2s',
+                    }}
+                  >
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="body2" fontWeight={600} noWrap>
+                        {event.label}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" noWrap>
+                        {(rule.recipientRoles as string[]).map(r => ROLE_OPTIONS.find(o => o.value === r)?.label || r).join(', ')}
+                      </Typography>
+                    </Box>
+                    {toggling[rule.id] ? (
+                      <CircularProgress size={20} />
+                    ) : (
+                      <Tooltip title={rule.isActive ? 'Désactiver cette notification' : 'Activer cette notification'}>
+                        <Switch
+                          size="small"
+                          checked={rule.isActive}
+                          onChange={() => handleToggle(rule)}
+                        />
+                      </Tooltip>
+                    )}
+                  </Paper>
+                </Grid>
+              ))
+            ))}
+            {rules.length === 0 && (
+              <Grid item xs={12}>
+                <Typography variant="body2" color="text.secondary">
+                  Aucune règle — cliquez sur "Charger les modèles par défaut" pour commencer.
+                </Typography>
+              </Grid>
+            )}
+          </Grid>
+        </Box>
+      )}
+
       <Box display="flex" justifyContent="flex-end" mb={2}>
         <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>Nouvelle règle</Button>
       </Box>
@@ -869,29 +953,46 @@ function RulesTab() {
                 <TableCell>Événement</TableCell>
                 <TableCell>Template</TableCell>
                 <TableCell>Rôles destinataires</TableCell>
-                <TableCell>Actif</TableCell>
+                <TableCell>Activée</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {rules.map(r => (
-                <TableRow key={r.id} hover>
-                  <TableCell><Chip size="small" label={eventLabel(r.event)} /></TableCell>
-                  <TableCell>{r.template?.name}</TableCell>
-                  <TableCell>
-                    <Box display="flex" flexWrap="wrap" gap={0.5}>
-                      {(r.recipientRoles as string[]).map(role => (
-                        <Chip key={role} size="small" label={ROLE_OPTIONS.find(o => o.value === role)?.label || role} variant="outlined" />
-                      ))}
-                    </Box>
-                  </TableCell>
-                  <TableCell><Chip size="small" label={r.isActive ? 'Actif' : 'Inactif'} color={r.isActive ? 'success' : 'default'} /></TableCell>
-                  <TableCell align="right">
-                    <Tooltip title="Modifier"><IconButton size="small" onClick={() => openEdit(r)}><EditIcon fontSize="small" /></IconButton></Tooltip>
-                    <Tooltip title="Supprimer"><IconButton size="small" color="error" onClick={() => handleDelete(r.id)}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {rules.map(r => {
+                const ev = NOTIF_EVENTS.find(e => e.value === r.event);
+                return (
+                  <TableRow key={r.id} hover sx={{ opacity: r.isActive ? 1 : 0.55 }}>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        label={eventLabel(r.event)}
+                        sx={{ bgcolor: ev ? `${ev.color}18` : undefined, color: ev?.color, fontWeight: 600, border: `1px solid ${ev?.color || '#ccc'}` }}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: 200 }}>
+                      <Typography variant="body2" noWrap>{r.template?.name}</Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Box display="flex" flexWrap="wrap" gap={0.5}>
+                        {(r.recipientRoles as string[]).map(role => (
+                          <Chip key={role} size="small" label={ROLE_OPTIONS.find(o => o.value === role)?.label || role} variant="outlined" />
+                        ))}
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      {toggling[r.id] ? <CircularProgress size={18} /> : (
+                        <Tooltip title={r.isActive ? 'Désactiver' : 'Activer'}>
+                          <Switch size="small" checked={r.isActive} onChange={() => handleToggle(r)} />
+                        </Tooltip>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      <Tooltip title="Modifier"><IconButton size="small" onClick={() => openEdit(r)}><EditIcon fontSize="small" /></IconButton></Tooltip>
+                      <Tooltip title="Supprimer"><IconButton size="small" color="error" onClick={() => handleDelete(r.id)}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               {rules.length === 0 && (
                 <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>Aucune règle</TableCell></TableRow>
               )}
@@ -946,6 +1047,218 @@ function RulesTab() {
           <Button variant="contained" onClick={handleSave}>Enregistrer</Button>
         </DialogActions>
       </Dialog>
+    </Box>
+  );
+}
+
+// ─── Email Queue Tab ───────────────────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<string, { label: string; color: 'default' | 'warning' | 'success' | 'error' | 'info' }> = {
+  PENDING:  { label: 'En attente', color: 'warning' },
+  SENDING:  { label: 'Envoi…',     color: 'info' },
+  SENT:     { label: 'Envoyé',     color: 'success' },
+  FAILED:   { label: 'Échoué',     color: 'error' },
+};
+
+function EmailQueueTab() {
+  const [items, setItems] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [msg, setMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const LIMIT = 50;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [qRes, sRes] = await Promise.all([
+      ApiService.getEmailQueue({ status: statusFilter || undefined, page, limit: LIMIT }),
+      ApiService.getEmailQueueStats(),
+    ]);
+    setLoading(false);
+    if (qRes.success && qRes.data) {
+      setItems(qRes.data.data || []);
+      setTotal(qRes.data.total || 0);
+    }
+    if (sRes.success && sRes.data) setStats(sRes.data);
+  }, [statusFilter, page]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleRetry = async (id: string) => {
+    await ApiService.retryEmail(id);
+    load();
+  };
+
+  const handleDelete = async (id: string) => {
+    await ApiService.deleteEmailQueueItem(id);
+    load();
+  };
+
+  const handleRetryAll = async () => {
+    const res = await ApiService.retryAllFailedEmails();
+    setMsg(res.success
+      ? { type: 'success', text: `${res.data?.count ?? 0} email(s) remis en file.` }
+      : { type: 'error', text: res.error || 'Erreur' });
+    load();
+  };
+
+  const handleProcessNow = async () => {
+    setProcessing(true);
+    const res = await ApiService.processEmailQueueNow();
+    setProcessing(false);
+    setMsg(res.success
+      ? { type: 'success', text: `Traitement terminé : ${res.data?.sent ?? 0} envoyé(s), ${res.data?.failed ?? 0} échoué(s).` }
+      : { type: 'error', text: res.error || 'Erreur' });
+    load();
+  };
+
+  const handlePurge = async (status: 'SENT' | 'FAILED') => {
+    const res = await ApiService.purgeEmailQueue(status);
+    setMsg(res.success
+      ? { type: 'info', text: `${res.data?.count ?? 0} email(s) supprimé(s).` }
+      : { type: 'error', text: res.error || 'Erreur' });
+    load();
+  };
+
+  return (
+    <Box>
+      {/* Stats cards */}
+      {stats && (
+        <Grid container spacing={2} mb={3}>
+          {(['PENDING', 'SENDING', 'SENT', 'FAILED'] as const).map(s => (
+            <Grid item xs={6} sm={3} key={s}>
+              <Card variant="outlined" sx={{ textAlign: 'center', cursor: 'pointer', border: statusFilter === s ? '2px solid' : undefined, borderColor: statusFilter === s ? 'primary.main' : undefined }}
+                onClick={() => { setStatusFilter(statusFilter === s ? '' : s); setPage(1); }}>
+                <CardContent sx={{ py: 1.5 }}>
+                  <Typography variant="h4" fontWeight={700} color={
+                    s === 'PENDING' ? 'warning.main' : s === 'SENT' ? 'success.main' : s === 'FAILED' ? 'error.main' : 'info.main'
+                  }>{stats[s.toLowerCase()] ?? 0}</Typography>
+                  <Typography variant="caption" color="text.secondary">{STATUS_CONFIG[s].label}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      {/* Toolbar */}
+      <Box display="flex" gap={1} mb={2} flexWrap="wrap" alignItems="center">
+        <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+          {total} email(s){statusFilter ? ` · filtre : ${STATUS_CONFIG[statusFilter]?.label}` : ''}
+        </Typography>
+        <Tooltip title="Traiter maintenant sans attendre le cron">
+          <Button size="small" variant="outlined" startIcon={processing ? <CircularProgress size={14} /> : <PlayArrowIcon />}
+            onClick={handleProcessNow} disabled={processing}>Traiter maintenant</Button>
+        </Tooltip>
+        <Button size="small" variant="outlined" startIcon={<RefreshIcon />} onClick={() => load()} disabled={loading}>
+          Actualiser
+        </Button>
+        <Button size="small" color="warning" startIcon={<RefreshIcon />} onClick={handleRetryAll}>
+          Tout relancer (échoués)
+        </Button>
+        <Button size="small" color="inherit" startIcon={<DeleteSweepIcon />} onClick={() => handlePurge('SENT')}>
+          Purger envoyés
+        </Button>
+        <Button size="small" color="error" startIcon={<DeleteSweepIcon />} onClick={() => handlePurge('FAILED')}>
+          Purger échoués
+        </Button>
+      </Box>
+
+      {msg && <Alert severity={msg.type} onClose={() => setMsg(null)} sx={{ mb: 2 }}>{msg.text}</Alert>}
+
+      {/* Table */}
+      <TableContainer component={Paper} variant="outlined">
+        <Table size="small">
+          <TableHead>
+            <TableRow sx={{ bgcolor: 'grey.50' }}>
+              <TableCell>Statut</TableCell>
+              <TableCell>Destinataire</TableCell>
+              <TableCell>Sujet</TableCell>
+              <TableCell>Événement</TableCell>
+              <TableCell>Tentatives</TableCell>
+              <TableCell>Erreur</TableCell>
+              <TableCell>Créé le</TableCell>
+              <TableCell align="right">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading && (
+              <TableRow>
+                <TableCell colSpan={8} align="center"><CircularProgress size={24} sx={{ my: 2 }} /></TableCell>
+              </TableRow>
+            )}
+            {!loading && items.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>Aucun email dans la file</TableCell>
+              </TableRow>
+            )}
+            {items.map(item => (
+              <TableRow key={item.id} hover>
+                <TableCell>
+                  <Chip label={STATUS_CONFIG[item.status]?.label ?? item.status} color={STATUS_CONFIG[item.status]?.color ?? 'default'} size="small" />
+                </TableCell>
+                <TableCell>
+                  <Tooltip title={item.to}>
+                    <Box>
+                      <Typography variant="body2" noWrap sx={{ maxWidth: 160 }}>{item.recipientName || item.to}</Typography>
+                      <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 160 }}>{item.to}</Typography>
+                    </Box>
+                  </Tooltip>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>{item.subject}</Typography>
+                </TableCell>
+                <TableCell>
+                  {item.event && <Chip label={eventLabel(item.event)} size="small" variant="outlined" />}
+                </TableCell>
+                <TableCell align="center">
+                  <Typography variant="body2">{item.retries}/{item.maxRetries}</Typography>
+                </TableCell>
+                <TableCell>
+                  {item.lastError && (
+                    <Tooltip title={item.lastError}>
+                      <Typography variant="caption" color="error.main" noWrap sx={{ maxWidth: 150, display: 'block' }}>
+                        {item.lastError.slice(0, 60)}{item.lastError.length > 60 ? '…' : ''}
+                      </Typography>
+                    </Tooltip>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Typography variant="caption" color="text.secondary">
+                    {new Date(item.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
+                  </Typography>
+                </TableCell>
+                <TableCell align="right">
+                  {(item.status === 'FAILED' || item.status === 'PENDING') && (
+                    <Tooltip title="Relancer">
+                      <IconButton size="small" color="primary" onClick={() => handleRetry(item.id)}>
+                        <RefreshIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                  <Tooltip title="Supprimer">
+                    <IconButton size="small" color="error" onClick={() => handleDelete(item.id)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* Simple pagination */}
+      {total > LIMIT && (
+        <Box display="flex" justifyContent="center" gap={1} mt={2}>
+          <Button size="small" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Précédent</Button>
+          <Typography variant="body2" alignSelf="center">Page {page} / {Math.ceil(total / LIMIT)}</Typography>
+          <Button size="small" disabled={page * LIMIT >= total} onClick={() => setPage(p => p + 1)}>Suivant</Button>
+        </Box>
+      )}
     </Box>
   );
 }

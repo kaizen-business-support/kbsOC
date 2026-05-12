@@ -847,6 +847,40 @@ enum NotifType {
   @@map("notif_type")
 }
 
+// ─── File d'attente des emails ─────────────────────────────────────────────────
+
+enum EmailQueueStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+
+  @@map("email_queue_status")
+}
+
+model EmailQueue {
+  id             String           @id @default(cuid())
+  to             String
+  subject        String
+  html           String
+  status         EmailQueueStatus @default(PENDING)
+  retries        Int              @default(0)
+  maxRetries     Int              @default(3) @map("max_retries")
+  lastError      String?          @map("last_error")
+  scheduledAt    DateTime         @default(now()) @map("scheduled_at")
+  sentAt         DateTime?        @map("sent_at")
+  event          String?
+  recipientName  String?          @map("recipient_name")
+  applicationId  String?          @map("application_id")
+  companyId      String?          @map("company_id")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  @@index([status, scheduledAt])
+  @@index([companyId])
+  @@map("email_queue")
+}
+
 // ─── Modèles de contrats & contrats générés ────────────────────────────────────
 
 model ContractTemplate {

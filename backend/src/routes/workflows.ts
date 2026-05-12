@@ -707,6 +707,8 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       }
     });
 
+    const notifCtx = { stepName: currentStep.stepName, assigneeName: user.name, decision: comments || '' };
+
     if (decision === 'REJECTED') {
       await prisma.creditApplication.update({
         where: { id: applicationId },
@@ -714,10 +716,13 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       });
       // Calculer et stocker la durée totale du dossier
       await finalizeApplicationDuration(applicationId);
-      triggerNotification('STEP_REJECTED', applicationId);
-      triggerNotification('APPLICATION_REJECTED', applicationId);
+      triggerNotification('STEP_REJECTED', applicationId, notifCtx);
+      triggerNotification('APPLICATION_REJECTED', applicationId, notifCtx);
       return res.json({ success: true, message: 'Demande rejetée', status: 'REJECTED' });
     }
+
+    // Notifier l'approbation de cette étape intermédiaire (créateur + CA informés de la progression)
+    triggerNotification('STEP_APPROVED', applicationId, notifCtx);
 
     // Déterminer l'étape suivante via le service dynamique (base de données)
     const nextStep = await getNextWorkflowStep(applicationId, currentStep.stepName);
@@ -749,7 +754,7 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
         });
       }
 
-      triggerNotification('STEP_ASSIGNED', applicationId, { nextRole: nextStep.role });
+      triggerNotification('STEP_ASSIGNED', applicationId, { ...notifCtx, nextRole: nextStep.role });
 
       return res.json({
         success: true,
@@ -768,7 +773,7 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
 
     if (remainingSteps.length > 0) {
       const nextRemaining = remainingSteps[0];
-      triggerNotification('STEP_ASSIGNED', applicationId, { nextRole: nextRemaining.role });
+      triggerNotification('STEP_ASSIGNED', applicationId, { ...notifCtx, nextRole: nextRemaining.role });
       return res.json({
         success: true,
         message: `Approuvé. Étape suivante : ${nextRemaining.stepName}`,
@@ -786,7 +791,7 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
     // Calculer et stocker la durée totale du dossier
     await finalizeApplicationDuration(applicationId);
 
-    triggerNotification('APPLICATION_APPROVED', applicationId);
+    triggerNotification('APPLICATION_APPROVED', applicationId, notifCtx);
 
     // Create final_decision step (rôle système fixe, indépendant de l'approbateur)
     await prisma.workflowStep.create({
@@ -1011,6 +1016,10 @@ router.get('/creation-permission', async (req: Request, res: Response) => {
       return res.json({ success: true, canCreate: true, requiredRole: null, requiredRoleLabel: null, userRole });
     }
 
+    if (!req.companyId) {
+      return res.json({ success: true, canCreate: true, requiredRole: null, requiredRoleLabel: null, userRole });
+    }
+
     const now = new Date();
     const activePolicy = await prisma.creditPolicy.findFirst({
       where: {
@@ -1037,7 +1046,18 @@ router.get('/creation-permission', async (req: Request, res: Response) => {
     // si aucun step 'application_created' n'est défini dans la politique,
     // le rôle requis est CHARGE_AFFAIRES (comportement hardcodé du service).
     const requiredRole = creationStep?.assignedRole ?? 'CHARGE_AFFAIRES';
-    const requiredRoleLabel = creationStep?.stepLabel ?? 'Chargé d\'Affaires';
+    const ROLE_LABELS: Record<string, string> = {
+      CHARGE_AFFAIRES:         'Chargé d\'Affaires',
+      ANALYSTE_RISQUES:        'Analyste Risques',
+      RESPONSABLE_RISQUES:     'Responsable Risques',
+      RESPONSABLE_ENGAGEMENTS: 'Responsable Engagements',
+      COMITE_CREDIT:           'Comité de Crédit',
+      DIRECTION_GENERALE:      'Direction Générale',
+      ADMIN:                   'Administrateur',
+      BACK_OFFICE:             'Back Office',
+      DIRECTION_JURIDIQUE:     'Direction Juridique',
+    };
+    const requiredRoleLabel = ROLE_LABELS[requiredRole] ?? requiredRole;
 
     return res.json({
       success: true,

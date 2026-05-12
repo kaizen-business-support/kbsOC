@@ -1504,6 +1504,71 @@ export class ApiService {
     }
   }
 
+  // ─── Email Queue ──────────────────────────────────────────────────────────────
+
+  static async getEmailQueue(params?: { status?: string; page?: number; limit?: number }): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.get('/email-queue', { params });
+      return { success: true, data: response.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async getEmailQueueStats(): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.get('/email-queue/stats');
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async retryEmail(id: string): Promise<ApiResponse<any>> {
+    try {
+      await api.post(`/email-queue/${id}/retry`);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async retryAllFailedEmails(): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.post('/email-queue/retry-all');
+      return { success: true, data: response.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async processEmailQueueNow(): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.post('/email-queue/process-now');
+      return { success: true, data: response.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async deleteEmailQueueItem(id: string): Promise<ApiResponse<any>> {
+    try {
+      await api.delete(`/email-queue/${id}`);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
+  static async purgeEmailQueue(status: 'SENT' | 'FAILED'): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.delete('/email-queue', { params: { status } });
+      return { success: true, data: response.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur serveur' };
+    }
+  }
+
   // ─── In-app Notifications ─────────────────────────────────────────────────────
 
   static async getMyNotifications(): Promise<ApiResponse<any[]>> {
@@ -1804,6 +1869,15 @@ export const creditPolicyApi = {
       return { success: true, data: res.data.data ?? res.data };
     } catch (e: any) {
       return { success: false, error: e.response?.data?.error || 'Erreur types crédit' };
+    }
+  },
+
+  async duplicatePolicy(id: string, data: { name: string; code: string }): Promise<any> {
+    try {
+      const res = await api.post(`/credit-policies/${id}/duplicate`, data);
+      return { success: true, data: res.data.data };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur lors de la duplication' };
     }
   },
 

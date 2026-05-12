@@ -2,13 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Typography, Select, MenuItem, Button, Chip, Alert,
   CircularProgress, Tooltip, FormControl, IconButton, Divider,
-  Snackbar,
+  Snackbar, Dialog, DialogTitle, DialogContent, DialogActions, TextField,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ArchiveIcon from '@mui/icons-material/Archive';
 import AddIcon from '@mui/icons-material/Add';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
@@ -80,6 +81,9 @@ export function WorkflowPolicyBuilder() {
   const [paletteOpen, setPaletteOpen]         = useState(true);
   const [configOpen, setConfigOpen]           = useState(true);
   const [raciOpen, setRaciOpen]               = useState(false);
+  const [dupDialog, setDupDialog]             = useState(false);
+  const [dupForm, setDupForm]                 = useState({ name: '', code: '' });
+  const [duplicating, setDuplicating]         = useState(false);
 
   const selectedPolicy = policies.find((p) => p.id === selectedPolicyId) ?? null;
   const isDraft  = selectedPolicy?.status === 'DRAFT';
@@ -95,8 +99,8 @@ export function WorkflowPolicyBuilder() {
     ]);
     if (polRes.success && polRes.data) {
       setPolicies(polRes.data);
-      const best = polRes.data.find((p: CreditPolicyFull) => p.status === 'DRAFT')
-        ?? polRes.data.find((p: CreditPolicyFull) => p.status === 'ACTIVE')
+      const best = polRes.data.find((p: CreditPolicyFull) => p.status === 'ACTIVE')
+        ?? polRes.data.find((p: CreditPolicyFull) => p.status === 'DRAFT')
         ?? polRes.data[0];
       if (best) { setSelectedPolicyId(best.id); setSteps(best.steps ?? []); setCurrentVersion(best.version); }
     }
@@ -214,7 +218,38 @@ export function WorkflowPolicyBuilder() {
       await loadData();
       setSelectedPolicyId(res.data.id);
       setSteps(res.data.steps ?? []);
-    setCurrentVersion(res.data.version ?? 1);
+      setCurrentVersion(res.data.version ?? 1);
+    }
+  };
+
+  const openDupDialog = () => {
+    if (!selectedPolicy) return;
+    const suffix = String(Date.now()).slice(-4);
+    setDupForm({
+      name: `Copie de ${selectedPolicy.name}`,
+      code: `${selectedPolicy.code}-COPY-${suffix}`,
+    });
+    setDupDialog(true);
+  };
+
+  const handleDuplicate = async () => {
+    if (!selectedPolicyId || !dupForm.name || !dupForm.code) return;
+    setDuplicating(true);
+    const res = await creditPolicyApi.duplicatePolicy(selectedPolicyId, {
+      name: dupForm.name,
+      code: dupForm.code.toUpperCase(),
+    });
+    setDuplicating(false);
+    if (res.success && res.data) {
+      setDupDialog(false);
+      setSnack({ msg: `Politique dupliquée en brouillon — vous pouvez maintenant modifier ses étapes`, sev: 'success' });
+      await loadData();
+      setSelectedPolicyId(res.data.id);
+      setSteps(res.data.steps ?? []);
+      setCurrentVersion(res.data.version ?? 1);
+      setSelectedStepId(null);
+    } else {
+      setSnack({ msg: res.error || 'Erreur lors de la duplication', sev: 'error' });
     }
   };
 
@@ -353,6 +388,14 @@ export function WorkflowPolicyBuilder() {
             <AddIcon sx={{ fontSize: 18 }} />
           </IconButton>
         </Tooltip>
+
+        {canEdit && selectedPolicy && (
+          <Tooltip title="Dupliquer cette politique pour la modifier librement">
+            <IconButton size="small" onClick={openDupDialog} sx={{ color: '#94a3b8' }}>
+              <ContentCopyIcon sx={{ fontSize: 17 }} />
+            </IconButton>
+          </Tooltip>
+        )}
       </Box>
 
       {/* ══ ALERTES ══ */}
@@ -497,6 +540,53 @@ export function WorkflowPolicyBuilder() {
           {snack?.msg}
         </Alert>
       </Snackbar>
+
+      {/* ══ DIALOG : DUPLICATION ══ */}
+      <Dialog open={dupDialog} onClose={() => setDupDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          Dupliquer la politique
+        </DialogTitle>
+        <DialogContent dividers>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Une copie de <strong>{selectedPolicy?.name}</strong> sera créée en statut <strong>Brouillon</strong>.
+            Vous pourrez ensuite modifier ses étapes librement, la valider et l'activer.
+          </Alert>
+          <Box display="flex" flexDirection="column" gap={2} pt={0.5}>
+            <TextField
+              label="Nom de la nouvelle politique"
+              fullWidth
+              size="small"
+              required
+              value={dupForm.name}
+              onChange={e => setDupForm(f => ({ ...f, name: e.target.value }))}
+              autoFocus
+            />
+            <TextField
+              label="Code unique"
+              fullWidth
+              size="small"
+              required
+              value={dupForm.code}
+              onChange={e => setDupForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
+              helperText="Doit être unique dans votre organisation"
+              inputProps={{ style: { fontFamily: 'monospace', letterSpacing: 1 } }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDupDialog(false)} disabled={duplicating}>
+            Annuler
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={duplicating ? <CircularProgress size={15} color="inherit" /> : <ContentCopyIcon />}
+            onClick={handleDuplicate}
+            disabled={!dupForm.name || !dupForm.code || duplicating}
+          >
+            Dupliquer
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

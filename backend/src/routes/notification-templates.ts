@@ -6,7 +6,7 @@ import { renderTemplate } from '../services/notificationService';
 const router = Router();
 
 // POST /api/notification-templates/preview
-// Returns rendered HTML for the given event + body, using sample data
+// Returns rendered HTML for the given event + body, using sample data + tenant branding
 router.post('/preview', async (req: Request, res: Response) => {
   try {
     const { event, body, subject } = req.body;
@@ -20,7 +20,24 @@ router.post('/preview', async (req: Request, res: Response) => {
     const renderedBody    = renderTemplate(body, vars);
     const renderedSubject = subject ? renderTemplate(subject, vars) : 'Aperçu — OptimusCredit';
 
-    const html = buildEventEmail(event, renderedBody, vars as any);
+    // Load tenant branding for the preview
+    const companyId = (req as any).companyId as string | undefined;
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3006';
+    let tenantBranding = null;
+    if (companyId) {
+      const company = await prisma.company.findUnique({
+        where: { id: companyId },
+        select: { name: true, logoUrl: true },
+      });
+      if (company) {
+        tenantBranding = {
+          name: company.name,
+          logoUrl: company.logoUrl ? `${frontendUrl}${company.logoUrl}` : null,
+        };
+      }
+    }
+
+    const html = buildEventEmail(event, renderedBody, vars as any, tenantBranding);
 
     res.json({ success: true, html, subject: renderedSubject });
   } catch (error: any) {
