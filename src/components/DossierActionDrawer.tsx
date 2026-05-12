@@ -14,7 +14,9 @@ import {
   Tab, Tabs, Dialog, DialogTitle, DialogContent, DialogActions,
   FormGroup, FormControlLabel, Checkbox,
   Accordion, AccordionSummary, AccordionDetails,
-  Slider,
+  Slider, Card, CardContent, Grid,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  LinearProgress,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -33,6 +35,12 @@ import {
   ExpandMore as ExpandMoreIcon,
   Description as DocIcon,
   ChatBubbleOutline as CommentIcon,
+  TrendingUp as TrendingUpIcon,
+  TrendingDown as TrendingDownIcon,
+  AccountBalance as AccountBalanceIcon,
+  WaterDrop as WaterDropIcon,
+  Balance as BalanceIcon,
+  Autorenew as AutorenewIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { ApprovalItem, USER_ROLE_LABELS } from '../types';
@@ -71,31 +79,74 @@ async function downloadDocumentWithAuth(url: string, filename: string) {
 }
 
 function flattenOhadaData(data: any): any {
-  const is   = data.incomeStatement || {};
-  const cf   = data.cashFlow        || {};
-  const brut = data.balance?.brut   || {};
+  const is = data.incomeStatement || {};
+  const cf = data.cashFlow        || {};
+  const b  = data.balance?.brut   || {};
+  const a  = data.balance?.amort  || {};
+
+  // NET = BRUT − AMORT (actif uniquement ; passif n'a pas de colonne amort)
+  const n = (code: string) => (b[code] ?? 0) - (a[code] ?? 0);
+
+  // Totaux ACTIF recalculés depuis les lignes saisies (NET), formules = ohadaStatements.ts
+  const actifImmo = n('AB')+n('AC')+n('AD')+n('AE')+n('AF')+n('AG')+n('AH')+n('AI')+n('AJ')+n('AK')+n('AL')+n('AM')+n('AN');
+  const actifCirc = n('AP')+n('AQ')+n('AR')+n('AS')+n('AT')+n('AU')+n('AV')+n('AW')+n('AX');
+  const tresActif = n('BA')+n('BB')+n('BC');
+  const totalActif = actifImmo + actifCirc + tresActif;
+
+  // Totaux PASSIF recalculés depuis les lignes saisies (pas d'amort sur passif)
+  const capPropres    = (b.CA??0)-(b.CB??0)+(b.CC??0)+(b.CD??0)+(b.CE??0)+(b.CF??0)+(b.CG??0)+(b.CH??0)+(b.CI??0);
+  const dettesFin     = (b.DA??0)+(b.DB??0)+(b.DC??0)+(b.DD??0);
+  const passifCirc    = (b.DH??0)+(b.DI??0)+(b.DJ??0)+(b.DK??0)+(b.DL??0)+(b.DM??0)+(b.DN??0);
+  const tresPassif    = (b.DQ??0)+(b.DR??0);
+
+  // Fallback sur les agrégats stockés si les lignes détaillées sont absentes (données Excel/legacy)
+  const totalActifFinal   = totalActif   || (b.BZ ?? 0);
+  const capPropresF       = capPropres   || (b.CP ?? 0);
+  const dettesFinalF      = dettesFin    || (b.DF ?? 0);
+  const passifCircF       = passifCirc   || (b.DP ?? 0);
+  const tresPassifF       = tresPassif   || (b.DT ?? 0);
+
   return {
-    chiffre_affaires:    is.XB ?? 0,
-    valeur_ajoutee:      is.XD ?? 0,
-    ebe:                 is.XE ?? 0,
-    resultat_exploitation: is.XF ?? 0,
-    produits_financiers: (is.SA ?? 0) + (is.SB ?? 0) + (is.SC ?? 0),
-    charges_financieres: (is.SD ?? 0) + (is.SE ?? 0),
-    resultat_financier:  is.XG ?? 0,
-    resultat_net:        is.XJ ?? 0,
-    flux_exploitation:   cf.ZC ?? 0,
-    variation_tresorerie: cf.ZH ?? 0,
-    actif_immobilise:    brut.AO ?? 0,
-    actif_circulant:     brut.AZ ?? 0,
-    stocks:              (brut.AQ ?? 0) + (brut.AR ?? 0) + (brut.AS ?? 0) + (brut.AT ?? 0),
-    creances_clients:    brut.AW ?? 0,
-    tresorerie:          brut.BT ?? 0,
-    total_actif:         brut.BZ ?? 0,
-    capitaux_propres:    brut.CP ?? 0,
-    dettes_financieres:  brut.DF ?? 0,
-    passif_circulant:    brut.DP ?? 0,
-    tresorerie_passif:   brut.DT ?? 0,
+    chiffre_affaires:              is.XB  ?? 0,
+    valeur_ajoutee:                is.XD  ?? 0,
+    ebe:                           is.XE  ?? 0,
+    resultat_exploitation:         is.XF  ?? 0,
+    produits_financiers:           (is.SA ?? 0) + (is.SB ?? 0) + (is.SC ?? 0),
+    charges_financieres:           (is.SD ?? 0) + (is.SE ?? 0),
+    resultat_financier:            is.XG  ?? 0,
+    resultat_net:                  is.XJ  ?? 0,
+    flux_exploitation:             cf.ZC  ?? 0,
+    flux_investissement:           cf.ZD  ?? 0,
+    flux_financement:              cf.ZG  ?? 0,
+    variation_tresorerie:          cf.ZH  ?? 0,
+    tresorerie_nette:              cf.ZI  ?? 0,
+    actif_immobilise:              actifImmo       || (b.AO ?? 0),
+    immobilisations_incorporelles: n('AB')+n('AC')+n('AD')+n('AE')+n('AF'),
+    immobilisations_corporelles:   n('AG')+n('AH')+n('AI')+n('AJ')+n('AK'),
+    immobilisations_financieres:   n('AL')+n('AM')+n('AN'),
+    actif_circulant:               actifCirc       || (b.AZ ?? 0),
+    stocks:                        n('AQ')+n('AR')+n('AS')+n('AT'),
+    creances_clients:              n('AW'),
+    autres_creances:               n('AX'),
+    tresorerie:                    tresActif       || (b.BT ?? 0),
+    total_actif:                   totalActifFinal,
+    capitaux_propres:              capPropresF,
+    dettes_financieres:            dettesFinalF,
+    ressources_stables:            capPropresF + dettesFinalF,
+    passif_circulant:              passifCircF,
+    tresorerie_passif:             tresPassifF,
   };
+}
+
+// Normalise les noms de champs alternatifs produits par l'import Excel/calcul externe
+function normalizeFinancialData(d: any): any {
+  if (!d || typeof d !== 'object') return d;
+  const r = { ...d };
+  if (!r.actif_immobilise)  r.actif_immobilise  = r.total_actif_immobilise  ?? 0;
+  if (!r.actif_circulant)   r.actif_circulant   = r.total_actif_circulant   ?? 0;
+  if (!r.tresorerie)        r.tresorerie        = r.tresorerie_actif        ?? r.banques_caisses ?? 0;
+  if (!r.passif_circulant)  r.passif_circulant  = r.total_dettes            ?? 0;
+  return r;
 }
 
 function resolveFinancialData(entry: any): any | null {
@@ -106,15 +157,81 @@ function resolveFinancialData(entry: any): any | null {
     if (inner?.multiyear_data?.N?.data) {
       const flat = inner.multiyear_data.N.data;
       if (flat?.incomeStatement || flat?.balance) return flattenOhadaData(flat);
-      return flat;
+      return normalizeFinancialData(flat);
     }
     if (inner?.incomeStatement || inner?.balance) return flattenOhadaData(inner);
-    return inner;
+    return normalizeFinancialData(inner);
   }
   if (entry?.incomeStatement || entry?.balance) return flattenOhadaData(entry);
-  const hasLegacyFields = ['chiffre_affaires', 'total_actif', 'resultat_net'].some(k => k in entry);
-  if (hasLegacyFields) return entry;
+  const hasFinancialFields = entry && typeof entry === 'object' &&
+    Object.keys(entry).some(k => ['chiffre_affaires', 'total_actif', 'capitaux_propres',
+      'resultat_net', 'actif_immobilise', 'stocks', 'total_actif_immobilise', 'total_dettes'].includes(k));
+  if (hasFinancialFields) return normalizeFinancialData(entry);
   return null;
+}
+
+function buildFinancialYearsData(analysisResults: any): Array<{ year: number; data: any }> {
+  const financialData = analysisResults?.financialData || {};
+  const yearKeys = Object.keys(financialData).map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b);
+
+  if (yearKeys.length > 0) {
+    const result: Array<{ year: number; data: any }> = [];
+
+    for (const baseYear of yearKeys) {
+      const entry = financialData[baseYear];
+      const myd = entry?.multiyear_data;
+      if (myd && typeof myd === 'object') {
+        // Détermine si les années internes sont canoniques (un seul outer key avec N/N-1/N-2)
+        // ou si l'outer key fait foi (plusieurs clés séparées, une par année)
+        const useOuterYear = yearKeys.length > 1;
+        let extracted = false;
+        for (const [, val] of Object.entries(myd as Record<string, any>)) {
+          if (val?.year) {
+            // Single-wrap: { year, data: flatData }
+            const fd = resolveFinancialData(val?.data ?? val);
+            if (fd) {
+              result.push({ year: useOuterYear ? baseYear : val.year, data: fd });
+              extracted = true;
+              if (useOuterYear) break; // un seul résultat par clé d'année
+            }
+          } else if (val?.data?.multiyear_data) {
+            // Double-wrap: { data: { multiyear_data: { N: { year, data }, 'N-1': ... } } }
+            for (const [, inner] of Object.entries(val.data.multiyear_data as Record<string, any>)) {
+              const yr = useOuterYear ? baseYear : ((inner as any)?.year ?? null);
+              if (!yr) continue;
+              const fd = resolveFinancialData((inner as any)?.data ?? inner);
+              if (fd) {
+                result.push({ year: yr, data: fd });
+                extracted = true;
+                if (useOuterYear) break; // un seul résultat par clé d'année
+              }
+            }
+            if (useOuterYear && extracted) break;
+          }
+        }
+        if (extracted) continue;
+      }
+      // Simple case: entry is direct financial data
+      const fd = resolveFinancialData(entry);
+      if (fd) result.push({ year: baseYear, data: fd });
+    }
+
+    if (result.length > 0) return result.sort((a, b) => a.year - b.year);
+  }
+
+  // Fallback: root-level multiyear_data
+  const myd = analysisResults?.multiyear_data;
+  if (myd && typeof myd === 'object') {
+    return (Object.entries(myd) as Array<[string, any]>)
+      .map(([key, val]) => {
+        const year = val?.year ?? (key === 'N' ? new Date().getFullYear() : null);
+        if (!year) return null;
+        const fd = resolveFinancialData(val?.data ?? val);
+        return fd ? { year, data: fd } : null;
+      })
+      .filter(Boolean) as Array<{ year: number; data: any }>;
+  }
+  return [];
 }
 
 function fmt(v: number, currency = 'XOF') {
@@ -192,6 +309,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
   const [loadingApp, setLoadingApp] = useState(false);
   const [appError, setAppError]     = useState('');
   const [tab, setTab]               = useState(0);
+  const [selectedFinYears, setSelectedFinYears] = useState<number[]>([]);
 
   // ── Analysis form ───────────────────────────────────────────────────────────
   const [analystScore,    setAnalystScore]    = useState<string>('');
@@ -269,6 +387,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
   useEffect(() => {
     if (open) {
       setTab(0);
+      setSelectedFinYears([]);
       setComment('');
       setActionError('');
       setActionOk('');
@@ -314,6 +433,83 @@ export const DossierActionDrawer: React.FC<Props> = ({
   const visibleActions: ActionKey[] = item.allowedActions.length === 0
     ? ALL_ACTIONS
     : ALL_ACTIONS.filter(a => item.allowedActions.includes(a));
+
+  // ── Financial tab helpers ────────────────────────────────────────────────────
+  const getNumericValue = (data: any, field: string): number => {
+    const v = data?.[field];
+    if (v === undefined || v === null || v === '') return 0;
+    const n = typeof v === 'string' ? parseFloat(v.replace(/[^\d.-]/g, '')) : Number(v);
+    return isNaN(n) ? 0 : n;
+  };
+
+  const computeBalanceTotals = (yearData: any) => {
+    const actifImmobilise = getNumericValue(yearData, 'actif_immobilise') ||
+      (getNumericValue(yearData, 'immobilisations_incorporelles') +
+       getNumericValue(yearData, 'immobilisations_corporelles') +
+       getNumericValue(yearData, 'immobilisations_financieres'));
+    const actifCirculant = getNumericValue(yearData, 'actif_circulant') ||
+      (getNumericValue(yearData, 'stocks') + getNumericValue(yearData, 'creances_clients') + getNumericValue(yearData, 'autres_creances'));
+    const tresorerieActif = getNumericValue(yearData, 'tresorerie');
+    const totalActif = getNumericValue(yearData, 'total_actif') || (actifImmobilise + actifCirculant + tresorerieActif);
+    const capitauxPropres = getNumericValue(yearData, 'capitaux_propres') ||
+      (getNumericValue(yearData, 'capital_social') + getNumericValue(yearData, 'reserves') + getNumericValue(yearData, 'resultat_exercice'));
+    const dettesFinancieres = getNumericValue(yearData, 'dettes_financieres') ||
+      (getNumericValue(yearData, 'emprunts_bancaires_lt') + getNumericValue(yearData, 'autres_dettes_financieres'));
+    const passifCirculant = getNumericValue(yearData, 'passif_circulant') ||
+      (getNumericValue(yearData, 'dettes_fournisseurs') + getNumericValue(yearData, 'dettes_fiscales_sociales') +
+       getNumericValue(yearData, 'dettes_sociales_fiscales') + getNumericValue(yearData, 'clients_avances_recues') +
+       getNumericValue(yearData, 'autres_dettes_courantes') + getNumericValue(yearData, 'autres_dettes'));
+    const tresoreriePassif = getNumericValue(yearData, 'tresorerie_passif') || getNumericValue(yearData, 'emprunts_bancaires_ct');
+    const computed = capitauxPropres + dettesFinancieres + passifCirculant + tresoreriePassif;
+    const totalPassif = getNumericValue(yearData, 'total_passif') || computed;
+    return { totalActif, totalPassif };
+  };
+
+  const calculateRatios = (yearData: any) => {
+    if (!yearData) return null;
+    const totalActif = getNumericValue(yearData, 'total_actif') || computeBalanceTotals(yearData).totalActif;
+    const actifCirculant = getNumericValue(yearData, 'actif_circulant');
+    const capitauxPropres = getNumericValue(yearData, 'capitaux_propres');
+    const passifCirculant = getNumericValue(yearData, 'passif_circulant');
+    const chiffreAffaires = getNumericValue(yearData, 'chiffre_affaires');
+    const resultatNet = getNumericValue(yearData, 'resultat_net');
+    const dettesLongTerme = getNumericValue(yearData, 'dettes_financieres');
+    return {
+      currentRatio: passifCirculant > 0 ? (actifCirculant / passifCirculant).toFixed(2) : 'N/A',
+      netMargin: chiffreAffaires > 0 ? ((resultatNet / chiffreAffaires) * 100).toFixed(2) : 'N/A',
+      roa: totalActif > 0 ? ((resultatNet / totalActif) * 100).toFixed(2) : 'N/A',
+      debtToEquity: capitauxPropres > 0 ? ((dettesLongTerme + passifCirculant) / capitauxPropres).toFixed(2) : 'N/A',
+      assetTurnover: totalActif > 0 ? (chiffreAffaires / totalActif).toFixed(2) : 'N/A',
+    };
+  };
+
+  const getProgressColor = (score: number): 'success' | 'info' | 'warning' | 'error' =>
+    score >= 80 ? 'success' : score >= 65 ? 'info' : score >= 50 ? 'warning' : 'error';
+
+  const getRiskLevel = (score: number): { label: string; color: 'success' | 'warning' | 'error' | 'info' } =>
+    score >= 80 ? { label: 'Risque Faible', color: 'success' } :
+    score >= 65 ? { label: 'Risque Modéré', color: 'info' } :
+    score >= 50 ? { label: 'Risque Élevé', color: 'warning' } :
+    { label: 'Risque Critique', color: 'error' };
+
+  const formatCurrencyFin = (value: number) =>
+    new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', minimumFractionDigits: 0 }).format(value);
+
+  const finAllYearsData = buildFinancialYearsData(app?.analysisResults);
+  const finYears = finAllYearsData.map(yd => yd.year);
+  const finLatestYearData = finAllYearsData.length > 0 ? finAllYearsData[finAllYearsData.length - 1].data : null;
+  const filteredFinYearsData = finAllYearsData.filter(({ year }) =>
+    selectedFinYears.length === 0 ? true : selectedFinYears.includes(year)
+  );
+  const toggleFinYear = (year: number) => {
+    setSelectedFinYears(prev => {
+      if (prev.includes(year)) return prev.length > 1 ? prev.filter(y => y !== year) : prev;
+      return [...prev, year].sort((a, b) => a - b);
+    });
+  };
+  const finOverallScore = app?.analysisResults?.preliminaryAnalysis?.overallScore ?? app?.overallScore ?? 0;
+  const finFinancialScore = app?.analysisResults?.preliminaryAnalysis?.financialScore ?? app?.financialScore ?? 0;
+  const finAnalystScore = app?.analysisResults?.preliminaryAnalysis?.analystScore ?? app?.analystScore ?? 0;
 
   // ── Submit decision (non-ANALYSIS) ──────────────────────────────────────────
   const submitDecision = async (action: ActionKey, overrideComment?: string) => {
@@ -641,10 +837,11 @@ export const DossierActionDrawer: React.FC<Props> = ({
         {/* ── Tabs ── */}
         <Box sx={{ borderBottom: '1px solid #e5e7eb', flexShrink: 0 }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ px: 2 }}>
-            <Tab label="Dossier"   sx={{ fontSize: 13, fontWeight: 600, textTransform: 'none' }} />
-            <Tab label="Crédit"    sx={{ fontSize: 13, fontWeight: 600, textTransform: 'none' }} />
+            <Tab label="Dossier"    sx={{ fontSize: 13, fontWeight: 600, textTransform: 'none' }} />
+            <Tab label="Crédit"     sx={{ fontSize: 13, fontWeight: 600, textTransform: 'none' }} />
+            <Tab label="Financier"  sx={{ fontSize: 13, fontWeight: 600, textTransform: 'none' }} />
             {isAnalysis && (
-              <Tab label="Analyse" sx={{ fontSize: 13, fontWeight: 600, textTransform: 'none' }} />
+              <Tab label="Analyse"  sx={{ fontSize: 13, fontWeight: 600, textTransform: 'none' }} />
             )}
             <Tab label="Historique" sx={{ fontSize: 13, fontWeight: 600, textTransform: 'none' }} />
           </Tabs>
@@ -912,102 +1109,6 @@ export const DossierActionDrawer: React.FC<Props> = ({
                     </AccordionDetails>
                   </Accordion>
 
-                  {/* ── Données financières ── */}
-                  <Accordion disableGutters elevation={0} sx={{
-                    border: '1px solid #e5e7eb', borderRadius: '8px !important',
-                    '&:before': { display: 'none' },
-                  }}>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 44, '& .MuiAccordionSummary-content': { my: 0.75 } }}>
-                      <Typography fontWeight={700} fontSize={13}>Données financières</Typography>
-                    </AccordionSummary>
-                    <AccordionDetails sx={{ pt: 0, pb: 2, px: 2 }}>
-                      {(() => {
-                        const analysisResults = app?.analysisResults || {};
-                        const financialData   = analysisResults?.financialData || {};
-                        const years = Object.keys(financialData).map(Number).sort((a, b) => a - b);
-                        const latestYear = years[years.length - 1];
-                        const fd = latestYear != null ? resolveFinancialData(financialData[latestYear]) : null;
-                        if (!fd) return (
-                          <Typography variant="body2" color="text.secondary">Aucune donnée financière disponible.</Typography>
-                        );
-                        return (
-                          <Stack spacing={2}>
-                            <Box>
-                              <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'uppercase', fontSize: 10, mb: 1, display: 'block' }}>
-                                Compte de résultat (FCFA)
-                              </Typography>
-                              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: 1.5 }}>
-                                {[
-                                  { label: "Chiffre d'affaires",    k: 'chiffre_affaires' },
-                                  { label: 'Valeur ajoutée',         k: 'valeur_ajoutee' },
-                                  { label: 'EBE',                    k: 'ebe' },
-                                  { label: "Rés. d'exploitation",    k: 'resultat_exploitation' },
-                                  { label: 'Résultat financier',     k: 'resultat_financier' },
-                                  { label: 'Résultat net',           k: 'resultat_net' },
-                                ].map(({ label, k }) => (
-                                  <Box key={k}>
-                                    <Typography variant="caption" color="text.secondary" fontSize={10}>{label}</Typography>
-                                    <Typography variant="body2" fontWeight={600} fontSize={12}>
-                                      {fd[k] != null ? fmt(fd[k]) : '—'}
-                                    </Typography>
-                                  </Box>
-                                ))}
-                              </Box>
-                            </Box>
-                            <Divider />
-                            <Box>
-                              <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'uppercase', fontSize: 10, mb: 1, display: 'block' }}>
-                                Bilan (FCFA)
-                              </Typography>
-                              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: 1.5 }}>
-                                {[
-                                  { label: 'Total actif',        k: 'total_actif' },
-                                  { label: 'Actif immobilisé',   k: 'actif_immobilise' },
-                                  { label: 'Actif circulant',    k: 'actif_circulant' },
-                                  { label: 'Stocks',             k: 'stocks' },
-                                  { label: 'Créances clients',   k: 'creances_clients' },
-                                  { label: 'Trésorerie actif',   k: 'tresorerie' },
-                                  { label: 'Capitaux propres',   k: 'capitaux_propres' },
-                                  { label: 'Dettes financières', k: 'dettes_financieres' },
-                                  { label: 'Passif circulant',   k: 'passif_circulant' },
-                                ].map(({ label, k }) => (
-                                  <Box key={k}>
-                                    <Typography variant="caption" color="text.secondary" fontSize={10}>{label}</Typography>
-                                    <Typography variant="body2" fontWeight={600} fontSize={12}>
-                                      {fd[k] != null ? fmt(fd[k]) : '—'}
-                                    </Typography>
-                                  </Box>
-                                ))}
-                              </Box>
-                            </Box>
-                            {(fd.flux_exploitation !== 0 || fd.variation_tresorerie !== 0) && (
-                              <>
-                                <Divider />
-                                <Box>
-                                  <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'uppercase', fontSize: 10, mb: 1, display: 'block' }}>
-                                    Flux de trésorerie (FCFA)
-                                  </Typography>
-                                  <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: 1.5 }}>
-                                    {[
-                                      { label: "Flux d'exploitation",   k: 'flux_exploitation' },
-                                      { label: 'Variation trésorerie',  k: 'variation_tresorerie' },
-                                    ].map(({ label, k }) => (
-                                      <Box key={k}>
-                                        <Typography variant="caption" color="text.secondary" fontSize={10}>{label}</Typography>
-                                        <Typography variant="body2" fontWeight={600} fontSize={12}>
-                                          {fd[k] != null ? fmt(fd[k]) : '—'}
-                                        </Typography>
-                                      </Box>
-                                    ))}
-                                  </Box>
-                                </Box>
-                              </>
-                            )}
-                          </Stack>
-                        );
-                      })()}
-                    </AccordionDetails>
-                  </Accordion>
 
                   {/* ── Analyse préliminaire ── */}
                   {app?.analysisResults?.preliminaryAnalysis && (
@@ -1057,8 +1158,228 @@ export const DossierActionDrawer: React.FC<Props> = ({
                 </Stack>
               )}
 
+              {/* ── Tab 2 : Financier ── */}
+              {tab === 2 && (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                  {/* Sélecteur d'années */}
+                  {finYears.length > 1 && (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.75, flexWrap: 'wrap' }}>
+                      {finYears.map(year => (
+                        <Chip
+                          key={year}
+                          label={year}
+                          size="small"
+                          variant={selectedFinYears.length === 0 || selectedFinYears.includes(year) ? 'filled' : 'outlined'}
+                          onClick={() => toggleFinYear(year)}
+                          color={selectedFinYears.length === 0 || selectedFinYears.includes(year) ? 'primary' : 'default'}
+                          sx={{ cursor: 'pointer', fontWeight: 600, fontSize: '11px' }}
+                        />
+                      ))}
+                    </Box>
+                  )}
+
+                  {finAllYearsData.length > 0 ? (
+                    <>
+                      {/* ─── Grandes Masses du Bilan ─── */}
+                      <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                        <CardContent sx={{ pb: '16px !important' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                            <AccountBalanceIcon sx={{ color: 'primary.main', fontSize: 18 }} />
+                            <Typography variant="subtitle2" fontWeight={700}>Grandes Masses du Bilan (SYSCOHADA)</Typography>
+                          </Box>
+                          <TableContainer>
+                            <Table size="small">
+                              <TableHead>
+                                <TableRow sx={{ bgcolor: 'rgba(25,118,210,0.06)' }}>
+                                  <TableCell sx={{ fontWeight: 700, py: 0.75 }}>Poste</TableCell>
+                                  <TableCell sx={{ fontWeight: 700, py: 0.75, width: 80 }}>Cat.</TableCell>
+                                  {filteredFinYearsData.map(({ year }) => (
+                                    <TableCell key={year} align="right" sx={{ fontWeight: 700, py: 0.75 }}>{year}</TableCell>
+                                  ))}
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {[
+                                  { label: 'Actif Immobilisé', field: 'actif_immobilise', cat: 'ACTIF', catColor: 'rgba(25,118,210,0.1)', catText: '#1565c0' },
+                                  { label: 'Actif Circulant',  field: 'actif_circulant',  cat: 'ACTIF', catColor: 'rgba(25,118,210,0.1)', catText: '#1565c0' },
+                                  { label: 'Trésorerie Actif', field: 'tresorerie',       cat: 'ACTIF', catColor: 'rgba(25,118,210,0.1)', catText: '#1565c0' },
+                                ].map(({ label, field, cat, catColor, catText }) => (
+                                  <TableRow key={label} sx={{ '&:hover': { bgcolor: 'grey.50' } }}>
+                                    <TableCell sx={{ py: 0.5 }}>{label}</TableCell>
+                                    <TableCell sx={{ py: 0.5 }}>
+                                      <Chip label={cat} size="small" sx={{ height: 16, fontSize: '9px', fontWeight: 700, bgcolor: catColor, color: catText }} />
+                                    </TableCell>
+                                    {filteredFinYearsData.map(({ year, data }) => (
+                                      <TableCell key={year} align="right" sx={{ py: 0.5 }}>{formatCurrencyFin(getNumericValue(data, field))}</TableCell>
+                                    ))}
+                                  </TableRow>
+                                ))}
+                                <TableRow sx={{ bgcolor: 'rgba(25,118,210,0.08)' }}>
+                                  <TableCell sx={{ fontWeight: 700, py: 0.75 }}>TOTAL ACTIF</TableCell>
+                                  <TableCell />
+                                  {filteredFinYearsData.map(({ year, data }) => (
+                                    <TableCell key={year} align="right" sx={{ fontWeight: 700, py: 0.75 }}>
+                                      {formatCurrencyFin(computeBalanceTotals(data).totalActif)}
+                                    </TableCell>
+                                  ))}
+                                </TableRow>
+                                {[
+                                  { label: 'Capitaux Propres',   field: 'capitaux_propres',  cat: 'PASSIF', catColor: 'rgba(76,175,80,0.12)', catText: '#2e7d32' },
+                                  { label: 'Dettes Financières', field: 'dettes_financieres', cat: 'PASSIF', catColor: 'rgba(76,175,80,0.12)', catText: '#2e7d32' },
+                                  { label: 'Passif Circulant',   field: 'passif_circulant',  cat: 'PASSIF', catColor: 'rgba(76,175,80,0.12)', catText: '#2e7d32' },
+                                  { label: 'Trésorerie Passif',  field: 'tresorerie_passif', cat: 'PASSIF', catColor: 'rgba(76,175,80,0.12)', catText: '#2e7d32' },
+                                ].map(({ label, field, cat, catColor, catText }) => (
+                                  <TableRow key={label} sx={{ '&:hover': { bgcolor: 'grey.50' } }}>
+                                    <TableCell sx={{ py: 0.5 }}>{label}</TableCell>
+                                    <TableCell sx={{ py: 0.5 }}>
+                                      <Chip label={cat} size="small" sx={{ height: 16, fontSize: '9px', fontWeight: 700, bgcolor: catColor, color: catText }} />
+                                    </TableCell>
+                                    {filteredFinYearsData.map(({ year, data }) => (
+                                      <TableCell key={year} align="right" sx={{ py: 0.5 }}>{formatCurrencyFin(getNumericValue(data, field))}</TableCell>
+                                    ))}
+                                  </TableRow>
+                                ))}
+                                <TableRow sx={{ bgcolor: 'rgba(76,175,80,0.08)' }}>
+                                  <TableCell sx={{ fontWeight: 700, py: 0.75 }}>TOTAL PASSIF</TableCell>
+                                  <TableCell />
+                                  {filteredFinYearsData.map(({ year, data }) => (
+                                    <TableCell key={year} align="right" sx={{ fontWeight: 700, py: 0.75 }}>
+                                      {formatCurrencyFin(computeBalanceTotals(data).totalPassif)}
+                                    </TableCell>
+                                  ))}
+                                </TableRow>
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        </CardContent>
+                      </Card>
+
+                      {/* ─── Compte de Résultat ─── */}
+                      <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                        <CardContent sx={{ pb: '16px !important' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                            <TrendingUpIcon sx={{ color: 'success.main', fontSize: 18 }} />
+                            <Typography variant="subtitle2" fontWeight={700}>Compte de Résultat</Typography>
+                          </Box>
+                          <TableContainer>
+                            <Table size="small">
+                              <TableHead>
+                                <TableRow sx={{ bgcolor: 'grey.50' }}>
+                                  <TableCell sx={{ fontWeight: 700, py: 0.75 }}>Indicateur</TableCell>
+                                  {filteredFinYearsData.map(({ year }) => (
+                                    <TableCell key={year} align="right" sx={{ fontWeight: 700, py: 0.75 }}>{year}</TableCell>
+                                  ))}
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {[
+                                  { label: "Chiffre d'Affaires",   field: 'chiffre_affaires' },
+                                  { label: 'Valeur Ajoutée',        field: 'valeur_ajoutee' },
+                                  { label: 'EBE',                   field: 'ebe' },
+                                  { label: 'Résultat Exploitation', field: 'resultat_exploitation' },
+                                  { label: 'Résultat Net',          field: 'resultat_net' },
+                                ].map(({ label, field }) => (
+                                  <TableRow key={label} sx={{ '&:hover': { bgcolor: 'grey.50' } }}>
+                                    <TableCell sx={{ py: 0.5 }}>{label}</TableCell>
+                                    {filteredFinYearsData.map(({ year, data }, i) => {
+                                      const val = getNumericValue(data, field);
+                                      const prevData = i > 0 ? filteredFinYearsData[i - 1].data : null;
+                                      const prevVal = prevData ? getNumericValue(prevData, field) : null;
+                                      const trend = prevVal !== null && prevVal !== 0
+                                        ? val > prevVal ? 'up' : val < prevVal ? 'down' : null
+                                        : null;
+                                      return (
+                                        <TableCell key={year} align="right" sx={{ py: 0.5 }}>
+                                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.4 }}>
+                                            <span>{formatCurrencyFin(val)}</span>
+                                            {trend === 'up'   && <TrendingUpIcon   sx={{ fontSize: 13, color: 'success.main' }} />}
+                                            {trend === 'down' && <TrendingDownIcon sx={{ fontSize: 13, color: 'error.main' }} />}
+                                          </Box>
+                                        </TableCell>
+                                      );
+                                    })}
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        </CardContent>
+                      </Card>
+
+                      {/* ─── Ratios clés ─── */}
+                      <Box>
+                        <Typography variant="overline" sx={{ color: 'text.secondary', fontWeight: 600, letterSpacing: 1, display: 'block', mb: 1 }}>
+                          Ratios Clés (dernière année)
+                        </Typography>
+                        <Grid container spacing={1.5}>
+                          {(() => {
+                            const r = calculateRatios(finLatestYearData);
+                            return [
+                              { label: 'Liquidité Générale', value: r?.currentRatio ?? 'N/A', unit: 'x', norm: '≥ 1.5', ok: parseFloat(r?.currentRatio || '0') >= 1.5, icon: <WaterDropIcon sx={{ fontSize: 16 }} />, color: '#1976d2' },
+                              { label: 'Marge Nette',        value: r?.netMargin    ?? 'N/A', unit: '%', norm: '≥ 10 %', ok: parseFloat(r?.netMargin    || '0') >= 10,  icon: <TrendingUpIcon  sx={{ fontSize: 16 }} />, color: '#388e3c' },
+                              { label: 'Dette / Capitaux',   value: r?.debtToEquity ?? 'N/A', unit: 'x', norm: '≤ 1.0', ok: parseFloat(r?.debtToEquity || '99') <= 1,  icon: <BalanceIcon     sx={{ fontSize: 16 }} />, color: '#f57c00' },
+                              { label: 'Rotation Actif',     value: r?.assetTurnover ?? 'N/A', unit: 'x', norm: '≥ 1.0', ok: parseFloat(r?.assetTurnover || '0') >= 1, icon: <AutorenewIcon   sx={{ fontSize: 16 }} />, color: '#7b1fa2' },
+                            ].map(card => (
+                              <Grid item xs={6} key={card.label}>
+                                <Card variant="outlined" sx={{ borderRadius: 2, borderLeft: '3px solid', borderLeftColor: card.value === 'N/A' ? 'grey.400' : card.ok ? 'success.main' : 'error.main' }}>
+                                  <CardContent sx={{ p: 1.5, pb: '12px !important' }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: card.color, mb: 0.5 }}>
+                                      {card.icon}
+                                      <Typography variant="caption" fontWeight={600} sx={{ lineHeight: 1.2 }}>{card.label}</Typography>
+                                    </Box>
+                                    <Typography variant="h6" fontWeight={700} sx={{ lineHeight: 1.1 }}>
+                                      {card.value === 'N/A' ? '—' : `${card.value}${card.unit}`}
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>
+                                      <Typography variant="caption" color="text.secondary">{card.norm}</Typography>
+                                      {card.value !== 'N/A' && (
+                                        <Chip label={card.ok ? 'OK' : 'Attention'} size="small" color={card.ok ? 'success' : 'warning'} sx={{ height: 16, fontSize: '9px', fontWeight: 700 }} />
+                                      )}
+                                    </Box>
+                                  </CardContent>
+                                </Card>
+                              </Grid>
+                            ));
+                          })()}
+                        </Grid>
+                      </Box>
+
+                      {/* ─── Score global ─── */}
+                      {finOverallScore > 0 && (
+                        <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                          <CardContent sx={{ pb: '16px !important' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                              <Box sx={{ textAlign: 'center', flexShrink: 0 }}>
+                                <Typography variant="h2" fontWeight={800} sx={{ lineHeight: 1, color: getProgressColor(finOverallScore) === 'success' ? '#2e7d32' : getProgressColor(finOverallScore) === 'warning' ? '#e65100' : '#c62828' }}>
+                                  {finOverallScore}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">/100</Typography>
+                              </Box>
+                              <Box sx={{ flex: 1 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                  <Typography variant="subtitle2" fontWeight={700}>Score Global</Typography>
+                                  <Chip label={getRiskLevel(finOverallScore).label} color={getRiskLevel(finOverallScore).color} size="small" sx={{ fontWeight: 600 }} />
+                                </Box>
+                                <LinearProgress variant="determinate" value={finOverallScore} color={getProgressColor(finOverallScore)} sx={{ height: 10, borderRadius: 5, bgcolor: 'grey.200', mb: 0.75 }} />
+                                <Typography variant="caption" color="text.secondary">
+                                  Financier : {finFinancialScore} · Analyste : {finAnalystScore}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+                      Aucune donnée financière disponible pour ce dossier.
+                    </Typography>
+                  )}
+                </Box>
+              )}
+
               {/* ── Tab "Analyse" (ANALYSIS step uniquement) ── */}
-              {isAnalysis && tab === 2 && (
+              {isAnalysis && tab === 3 && (
                 <Stack spacing={2.5}>
                   <Typography variant="body2" color="text.secondary">
                     Glissez les curseurs pour définir vos scores. La décision sera validée par OTP.
@@ -1167,7 +1488,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
               )}
 
               {/* ── Tab Historique ── */}
-              {tab === (isAnalysis ? 3 : 2) && (
+              {tab === (isAnalysis ? 4 : 3) && (
                 <Box>
                   {steps.length === 0 ? (
                     <Typography color="text.secondary" variant="body2">Aucune étape enregistrée.</Typography>

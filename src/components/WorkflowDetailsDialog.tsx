@@ -261,10 +261,29 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
   // Convertit le format OHADA (OhadaFinancialTable) en champs plats attendus par ce dialog
   const flattenOhadaData = (data: any): any => {
     const is = data.incomeStatement || {};
-    const cf = data.cashFlow || {};
-    const brut = data.balance?.brut || {};
+    const cf = data.cashFlow        || {};
+    const b  = data.balance?.brut   || {};
+    const a  = data.balance?.amort  || {};
+
+    const n = (code: string) => (b[code] ?? 0) - (a[code] ?? 0);
+
+    const actifImmo = n('AB')+n('AC')+n('AD')+n('AE')+n('AF')+n('AG')+n('AH')+n('AI')+n('AJ')+n('AK')+n('AL')+n('AM')+n('AN');
+    const actifCirc = n('AP')+n('AQ')+n('AR')+n('AS')+n('AT')+n('AU')+n('AV')+n('AW')+n('AX');
+    const tresActif = n('BA')+n('BB')+n('BC');
+    const totalActif = actifImmo + actifCirc + tresActif;
+
+    const capPropres = (b.CA??0)-(b.CB??0)+(b.CC??0)+(b.CD??0)+(b.CE??0)+(b.CF??0)+(b.CG??0)+(b.CH??0)+(b.CI??0);
+    const dettesFin  = (b.DA??0)+(b.DB??0)+(b.DC??0)+(b.DD??0);
+    const passifCirc = (b.DH??0)+(b.DI??0)+(b.DJ??0)+(b.DK??0)+(b.DL??0)+(b.DM??0)+(b.DN??0);
+    const tresPassif = (b.DQ??0)+(b.DR??0);
+
+    const totalActifF = totalActif || (b.BZ ?? 0);
+    const capPropresF = capPropres || (b.CP ?? 0);
+    const dettesFinalF = dettesFin || (b.DF ?? 0);
+    const passifCircF = passifCirc || (b.DP ?? 0);
+    const tresPassifF = tresPassif || (b.DT ?? 0);
+
     return {
-      // Compte de résultat
       chiffre_affaires:       is.XB  ?? 0,
       valeur_ajoutee:         is.XD  ?? 0,
       ebe:                    is.XE  ?? 0,
@@ -273,30 +292,37 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
       charges_financieres:    (is.SD ?? 0) + (is.SE ?? 0),
       resultat_financier:     is.XG  ?? 0,
       resultat_net:           is.XJ  ?? 0,
-      // Flux de trésorerie
       flux_exploitation:      cf.ZC  ?? 0,
       flux_investissement:    cf.ZD  ?? 0,
       flux_financement:       cf.ZG  ?? 0,
       variation_tresorerie:   cf.ZH  ?? 0,
       tresorerie_nette:       cf.ZI  ?? 0,
-      // Bilan actif
-      actif_immobilise:       brut.AO ?? 0,
-      immobilisations_incorporelles: brut.AF ?? 0,
-      immobilisations_corporelles:   brut.AJ ?? 0,
-      immobilisations_financieres:   brut.AN ?? 0,
-      actif_circulant:        brut.AZ ?? 0,
-      stocks:                 (brut.AQ ?? 0) + (brut.AR ?? 0) + (brut.AS ?? 0) + (brut.AT ?? 0),
-      creances_clients:       brut.AW ?? 0,
-      autres_creances:        brut.AX ?? 0,
-      tresorerie:             brut.BT ?? 0,
-      total_actif:            brut.BZ ?? 0,
-      // Bilan passif
-      capitaux_propres:       brut.CP ?? 0,
-      dettes_financieres:     brut.DF ?? 0,
-      ressources_stables:     brut.DG ?? 0,
-      passif_circulant:       brut.DP ?? 0,
-      tresorerie_passif:      brut.DT ?? 0,
+      actif_immobilise:              actifImmo || (b.AO ?? 0),
+      immobilisations_incorporelles: n('AB')+n('AC')+n('AD')+n('AE')+n('AF'),
+      immobilisations_corporelles:   n('AG')+n('AH')+n('AI')+n('AJ')+n('AK'),
+      immobilisations_financieres:   n('AL')+n('AM')+n('AN'),
+      actif_circulant:        actifCirc || (b.AZ ?? 0),
+      stocks:                 n('AQ')+n('AR')+n('AS')+n('AT'),
+      creances_clients:       n('AW'),
+      autres_creances:        n('AX'),
+      tresorerie:             tresActif || (b.BT ?? 0),
+      total_actif:            totalActifF,
+      capitaux_propres:       capPropresF,
+      dettes_financieres:     dettesFinalF,
+      ressources_stables:     capPropresF + dettesFinalF,
+      passif_circulant:       passifCircF,
+      tresorerie_passif:      tresPassifF,
     };
+  };
+
+  const normalizeFinancialData = (d: any): any => {
+    if (!d || typeof d !== 'object') return d;
+    const r = { ...d };
+    if (!r.actif_immobilise) r.actif_immobilise  = r.total_actif_immobilise  ?? 0;
+    if (!r.actif_circulant)  r.actif_circulant   = r.total_actif_circulant   ?? 0;
+    if (!r.tresorerie)       r.tresorerie        = r.tresorerie_actif        ?? r.banques_caisses ?? 0;
+    if (!r.passif_circulant) r.passif_circulant  = r.total_dettes            ?? 0;
+    return r;
   };
 
   // Resolve year data: gère les 3 formats possibles + double-wrapping via CreditApplicationPage
@@ -309,18 +335,18 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
       if (inner?.multiyear_data?.N?.data) {
         const flat = inner.multiyear_data.N.data;
         if (flat?.incomeStatement || flat?.balance) return flattenOhadaData(flat);
-        return flat;
+        return normalizeFinancialData(flat);
       }
       if (inner?.incomeStatement || inner?.balance) return flattenOhadaData(inner);
-      return inner;
+      return normalizeFinancialData(inner);
     }
     // Format OHADA direct : { incomeStatement, cashFlow, balance }
     if (entry?.incomeStatement || entry?.balance) return flattenOhadaData(entry);
     // Format plat legacy : { chiffre_affaires: ..., total_actif: ... }
     const hasFinancialFields = entry && typeof entry === 'object' &&
       Object.keys(entry).some(k => ['chiffre_affaires', 'total_actif', 'capitaux_propres',
-        'resultat_net', 'actif_immobilise', 'stocks'].includes(k));
-    if (hasFinancialFields) return entry;
+        'resultat_net', 'actif_immobilise', 'stocks', 'total_actif_immobilise', 'total_dettes'].includes(k));
+    if (hasFinancialFields) return normalizeFinancialData(entry);
     return null;
   };
 
@@ -399,10 +425,14 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
     const passifCirculant = getNumericValue(yearData, 'passif_circulant') ||
       (getNumericValue(yearData, 'dettes_fournisseurs') +
        getNumericValue(yearData, 'dettes_fiscales_sociales') +
-       getNumericValue(yearData, 'autres_dettes_courantes'));
+       getNumericValue(yearData, 'dettes_sociales_fiscales') +
+       getNumericValue(yearData, 'clients_avances_recues') +
+       getNumericValue(yearData, 'autres_dettes_courantes') +
+       getNumericValue(yearData, 'autres_dettes'));
     const tresoreriePassif = getNumericValue(yearData, 'tresorerie_passif') ||
       getNumericValue(yearData, 'emprunts_bancaires_ct');
-    const totalPassif = capitauxPropres + dettesFinancieres + passifCirculant + tresoreriePassif;
+    const computed = capitauxPropres + dettesFinancieres + passifCirculant + tresoreriePassif;
+    const totalPassif = getNumericValue(yearData, 'total_passif') || computed;
 
     return { totalActif, totalPassif };
   };
