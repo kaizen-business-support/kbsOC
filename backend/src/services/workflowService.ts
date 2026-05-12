@@ -339,7 +339,10 @@ export async function startWorkflowStep(
  * Calcule et stocke la durée effective de traitement lors de la complétion d'une étape.
  * Retourne la durée en minutes.
  */
-export async function finalizeStepDuration(stepId: string): Promise<number | null> {
+export async function finalizeStepDuration(
+  stepId: string,
+  options: { markCompleted?: boolean } = { markCompleted: true }
+): Promise<number | null> {
   const step = await prisma.workflowStep.findUnique({ where: { id: stepId } });
   if (!step) return null;
 
@@ -350,7 +353,7 @@ export async function finalizeStepDuration(stepId: string): Promise<number | nul
   await prisma.workflowStep.update({
     where: { id: stepId },
     data: {
-      completedAt: end,
+      ...(options.markCompleted !== false ? { completedAt: end } : {}),
       durationMinutes,
     },
   });

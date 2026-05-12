@@ -211,10 +211,27 @@ router.post('/', async (req: Request, res: Response) => {
     } = req.body;
 
     // Validate required fields
-    if (!clientId || !amount || !purpose || !createdBy || !creditTypeId) {
+    if (!clientId || amount === undefined || amount === null || !purpose || !createdBy || !creditTypeId) {
       return res.status(400).json({
         success: false,
         error: 'Les champs clientId, amount, purpose, createdBy et creditTypeId sont obligatoires'
+      });
+    }
+
+    // Validate amount: doit être un nombre positif strictement supérieur à zéro
+    // et plafonné à 100 milliards XOF pour éviter les saisies erronées.
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Le montant doit être un nombre strictement positif',
+      });
+    }
+    const AMOUNT_CAP = 100_000_000_000; // 100 milliards XOF
+    if (numericAmount > AMOUNT_CAP) {
+      return res.status(400).json({
+        success: false,
+        error: `Le montant ne peut pas dépasser ${AMOUNT_CAP.toLocaleString('fr-FR')} ${currency}`,
       });
     }
 

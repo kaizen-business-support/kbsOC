@@ -574,18 +574,39 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       });
     }
 
-    // Trouver l'étape courante — priorité : stepId > stepName > step dont le rôle correspond > première non complétée
+    // Trouver l'étape courante — priorité : stepId > stepName > step dont le rôle correspond
+    // IMPORTANT : si stepId est fourni explicitement et ne correspond à aucune étape en
+    // attente, retourner une erreur claire plutôt que de fall-back silencieusement sur
+    // une autre étape (ce qui ferait approuver la mauvaise étape sans que l'utilisateur s'en aperçoive).
     const requestingUserRole = (req as any).user?.role as string | undefined;
     const pendingSteps = application.workflowSteps.filter(s => !s.completedAt);
-    const currentStep = stepId
-      ? (pendingSteps.find(s => s.id === stepId) ?? pendingSteps.find(s => s.stepName === stepName) ?? pendingSteps[0])
-      : stepName
-        ? (pendingSteps.find(s => s.stepName === stepName) ?? pendingSteps[0])
-        // Fallback : si aucun identifiant fourni, chercher le step dont le rôle correspond à l'utilisateur
-        // pour éviter de prendre le mauvais step (ex: ANALYSTE_RISQUES au lieu de DIRECTION_JURIDIQUE)
-        : (requestingUserRole
-            ? (pendingSteps.find(s => s.role === requestingUserRole) ?? pendingSteps[0])
-            : pendingSteps[0]);
+
+    let currentStep;
+    if (stepId) {
+      currentStep = pendingSteps.find(s => s.id === stepId);
+      if (!currentStep) {
+        const targetStep = application.workflowSteps.find(s => s.id === stepId);
+        return res.status(409).json({
+          success: false,
+          error: targetStep
+            ? `Cette étape est déjà traitée (${targetStep.status}). Rechargez la page pour voir l'état actuel.`
+            : 'Étape introuvable',
+        });
+      }
+    } else if (stepName) {
+      currentStep = pendingSteps.find(s => s.stepName === stepName);
+      if (!currentStep) {
+        return res.status(409).json({
+          success: false,
+          error: `Aucune étape "${stepName}" en attente sur ce dossier`,
+        });
+      }
+    } else {
+      // Aucun identifiant fourni : prendre l'étape pending correspondant au rôle de l'utilisateur
+      currentStep = requestingUserRole
+        ? (pendingSteps.find(s => s.role === requestingUserRole) ?? pendingSteps[0])
+        : pendingSteps[0];
+    }
 
     if (!currentStep) {
       return res.status(400).json({
@@ -636,11 +657,11 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       await startWorkflowStep(currentStep.id, userId);
     }
 
-    // REQUEST_INFO : l'étape reste IN_REVIEW, le workflow ne progresse pas
+    // REQUEST_INFO : l'étape reste ouverte (IN_REVIEW, completedAt=null) pour
+    // continuer à bloquer la séquence des étapes suivantes jusqu'à ce que
+    // les informations soient fournies et l'étape ré-approuvée.
     if (decision === 'REQUEST_INFO') {
-      // Finaliser l'étape : l'utilisateur a fait son action, elle ne doit plus
-      // apparaître dans sa liste. completedAt est positionné par finalizeStepDuration.
-      const dur = await finalizeStepDuration(currentStep.id);
+      const dur = await finalizeStepDuration(currentStep.id, { markCompleted: false });
       await prisma.workflowStep.update({
         where: { id: currentStep.id },
         data: {
@@ -660,10 +681,11 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
     }
 
     // TRANSFER : créer une nouvelle étape PENDING sans assignee pour que
-    // quelqu'un d'autre la reprenne ; compléter l'étape courante pour retirer
-    // l'élément de la liste de l'utilisateur qui transfère.
+    // quelqu'un d'autre la reprenne. L'étape transférée reste ouverte
+    // (completedAt=null) pour ne pas être considérée comme déjà traitée
+    // par la vérification séquentielle.
     if (decision === 'TRANSFER') {
-      const durT = await finalizeStepDuration(currentStep.id);
+      const durT = await finalizeStepDuration(currentStep.id, { markCompleted: false });
       await prisma.workflowStep.update({
         where: { id: currentStep.id },
         data: {
@@ -713,6 +735,21 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
       await prisma.creditApplication.update({
         where: { id: applicationId },
         data: { status: 'REJECTED' }
+      });
+      // Annuler toutes les étapes encore en attente : le dossier est rejeté,
+      // elles n'ont plus à apparaître dans les files d'attente ni à fausser les KPI.
+      await prisma.workflowStep.updateMany({
+        where: {
+          applicationId,
+          completedAt: null,
+          id: { not: currentStep.id },
+          status: { in: ['PENDING', 'IN_REVIEW'] },
+        },
+        data: {
+          status: 'CANCELLED',
+          completedAt: new Date(),
+          comments: `Annulée suite au rejet du dossier à l'étape "${currentStep.stepName}"`,
+        },
       });
       // Calculer et stocker la durée totale du dossier
       await finalizeApplicationDuration(applicationId);
