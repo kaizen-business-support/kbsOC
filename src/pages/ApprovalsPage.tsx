@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Typography, Tabs, Tab, Table, TableBody, TableCell,
-  TableHead, TableRow, Paper, Chip, Button, CircularProgress,
+  TableHead, TableRow, TableContainer, Paper, Chip, Button, CircularProgress,
   Alert, IconButton, Select, MenuItem, FormControl, InputLabel,
   Badge, Tooltip, Avatar,
 } from '@mui/material';
@@ -263,8 +263,13 @@ export const ApprovalsPage: React.FC = () => {
             <Typography color="text.secondary">Aucun dossier traité dans cette session</Typography>
           </Box>
         ) : (
-          <Paper sx={{ borderRadius: '12px', overflow: 'hidden' }} elevation={0} variant="outlined">
-            <Table size="small">
+          <TableContainer
+            component={Paper}
+            sx={{ borderRadius: '12px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
+            elevation={0}
+            variant="outlined"
+          >
+            <Table size="small" sx={{ minWidth: 900 }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#f0fdf4' }}>
                   <TableCell><strong>N° dossier</strong></TableCell>
@@ -332,7 +337,7 @@ export const ApprovalsPage: React.FC = () => {
                 ))}
               </TableBody>
             </Table>
-          </Paper>
+          </TableContainer>
         )
       ) : (
         /* ── Tableau En attente ── */
@@ -346,8 +351,13 @@ export const ApprovalsPage: React.FC = () => {
             <Typography color="text.secondary">Aucun dossier en attente</Typography>
           </Box>
         ) : (
-          <Paper sx={{ borderRadius: '12px', overflow: 'hidden' }} elevation={0} variant="outlined">
-            <Table size="small">
+          <TableContainer
+            component={Paper}
+            sx={{ borderRadius: '12px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
+            elevation={0}
+            variant="outlined"
+          >
+            <Table size="small" sx={{ minWidth: 1100 }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#f8f8f8' }}>
                   <TableCell><strong>N° dossier</strong></TableCell>
@@ -475,7 +485,7 @@ export const ApprovalsPage: React.FC = () => {
                 ))}
               </TableBody>
             </Table>
-          </Paper>
+          </TableContainer>
         )
       )}
 
