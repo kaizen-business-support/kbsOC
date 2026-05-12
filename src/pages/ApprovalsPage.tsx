@@ -198,7 +198,7 @@ export const ApprovalsPage: React.FC = () => {
   const isOnTreatedTab = tab === 5;
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: 3, width: '100%', minWidth: 0, maxWidth: '100%' }}>
       {/* ── En-tête ── */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
         <DossierIcon sx={{ fontSize: 32, color: '#5c35b5' }} />
@@ -353,11 +353,28 @@ export const ApprovalsPage: React.FC = () => {
         ) : (
           <TableContainer
             component={Paper}
-            sx={{ borderRadius: '12px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
+            sx={{
+              borderRadius: '12px',
+              overflowX: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              width: '100%',
+              maxWidth: '100%',
+              // Colonne Action sticky à droite — toujours visible
+              '& .sticky-action': {
+                position: 'sticky',
+                right: 0,
+                zIndex: 2,
+                background: 'inherit',
+                boxShadow: '-6px 0 8px -6px rgba(0,0,0,0.12)',
+              },
+              '& thead .sticky-action': {
+                background: '#f8f8f8',
+              },
+            }}
             elevation={0}
             variant="outlined"
           >
-            <Table size="small" sx={{ minWidth: 1100 }}>
+            <Table size="small" sx={{ minWidth: 1400 }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#f8f8f8' }}>
                   <TableCell><strong>N° dossier</strong></TableCell>
@@ -368,7 +385,7 @@ export const ApprovalsPage: React.FC = () => {
                   <TableCell><strong>Agence</strong></TableCell>
                   <TableCell align="center"><strong>Attente</strong></TableCell>
                   <TableCell align="center"><strong>SLA</strong></TableCell>
-                  <TableCell align="center"><strong>Action</strong></TableCell>
+                  <TableCell align="center" className="sticky-action"><strong>Action</strong></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -433,7 +450,18 @@ export const ApprovalsPage: React.FC = () => {
                     <TableCell align="center" onClick={e => e.stopPropagation()}>
                       <SlaChip item={item} />
                     </TableCell>
-                    <TableCell align="center" onClick={e => e.stopPropagation()}>
+                    <TableCell
+                      align="center"
+                      onClick={e => e.stopPropagation()}
+                      className="sticky-action"
+                      sx={{
+                        background: item.isBlocked
+                          ? 'rgba(248,248,248,1)'
+                          : item.isOverdue
+                            ? 'rgba(255,247,247,1)'
+                            : 'white',
+                      }}
+                    >
                       {item.isBlocked ? (
                         <Tooltip title="En attente d'une étape précédente">
                           <span>
