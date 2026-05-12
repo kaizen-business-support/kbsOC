@@ -276,7 +276,8 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    // Vérifier que le rôle de l'utilisateur correspond à l'étape application_created de la politique active
+    // Récupère dynamiquement le rôle autorisé à créer une demande depuis la
+    // première étape de type CREATION de la politique active (peu importe son stepName).
     if (userExists.role !== 'SUPER_ADMIN') {
       const now = new Date();
       const activePolicy = await prisma.creditPolicy.findFirst({
@@ -293,20 +294,23 @@ router.post('/', async (req: Request, res: Response) => {
 
       if (activePolicy) {
         const creationStep = await prisma.creditPolicyStep.findFirst({
-          where: { policyId: activePolicy.id, stepName: 'application_created', isActive: true },
+          where: { policyId: activePolicy.id, stepType: 'CREATION' as any, isActive: true },
+          orderBy: { order: 'asc' },
           select: { assignedRole: true },
         });
 
-        // Fallback identique à createWorkflowStepsForApplication :
-        // si aucun step 'application_created' n'est en politique, le rôle requis est CHARGE_AFFAIRES.
-        const requiredRole = creationStep?.assignedRole ?? 'CHARGE_AFFAIRES';
-
-        if (userExists.role !== requiredRole) {
-          return res.status(403).json({
-            success: false,
-            error: `Votre rôle (${userExists.role}) ne vous permet pas de créer une demande de crédit. Cette action est réservée au rôle "${requiredRole}" selon la politique de crédit active.`,
-            requiredRole,
-          });
+        // Si la politique ne définit aucune étape CREATION, on n'impose pas de
+        // restriction de rôle ici : la création reste ouverte aux rôles disposant
+        // du permission applicatif (create_application).
+        if (creationStep) {
+          const requiredRole = creationStep.assignedRole;
+          if (userExists.role !== requiredRole) {
+            return res.status(403).json({
+              success: false,
+              error: `Votre rôle (${userExists.role}) ne vous permet pas de créer une demande de crédit. Cette action est réservée au rôle "${requiredRole}" selon la politique de crédit active.`,
+              requiredRole,
+            });
+          }
         }
       }
     }

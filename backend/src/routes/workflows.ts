@@ -1074,15 +1074,27 @@ router.get('/creation-permission', async (req: Request, res: Response) => {
       return res.json({ success: true, canCreate: true, requiredRole: null, requiredRoleLabel: null, userRole });
     }
 
+    // Lecture dynamique : la première étape de type CREATION de la politique
+    // active détermine le rôle autorisé à créer une demande.
     const creationStep = await prisma.creditPolicyStep.findFirst({
-      where: { policyId: activePolicy.id, stepName: 'application_created', isActive: true },
+      where: { policyId: activePolicy.id, stepType: 'CREATION' as any, isActive: true },
+      orderBy: { order: 'asc' },
       select: { assignedRole: true, stepLabel: true },
     });
 
-    // Fallback identique à createWorkflowStepsForApplication :
-    // si aucun step 'application_created' n'est défini dans la politique,
-    // le rôle requis est CHARGE_AFFAIRES (comportement hardcodé du service).
-    const requiredRole = creationStep?.assignedRole ?? 'CHARGE_AFFAIRES';
+    // Si la politique ne définit aucune étape CREATION, on ne restreint pas
+    // (la création reste autorisée à tous les rôles ayant la permission).
+    if (!creationStep) {
+      return res.json({
+        success: true,
+        canCreate: true,
+        requiredRole: null,
+        requiredRoleLabel: null,
+        userRole,
+      });
+    }
+
+    const requiredRole = creationStep.assignedRole;
     const ROLE_LABELS: Record<string, string> = {
       CHARGE_AFFAIRES:         'Chargé d\'Affaires',
       ANALYSTE_RISQUES:        'Analyste Risques',

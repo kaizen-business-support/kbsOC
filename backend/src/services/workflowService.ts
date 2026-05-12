@@ -252,9 +252,13 @@ export async function createWorkflowStepsForApplication(
     });
   }
 
-  // Créer l'étape "création du dossier" si elle n'existe pas encore
-  // et la lier au CreditPolicyStep correspondant pour que la timeline CODIR puisse la retrouver.
-  const creationPolicyStep = plan.steps.find(s => s.stepName === 'application_created');
+  // Récupère dynamiquement la première étape CREATION du plan (peu importe son stepName),
+  // pour que la timeline CODIR retrouve l'étape "création du dossier" même si l'admin
+  // a renommé la step dans la politique. Fallback historique sur stepName === 'application_created'.
+  const creationPolicyStep =
+    plan.steps.find(s => s.stepType === 'CREATION') ??
+    plan.steps.find(s => s.stepName === 'application_created');
+
   const hasCreationStep = await prisma.workflowStep.findFirst({
     where: { applicationId, stepName: 'application_created' },
   });
@@ -264,7 +268,7 @@ export async function createWorkflowStepsForApplication(
       data: {
         applicationId,
         stepName: 'application_created',
-        role: 'CHARGE_AFFAIRES',
+        role: creationPolicyStep?.role ?? 'CHARGE_AFFAIRES',
         status: 'COMPLETED',
         completedAt: new Date(),
         deadline: new Date(),
@@ -281,9 +285,11 @@ export async function createWorkflowStepsForApplication(
   }
 
   // Créer les étapes du plan en PENDING.
-  // Exclure 'application_created' (toujours COMPLETED dès la soumission).
+  // Exclure l'étape CREATION (toujours COMPLETED dès la soumission).
   // Ne pas recréer une étape si elle existe déjà (même policyStepId ou même stepName en cours).
-  for (const step of plan.steps.filter(s => s.stepName !== 'application_created')) {
+  for (const step of plan.steps.filter(s =>
+    s.stepType !== 'CREATION' && s.stepName !== 'application_created'
+  )) {
     const existing = step.policyStepId
       ? await prisma.workflowStep.findFirst({
           where: { applicationId, policyStepId: step.policyStepId },
