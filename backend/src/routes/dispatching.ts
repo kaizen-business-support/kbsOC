@@ -129,19 +129,18 @@ router.get('/pending', async (req: Request, res: Response) => {
   try {
     const companyId = (req as any).companyId as string | undefined;
 
-    // Une app est "à dispatcher" si et seulement si elle n'a pas encore d'étape
-    // DISPATCH complétée. Cela évite qu'une app réapparaisse dans le tableau
-    // à cause des étapes suivantes (analyse, comité...) créées en PENDING dès le départ.
+    // Une app est "à dispatcher" tant qu'il reste au moins une étape DISPATCH
+    // non encore complétée. Cela couvre les workflows à plusieurs étapes DISPATCH
+    // (ex: dispatch initial + dispatch_2 pour une seconde affectation) et exclut
+    // les apps qui n'ont plus aucun DISPATCH en attente.
     const applications = await prisma.creditApplication.findMany({
       where: {
         ...(companyId ? { companyId } : {}),
         status: { in: ['SUBMITTED', 'UNDER_REVIEW'] },
-        NOT: {
-          workflowSteps: {
-            some: {
-              policyStep: { stepType: 'DISPATCH' },
-              completedAt: { not: null },
-            },
+        workflowSteps: {
+          some: {
+            policyStep: { stepType: 'DISPATCH' },
+            completedAt: null,
           },
         },
       },
@@ -214,7 +213,12 @@ router.get('/suggest/:applicationId', async (req: Request, res: Response) => {
         include: { client: true, creator: true }
       }),
       prisma.workflowStep.findFirst({
-        where: { applicationId, status: 'PENDING', assigneeId: null },
+        where: {
+          applicationId,
+          status: 'PENDING',
+          assigneeId: null,
+          policyStep: { stepType: { not: 'DISPATCH' } },
+        },
         orderBy: { createdAt: 'asc' }
       })
     ]);
@@ -393,23 +397,31 @@ router.post('/assign', async (req: Request, res: Response) => {
       }
     }
 
-    // Guard anti-double-dispatch : si le dispatch initial est déjà complété, bloquer.
+    // Guard anti-double-dispatch : si toutes les étapes DISPATCH du workflow sont
+    // déjà complétées, bloquer. On accepte les workflows à plusieurs DISPATCH
+    // (initial + DISPATCH ultérieurs) tant qu'il en reste au moins un en attente.
     if (!isReassign) {
-      const completedDispatch = application.workflowSteps.find(
-        (s: any) => s.policyStep?.stepType === 'DISPATCH' && s.completedAt !== null
+      const pendingDispatch = application.workflowSteps.find(
+        (s: any) => s.policyStep?.stepType === 'DISPATCH' && s.completedAt === null
       );
-      if (completedDispatch) {
+      if (!pendingDispatch) {
         return res.status(409).json({
           success: false,
-          error: 'Ce dossier a déjà été dispatché. Utilisez la réaffectation depuis l\'historique pour le modifier.',
+          error: 'Ce dossier a déjà été entièrement dispatché. Utilisez la réaffectation depuis l\'historique pour le modifier.',
         });
       }
     }
 
-    // Find the step to assign: for reassign, first PENDING/IN_REVIEW; for initial, first PENDING unassigned
+    // Find the step to assign: for reassign, first PENDING/IN_REVIEW; for initial, first PENDING unassigned.
+    // Les étapes DISPATCH ne sont jamais des cibles d'affectation (elles sont auto-complétées
+    // par l'action de dispatching elle-même) — on les exclut explicitement.
     let targetStep = isReassign
-      ? application.workflowSteps.find((s: any) => ['PENDING', 'IN_REVIEW'].includes(s.status))
-      : application.workflowSteps.find((s: any) => s.status === 'PENDING' && !s.assigneeId);
+      ? application.workflowSteps.find((s: any) =>
+          ['PENDING', 'IN_REVIEW'].includes(s.status) && s.policyStep?.stepType !== 'DISPATCH'
+        )
+      : application.workflowSteps.find((s: any) =>
+          s.status === 'PENDING' && !s.assigneeId && s.policyStep?.stepType !== 'DISPATCH'
+        );
 
     // Si aucune étape PENDING et que l'application est SUBMITTED, tenter de générer le circuit
     if (!targetStep && !isReassign && application.creditTypeId) {
@@ -425,7 +437,9 @@ router.post('/assign', async (req: Request, res: Response) => {
             },
           },
         });
-        targetStep = updated?.workflowSteps.find((s: any) => s.status === 'PENDING' && !s.assigneeId) ?? undefined;
+        targetStep = updated?.workflowSteps.find((s: any) =>
+          s.status === 'PENDING' && !s.assigneeId && s.policyStep?.stepType !== 'DISPATCH'
+        ) ?? undefined;
       } catch (circuitErr: any) {
         console.warn('[dispatching] Circuit non généré :', circuitErr.message);
         return res.status(400).json({
