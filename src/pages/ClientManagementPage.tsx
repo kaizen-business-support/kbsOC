@@ -51,6 +51,7 @@ import {
   Today as TodayIcon,
 } from '@mui/icons-material';
 import { ApiService } from '../services/api';
+import { ClientContractsPanel } from '../components/client/ClientContractsPanel';
 import { useUser } from '../contexts/UserContext';
 import { DossierActionDrawer } from '../components/DossierActionDrawer';
 import { ApprovalItem } from '../types';
@@ -956,6 +957,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
               <Tab label="Identité" sx={{ fontSize: '13px' }} />
               <Tab label="Dossiers" sx={{ fontSize: '13px' }} />
               <Tab label="Échéancier" sx={{ fontSize: '13px' }} />
+              <Tab label="Contrats" sx={{ fontSize: '13px' }} />
             </Tabs>
           </Box>
 
@@ -1301,6 +1303,11 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                     </>
                   )}
                 </Box>
+              )}
+
+              {/* Onglet Contrats */}
+              {drawerTab === 3 && drawerClient && (
+                <ClientContractsPanel clientId={drawerClient.id} />
               )}
             </Box>
           )}
