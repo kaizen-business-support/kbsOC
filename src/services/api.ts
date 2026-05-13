@@ -1693,6 +1693,26 @@ export class ApiService {
     }
   }
 
+  static async getHomeKpis(): Promise<{
+    success: boolean;
+    kpis: Array<{
+      key: string;
+      label: string;
+      value: number | null;
+      format: 'number' | 'currency' | 'percent' | 'duration';
+      trend?: { delta: number; direction: 'up' | 'down' } | null;
+      error?: boolean;
+    }>;
+  }> {
+    try {
+      const response = await api.get('/home/kpis');
+      return response.data;
+    } catch (error) {
+      console.error('getHomeKpis error:', error);
+      throw error;
+    }
+  }
+
   static async toggleClientStatus(id: string): Promise<ApiResponse<any>> {
     try {
       const response = await api.patch(`/clients/${id}/toggle-status`);
