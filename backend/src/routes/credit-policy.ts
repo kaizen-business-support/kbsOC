@@ -22,6 +22,7 @@ import { Router, Request, Response } from 'express';
 import { PolicyStatus } from '@prisma/client';
 import { prisma } from '../prismaClient';
 import { buildWorkflowPlan, getApplicationProcessingStats } from '../services/workflowService';
+import { syncApprovalLimitsFromPolicy } from '../services/syncApprovalLimits';
 import { STEP_NAME_FR } from '../constants/stepNames';
 import { authenticate, requireCompany } from '../middleware/auth';
 
@@ -716,6 +717,19 @@ router.post('/:id/activate', async (req: Request, res: Response) => {
         where: { id: req.params.id },
         data: { status: PolicyStatus.ACTIVE, isActive: true },
       });
+
+      // Synchroniser approval_limits depuis les guards de la politique.
+      // Toute erreur ici ne doit pas annuler l'activation.
+      try {
+        await syncApprovalLimitsFromPolicy(
+          tx,
+          policy.steps,
+          policy.companyId!,
+          req.user!.id,
+        );
+      } catch (syncErr) {
+        console.error('[credit-policy] sync approval_limits a échoué', syncErr);
+      }
     });
 
     res.json({ success: true, activated: true, archivedPolicyId: oldActive?.id ?? null });
