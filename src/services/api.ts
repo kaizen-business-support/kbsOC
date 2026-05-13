@@ -1663,6 +1663,36 @@ export class ApiService {
     }
   }
 
+  static async getClientContracts(clientId: string): Promise<{
+    success: boolean;
+    contracts: Array<{
+      id: string;
+      filename: string;
+      mimeType: string | null;
+      fileSize: number | null;
+      createdAt: string;
+      uploadedBy: { id: string; name: string };
+      application: {
+        id: string;
+        applicationNumber: string;
+        status: string;
+        amount: number;
+        creditTypeName: string | null;
+      };
+      previewUrl: string;
+      downloadUrl: string;
+      canDownload: boolean;
+    }>;
+  }> {
+    try {
+      const response = await api.get(`/clients/${clientId}/contracts`);
+      return response.data;
+    } catch (error) {
+      console.error('getClientContracts error:', error);
+      throw error;
+    }
+  }
+
   static async toggleClientStatus(id: string): Promise<ApiResponse<any>> {
     try {
       const response = await api.patch(`/clients/${id}/toggle-status`);
