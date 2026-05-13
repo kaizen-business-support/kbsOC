@@ -1,9 +1,5 @@
-import React, { useState } from 'react';
-import {
-  Box, Table, TableBody, TableCell, TableHead, TableRow, Paper,
-  Chip, IconButton, Tooltip, Typography, FormControl, InputLabel,
-  Select, MenuItem, Switch, FormControlLabel,
-} from '@mui/material';
+import React, { useMemo, useState } from 'react';
+import { Box, Chip, IconButton, Tooltip, Typography } from '@mui/material';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
@@ -13,6 +9,7 @@ import { PendingDecisionItem } from '../../types';
 import { RelanceDialog } from './RelanceDialog';
 import { ReassignDialog } from './ReassignDialog';
 import { EscaladeDialog } from './EscaladeDialog';
+import { DataTable, DataTableColumn } from '../common/DataTable';
 
 interface Props {
   items: PendingDecisionItem[];
@@ -29,136 +26,175 @@ function SlaChip({ item }: { item: PendingDecisionItem }) {
   return <Chip label="Dans les délais" color="success" size="small" variant="outlined" />;
 }
 
+function slaCategory(item: PendingDecisionItem): 'overdue' | 'soon' | 'ok' {
+  if (item.isOverdue) return 'overdue';
+  if (item.deadline) {
+    const h = (new Date(item.deadline).getTime() - Date.now()) / 3_600_000;
+    if (h < 24) return 'soon';
+  }
+  return 'ok';
+}
+
 function fmtAmount(v: number, currency = 'XOF') {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency, minimumFractionDigits: 0 }).format(v);
 }
 
 export const PendingDecisionsTable: React.FC<Props> = ({ items, stepFilter, onRefresh }) => {
   const navigate = useNavigate();
-  const [agentFilter, setAgentFilter]     = useState('all');
-  const [overdueOnly, setOverdueOnly]     = useState(false);
-  const [relanceItem, setRelanceItem]     = useState<PendingDecisionItem | null>(null);
-  const [reassignItem, setReassignItem]   = useState<PendingDecisionItem | null>(null);
-  const [escaladeItem, setEscaladeItem]   = useState<PendingDecisionItem | null>(null);
+  const [relanceItem, setRelanceItem]   = useState<PendingDecisionItem | null>(null);
+  const [reassignItem, setReassignItem] = useState<PendingDecisionItem | null>(null);
+  const [escaladeItem, setEscaladeItem] = useState<PendingDecisionItem | null>(null);
 
-  const agents = Array.from(new Set(
-    items.filter(i => i.assigneeName).map(i => i.assigneeId!)
-  )).map(id => ({ id, name: items.find(i => i.assigneeId === id)!.assigneeName! }));
+  // Options dynamiques pour les filtres enum (Étape, Agent)
+  const stepOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    items.forEach(i => map.set(i.stepName, i.stepLabel));
+    return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
+  }, [items]);
 
-  const filtered = items.filter(item => {
-    if (stepFilter && item.stepName !== stepFilter) return false;
-    if (agentFilter !== 'all' && item.assigneeId !== agentFilter) return false;
-    if (overdueOnly && !item.isOverdue) return false;
-    return true;
-  });
+  const agentOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    items.forEach(i => { if (i.assigneeId && i.assigneeName) map.set(i.assigneeId, i.assigneeName); });
+    return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
+  }, [items]);
+
+  // Si le parent a sélectionné une étape via BottleneckKpiBar, on filtre côté
+  // amont (avant DataTable) pour conserver le comportement existant.
+  const upstreamFiltered = useMemo(
+    () => (stepFilter ? items.filter(i => i.stepName === stepFilter) : items),
+    [items, stepFilter]
+  );
+
+  const columns: DataTableColumn<PendingDecisionItem>[] = [
+    {
+      id: 'applicationNumber',
+      header: 'N° Dossier',
+      accessor: (r) => r.applicationNumber,
+      filter: { type: 'text' },
+      render: (r) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{r.applicationNumber}</Typography>
+          {r.isEscalated && (
+            <Chip label="Escaladé" size="small" color="warning" sx={{ fontSize: '0.6rem', height: 18 }} />
+          )}
+          {r.lastRelancedAt && !r.isEscalated && (
+            <Chip label="Relancé" size="small" sx={{ fontSize: '0.6rem', height: 18, bgcolor: '#f1f5f9' }} />
+          )}
+        </Box>
+      ),
+    },
+    {
+      id: 'clientName',
+      header: 'Client',
+      accessor: (r) => r.clientName,
+      filter: { type: 'text' },
+    },
+    {
+      id: 'amount',
+      header: 'Montant',
+      accessor: (r) => r.amount,
+      filter: { type: 'number' },
+      align: 'right',
+      render: (r) => <Typography sx={{ fontSize: 13 }} noWrap>{fmtAmount(r.amount, r.currency)}</Typography>,
+    },
+    {
+      id: 'stepName',
+      header: 'Étape',
+      accessor: (r) => r.stepName,
+      filter: { type: 'enum', options: stepOptions },
+      render: (r) => <Typography sx={{ fontSize: 13 }}>{r.stepLabel}</Typography>,
+    },
+    {
+      id: 'assignee',
+      header: 'Agent assigné',
+      accessor: (r) => r.assigneeId ?? '',
+      filter: { type: 'enum', options: agentOptions },
+      render: (r) =>
+        r.assigneeName
+          ? <Typography sx={{ fontSize: 13 }}>{r.assigneeName}</Typography>
+          : <Typography sx={{ fontSize: 13, fontStyle: 'italic', color: '#94a3b8' }}>Non assigné</Typography>,
+    },
+    {
+      id: 'sla',
+      header: 'SLA',
+      accessor: (r) => slaCategory(r),
+      filter: {
+        type: 'enum',
+        options: [
+          { value: 'overdue', label: 'En retard' },
+          { value: 'soon',    label: '< 24h' },
+          { value: 'ok',      label: 'Dans les délais' },
+        ],
+      },
+      render: (r) => <SlaChip item={r} />,
+    },
+    {
+      id: 'daysWaiting',
+      header: 'Attente',
+      accessor: (r) => r.daysWaiting,
+      filter: { type: 'number' },
+      align: 'right',
+      render: (r) => (
+        <Typography sx={{ fontSize: 13, color: r.daysWaiting > 3 ? '#9F1239' : '#475569' }}>
+          {r.daysWaiting}j
+        </Typography>
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      accessor: () => '',
+      filter: { type: 'none' },
+      sortable: false,
+      align: 'right',
+      render: (r) => (
+        <>
+          <Tooltip title="Voir le dossier">
+            <IconButton size="small" onClick={() => navigate(`/workflow`)}>
+              <OpenInNewIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={r.assigneeId ? "Relancer l'agent" : 'Aucun agent assigné'}>
+            <span>
+              <IconButton size="small" disabled={!r.assigneeId} onClick={() => setRelanceItem(r)}>
+                <NotificationsActiveIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Réaffecter">
+            <IconButton size="small" onClick={() => setReassignItem(r)}>
+              <SwapHorizIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={r.isEscalated ? 'Déjà escaladé' : 'Escalader'}>
+            <span>
+              <IconButton size="small" color="warning" disabled={r.isEscalated} onClick={() => setEscaladeItem(r)}>
+                <ReportProblemIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </>
+      ),
+    },
+  ];
+
+  const getRowSx = (r: PendingDecisionItem) => {
+    if (r.isEscalated) return { bgcolor: '#fff7ed', '&:hover': { bgcolor: '#ffedd5' } };
+    if (r.isOverdue)   return { bgcolor: '#fef2f2', '&:hover': { bgcolor: '#fee2e2' } };
+    return {};
+  };
 
   return (
     <Box>
-      {/* Filters */}
-      <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-        <FormControl size="small" sx={{ minWidth: 200 }}>
-          <InputLabel>Agent</InputLabel>
-          <Select value={agentFilter} label="Agent" onChange={e => setAgentFilter(e.target.value)}>
-            <MenuItem value="all">Tous les agents</MenuItem>
-            {agents.map(a => <MenuItem key={a.id} value={a.id}>{a.name}</MenuItem>)}
-          </Select>
-        </FormControl>
-        <FormControlLabel
-          control={<Switch checked={overdueOnly} onChange={e => setOverdueOnly(e.target.checked)} size="small" />}
-          label={<Typography variant="body2">En retard uniquement</Typography>}
-        />
-        <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
-          {filtered.length} dossier{filtered.length !== 1 ? 's' : ''}
-        </Typography>
-      </Box>
-
-      {/* Table */}
-      <Paper variant="outlined">
-        <Table size="small">
-          <TableHead>
-            <TableRow sx={{ bgcolor: '#f8fafc' }}>
-              <TableCell><Typography variant="caption" fontWeight={600}>N° Dossier</Typography></TableCell>
-              <TableCell><Typography variant="caption" fontWeight={600}>Client</Typography></TableCell>
-              <TableCell><Typography variant="caption" fontWeight={600}>Montant</Typography></TableCell>
-              <TableCell><Typography variant="caption" fontWeight={600}>Étape</Typography></TableCell>
-              <TableCell><Typography variant="caption" fontWeight={600}>Agent assigné</Typography></TableCell>
-              <TableCell><Typography variant="caption" fontWeight={600}>SLA</Typography></TableCell>
-              <TableCell><Typography variant="caption" fontWeight={600}>Attente</Typography></TableCell>
-              <TableCell align="right"><Typography variant="caption" fontWeight={600}>Actions</Typography></TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filtered.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">Aucun dossier en attente</Typography>
-                </TableCell>
-              </TableRow>
-            ) : filtered.map(item => (
-              <TableRow
-                key={item.stepId}
-                sx={{
-                  bgcolor: item.isEscalated ? '#fff7ed' : item.isOverdue ? '#fef2f2' : 'inherit',
-                  '&:hover': { bgcolor: item.isEscalated ? '#ffedd5' : item.isOverdue ? '#fee2e2' : '#f8fafc' },
-                }}
-              >
-                <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <Typography variant="body2" fontWeight={600}>{item.applicationNumber}</Typography>
-                    {item.isEscalated && (
-                      <Chip label="Escaladé" size="small" color="warning" sx={{ fontSize: '0.6rem', height: 18 }} />
-                    )}
-                    {item.lastRelancedAt && !item.isEscalated && (
-                      <Chip label="Relancé" size="small" sx={{ fontSize: '0.6rem', height: 18, bgcolor: '#f1f5f9' }} />
-                    )}
-                  </Box>
-                </TableCell>
-                <TableCell><Typography variant="body2">{item.clientName}</Typography></TableCell>
-                <TableCell><Typography variant="body2" noWrap>{fmtAmount(item.amount, item.currency)}</Typography></TableCell>
-                <TableCell><Typography variant="body2">{item.stepLabel}</Typography></TableCell>
-                <TableCell>
-                  {item.assigneeName
-                    ? <Typography variant="body2">{item.assigneeName}</Typography>
-                    : <Typography variant="body2" color="text.disabled" fontStyle="italic">Non assigné</Typography>}
-                </TableCell>
-                <TableCell><SlaChip item={item} /></TableCell>
-                <TableCell>
-                  <Typography variant="body2" color={item.daysWaiting > 3 ? 'error' : 'text.secondary'}>
-                    {item.daysWaiting}j
-                  </Typography>
-                </TableCell>
-                <TableCell align="right">
-                  <Tooltip title="Voir le dossier">
-                    <IconButton size="small" onClick={() => navigate(`/workflow`)}>
-                      <OpenInNewIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title={item.assigneeId ? 'Relancer l\'agent' : 'Aucun agent assigné'}>
-                    <span>
-                      <IconButton size="small" disabled={!item.assigneeId} onClick={() => setRelanceItem(item)}>
-                        <NotificationsActiveIcon fontSize="small" />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                  <Tooltip title="Réaffecter">
-                    <IconButton size="small" onClick={() => setReassignItem(item)}>
-                      <SwapHorizIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title={item.isEscalated ? 'Déjà escaladé' : 'Escalader'}>
-                    <span>
-                      <IconButton size="small" color="warning" disabled={item.isEscalated}
-                        onClick={() => setEscaladeItem(item)}>
-                        <ReportProblemIcon fontSize="small" />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Paper>
+      <DataTable
+        rows={upstreamFiltered}
+        columns={columns}
+        getRowId={(r) => r.stepId}
+        pageSize={20}
+        dense
+        emptyMessage="Aucun dossier en attente"
+        getRowSx={getRowSx}
+      />
 
       <RelanceDialog  item={relanceItem}  onClose={() => setRelanceItem(null)}  onSuccess={onRefresh} />
       <ReassignDialog item={reassignItem} onClose={() => setReassignItem(null)} onSuccess={onRefresh} />

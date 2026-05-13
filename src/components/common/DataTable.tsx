@@ -42,6 +42,8 @@ interface DataTableProps<T> {
   dense?: boolean;
   onRowClick?: (row: T) => void;
   initialSort?: SortState;
+  /** Style additionnel par ligne (ex : bg colorée selon un statut). */
+  getRowSx?: (row: T) => Record<string, any> | undefined;
 }
 
 // ─── Sous-composant : cellule de filtre ──────────────────────────────────────
@@ -164,6 +166,7 @@ export function DataTable<T>({
   dense,
   onRowClick,
   initialSort,
+  getRowSx,
 }: DataTableProps<T>) {
   const state = useDataTableState<T>(rows, columns, pageSize, initialSort);
 
@@ -254,6 +257,7 @@ export function DataTable<T>({
                   cursor: onRowClick ? 'pointer' : 'default',
                   transition: `background ${transitions.fast}`,
                   '&:hover': { bgcolor: colors.bg.subtle },
+                  ...(getRowSx ? getRowSx(row) : {}),
                 }}
               >
                 {columns.map(col => (
