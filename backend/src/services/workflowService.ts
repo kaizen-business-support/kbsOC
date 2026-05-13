@@ -16,6 +16,7 @@ import { UserRole, PolicyStepType, PolicyStatus } from '@prisma/client';
 import { prisma } from '../prismaClient';
 import { STEP_NAME_FR } from '../constants/stepNames';
 import { resolveDelegation } from './delegationService';
+import { evaluateGuards, type GuardsJson } from './guardEngine';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -119,6 +120,10 @@ async function buildPlanFromPolicy(
       // Filtrer par condition de montant
       if (s.conditionMinAmount !== null && amount < Number(s.conditionMinAmount)) return false;
       if (s.conditionMaxAmount !== null && amount > Number(s.conditionMaxAmount)) return false;
+      // Filtrer par guards JSON (évaluation dynamique amount / riskScore / creditTypeId)
+      if (!evaluateGuards(s.guards as GuardsJson | null, { amount, riskScore: 0, creditTypeId })) {
+        return false;
+      }
       return true;
     })
     .map(s => ({
