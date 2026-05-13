@@ -1,5 +1,6 @@
 import express from 'express';
 import request from 'supertest';
+import fs from 'fs';
 
 // Mock ../server so importing clients.ts doesn't bootstrap the full Express app.
 // Re-export prisma from the shared prismaClient module so both the route and
@@ -24,6 +25,8 @@ jest.mock('../middleware/auth', () => ({
 }));
 
 import clientsRouter from '../routes/clients';
+import documentsRouter from '../routes/documents';
+import { authenticate } from '../middleware/auth';
 
 // Use the same prisma instance as the route (via the mocked server module)
 import { prisma } from '../prismaClient';
@@ -32,6 +35,14 @@ function makeApp() {
   const app = express();
   app.use(express.json());
   app.use('/api/clients', clientsRouter);
+  return app;
+}
+
+function makeFullApp() {
+  const app = express();
+  app.use(express.json());
+  app.use('/api/clients', clientsRouter);
+  app.use('/api/documents', authenticate, documentsRouter);
   return app;
 }
 
@@ -49,82 +60,89 @@ const DG_USER = {
   id: 'u-dg', role: 'DIRECTION_GENERALE', branch: null, department: null, companyId: COMPANY, permissions: [],
 };
 
+// ─── Module-scoped fixtures (shared across both describe blocks) ──────────────
+let clientId: string;
+let docContractApprovedId: string;
+let docContractDraftId: string;
+let docFinancialId: string;
+
+beforeAll(async () => {
+  // Company uses `code` not `slug` in this schema
+  await prisma.company.create({ data: { id: COMPANY, name: 'Test Co', code: 'test-co' } });
+
+  // User uses `passwordHash` not `password`; no direct companyId field on User
+  // CA_SAME_BRANCH (u-ca1) is the creator of the client — the natural CREATOR_ONLY scenario.
+  await prisma.user.createMany({
+    data: [BACK_OFFICE_USER, CA_SAME_BRANCH, CA_OTHER_BRANCH, DG_USER].map(u => ({
+      id: u.id, email: `${u.id}@test.local`, passwordHash: 'x', name: u.id, role: u.role as any,
+      branch: u.branch, department: u.department,
+    })),
+  });
+
+  const client = await prisma.client.create({
+    data: {
+      companyName: 'ACME', accountNumber: 'CLT-TEST-1', createdBy: 'u-ca1', companyId: COMPANY,
+    },
+  });
+  clientId = client.id;
+
+  const appApproved = await prisma.creditApplication.create({
+    data: {
+      applicationNumber: 'DOS-T-1', clientId, amount: 1000, purpose: 'test',
+      status: 'APPROVED', createdBy: 'u-ca1', companyId: COMPANY,
+    },
+  });
+  const appDraft = await prisma.creditApplication.create({
+    data: {
+      applicationNumber: 'DOS-T-2', clientId, amount: 1000, purpose: 'test',
+      status: 'DRAFT', createdBy: 'u-ca1', companyId: COMPANY,
+    },
+  });
+
+  const docA = await prisma.document.create({
+    data: {
+      applicationId: appApproved.id, filename: 'contract-signed.pdf',
+      filePath: '/tmp/contract-signed.pdf', mimeType: 'application/pdf',
+      category: 'CONTRACT', uploadedBy: 'u-ca1',
+    },
+  });
+  docContractApprovedId = docA.id;
+  const docB = await prisma.document.create({
+    data: {
+      applicationId: appDraft.id, filename: 'contract-draft.pdf',
+      filePath: '/tmp/contract-draft.pdf', mimeType: 'application/pdf',
+      category: 'CONTRACT', uploadedBy: 'u-ca1',
+    },
+  });
+  docContractDraftId = docB.id;
+  const docC = await prisma.document.create({
+    data: {
+      applicationId: appApproved.id, filename: 'balance.pdf',
+      filePath: '/tmp/balance.pdf', mimeType: 'application/pdf',
+      category: 'FINANCIAL', uploadedBy: 'u-ca1',
+    },
+  });
+  docFinancialId = docC.id;
+});
+
+afterAll(async () => {
+  // Remove audit logs first (reference users + applications)
+  await prisma.auditLog.deleteMany({
+    where: { userId: { in: ['u-bo', 'u-ca1', 'u-ca2', 'u-dg'] } },
+  });
+  await prisma.document.deleteMany({ where: { application: { companyId: COMPANY } } });
+  await prisma.creditApplication.deleteMany({ where: { companyId: COMPANY } });
+  await prisma.client.deleteMany({ where: { companyId: COMPANY } });
+  // Users have no direct companyId; delete by known ids
+  await prisma.user.deleteMany({
+    where: { id: { in: ['u-bo', 'u-ca1', 'u-ca2', 'u-dg'] } },
+  });
+  await prisma.company.delete({ where: { id: COMPANY } });
+});
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
 describe('GET /api/clients/:id/contracts', () => {
-  let clientId: string;
-  let docContractApprovedId: string;
-  let docContractDraftId: string;
-  let docFinancialId: string;
-
-  beforeAll(async () => {
-    // Company uses `code` not `slug` in this schema
-    await prisma.company.create({ data: { id: COMPANY, name: 'Test Co', code: 'test-co' } });
-
-    // User uses `passwordHash` not `password`; no direct companyId field on User
-    // CA_SAME_BRANCH (u-ca1) is the creator of the client — the natural CREATOR_ONLY scenario.
-    await prisma.user.createMany({
-      data: [BACK_OFFICE_USER, CA_SAME_BRANCH, CA_OTHER_BRANCH, DG_USER].map(u => ({
-        id: u.id, email: `${u.id}@test.local`, passwordHash: 'x', name: u.id, role: u.role as any,
-        branch: u.branch, department: u.department,
-      })),
-    });
-
-    const client = await prisma.client.create({
-      data: {
-        companyName: 'ACME', accountNumber: 'CLT-TEST-1', createdBy: 'u-ca1', companyId: COMPANY,
-      },
-    });
-    clientId = client.id;
-
-    const appApproved = await prisma.creditApplication.create({
-      data: {
-        applicationNumber: 'DOS-T-1', clientId, amount: 1000, purpose: 'test',
-        status: 'APPROVED', createdBy: 'u-ca1', companyId: COMPANY,
-      },
-    });
-    const appDraft = await prisma.creditApplication.create({
-      data: {
-        applicationNumber: 'DOS-T-2', clientId, amount: 1000, purpose: 'test',
-        status: 'DRAFT', createdBy: 'u-ca1', companyId: COMPANY,
-      },
-    });
-
-    const docA = await prisma.document.create({
-      data: {
-        applicationId: appApproved.id, filename: 'contract-signed.pdf',
-        filePath: '/tmp/contract-signed.pdf', mimeType: 'application/pdf',
-        category: 'CONTRACT', uploadedBy: 'u-ca1',
-      },
-    });
-    docContractApprovedId = docA.id;
-    const docB = await prisma.document.create({
-      data: {
-        applicationId: appDraft.id, filename: 'contract-draft.pdf',
-        filePath: '/tmp/contract-draft.pdf', mimeType: 'application/pdf',
-        category: 'CONTRACT', uploadedBy: 'u-ca1',
-      },
-    });
-    docContractDraftId = docB.id;
-    const docC = await prisma.document.create({
-      data: {
-        applicationId: appApproved.id, filename: 'balance.pdf',
-        filePath: '/tmp/balance.pdf', mimeType: 'application/pdf',
-        category: 'FINANCIAL', uploadedBy: 'u-ca1',
-      },
-    });
-    docFinancialId = docC.id;
-  });
-
-  afterAll(async () => {
-    await prisma.document.deleteMany({ where: { application: { companyId: COMPANY } } });
-    await prisma.creditApplication.deleteMany({ where: { companyId: COMPANY } });
-    await prisma.client.deleteMany({ where: { companyId: COMPANY } });
-    // Users have no direct companyId; delete by known ids
-    await prisma.user.deleteMany({
-      where: { id: { in: ['u-bo', 'u-ca1', 'u-ca2', 'u-dg'] } },
-    });
-    await prisma.company.delete({ where: { id: COMPANY } });
-  });
-
   it('renvoie uniquement les contrats des dossiers APPROVED/DISBURSED/UNDER_REVIEW', async () => {
     const res = await request(makeApp())
       .get(`/api/clients/${clientId}/contracts`)
@@ -174,5 +192,49 @@ describe('GET /api/clients/:id/contracts', () => {
     expect(res.status).toBe(200);
     expect(res.body.contracts.length).toBeGreaterThan(0);
     expect(res.body.contracts.every((c: any) => c.canDownload === false)).toBe(true);
+  });
+});
+
+describe('GET /api/documents/download/:id — gate contrat', () => {
+  beforeAll(() => {
+    // Ensure the files exist on disk for the download stream
+    fs.mkdirSync('/tmp', { recursive: true });
+    fs.writeFileSync('/tmp/contract-signed.pdf', '%PDF-1.4\nfake');
+    fs.writeFileSync('/tmp/balance.pdf', 'fake');
+  });
+
+  it('autorise BACK_OFFICE et écrit un AuditLog CONTRACT_DOWNLOAD', async () => {
+    const before = await prisma.auditLog.count({ where: { action: 'CONTRACT_DOWNLOAD' } });
+    const res = await request(makeFullApp())
+      .get(`/api/documents/download/${docContractApprovedId}`)
+      .set('x-test-user', JSON.stringify(BACK_OFFICE_USER));
+    expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toContain('attachment');
+    const after = await prisma.auditLog.count({ where: { action: 'CONTRACT_DOWNLOAD' } });
+    expect(after).toBe(before + 1);
+  });
+
+  it('autorise CHARGE_AFFAIRES créateur du client (même branche)', async () => {
+    const res = await request(makeFullApp())
+      .get(`/api/documents/download/${docContractApprovedId}`)
+      .set('x-test-user', JSON.stringify(CA_SAME_BRANCH));
+    expect(res.status).toBe(200);
+  });
+
+  it("refuse CHARGE_AFFAIRES d'une autre branche (403, pas d'audit)", async () => {
+    const before = await prisma.auditLog.count({ where: { action: 'CONTRACT_DOWNLOAD' } });
+    const res = await request(makeFullApp())
+      .get(`/api/documents/download/${docContractApprovedId}`)
+      .set('x-test-user', JSON.stringify(CA_OTHER_BRANCH));
+    expect(res.status).toBe(403);
+    const after = await prisma.auditLog.count({ where: { action: 'CONTRACT_DOWNLOAD' } });
+    expect(after).toBe(before);
+  });
+
+  it('comportement inchangé pour Document non-CONTRACT', async () => {
+    const res = await request(makeFullApp())
+      .get(`/api/documents/download/${docFinancialId}`)
+      .set('x-test-user', JSON.stringify(CA_OTHER_BRANCH));
+    expect(res.status).toBe(200);
   });
 });

@@ -2,9 +2,14 @@ import express, { Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { Prisma, UserRole } from '@prisma/client';
 import { prisma } from '../server';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
+import {
+  canDownloadContract,
+  CONTRACT_DOWNLOAD_DENIED_MESSAGE,
+} from '../services/contractAccess';
 
 // ─── Security helpers ─────────────────────────────────────────────────────────
 
@@ -144,10 +149,75 @@ router.get('/download/:id',
   asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
 
-    const document = await prisma.document.findUnique({ where: { id } });
+    const document = await prisma.document.findUnique({
+      where: { id },
+      include: {
+        application: {
+          include: {
+            client: {
+              include: {
+                creator: { select: { id: true, branch: true, department: true } },
+              },
+            },
+          },
+        },
+      },
+    });
 
     if (!document) {
       throw new AppError('Document not found', 404, 'DOCUMENT_NOT_FOUND');
+    }
+
+    // Gate spécifique aux contrats signés
+    if (document.category === 'CONTRACT') {
+      if (!req.user) {
+        throw new AppError('Unauthorized', 401, 'NOT_AUTHENTICATED');
+      }
+
+      const client = document.application.client;
+      if (client.companyId !== req.user.companyId) {
+        throw new AppError('Forbidden', 403, 'CROSS_TENANT');
+      }
+
+      const allowed = canDownloadContract(
+        {
+          role: req.user.role as UserRole,
+          branch: req.user.branch ?? null,
+          department: req.user.department ?? null,
+        },
+        {
+          creator: {
+            branch: client.creator.branch ?? null,
+            department: client.creator.department ?? null,
+          },
+        }
+      );
+
+      if (!allowed) {
+        throw new AppError(CONTRACT_DOWNLOAD_DENIED_MESSAGE, 403, 'CONTRACT_DOWNLOAD_FORBIDDEN');
+      }
+
+      // Audit log — best-effort, ne doit pas bloquer la livraison du fichier.
+      try {
+        await prisma.auditLog.create({
+          data: {
+            userId: req.user.id,
+            applicationId: document.applicationId,
+            action: 'CONTRACT_DOWNLOAD',
+            entityType: 'document',
+            entityId: document.id,
+            oldValues: Prisma.JsonNull,
+            newValues: { filename: document.filename, clientId: client.id },
+            ipAddress: req.ip ?? null,
+            userAgent: req.get('user-agent') ?? null,
+          },
+        });
+      } catch (auditErr) {
+        logger.warn('AuditLog CONTRACT_DOWNLOAD a échoué (download poursuivi)', {
+          err: String(auditErr),
+          documentId: id,
+        });
+      }
     }
 
     if (!fs.existsSync(document.filePath)) {
