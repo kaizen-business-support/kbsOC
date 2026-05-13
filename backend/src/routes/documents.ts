@@ -228,7 +228,8 @@ router.get('/download/:id',
       throw new AppError('File not found on disk', 404, 'FILE_NOT_FOUND');
     }
 
-    res.setHeader('Content-Disposition', `attachment; filename="${document.filename}"`);
+    const safeFilename = encodeURIComponent(document.filename);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
     res.setHeader('Content-Type', document.mimeType || 'application/octet-stream');
 
     const fileStream = fs.createReadStream(document.filePath);

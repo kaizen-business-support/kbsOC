@@ -5,7 +5,14 @@ import {
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import DownloadIcon from '@mui/icons-material/Download';
-import { ApiService } from '../../services/api';
+import { ApiService, tokenManager } from '../../services/api';
+
+function withToken(url: string): string {
+  const t = tokenManager.getAccessToken() || localStorage.getItem('auth_token') || '';
+  if (!t) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}token=${encodeURIComponent(t)}`;
+}
 
 interface ContractRow {
   id: string;
@@ -133,7 +140,7 @@ export function ClientContractsPanel({ clientId }: { clientId: string }) {
                 <TableCell sx={{ fontSize: 12 }}>{formatDate(c.createdAt)}</TableCell>
                 <TableCell align="right">
                   <Tooltip title="Aperçu">
-                    <IconButton size="small" onClick={() => window.open(c.previewUrl, '_blank', 'noopener')}>
+                    <IconButton size="small" onClick={() => window.open(withToken(c.previewUrl), '_blank', 'noopener')}>
                       <VisibilityIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
@@ -142,7 +149,7 @@ export function ClientContractsPanel({ clientId }: { clientId: string }) {
                       <IconButton
                         size="small"
                         disabled={!c.canDownload}
-                        onClick={() => { window.location.href = c.downloadUrl; }}
+                        onClick={() => { window.location.href = withToken(c.downloadUrl); }}
                       >
                         <DownloadIcon fontSize="small" />
                       </IconButton>
