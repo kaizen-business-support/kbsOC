@@ -63,24 +63,25 @@ interface SidebarProps {
 }
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
+// Alignés avec la home banking pro (cf. src/components/home/homeTokens.ts).
+// Accent unique navy (#1F4E79), pas de gradient.
 
-// Brand palette — Clean Light Financial Dashboard
 const brand = {
-  deep:     '#0F766E',
-  sky:      '#14B8A6',
-  gradient: 'linear-gradient(135deg, #0F766E 0%, #14B8A6 100%)',
+  deep:     '#1F4E79',
+  sky:      '#2A5E92',
+  gradient: '#1F4E79',  // legacy key conservé pour ne pas casser les imports — couleur unie
 };
 
 const SB = {
   bg:           '#FFFFFF',
   border:       '#E2E8F0',
-  shadow:       '1px 0 20px rgba(15,23,42,0.06)',
+  shadow:       '1px 0 20px rgba(15,23,42,0.04)',
   sectionLabel: '#94A3B8',
   itemText:     '#334155',
-  itemHover:    'rgba(15,118,110,0.06)',
-  activeText:   '#0F766E',
-  activeBg:     'linear-gradient(90deg, rgba(15,118,110,0.10) 0%, rgba(20,184,166,0.05) 100%)',
-  activeBorder: '#0F766E',
+  itemHover:    'rgba(31,78,121,0.05)',
+  activeText:   '#1F4E79',
+  activeBg:     'rgba(31,78,121,0.08)',
+  activeBorder: '#1F4E79',
 };
 
 // ─── Component ──────────────────────────────────────────────────────────────────
@@ -184,19 +185,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const activeItemSx = {
     borderRadius: '7px',
     mx:          1,
-    py:          0.7,
+    py:          0.9,
     color:       SB.activeText,
     background:  SB.activeBg,
     borderLeft:  `2px solid ${SB.activeBorder}`,
     pl:          '14px',
-    boxShadow:   'inset 0 1px 0 rgba(255,255,255,0.70)',
-    transition:  'all 0.15s cubic-bezier(0.22,1,0.36,1)',
-    '& .MuiListItemIcon-root': {
-      background:          brand.gradient,
-      WebkitBackgroundClip:'text',
-      WebkitTextFillColor: 'transparent',
-      backgroundClip:      'text',
-    },
+    transition:  'all 0.18s cubic-bezier(0.22,1,0.36,1)',
+    '& .MuiListItemIcon-root': { color: SB.activeText },
     '& .MuiListItemText-primary': { fontWeight: 600, color: SB.activeText, fontFamily: '"IBM Plex Sans", sans-serif' },
     '&:hover':  { background: SB.activeBg },
     '&:active': { transform: 'scale(0.98)', transition: 'transform 0.08s ease' },
