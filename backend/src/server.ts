@@ -16,6 +16,7 @@ import applicationRoutes from './routes/applications';
 import workflowRoutes from './routes/workflows';
 import analyticsRoutes from './routes/analytics';
 import healthRoutes from './routes/health';
+import homeKpisRoutes from './routes/home-kpis';
 import workflowConfigRoutes from './routes/workflow-config';
 import userRoutes from './routes/users';
 import departmentRoutes from './routes/departments';
@@ -210,6 +211,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/health', healthRoutes);
 
 // ─── Protected routes (authenticate middleware applied) ───────────────────────
+app.use('/api/home',    authenticate, homeKpisRoutes);
 app.use('/api/clients', authenticate, clientRoutes);
 app.use('/api/applications', authenticate, applicationRoutes);
 app.use('/api/workflows', authenticate, workflowRoutes);
