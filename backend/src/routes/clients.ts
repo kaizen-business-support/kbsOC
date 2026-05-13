@@ -263,28 +263,10 @@ router.get('/:id/contracts', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const role = req.user!.role as UserRole;
-
-    // Build the tenant-scoped where filter for the client.
-    // For CHARGE_AFFAIRES and ASSISTANT_COMMERCIAL: scope to clients whose
-    // creator shares the same branch/department as the requesting user
-    // (branch-based scope, not creator-only, for contract visibility).
-    // All other roles see all company clients.
-    const clientWhere: any = { id, companyId: req.companyId };
-    if (['CHARGE_AFFAIRES', 'ASSISTANT_COMMERCIAL'].includes(role)) {
-      const userScope = req.user!.branch ?? req.user!.department ?? null;
-      if (!userScope) {
-        return res.status(404).json({ success: false, error: 'Client non trouvé' });
-      }
-      clientWhere.creator = {
-        OR: [
-          { branch: userScope },
-          { department: userScope },
-        ],
-      };
-    }
+    const baseWhere = buildClientWhereFilter(req);
 
     const client = await prisma.client.findFirst({
-      where: clientWhere,
+      where: { id, ...baseWhere },
       include: {
         creator: { select: { id: true, branch: true, department: true } },
         applications: {

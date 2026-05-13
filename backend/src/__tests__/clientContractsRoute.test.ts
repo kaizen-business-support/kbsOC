@@ -57,12 +57,7 @@ describe('GET /api/clients/:id/contracts', () => {
     await prisma.company.create({ data: { id: COMPANY, name: 'Test Co', code: 'test-co' } });
 
     // User uses `passwordHash` not `password`; no direct companyId field on User
-    await prisma.user.create({
-      data: {
-        id: 'u-creator', email: 'creator@test.local', passwordHash: 'x', name: 'Creator',
-        role: 'CHARGE_AFFAIRES', branch: 'AGENCE_DAKAR',
-      },
-    });
+    // CA_SAME_BRANCH (u-ca1) is the creator of the client — the natural CREATOR_ONLY scenario.
     await prisma.user.createMany({
       data: [BACK_OFFICE_USER, CA_SAME_BRANCH, CA_OTHER_BRANCH].map(u => ({
         id: u.id, email: `${u.id}@test.local`, passwordHash: 'x', name: u.id, role: u.role as any,
@@ -72,7 +67,7 @@ describe('GET /api/clients/:id/contracts', () => {
 
     const client = await prisma.client.create({
       data: {
-        companyName: 'ACME', accountNumber: 'CLT-TEST-1', createdBy: 'u-creator', companyId: COMPANY,
+        companyName: 'ACME', accountNumber: 'CLT-TEST-1', createdBy: 'u-ca1', companyId: COMPANY,
       },
     });
     clientId = client.id;
@@ -80,13 +75,13 @@ describe('GET /api/clients/:id/contracts', () => {
     const appApproved = await prisma.creditApplication.create({
       data: {
         applicationNumber: 'DOS-T-1', clientId, amount: 1000, purpose: 'test',
-        status: 'APPROVED', createdBy: 'u-creator', companyId: COMPANY,
+        status: 'APPROVED', createdBy: 'u-ca1', companyId: COMPANY,
       },
     });
     const appDraft = await prisma.creditApplication.create({
       data: {
         applicationNumber: 'DOS-T-2', clientId, amount: 1000, purpose: 'test',
-        status: 'DRAFT', createdBy: 'u-creator', companyId: COMPANY,
+        status: 'DRAFT', createdBy: 'u-ca1', companyId: COMPANY,
       },
     });
 
@@ -94,7 +89,7 @@ describe('GET /api/clients/:id/contracts', () => {
       data: {
         applicationId: appApproved.id, filename: 'contract-signed.pdf',
         filePath: '/tmp/contract-signed.pdf', mimeType: 'application/pdf',
-        category: 'CONTRACT', uploadedBy: 'u-creator',
+        category: 'CONTRACT', uploadedBy: 'u-ca1',
       },
     });
     docContractApprovedId = docA.id;
@@ -102,7 +97,7 @@ describe('GET /api/clients/:id/contracts', () => {
       data: {
         applicationId: appDraft.id, filename: 'contract-draft.pdf',
         filePath: '/tmp/contract-draft.pdf', mimeType: 'application/pdf',
-        category: 'CONTRACT', uploadedBy: 'u-creator',
+        category: 'CONTRACT', uploadedBy: 'u-ca1',
       },
     });
     docContractDraftId = docB.id;
@@ -110,7 +105,7 @@ describe('GET /api/clients/:id/contracts', () => {
       data: {
         applicationId: appApproved.id, filename: 'balance.pdf',
         filePath: '/tmp/balance.pdf', mimeType: 'application/pdf',
-        category: 'FINANCIAL', uploadedBy: 'u-creator',
+        category: 'FINANCIAL', uploadedBy: 'u-ca1',
       },
     });
     docFinancialId = docC.id;
@@ -122,7 +117,7 @@ describe('GET /api/clients/:id/contracts', () => {
     await prisma.client.deleteMany({ where: { companyId: COMPANY } });
     // Users have no direct companyId; delete by known ids
     await prisma.user.deleteMany({
-      where: { id: { in: ['u-creator', 'u-bo', 'u-ca1', 'u-ca2'] } },
+      where: { id: { in: ['u-bo', 'u-ca1', 'u-ca2'] } },
     });
     await prisma.company.delete({ where: { id: COMPANY } });
   });
