@@ -1,6 +1,11 @@
 import { Router, Request, Response } from 'express';
+import { UserRole } from '@prisma/client';
 import { prisma } from '../server';
 import { authenticate, requireCompany } from '../middleware/auth';
+import {
+  canDownloadContract,
+  CONTRACT_ELIGIBLE_APPLICATION_STATUSES,
+} from '../services/contractAccess';
 
 const router = Router();
 router.use(authenticate);
@@ -249,6 +254,95 @@ router.get('/:id', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fetching client:', error);
     res.status(500).json({ success: false, error: 'Erreur lors de la récupération du client' });
+  }
+});
+
+// GET /api/clients/:id/contracts — contrats signés (Document category=CONTRACT)
+// de toutes les applications éligibles du client.
+router.get('/:id/contracts', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const role = req.user!.role as UserRole;
+
+    // Build the tenant-scoped where filter for the client.
+    // For CHARGE_AFFAIRES and ASSISTANT_COMMERCIAL: scope to clients whose
+    // creator shares the same branch/department as the requesting user
+    // (branch-based scope, not creator-only, for contract visibility).
+    // All other roles see all company clients.
+    const clientWhere: any = { id, companyId: req.companyId };
+    if (['CHARGE_AFFAIRES', 'ASSISTANT_COMMERCIAL'].includes(role)) {
+      const userScope = req.user!.branch ?? req.user!.department ?? null;
+      if (!userScope) {
+        return res.status(404).json({ success: false, error: 'Client non trouvé' });
+      }
+      clientWhere.creator = {
+        OR: [
+          { branch: userScope },
+          { department: userScope },
+        ],
+      };
+    }
+
+    const client = await prisma.client.findFirst({
+      where: clientWhere,
+      include: {
+        creator: { select: { id: true, branch: true, department: true } },
+        applications: {
+          where: { status: { in: [...CONTRACT_ELIGIBLE_APPLICATION_STATUSES] } },
+          include: {
+            creditType: { select: { name: true } },
+            documents: {
+              where: { category: 'CONTRACT' },
+              include: { uploader: { select: { id: true, name: true } } },
+              orderBy: { createdAt: 'desc' },
+            },
+          },
+        },
+      },
+    });
+
+    if (!client) {
+      return res.status(404).json({ success: false, error: 'Client non trouvé' });
+    }
+
+    const userCtx = {
+      role: role,
+      branch: req.user!.branch ?? null,
+      department: req.user!.department ?? null,
+    };
+    const clientCtx = {
+      creator: {
+        branch: client.creator.branch ?? null,
+        department: client.creator.department ?? null,
+      },
+    };
+    const canDl = canDownloadContract(userCtx, clientCtx);
+
+    const contracts = client.applications.flatMap(app =>
+      app.documents.map(doc => ({
+        id: doc.id,
+        filename: doc.filename,
+        mimeType: doc.mimeType,
+        fileSize: doc.fileSize,
+        createdAt: doc.createdAt,
+        uploadedBy: { id: doc.uploader.id, name: doc.uploader.name },
+        application: {
+          id: app.id,
+          applicationNumber: app.applicationNumber,
+          status: app.status,
+          amount: Number(app.amount),
+          creditTypeName: app.creditType?.name ?? null,
+        },
+        previewUrl: `/api/documents/preview/${doc.id}`,
+        downloadUrl: `/api/documents/download/${doc.id}`,
+        canDownload: canDl,
+      }))
+    );
+
+    res.json({ success: true, contracts });
+  } catch (error) {
+    console.error('Error fetching client contracts:', error);
+    res.status(500).json({ success: false, error: 'Erreur lors de la récupération des contrats' });
   }
 });
 

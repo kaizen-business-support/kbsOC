@@ -15,6 +15,8 @@ declare global {
         permissions: string[];
         companyId?: string;
         readOnly?: boolean;
+        branch?: string | null;
+        department?: string | null;
       };
       companyId?: string;  // shortcut for req.user.companyId
     }
@@ -88,7 +90,9 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
         role: true,
         permissions: true,
         isActive: true,
-        lastLogin: true
+        lastLogin: true,
+        branch: true,
+        department: true,
       }
     });
 
@@ -111,7 +115,9 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       id: user.id,
       email: user.email,
       role: user.role,
-      permissions: Array.isArray(user.permissions) ? user.permissions as string[] : []
+      permissions: Array.isArray(user.permissions) ? user.permissions as string[] : [],
+      branch: user.branch ?? null,
+      department: user.department ?? null,
     };
 
     if (decoded.companyId) {
