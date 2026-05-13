@@ -8,8 +8,10 @@
  *   (Le filtre tenant + le scope client est appliqué côté route.)
  * - Téléchargement : restreint via canDownloadContract().
  *
- * Helper pur (pas de dépendance Prisma) pour testabilité.
+ * Helper pur (pas de dépendance runtime à Prisma — uniquement les types d'enum).
  */
+
+import type { UserRole } from '@prisma/client';
 
 export const CONTRACT_DOWNLOAD_ROLES = [
   'BACK_OFFICE',
@@ -25,28 +27,29 @@ export const CONTRACT_ELIGIBLE_APPLICATION_STATUSES = [
 ] as const;
 
 interface UserCtx {
-  id: string;
-  role: string;
+  role: UserRole;
   branch: string | null;
   department: string | null;
 }
 
 interface ClientCtx {
-  creator: { id: string; branch: string | null; department: string | null };
+  creator: { branch: string | null; department: string | null };
 }
+
+const downloadRoles: ReadonlySet<UserRole> = new Set(CONTRACT_DOWNLOAD_ROLES);
 
 /**
  * Retourne true si l'utilisateur a le droit de télécharger un contrat
  * appartenant au client donné.
  */
 export function canDownloadContract(user: UserCtx, client: ClientCtx): boolean {
-  if ((CONTRACT_DOWNLOAD_ROLES as readonly string[]).includes(user.role)) {
+  if (downloadRoles.has(user.role)) {
     return true;
   }
   if (user.role !== 'CHARGE_AFFAIRES') {
     return false;
   }
-  const userScope    = user.branch    ?? user.department;
+  const userScope = user.branch ?? user.department;
   const creatorScope = client.creator.branch ?? client.creator.department;
   if (!userScope || !creatorScope) return false;
   return userScope === creatorScope;
