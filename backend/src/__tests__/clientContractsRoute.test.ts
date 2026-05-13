@@ -45,6 +45,9 @@ const CA_SAME_BRANCH = {
 const CA_OTHER_BRANCH = {
   id: 'u-ca2', role: 'CHARGE_AFFAIRES', branch: 'AGENCE_THIES', department: null, companyId: COMPANY, permissions: [],
 };
+const DG_USER = {
+  id: 'u-dg', role: 'DIRECTION_GENERALE', branch: null, department: null, companyId: COMPANY, permissions: [],
+};
 
 describe('GET /api/clients/:id/contracts', () => {
   let clientId: string;
@@ -59,7 +62,7 @@ describe('GET /api/clients/:id/contracts', () => {
     // User uses `passwordHash` not `password`; no direct companyId field on User
     // CA_SAME_BRANCH (u-ca1) is the creator of the client — the natural CREATOR_ONLY scenario.
     await prisma.user.createMany({
-      data: [BACK_OFFICE_USER, CA_SAME_BRANCH, CA_OTHER_BRANCH].map(u => ({
+      data: [BACK_OFFICE_USER, CA_SAME_BRANCH, CA_OTHER_BRANCH, DG_USER].map(u => ({
         id: u.id, email: `${u.id}@test.local`, passwordHash: 'x', name: u.id, role: u.role as any,
         branch: u.branch, department: u.department,
       })),
@@ -117,7 +120,7 @@ describe('GET /api/clients/:id/contracts', () => {
     await prisma.client.deleteMany({ where: { companyId: COMPANY } });
     // Users have no direct companyId; delete by known ids
     await prisma.user.deleteMany({
-      where: { id: { in: ['u-bo', 'u-ca1', 'u-ca2'] } },
+      where: { id: { in: ['u-bo', 'u-ca1', 'u-ca2', 'u-dg'] } },
     });
     await prisma.company.delete({ where: { id: COMPANY } });
   });
@@ -162,5 +165,14 @@ describe('GET /api/clients/:id/contracts', () => {
       .get(`/api/clients/${clientId}/contracts`)
       .set('x-test-user', JSON.stringify({ ...BACK_OFFICE_USER, companyId: 'other-company' }));
     expect(res.status).toBe(404);
+  });
+
+  it('expose canDownload=false pour un rôle qui voit tous les clients mais n\'est pas autorisé au download (DIRECTION_GENERALE)', async () => {
+    const res = await request(makeApp())
+      .get(`/api/clients/${clientId}/contracts`)
+      .set('x-test-user', JSON.stringify(DG_USER));
+    expect(res.status).toBe(200);
+    expect(res.body.contracts.length).toBeGreaterThan(0);
+    expect(res.body.contracts.every((c: any) => c.canDownload === false)).toBe(true);
   });
 });

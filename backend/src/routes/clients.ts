@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { UserRole } from '@prisma/client';
+import { UserRole, DocumentCategory } from '@prisma/client';
 import { prisma } from '../server';
 import { authenticate, requireCompany } from '../middleware/auth';
 import {
@@ -274,7 +274,7 @@ router.get('/:id/contracts', async (req: Request, res: Response) => {
           include: {
             creditType: { select: { name: true } },
             documents: {
-              where: { category: 'CONTRACT' },
+              where: { category: DocumentCategory.CONTRACT },
               include: { uploader: { select: { id: true, name: true } } },
               orderBy: { createdAt: 'desc' },
             },
@@ -298,6 +298,9 @@ router.get('/:id/contracts', async (req: Request, res: Response) => {
         department: client.creator.department ?? null,
       },
     };
+    // canDownload est calculé une fois par client (la règle dépend du créateur
+    // du client, pas du document). Il doit rester aligné avec le gate de
+    // /api/documents/download/:id implémenté dans Task 3 / routes/documents.ts.
     const canDl = canDownloadContract(userCtx, clientCtx);
 
     const contracts = client.applications.flatMap(app =>
