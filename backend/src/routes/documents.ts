@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma, UserRole, DocumentCategory } from '@prisma/client';
 import { prisma } from '../server';
 import { AppError, asyncHandler } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
@@ -169,13 +169,13 @@ router.get('/download/:id',
     }
 
     // Gate spécifique aux contrats signés
-    if (document.category === 'CONTRACT') {
+    if (document.category === DocumentCategory.CONTRACT) {
       if (!req.user) {
         throw new AppError('Unauthorized', 401, 'NOT_AUTHENTICATED');
       }
 
       const client = document.application.client;
-      if (client.companyId !== req.user.companyId) {
+      if (!client.companyId || client.companyId !== req.user.companyId) {
         throw new AppError('Forbidden', 403, 'CROSS_TENANT');
       }
 
@@ -207,7 +207,11 @@ router.get('/download/:id',
             entityType: 'document',
             entityId: document.id,
             oldValues: Prisma.JsonNull,
-            newValues: { filename: document.filename, clientId: client.id },
+            newValues: {
+                filename: document.filename,
+                clientId: client.id,
+                applicationNumber: document.application.applicationNumber,
+              },
             ipAddress: req.ip ?? null,
             userAgent: req.get('user-agent') ?? null,
           },

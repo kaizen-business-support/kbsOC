@@ -214,11 +214,14 @@ describe('GET /api/documents/download/:id — gate contrat', () => {
     expect(after).toBe(before + 1);
   });
 
-  it('autorise CHARGE_AFFAIRES créateur du client (même branche)', async () => {
+  it('autorise CHARGE_AFFAIRES créateur du client (même branche) + AuditLog', async () => {
+    const before = await prisma.auditLog.count({ where: { action: 'CONTRACT_DOWNLOAD' } });
     const res = await request(makeFullApp())
       .get(`/api/documents/download/${docContractApprovedId}`)
       .set('x-test-user', JSON.stringify(CA_SAME_BRANCH));
     expect(res.status).toBe(200);
+    const after = await prisma.auditLog.count({ where: { action: 'CONTRACT_DOWNLOAD' } });
+    expect(after).toBe(before + 1);
   });
 
   it("refuse CHARGE_AFFAIRES d'une autre branche (403, pas d'audit)", async () => {
@@ -229,6 +232,13 @@ describe('GET /api/documents/download/:id — gate contrat', () => {
     expect(res.status).toBe(403);
     const after = await prisma.auditLog.count({ where: { action: 'CONTRACT_DOWNLOAD' } });
     expect(after).toBe(before);
+  });
+
+  it('refuse cross-tenant (403)', async () => {
+    const res = await request(makeFullApp())
+      .get(`/api/documents/download/${docContractApprovedId}`)
+      .set('x-test-user', JSON.stringify({ ...BACK_OFFICE_USER, companyId: 'other-company' }));
+    expect(res.status).toBe(403);
   });
 
   it('comportement inchangé pour Document non-CONTRACT', async () => {
