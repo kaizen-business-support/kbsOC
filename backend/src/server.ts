@@ -17,6 +17,9 @@ import workflowRoutes from './routes/workflows';
 import analyticsRoutes from './routes/analytics';
 import healthRoutes from './routes/health';
 import homeKpisRoutes from './routes/home-kpis';
+import securityIpRulesRoutes from './routes/security-ip-rules';
+import { extractRealIp } from './middleware/extractRealIp';
+import { platformIpGate, tenantIpGate } from './middleware/ipAccess';
 import workflowConfigRoutes from './routes/workflow-config';
 import userRoutes from './routes/users';
 import departmentRoutes from './routes/departments';
@@ -63,11 +66,18 @@ dotenv.config();
 const app = express();
 const PORT = parseInt(process.env.PORT || '5007', 10);
 
+// Trust reverse proxy (nginx) — nécessaire pour X-Forwarded-For et req.ip
+app.set('trust proxy', true);
+
 // Re-export shared Prisma singleton (imported above)
 export { prisma };
 
 // ─── Security headers ─────────────────────────────────────────────────────────
 app.use(helmet());
+
+// ─── IP access enforcement (plateforme, avant auth) ──────────────────────────
+app.use(extractRealIp);
+app.use(platformIpGate);
 
 // ─── Compression gzip — réduit la bande passante jusqu'à 70% ─────────────────
 app.use(compression());
@@ -212,7 +222,8 @@ app.use('/api/health', healthRoutes);
 
 // ─── Protected routes (authenticate middleware applied) ───────────────────────
 app.use('/api/home',    authenticate, homeKpisRoutes);
-app.use('/api/clients', authenticate, clientRoutes);
+app.use('/api/clients', authenticate, tenantIpGate, clientRoutes);
+app.use('/api/security/ip-rules', authenticate, tenantIpGate, securityIpRulesRoutes);
 app.use('/api/applications', authenticate, applicationRoutes);
 app.use('/api/workflows', authenticate, workflowRoutes);
 app.use('/api/analytics', authenticate, analyticsRoutes);
