@@ -18,8 +18,10 @@ import analyticsRoutes from './routes/analytics';
 import healthRoutes from './routes/health';
 import homeKpisRoutes from './routes/home-kpis';
 import securityIpRulesRoutes from './routes/security-ip-rules';
+import securityTimeRulesRoutes from './routes/security-time-rules';
 import { extractRealIp } from './middleware/extractRealIp';
 import { platformIpGate, tenantIpGate } from './middleware/ipAccess';
+import { timeRulesGate } from './middleware/timeAccess';
 import workflowConfigRoutes from './routes/workflow-config';
 import userRoutes from './routes/users';
 import departmentRoutes from './routes/departments';
@@ -222,8 +224,9 @@ app.use('/api/health', healthRoutes);
 
 // ─── Protected routes (authenticate middleware applied) ───────────────────────
 app.use('/api/home',    authenticate, homeKpisRoutes);
-app.use('/api/clients', authenticate, tenantIpGate, clientRoutes);
-app.use('/api/security/ip-rules', authenticate, tenantIpGate, securityIpRulesRoutes);
+app.use('/api/clients', authenticate, tenantIpGate, timeRulesGate, clientRoutes);
+app.use('/api/security/ip-rules',   authenticate, tenantIpGate, timeRulesGate, securityIpRulesRoutes);
+app.use('/api/security/time-rules', authenticate, tenantIpGate, timeRulesGate, securityTimeRulesRoutes);
 app.use('/api/applications', authenticate, applicationRoutes);
 app.use('/api/workflows', authenticate, workflowRoutes);
 app.use('/api/analytics', authenticate, analyticsRoutes);
