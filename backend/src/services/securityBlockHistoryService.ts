@@ -7,6 +7,8 @@
 
 import { Prisma, SecurityBlockReason, SecurityBlockStatus } from '@prisma/client';
 import { prisma } from '../prismaClient';
+import { purgeBlocksForEmail } from './bruteForceTracker';
+import { logger } from '../utils/logger';
 
 export class SecurityBlockHistoryError extends Error {
   constructor(public code: string, message: string, public status = 400) {
@@ -100,7 +102,7 @@ export async function unblockOne(id: string, requesterId: string, note: string) 
     throw new SecurityBlockHistoryError('already_unblocked', 'Cette entrée est déjà débloquée', 422);
   }
 
-  return prisma.securityBlockHistory.update({
+  const updated = await prisma.securityBlockHistory.update({
     where: { id },
     data: {
       status: 'UNBLOCKED',
@@ -109,10 +111,21 @@ export async function unblockOne(id: string, requesterId: string, note: string) 
       unblockNote: trimmed,
     },
     include: {
-      attemptedUser: { select: { id: true, name: true } },
+      attemptedUser: { select: { id: true, name: true, email: true } },
       unblocker:     { select: { id: true, name: true } },
     },
   });
+
+  // Purge Redis si l'entrée concerne un verrouillage brute-force d'un user connu.
+  if (updated.blockReason === 'BRUTE_FORCE' && updated.attemptedUser?.email) {
+    try {
+      await purgeBlocksForEmail(updated.attemptedUser.email);
+    } catch (e) {
+      logger.warn('[unblockOne] purge Redis BF failed', { err: String(e) });
+    }
+  }
+
+  return updated;
 }
 
 export async function unblockMany(filter: BlockHistoryFilter, requesterId: string, note: string) {
