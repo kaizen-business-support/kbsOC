@@ -1752,6 +1752,49 @@ export class ApiService {
       return { success: false, error: error.response?.data?.error || 'Erreur mise à jour remboursement' };
     }
   }
+
+  static security = {
+    ipRules: {
+      list: async (params: {
+        isActive?: boolean;
+        ruleType?: 'ALLOW' | 'DENY';
+        search?: string;
+        scope?: 'platform' | 'tenant' | 'all';
+        page?: number;
+        pageSize?: number;
+      } = {}): Promise<{ success: boolean; data: { items: any[]; total: number; page: number; pageSize: number } }> => {
+        const r = await api.get('/security/ip-rules', { params });
+        return r.data;
+      },
+      create: async (body: {
+        ipAddress: string;
+        ruleType: 'ALLOW' | 'DENY';
+        description?: string;
+        isActive?: boolean;
+        companyId?: string | null;
+      }) => {
+        const r = await api.post('/security/ip-rules', body);
+        return r.data;
+      },
+      update: async (id: string, body: {
+        ipAddress?: string;
+        ruleType?: 'ALLOW' | 'DENY';
+        description?: string | null;
+        isActive?: boolean;
+      }) => {
+        const r = await api.put(`/security/ip-rules/${id}`, body);
+        return r.data;
+      },
+      toggle: async (id: string) => {
+        const r = await api.patch(`/security/ip-rules/${id}/toggle`);
+        return r.data;
+      },
+      remove: async (id: string) => {
+        const r = await api.delete(`/security/ip-rules/${id}`);
+        return r.data;
+      },
+    },
+  };
 }
 
 // ─── Auth: password lifecycle & 2FA admin ─────────────────────────────────────
