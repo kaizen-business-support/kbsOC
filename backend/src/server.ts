@@ -223,45 +223,51 @@ app.use('/api/auth/refresh', authLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/health', healthRoutes);
 
-// ─── Protected routes (authenticate middleware applied) ───────────────────────
-app.use('/api/home',    authenticate, homeKpisRoutes);
-app.use('/api/clients', authenticate, tenantIpGate, timeRulesGate, clientRoutes);
-app.use('/api/security/ip-rules',   authenticate, tenantIpGate, timeRulesGate, securityIpRulesRoutes);
-app.use('/api/security/time-rules',     authenticate, tenantIpGate, timeRulesGate, securityTimeRulesRoutes);
-app.use('/api/security/block-history',  authenticate, tenantIpGate, timeRulesGate, securityBlockHistoryRoutes);
-app.use('/api/applications', authenticate, applicationRoutes);
-app.use('/api/workflows', authenticate, workflowRoutes);
-app.use('/api/analytics', authenticate, analyticsRoutes);
-app.use('/api/workflow-config', authenticate, workflowConfigRoutes);
-app.use('/api/users', authenticate, userRoutes);
-app.use('/api/departments', authenticate, departmentRoutes);
-app.use('/api/branches', authenticate, branchRoutes);
-app.use('/api/approval-limits', authenticate, approvalLimitRoutes);
-app.use('/api/credit-types', authenticate, creditTypeRoutes);
-app.use('/api/roles', authenticate, roleRoutes);
-app.use('/api/module-profiles', authenticate, moduleProfileRoutes);
-app.use('/api/scope-delegates', authenticate, scopeDelegateRoutes);
-app.use('/api/codir', codirRoutes);
-app.use('/api/auth/2fa', authenticate, twoFactorRoutes);
-app.use('/api/otp', authenticate, otpRoutes);
-app.use('/api/backup', authenticate, backupRoutes);
-app.use('/api/announcements', authenticate, announcementRoutes);
-app.use('/api/notification-channels', authenticate, notificationChannelRoutes);
-app.use('/api/notification-templates', authenticate, notificationTemplateRoutes);
-app.use('/api/notification-rules', authenticate, notificationRuleRoutes);
-app.use('/api/notifications', authenticate, notificationRoutes);
-app.use('/api/email-queue', authenticate, emailQueueRoutes);
-app.use('/api/audit-logs',   authenticate, auditLogRoutes);
-app.use('/api/documents',    authenticate, documentRoutes);
-app.use('/api/repayments',   authenticate, repaymentRoutes);
-app.use('/api/dispatching',    authenticate, dispatchingRoutes);
-app.use('/api/credit-policies', authenticate, creditPolicyRoutes);
-app.use('/api/contract-templates', contractTemplateRoutes);
-app.use('/api/contracts', contractRoutes);
-app.use('/api/raci-matrix', authenticate, raciMatrixRoutes);
-app.use('/api/delegations',    authenticate, delegationRoutes);
-app.use('/api/companies', companyRoutes);
-app.use('/api/platform', platformRoutes);
+// ─── Protected routes (authenticate + IP/Time gates) ─────────────────────────
+// Chaîne standard pour toutes les routes authentifiées :
+//   authenticate (req.user, req.companyId)
+//   → tenantIpGate (Phase 2 — DENY tenant IP rules)
+//   → timeRulesGate (Phase 3 — whitelist strict horaires)
+const protect = [authenticate, tenantIpGate, timeRulesGate];
+
+app.use('/api/home',                    ...protect, homeKpisRoutes);
+app.use('/api/clients',                 ...protect, clientRoutes);
+app.use('/api/security/ip-rules',       ...protect, securityIpRulesRoutes);
+app.use('/api/security/time-rules',     ...protect, securityTimeRulesRoutes);
+app.use('/api/security/block-history',  ...protect, securityBlockHistoryRoutes);
+app.use('/api/applications',            ...protect, applicationRoutes);
+app.use('/api/workflows',               ...protect, workflowRoutes);
+app.use('/api/analytics',               ...protect, analyticsRoutes);
+app.use('/api/workflow-config',         ...protect, workflowConfigRoutes);
+app.use('/api/users',                   ...protect, userRoutes);
+app.use('/api/departments',             ...protect, departmentRoutes);
+app.use('/api/branches',                ...protect, branchRoutes);
+app.use('/api/approval-limits',         ...protect, approvalLimitRoutes);
+app.use('/api/credit-types',            ...protect, creditTypeRoutes);
+app.use('/api/roles',                   ...protect, roleRoutes);
+app.use('/api/module-profiles',         ...protect, moduleProfileRoutes);
+app.use('/api/scope-delegates',         ...protect, scopeDelegateRoutes);
+app.use('/api/codir',                   codirRoutes);                       // pas d'authenticate global (gestion interne)
+app.use('/api/auth/2fa',                ...protect, twoFactorRoutes);
+app.use('/api/otp',                     ...protect, otpRoutes);
+app.use('/api/backup',                  ...protect, backupRoutes);
+app.use('/api/announcements',           ...protect, announcementRoutes);
+app.use('/api/notification-channels',   ...protect, notificationChannelRoutes);
+app.use('/api/notification-templates',  ...protect, notificationTemplateRoutes);
+app.use('/api/notification-rules',      ...protect, notificationRuleRoutes);
+app.use('/api/notifications',           ...protect, notificationRoutes);
+app.use('/api/email-queue',             ...protect, emailQueueRoutes);
+app.use('/api/audit-logs',              ...protect, auditLogRoutes);
+app.use('/api/documents',               ...protect, documentRoutes);
+app.use('/api/repayments',              ...protect, repaymentRoutes);
+app.use('/api/dispatching',             ...protect, dispatchingRoutes);
+app.use('/api/credit-policies',         ...protect, creditPolicyRoutes);
+app.use('/api/contract-templates',      contractTemplateRoutes);            // pas d'authenticate global (gestion interne)
+app.use('/api/contracts',               contractRoutes);                    // pas d'authenticate global (gestion interne)
+app.use('/api/raci-matrix',             ...protect, raciMatrixRoutes);
+app.use('/api/delegations',             ...protect, delegationRoutes);
+app.use('/api/companies',               companyRoutes);                     // pas d'authenticate (selection tenant pre-context)
+app.use('/api/platform',                platformRoutes);                    // pas d'authenticate global (gestion interne)
 
 // ─── Root endpoint ────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {
