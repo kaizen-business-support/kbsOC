@@ -6,6 +6,9 @@ import { prisma } from '../server';
 import { comparePassword, hashPassword, validatePasswordStrength } from '../utils/password';
 import { blacklistToken, isTokenBlacklisted } from '../services/redis';
 import { authenticate } from '../middleware/auth';
+import { bruteForceGate } from '../middleware/bruteForceGate';
+import { recordFailedAttempt, recordSuccessfulAttempt } from '../services/bruteForceTracker';
+import { triggerBruteForceLockout } from '../services/triggerBruteForceLockout';
 import { sendEmail } from '../services/notificationService';
 import { buildPasswordResetEmail } from '../utils/emailTemplates';
 import { getAppUrl } from '../utils/getAppUrl';
@@ -62,7 +65,7 @@ function generateTempToken(userId: string, type: string = '2fa_pending'): string
 
 // ─── POST /api/auth/login ─────────────────────────────────────────────────────
 
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', bruteForceGate, async (req: Request, res: Response) => {
   try {
     const { email: rawEmail, password } = req.body;
 
@@ -77,22 +80,40 @@ router.post('/login', async (req: Request, res: Response) => {
       where: { email }
     });
 
+    // Helper local : enregistre un échec et déclenche le verrouillage si seuil atteint.
+    const handleBadAttempt = async () => {
+      const { blocked } = await recordFailedAttempt(email);
+      if (blocked) {
+        await triggerBruteForceLockout({
+          email,
+          ip: (req as any).realIp ?? req.ip ?? 'unknown',
+          userAgent: req.get('User-Agent') ?? null,
+        });
+      }
+    };
+
     // Délai constant pour résister aux timing attacks (énumération d'emails)
     const DUMMY_HASH = '$2b$12$dummyhashtopreventtimingattacksXXXXXXXXXXXXXXXXXXXXXX';
     if (!user || !user.passwordHash) {
       await comparePassword(password, DUMMY_HASH);
+      await handleBadAttempt();
       return res.status(401).json({ success: false, error: 'Identifiants invalides' });
     }
 
     if (!user.isActive) {
       await comparePassword(password, DUMMY_HASH);
+      await handleBadAttempt();
       return res.status(401).json({ success: false, error: 'Identifiants invalides' });
     }
 
     const isPasswordValid = await comparePassword(password, user.passwordHash);
     if (!isPasswordValid) {
+      await handleBadAttempt();
       return res.status(401).json({ success: false, error: 'Identifiants invalides' });
     }
+
+    // Mot de passe valide : purger les compteurs de brute-force pour cet email.
+    await recordSuccessfulAttempt(email);
 
     // ── Mot de passe temporaire expiré ────────────────────────────────────────
     if ((user as any).passwordExpiresAt && new Date() > (user as any).passwordExpiresAt) {
