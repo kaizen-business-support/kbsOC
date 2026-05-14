@@ -1838,6 +1838,37 @@ export class ApiService {
         return r.data;
       },
     },
+    blockHistory: {
+      list: async (params: {
+        blockedIp?: string;
+        reason?: 'IP_BLACKLISTED' | 'OUTSIDE_TIME_WINDOW' | 'BRUTE_FORCE' | 'MANUAL';
+        status?: 'BLOCKED' | 'UNBLOCKED';
+        userId?: string;
+        dateFrom?: string;
+        dateTo?: string;
+        scope?: 'tenant' | 'platform' | 'all';
+        page?: number;
+        pageSize?: number;
+      } = {}): Promise<{ success: boolean; data: { items: any[]; total: number; page: number; pageSize: number } }> => {
+        const r = await api.get('/security/block-history', { params });
+        return r.data;
+      },
+      unblock: async (id: string, note: string) => {
+        const r = await api.post(`/security/block-history/${id}/unblock`, { note });
+        return r.data;
+      },
+      unblockAll: async (filter: any, note: string): Promise<{ success: boolean; data: { affected: number } }> => {
+        const r = await api.post('/security/block-history/unblock-all', { filter, note });
+        return r.data;
+      },
+      exportCsvUrl: (params: Record<string, string | undefined> = {}): string => {
+        const t = tokenManager.getAccessToken() || localStorage.getItem('auth_token') || '';
+        const search = new URLSearchParams();
+        for (const [k, v] of Object.entries(params)) if (v) search.set(k, v);
+        if (t) search.set('token', t);
+        return `${API_BASE_URL}/security/block-history/export?${search.toString()}`;
+      },
+    },
   };
 }
 
