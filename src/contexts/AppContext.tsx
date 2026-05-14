@@ -374,6 +374,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       'contract-templates': '/contract-templates',
       'legal-step':         '/legal-step',
       'codir-dashboard':    '/codir-dashboard',
+      'security-settings':  '/security-settings',
     };
     
     const route = routeMap[page];

@@ -104,6 +104,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onPage
     'contract-templates': 'Modèles de contrats',
     'legal-step':         'Étape juridique',
     'codir-dashboard':    'Tableau de Bord CODIR',
+    'security-settings':  'Paramètres de sécurité',
   };
 
   const handleUserMenuClick = (event: React.MouseEvent<HTMLElement>) => {
