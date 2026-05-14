@@ -43,6 +43,7 @@ import {
   ExpandMore,
   Refresh as ResetIcon,
   DescriptionOutlined as ContractIcon,
+  ShieldOutlined as ShieldIcon,
 } from '@mui/icons-material';
 import { PageType } from '../types';
 import { useUser } from '../contexts/UserContext';
@@ -142,6 +143,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // canAction vérifie la visibilité + l'action dans le profil de module — couvre tous les rôles
   // (DIRECTION_JURIDIQUE, BACK_OFFICE, etc.) sans dépendre du mapping de rôle frontend.
   const canManageContractTemplates = hasPermission('manage_contract_templates') || isAdmin || isManagement || canAction('contract-templates', 'upload');
+  const canManageSecurity          = hasPermission('manage_security') || isAdmin;
 
   // ── Sections ─────────────────────────────────────────────────────────────────
 
@@ -171,6 +173,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'notifications-config' as PageType, label: 'Notifications',               icon: NotificationsActiveIcon },
     ...(canViewCompanySettings ? [{ id: 'company-settings' as PageType, label: 'Paramètres Compagnie', icon: SettingsIcon }] : []),
     ...(canViewPlatformAdmin   ? [{ id: 'platform-admin'   as PageType, label: 'Admin Plateforme',     icon: PolicyIcon   }] : []),
+    ...(canManageSecurity      ? [{ id: 'security-settings' as PageType, label: 'Sécurité',            icon: ShieldIcon   }] : []),
   ] : [];
 
   // Logo tenant — URL complète vers le backend

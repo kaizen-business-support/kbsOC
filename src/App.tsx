@@ -54,6 +54,7 @@ const RACIMatrixPage         = lazy(() => import('./pages/RACIMatrixPage'));
 const ContractTemplatesPage  = lazy(() => import('./pages/ContractTemplatesPage').then(m => ({ default: m.ContractTemplatesPage })));
 const LegalStepPage          = lazy(() => import('./pages/LegalStepPage').then(m => ({ default: m.LegalStepPage })));
 const CodirDashboardPage     = lazy(() => import('./pages/CodirDashboardPage').then(m => ({ default: m.CodirDashboardPage })));
+const SecuritySettingsPage   = lazy(() => import('./pages/SecuritySettingsPage').then(m => ({ default: m.SecuritySettingsPage })));
 
 // Wrapper pour récupérer l'applicationId depuis l'URL et le passer en prop
 function LegalStepPageWrapper() {
@@ -358,6 +359,11 @@ const AppContent: React.FC = () => {
               <Route path="/codir-dashboard" element={
                 <ProtectedRoute permissions={['codir_dashboard']} moduleKey="codir-dashboard">
                   <CodirDashboardPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/security-settings" element={
+                <ProtectedRoute permissions={['manage_security']}>
+                  <SecuritySettingsPage onNavigate={handlePageChange} />
                 </ProtectedRoute>
               } />
 
