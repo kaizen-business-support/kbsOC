@@ -1794,6 +1794,50 @@ export class ApiService {
         return r.data;
       },
     },
+    timeRules: {
+      list: async (params: {
+        isActive?: boolean;
+        appliesTo?: 'ALL' | 'BRANCH' | 'DEPARTMENT' | 'ROLE' | 'USER';
+        search?: string;
+        scope?: 'platform' | 'tenant' | 'all';
+        page?: number;
+        pageSize?: number;
+      } = {}): Promise<{ success: boolean; data: { items: any[]; total: number; page: number; pageSize: number } }> => {
+        const r = await api.get('/security/time-rules', { params });
+        return r.data;
+      },
+      create: async (body: {
+        name: string;
+        daysOfWeek: number;
+        timeStart: string;
+        timeEnd: string;
+        timezone: string;
+        appliesTo: 'ALL' | 'BRANCH' | 'DEPARTMENT' | 'ROLE' | 'USER';
+        targetValues?: string[];
+        deniedMessage?: string;
+        isActive?: boolean;
+        companyId?: string | null;
+      }) => {
+        const r = await api.post('/security/time-rules', body);
+        return r.data;
+      },
+      update: async (id: string, body: any) => {
+        const r = await api.put(`/security/time-rules/${id}`, body);
+        return r.data;
+      },
+      toggle: async (id: string) => {
+        const r = await api.patch(`/security/time-rules/${id}/toggle`);
+        return r.data;
+      },
+      remove: async (id: string) => {
+        const r = await api.delete(`/security/time-rules/${id}`);
+        return r.data;
+      },
+      preview: async (id: string): Promise<{ success: boolean; data: { rule: { id: string; name: string; timezone: string }; preview: Array<{ date: string; allowed: boolean; slots: { start: string; end: string }[] }> } }> => {
+        const r = await api.get(`/security/time-rules/${id}/preview`);
+        return r.data;
+      },
+    },
   };
 }
 
