@@ -70,3 +70,83 @@ export async function invalidateIpRulesCache(companyId: string | null): Promise<
     logger.warn('[securityRulesCache] Redis del error', { err: String(e), key });
   }
 }
+
+// ─── Time rules cache ─────────────────────────────────────────────────────────
+
+export interface CachedTimeRule {
+  id: string;
+  daysOfWeek: number;
+  timeStart: string;
+  timeEnd: string;
+  timezone: string;
+  appliesTo: 'ALL' | 'BRANCH' | 'DEPARTMENT' | 'ROLE' | 'USER';
+  targetValues: string[];
+  deniedMessage: string | null;
+}
+
+const KEY_TIME_PLATFORM = 'sec:time-rules:platform';
+const keyTimeTenant = (companyId: string) => `sec:time-rules:tenant:${companyId}`;
+
+async function loadTimeRulesFromDb(companyId: string | null): Promise<CachedTimeRule[]> {
+  const rows = await prisma.securityTimeRule.findMany({
+    where: { companyId, isActive: true, deletedAt: null },
+    select: {
+      id: true, daysOfWeek: true, timeStart: true, timeEnd: true,
+      timezone: true, appliesTo: true, targetValues: true, deniedMessage: true,
+    },
+  });
+  return rows.map(r => ({
+    id: r.id,
+    daysOfWeek: r.daysOfWeek,
+    timeStart: r.timeStart,
+    timeEnd: r.timeEnd,
+    timezone: r.timezone,
+    appliesTo: r.appliesTo,
+    targetValues: r.targetValues,
+    deniedMessage: r.deniedMessage,
+  }));
+}
+
+async function readTimeCache(key: string): Promise<CachedTimeRule[] | null> {
+  try {
+    const raw = await cacheGet(key);
+    return raw ? (JSON.parse(raw) as CachedTimeRule[]) : null;
+  } catch (e) {
+    logger.warn('[securityRulesCache] Redis read error (time)', { err: String(e), key });
+    return null;
+  }
+}
+
+async function writeTimeCache(key: string, value: CachedTimeRule[]): Promise<void> {
+  try {
+    await cacheSet(key, JSON.stringify(value), IP_RULES_CACHE_TTL_SEC);
+  } catch (e) {
+    logger.warn('[securityRulesCache] Redis write error (time)', { err: String(e), key });
+  }
+}
+
+export async function getCachedPlatformTimeRules(): Promise<CachedTimeRule[]> {
+  const cached = await readTimeCache(KEY_TIME_PLATFORM);
+  if (cached) return cached;
+  const fresh = await loadTimeRulesFromDb(null);
+  await writeTimeCache(KEY_TIME_PLATFORM, fresh);
+  return fresh;
+}
+
+export async function getCachedTenantTimeRules(companyId: string): Promise<CachedTimeRule[]> {
+  const key = keyTimeTenant(companyId);
+  const cached = await readTimeCache(key);
+  if (cached) return cached;
+  const fresh = await loadTimeRulesFromDb(companyId);
+  await writeTimeCache(key, fresh);
+  return fresh;
+}
+
+export async function invalidateTimeRulesCache(companyId: string | null): Promise<void> {
+  const key = companyId === null ? KEY_TIME_PLATFORM : keyTimeTenant(companyId);
+  try {
+    await cacheDel(key);
+  } catch (e) {
+    logger.warn('[securityRulesCache] Redis del error (time)', { err: String(e), key });
+  }
+}
