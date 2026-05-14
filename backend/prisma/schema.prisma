@@ -1106,6 +1106,7 @@ model SecurityTimeRule {
   appliesTo     SecurityAppliesTo @map("applies_to")
   targetValues  String[]          @default([]) @map("target_values")
   deniedMessage String?           @map("denied_message")
+  allowReadOnly Boolean           @default(false) @map("allow_read_only")
   isActive      Boolean           @default(true) @map("is_active")
   companyId     String?           @map("company_id")
   company       Company?          @relation(fields: [companyId], references: [id])
