@@ -82,6 +82,7 @@ export interface CachedTimeRule {
   appliesTo: 'ALL' | 'BRANCH' | 'DEPARTMENT' | 'ROLE' | 'USER';
   targetValues: string[];
   deniedMessage: string | null;
+  allowReadOnly: boolean;
 }
 
 const KEY_TIME_PLATFORM = 'sec:time-rules:platform';
@@ -93,6 +94,7 @@ async function loadTimeRulesFromDb(companyId: string | null): Promise<CachedTime
     select: {
       id: true, daysOfWeek: true, timeStart: true, timeEnd: true,
       timezone: true, appliesTo: true, targetValues: true, deniedMessage: true,
+      allowReadOnly: true,
     },
   });
   return rows.map(r => ({
@@ -104,6 +106,7 @@ async function loadTimeRulesFromDb(companyId: string | null): Promise<CachedTime
     appliesTo: r.appliesTo,
     targetValues: r.targetValues,
     deniedMessage: r.deniedMessage,
+    allowReadOnly: r.allowReadOnly ?? false,
   }));
 }
 
