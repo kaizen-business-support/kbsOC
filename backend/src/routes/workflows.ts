@@ -11,6 +11,7 @@ import {
 } from '../services/workflowService';
 import { resolveDelegation } from '../services/delegationService';
 import { authenticate, requireCompany } from '../middleware/auth';
+import { rolesMatching } from '../utils/roleAliases';
 
 const router = Router();
 router.use(authenticate);
@@ -274,6 +275,7 @@ router.get('/pending-approvals', async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Authentification requise' });
     }
 
+    const roleAliases = rolesMatching(userRole);
     const steps = await prisma.workflowStep.findMany({
       where: {
         completedAt: null,
@@ -285,9 +287,9 @@ router.get('/pending-approvals', async (req: Request, res: Response) => {
           { status: 'IN_REVIEW', assigneeId: userId, policyStep: { stepType: 'ANALYSIS' } },
           // Étapes non-ANALYSIS pour mon rôle (APPROVAL, COMMITTEE, LEGAL, DISPATCH)
           // → n'importe quel utilisateur du bon rôle peut les traiter
-          { status: 'PENDING',   role: userRole, policyStep: { stepType: { not: 'ANALYSIS' } } },
+          { status: 'PENDING',   role: { in: roleAliases }, policyStep: { stepType: { not: 'ANALYSIS' } } },
           // Étapes legacy (pas de policyStep) pour mon rôle
-          { status: 'PENDING',   role: userRole, policyStep: null },
+          { status: 'PENDING',   role: { in: roleAliases }, policyStep: null },
           // IN_REVIEW assignées à moi (toutes étapes — ex: après REQUEST_INFO)
           { status: 'IN_REVIEW', assigneeId: userId },
         ],
@@ -411,6 +413,7 @@ router.get('/pending-approvals/count', async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Authentification requise' });
     }
 
+    const roleAliases = rolesMatching(userRole);
     const count = await prisma.workflowStep.count({
       where: {
         completedAt: null,
@@ -418,8 +421,8 @@ router.get('/pending-approvals/count', async (req: Request, res: Response) => {
         OR: [
           { status: 'PENDING',   assigneeId: userId, policyStep: { stepType: 'ANALYSIS' } },
           { status: 'IN_REVIEW', assigneeId: userId, policyStep: { stepType: 'ANALYSIS' } },
-          { status: 'PENDING',   role: userRole, policyStep: { stepType: { not: 'ANALYSIS' } } },
-          { status: 'PENDING',   role: userRole, policyStep: null },
+          { status: 'PENDING',   role: { in: roleAliases }, policyStep: { stepType: { not: 'ANALYSIS' } } },
+          { status: 'PENDING',   role: { in: roleAliases }, policyStep: null },
           { status: 'IN_REVIEW', assigneeId: userId },
         ],
       },
@@ -487,9 +490,9 @@ router.post('/:applicationId/start-step/:stepId', async (req: Request, res: Resp
       let effectiveDept   = (user as any).department as string | null;
 
       // Si le rôle ne correspond pas à l'étape, vérifier délégation START_STEP
-      if (step && step.role !== user.role) {
+      if (step && !rolesMatching(user.role).includes(step.role)) {
         const delegation = await resolveDelegation(userId, 'START_STEP');
-        if (!delegation || delegation.delegatorRole !== step.role) {
+        if (!delegation || !rolesMatching(delegation.delegatorRole).includes(step.role)) {
           return res.status(403).json({
             success: false,
             error: `Cette étape requiert le rôle ${step?.role}.`,

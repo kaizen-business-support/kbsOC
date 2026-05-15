@@ -17,6 +17,7 @@ import { prisma } from '../prismaClient';
 import { STEP_NAME_FR } from '../constants/stepNames';
 import { resolveDelegation } from './delegationService';
 import { evaluateGuards, type GuardsJson } from './guardEngine';
+import { rolesMatching } from '../utils/roleAliases';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -704,10 +705,10 @@ export async function canApproveStep(
   let effectiveDept   = (user as any).department as string | null;
   let delegationContext: { delegationId: string; delegatorId: string; delegatorName: string } | null = null;
 
-  if (step.role !== user.role) {
+  if (!rolesMatching(user.role).includes(step.role)) {
     // Rôle direct insuffisant — vérifier si une délégation couvre APPROVE_WORKFLOW
     const delegation = await resolveDelegation(userId, 'APPROVE_WORKFLOW');
-    if (!delegation || delegation.delegatorRole !== step.role) {
+    if (!delegation || !rolesMatching(delegation.delegatorRole).includes(step.role)) {
       return {
         allowed: false,
         reason: `Rôle requis : ${step.role}, rôle actuel : ${user.role}`,
