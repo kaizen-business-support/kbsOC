@@ -43,6 +43,7 @@ import { useUser } from '../contexts/UserContext';
 import { useCompany } from '../contexts/CompanyContext';
 import { useFormDraft, loadFormDraft, clearFormDraft, hasSavedDraft } from '../hooks/useFormDraft';
 import { OtpVerificationDialog } from '../components/OtpVerificationDialog';
+import { useSecurityLock } from '../hooks/useSecurityLock';
 
 const DRAFT_KEY = 'credit_application';
 
@@ -180,6 +181,7 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
   const { activeCompany } = useCompany();
   const [activeStep, setActiveStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { disabled: lockDisabled, reason: lockReason } = useSecurityLock();
   const [draftRestored, setDraftRestored] = useState(false);
   const [showDraftBanner, setShowDraftBanner] = useState(false);
   const [otpOpen, setOtpOpen] = useState(false);
@@ -1104,7 +1106,8 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
                 variant="contained"
                 endIcon={<SubmitIcon />}
                 onClick={() => setOtpOpen(true)}
-                disabled={isSubmitting}
+                disabled={isSubmitting || lockDisabled}
+                title={lockDisabled ? lockReason ?? '' : undefined}
                 sx={{
                   borderRadius: 3, px: 4, fontWeight: 700,
                   background: 'linear-gradient(135deg, #2e7d32, #388e3c)',

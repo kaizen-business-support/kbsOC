@@ -23,6 +23,7 @@ import { useNavigate } from 'react-router-dom';
 import { ApprovalItem } from '../types';
 import { ApiService } from '../services/api';
 import { DossierActionDrawer } from '../components/DossierActionDrawer';
+import { useSecurityLock } from '../hooks/useSecurityLock';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,7 @@ function decisionChip(decision: string) {
 
 export const ApprovalsPage: React.FC = () => {
   const navigate = useNavigate();
+  const { disabled: lockDisabled, reason: lockReason } = useSecurityLock();
   const [items, setItems]               = useState<ApprovalItem[]>([]);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState('');
@@ -484,6 +486,8 @@ export const ApprovalsPage: React.FC = () => {
                         <Button
                           variant="contained"
                           size="small"
+                          disabled={lockDisabled}
+                          title={lockDisabled ? lockReason ?? '' : undefined}
                           startIcon={<LegalIcon sx={{ fontSize: 14 }} />}
                           onClick={() => navigate(`/legal-step/${item.applicationId}`)}
                           sx={{
@@ -498,6 +502,8 @@ export const ApprovalsPage: React.FC = () => {
                         <Button
                           variant="contained"
                           size="small"
+                          disabled={lockDisabled}
+                          title={lockDisabled ? lockReason ?? '' : undefined}
                           onClick={() => openDrawer(item)}
                           sx={{
                             borderRadius: '8px', fontSize: '12px', fontWeight: 600,
