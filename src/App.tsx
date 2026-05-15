@@ -4,6 +4,8 @@ import { Box, Container, Dialog, DialogTitle, DialogContent, DialogActions, Butt
 import { Lock as LockIcon, Cancel as CancelIcon, Save as SaveIcon } from '@mui/icons-material';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { UserProvider, useUser } from './contexts/UserContext';
+import { SecurityLockProvider } from './contexts/SecurityLockContext';
+import { LockedBanner } from './components/security/LockedBanner';
 import { CompanyProvider } from './contexts/CompanyContext';
 import { ModuleProfileProvider } from './contexts/ModuleProfileContext';
 import { ApiService } from './services/api';
@@ -23,6 +25,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 const HomePage              = lazy(() => import('./pages/HomePage').then(m => ({ default: m.HomePage })));
 const LoginPage             = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
 const ResetPasswordPage     = lazy(() => import('./pages/ResetPasswordPage'));
+const BlockedPage           = lazy(() => import('./pages/BlockedPage').then(m => ({ default: m.BlockedPage })));
 const UploadPage            = lazy(() => import('./pages/UploadPage').then(m => ({ default: m.UploadPage })));
 const AnalysisPage          = lazy(() => import('./pages/AnalysisPage').then(m => ({ default: m.AnalysisPage })));
 const ReportsPage           = lazy(() => import('./pages/ReportsPage').then(m => ({ default: m.ReportsPage })));
@@ -134,6 +137,13 @@ const AppContent: React.FC = () => {
   const { announcements, modalOpen, handleClose: handleAnnouncementClose } =
     useAnnouncements(userState.currentUser?.id);
 
+  // /blocked est PUBLIC (accessible meme sans auth, meme si la session est valide).
+  // Doit etre verifie AVANT le test d'auth pour permettre l'affichage en cas
+  // d'IP bloquee qui empeche tout call API.
+  if (window.location.pathname === '/blocked') {
+    return <Suspense fallback={<PageLoader />}><BlockedPage /></Suspense>;
+  }
+
   // Show login page if not authenticated (allow /reset-password without auth)
   if (!userState.isAuthenticated) {
     if (window.location.pathname === '/reset-password') {
@@ -225,7 +235,10 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+    <SecurityLockProvider>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <LockedBanner />
+      <Box sx={{ display: 'flex', flex: 1, minHeight: 0 }}>
       <Header
         onMenuClick={() => setSidebarOpen(!sidebarOpen)}
         currentPage={state.currentPage}
@@ -561,7 +574,9 @@ const AppContent: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+      </Box>
     </Box>
+    </SecurityLockProvider>
   );
 };
 
