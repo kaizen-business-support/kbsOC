@@ -10,6 +10,7 @@ import { DataTable, DataTableColumn } from '../common/DataTable';
 import { ApiService } from '../../services/api';
 import { colors } from '../home/homeTokens';
 import { UnblockDialog } from './UnblockDialog';
+import { useSecurityLock } from '../../hooks/useSecurityLock';
 
 interface BlockHistoryRow {
   id: string;
@@ -56,6 +57,7 @@ export function BlockHistoryTab() {
 
   const [unblockEntry, setUnblockEntry] = useState<BlockHistoryRow | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const { disabled: lockDisabled, reason: lockReason } = useSecurityLock();
 
   function updateFilter(key: string, value: string) {
     const next = new URLSearchParams(searchParams);
@@ -182,10 +184,12 @@ export function BlockHistoryTab() {
       accessor: () => '',
       filter: { type: 'none' }, sortable: false, align: 'right',
       render: r => r.status === 'BLOCKED' ? (
-        <Tooltip title="Débloquer">
-          <IconButton size="small" onClick={() => setUnblockEntry(r)}>
-            <LockOpenIcon fontSize="small" />
-          </IconButton>
+        <Tooltip title={lockDisabled ? lockReason ?? '' : 'Débloquer'}>
+          <span>
+            <IconButton size="small" disabled={lockDisabled} onClick={() => setUnblockEntry(r)}>
+              <LockOpenIcon fontSize="small" />
+            </IconButton>
+          </span>
         </Tooltip>
       ) : null,
     },
@@ -204,6 +208,8 @@ export function BlockHistoryTab() {
               startIcon={<LockOpenIcon />}
               variant="outlined"
               size="small"
+              disabled={lockDisabled}
+              title={lockDisabled ? lockReason ?? '' : undefined}
               onClick={() => setBulkOpen(true)}
             >
               Débloquer tout ({blockedCount})

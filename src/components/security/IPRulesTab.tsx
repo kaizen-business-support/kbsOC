@@ -9,6 +9,7 @@ import { DataTable, DataTableColumn } from '../common/DataTable';
 import { ApiService } from '../../services/api';
 import { colors } from '../home/homeTokens';
 import { IPRuleFormDialog, IpRule } from './IPRuleFormDialog';
+import { useSecurityLock } from '../../hooks/useSecurityLock';
 
 interface SnackState { open: boolean; severity: 'success' | 'error' | 'info'; message: string; }
 
@@ -19,6 +20,7 @@ export function IPRulesTab() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<IpRule | null>(null);
   const [snack, setSnack] = useState<SnackState>({ open: false, severity: 'success', message: '' });
+  const { disabled: lockDisabled, reason: lockReason } = useSecurityLock();
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -100,7 +102,7 @@ export function IPRulesTab() {
       accessor: (r) => (r.isActive ? 'active' : 'inactive'),
       filter: { type: 'enum', options: [{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }] },
       render: (r) => (
-        <Switch checked={r.isActive} onChange={() => handleToggle(r)} size="small" />
+        <Switch checked={r.isActive} onChange={() => handleToggle(r)} disabled={lockDisabled} size="small" />
       ),
     },
     {
@@ -111,15 +113,19 @@ export function IPRulesTab() {
       align: 'right',
       render: (r) => (
         <>
-          <Tooltip title="Modifier">
-            <IconButton size="small" onClick={() => { setEditing(r); setDialogOpen(true); }}>
-              <EditOutlinedIcon fontSize="small" />
-            </IconButton>
+          <Tooltip title={lockDisabled ? lockReason ?? '' : 'Modifier'}>
+            <span>
+              <IconButton size="small" disabled={lockDisabled} onClick={() => { setEditing(r); setDialogOpen(true); }}>
+                <EditOutlinedIcon fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
-          <Tooltip title="Supprimer">
-            <IconButton size="small" onClick={() => handleRemove(r)}>
-              <DeleteOutlineIcon fontSize="small" />
-            </IconButton>
+          <Tooltip title={lockDisabled ? lockReason ?? '' : 'Supprimer'}>
+            <span>
+              <IconButton size="small" disabled={lockDisabled} onClick={() => handleRemove(r)}>
+                <DeleteOutlineIcon fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
         </>
       ),
@@ -132,6 +138,8 @@ export function IPRulesTab() {
         <Button
           startIcon={<AddIcon />}
           variant="contained"
+          disabled={lockDisabled}
+          title={lockDisabled ? lockReason ?? '' : undefined}
           onClick={() => { setEditing(null); setDialogOpen(true); }}
           sx={{ bgcolor: colors.accent.primary, '&:hover': { bgcolor: colors.accent.hover } }}
         >
