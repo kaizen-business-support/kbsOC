@@ -35,6 +35,11 @@ import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   PictureAsPdf as PdfIcon,
+  NewReleases as NewReleasesIcon,
+  Security as SecurityIcon,
+  ThumbsUpDown as ThumbsUpDownIcon,
+  Insights as InsightsIcon,
+  Build as BuildIcon,
 } from '@mui/icons-material';
 import { PageType } from '../types';
 
@@ -312,6 +317,279 @@ export const DocumentationPage: React.FC<DocumentationPageProps> = ({ onNavigate
       </Box>
 
       <Grid container spacing={4}>
+        {/* Nouveautés de la version */}
+        <Grid item xs={12}>
+          <Card sx={{ borderLeft: '4px solid #16a34a' }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <NewReleasesIcon sx={{ mr: 1, color: '#16a34a' }} />
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                  Nouveautés — Release v1.0 (mai 2026)
+                </Typography>
+              </Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Récapitulatif des évolutions livrées dans cette version, à connaître avant
+                le déploiement en production.
+              </Typography>
+
+              <Accordion defaultExpanded>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <InsightsIcon sx={{ color: '#1976d2', fontSize: 20 }} />
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      Analyse financière du dossier — refonte du Tab Financier
+                    </Typography>
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <List dense>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Drawer d'analyse élargi (940 px sur écran large)"
+                        secondary="Plus d'espace pour les tableaux multi-années et la colonne d'évolution."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Nouvelle colonne « Évo. » sur le Bilan et le Compte de Résultat"
+                        secondary="Variation en pourcentage d'une année à l'autre, verte si positive (+x,x %), rouge si négative."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Bouton « Voir le fichier source (Excel) »"
+                        secondary="Aperçu direct du fichier financier uploadé par le chargé d'affaires (détecté par mimeType ou extension .xlsx/.xls/.xlsm)."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Tooltips explicatifs sur les cartes de ratios"
+                        secondary="Liquidité Générale, Marge Nette, Dette/Capitaux et Rotation Actif : chaque ratio est désormais accompagné d'une définition métier et de la norme cible."
+                      />
+                    </ListItem>
+                  </List>
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <ThumbsUpDownIcon sx={{ color: '#7b1fa2', fontSize: 20 }} />
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      Système d'avis sur les commentaires d'analyse
+                    </Typography>
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Typography variant="body2" paragraph>
+                    Chaque intervenant peut désormais accompagner son commentaire d'un avis
+                    explicite favorable / défavorable, restitué dans la synthèse globale du dossier.
+                  </Typography>
+                  <List dense>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Sélecteur « Avis sur le dossier »"
+                        secondary="Boutons Favorable (vert) / Défavorable (rouge) — toggle on/off — dans le formulaire de saisie du commentaire."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Badge dans chaque carte de commentaire"
+                        secondary="« Avis favorable » / « Avis défavorable » visible aux côtés du nom de l'intervenant."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Synthèse cumulative en tête du panneau Commentaires"
+                        secondary="Nombre de favorables/défavorables, barre de progression et pourcentage global (fond vert si ≥ 50 %, rouge sinon)."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Garde « Valider l'analyse »"
+                        secondary="Le bouton est désactivé tant qu'un commentaire saisi n'a pas été enregistré, pour éviter de perdre la saisie en cours."
+                      />
+                    </ListItem>
+                  </List>
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <SecurityIcon sx={{ color: '#dc2626', fontSize: 20 }} />
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      Module Sécurité (IP, plages horaires, brute-force)
+                    </Typography>
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <List dense>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Règles IP par tenant"
+                        secondary="Whitelist / blacklist d'adresses ou de plages CIDR, appliquées après authentification (tenantIpGate)."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Plages horaires d'accès"
+                        secondary="Définition de fenêtres autorisées par rôle, agence ou utilisateur — verrouillage hors fenêtre avec mode lecture seule optionnel."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Détection brute-force"
+                        secondary="Verrouillage user-level (jamais IP, pour éviter les faux positifs derrière NAT) + notification email à l'utilisateur."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Historique des blocages"
+                        secondary="Tableau de bord dédié avec export CSV ; bannière verrouillage en direct côté UI (LockedBanner)."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Sémantique HTTP 423 vs 403"
+                        secondary="423 Locked pour les blocages temporaires (hors horaires, brute-force) ; 403 Forbidden pour les règles IP — exposés via /api/security/time-status (polling 60 s)."
+                      />
+                    </ListItem>
+                  </List>
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <BuildIcon sx={{ color: '#f57c00', fontSize: 20 }} />
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      Workflow & dispatching — corrections systémiques
+                    </Typography>
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <List dense>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Tolérance des deux encodages de rôle"
+                        secondary="Les comparaisons workflow_steps.role ↔ user.role acceptent à la fois la forme UPPER_CASE (CHARGE_AFFAIRES) et la forme @map snake_case (account_manager). Plus de dossiers invisibles en /pending-approvals selon l'historique de la politique."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Multi-dispatch : workflows à plusieurs étapes DISPATCH"
+                        secondary="Le moteur supporte désormais les politiques où le chargé d'affaires intervient plusieurs fois sur le même dossier (création + reprise après request_info)."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Lookup dynamique du rôle créateur (stepType=CREATION)"
+                        secondary="L'étape « Création du dossier » n'est plus codée en dur sur CHARGE_AFFAIRES — elle suit le rôle défini dans la politique active."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Sélecteur de rôle déroulant dans les plages horaires"
+                        secondary="Plus de saisie libre pour le champ « applies_to=ROLE » : liste des rôles disponibles en dropdown, évite les fautes de frappe silencieuses."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Tables de validation CODIR — scroll horizontal et colonne Action sticky-right"
+                        secondary="Lisibilité préservée sur écrans étroits / navigateurs ne respectant pas overflow-x:auto."
+                      />
+                    </ListItem>
+                  </List>
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <BankIcon sx={{ color: '#1565c0', fontSize: 20 }} />
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      Déploiement & script bci-update.sh — non destructif
+                    </Typography>
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    <Typography variant="body2">
+                      Le script <code>sudo bash bci-update.sh</code> est désormais sûr à
+                      relancer en production sans risque d'écraser la configuration BCI.
+                    </Typography>
+                  </Alert>
+                  <List dense>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="seed-bci.js auto-skippé si des users BCI existent"
+                        secondary="Probe : SELECT count(*) FROM users WHERE email LIKE '%@bci.sn'. Si > 0, les attributs (nom, agence, rôle, permissions, isActive) des comptes BCI hardcodés sont préservés."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Migrations data désactivées par défaut"
+                        secondary="migrate-approval-limits, migrate-allowed-actions et migrate-legal-step-type ne tournent plus à chaque déploiement — vos plafonds custom et allowedActions sont préservés."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Nouveaux flags de contrôle"
+                        secondary="--skip-bci-seed (skip explicite), --force-bci-seed (premier install / réinit volontaire), --with-data-migrations (re-synchroniser plafonds & actions)."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Backup pré-update systématique"
+                        secondary="pg_dump gzip dans backups/pre-update/ avec rétention 7 jours (déjà actif, conservé)."
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
+                      <ListItemText
+                        primary="Conflits git stash — alerte explicite"
+                        secondary="En cas de conflit lors de la restauration des modifications locales, le warning est très visible et indique la commande exacte pour les récupérer (rien n'est jamais perdu)."
+                      />
+                    </ListItem>
+                  </List>
+                  <Box sx={{ mt: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1, fontFamily: 'monospace', fontSize: 12 }}>
+                    <Typography variant="body2" component="div" sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+                      sudo bash bci-update.sh                          # déploiement standard<br />
+                      sudo bash bci-update.sh --branch release/v1.0    # déployer une branche précise<br />
+                      sudo bash bci-update.sh --skip-pull --skip-seed  # déploiement code uniquement<br />
+                      sudo bash bci-update.sh --force-bci-seed         # ré-écrire les attributs des users BCI<br />
+                      sudo bash bci-update.sh --with-data-migrations   # re-synchroniser plafonds & allowedActions
+                    </Typography>
+                  </Box>
+                </AccordionDetails>
+              </Accordion>
+            </CardContent>
+          </Card>
+        </Grid>
+
         {/* Credit Process Workflow */}
         <Grid item xs={12}>
           <Card>
