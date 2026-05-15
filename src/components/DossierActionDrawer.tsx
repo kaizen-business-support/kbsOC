@@ -1266,7 +1266,10 @@ export const DossierActionDrawer: React.FC<Props> = ({
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
                   {/* Aperçu du fichier source Excel */}
                   {(() => {
-                    const finDoc = (app as any)?.documents?.find((d: any) => d.category === 'FINANCIAL');
+                    const finDoc = (app as any)?.documents?.find((d: any) => {
+                      const mime = d.mimeType ?? '';
+                      return d.category === 'FINANCIAL' && (mime.includes('excel') || mime.includes('sheet') || mime.includes('xls'));
+                    });
                     if (!finDoc) return null;
                     return (
                       <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -1512,30 +1515,32 @@ export const DossierActionDrawer: React.FC<Props> = ({
                           {(() => {
                             const r = calculateRatios(finLatestYearData);
                             return [
-                              { label: 'Liquidité Générale', value: r?.currentRatio ?? 'N/A', unit: 'x', norm: '≥ 1.5', ok: parseFloat(r?.currentRatio || '0') >= 1.5, icon: <WaterDropIcon sx={{ fontSize: 16 }} />, color: '#1976d2' },
-                              { label: 'Marge Nette',        value: r?.netMargin    ?? 'N/A', unit: '%', norm: '≥ 10 %', ok: parseFloat(r?.netMargin    || '0') >= 10,  icon: <TrendingUpIcon  sx={{ fontSize: 16 }} />, color: '#388e3c' },
-                              { label: 'Dette / Capitaux',   value: r?.debtToEquity ?? 'N/A', unit: 'x', norm: '≤ 1.0', ok: parseFloat(r?.debtToEquity || '99') <= 1,  icon: <BalanceIcon     sx={{ fontSize: 16 }} />, color: '#f57c00' },
-                              { label: 'Rotation Actif',     value: r?.assetTurnover ?? 'N/A', unit: 'x', norm: '≥ 1.0', ok: parseFloat(r?.assetTurnover || '0') >= 1, icon: <AutorenewIcon   sx={{ fontSize: 16 }} />, color: '#7b1fa2' },
+                              { label: 'Liquidité Générale', value: r?.currentRatio ?? 'N/A', unit: 'x', norm: '≥ 1.5', ok: parseFloat(r?.currentRatio || '0') >= 1.5, icon: <WaterDropIcon sx={{ fontSize: 16 }} />, color: '#1976d2', description: "Mesure la capacité de l'entreprise à rembourser ses dettes à court terme avec ses actifs circulants (stocks, créances, trésorerie). Un ratio ≥ 1.5 indique une solvabilité à court terme satisfaisante." },
+                              { label: 'Marge Nette',        value: r?.netMargin    ?? 'N/A', unit: '%', norm: '≥ 10 %', ok: parseFloat(r?.netMargin    || '0') >= 10,  icon: <TrendingUpIcon  sx={{ fontSize: 16 }} />, color: '#388e3c', description: "Part du chiffre d'affaires qui se transforme en bénéfice net après toutes les charges. Une marge ≥ 10 % reflète une bonne maîtrise des coûts et une rentabilité saine." },
+                              { label: 'Dette / Capitaux',   value: r?.debtToEquity ?? 'N/A', unit: 'x', norm: '≤ 1.0', ok: parseFloat(r?.debtToEquity || '99') <= 1,  icon: <BalanceIcon     sx={{ fontSize: 16 }} />, color: '#f57c00', description: "Rapport entre les dettes financières et les fonds propres. Un ratio ≤ 1.0 signifie que l'entreprise est davantage financée par ses capitaux propres que par l'emprunt, limitant son risque financier." },
+                              { label: 'Rotation Actif',     value: r?.assetTurnover ?? 'N/A', unit: 'x', norm: '≥ 1.0', ok: parseFloat(r?.assetTurnover || '0') >= 1, icon: <AutorenewIcon   sx={{ fontSize: 16 }} />, color: '#7b1fa2', description: "Efficacité avec laquelle l'entreprise utilise ses actifs pour générer du chiffre d'affaires. Un ratio ≥ 1.0 signifie que chaque franc d'actif produit au moins un franc de CA." },
                             ].map(card => (
-                              <Grid item xs={6} key={card.label}>
-                                <Card variant="outlined" sx={{ borderRadius: 2, borderLeft: '3px solid', borderLeftColor: card.value === 'N/A' ? 'grey.400' : card.ok ? 'success.main' : 'error.main' }}>
-                                  <CardContent sx={{ p: 1.5, pb: '12px !important' }}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: card.color, mb: 0.5 }}>
-                                      {card.icon}
-                                      <Typography variant="caption" fontWeight={600} sx={{ lineHeight: 1.2 }}>{card.label}</Typography>
-                                    </Box>
-                                    <Typography variant="h6" fontWeight={700} sx={{ lineHeight: 1.1 }}>
-                                      {card.value === 'N/A' ? '—' : `${card.value}${card.unit}`}
-                                    </Typography>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>
-                                      <Typography variant="caption" color="text.secondary">{card.norm}</Typography>
-                                      {card.value !== 'N/A' && (
-                                        <Chip label={card.ok ? 'OK' : 'Attention'} size="small" color={card.ok ? 'success' : 'warning'} sx={{ height: 16, fontSize: '9px', fontWeight: 700 }} />
-                                      )}
-                                    </Box>
-                                  </CardContent>
-                                </Card>
-                              </Grid>
+                              <Tooltip key={card.label} title={card.description} arrow placement="top">
+                                <Grid item xs={6}>
+                                  <Card variant="outlined" sx={{ borderRadius: 2, borderLeft: '3px solid', borderLeftColor: card.value === 'N/A' ? 'grey.400' : card.ok ? 'success.main' : 'error.main' }}>
+                                    <CardContent sx={{ p: 1.5, pb: '12px !important' }}>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: card.color, mb: 0.5 }}>
+                                        {card.icon}
+                                        <Typography variant="caption" fontWeight={600} sx={{ lineHeight: 1.2 }}>{card.label}</Typography>
+                                      </Box>
+                                      <Typography variant="h6" fontWeight={700} sx={{ lineHeight: 1.1 }}>
+                                        {card.value === 'N/A' ? '—' : `${card.value}${card.unit}`}
+                                      </Typography>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5 }}>
+                                        <Typography variant="caption" color="text.secondary">{card.norm}</Typography>
+                                        {card.value !== 'N/A' && (
+                                          <Chip label={card.ok ? 'OK' : 'Attention'} size="small" color={card.ok ? 'success' : 'warning'} sx={{ height: 16, fontSize: '9px', fontWeight: 700 }} />
+                                        )}
+                                      </Box>
+                                    </CardContent>
+                                  </Card>
+                                </Grid>
+                              </Tooltip>
                             ));
                           })()}
                         </Grid>
