@@ -20,6 +20,7 @@ import homeKpisRoutes from './routes/home-kpis';
 import securityIpRulesRoutes from './routes/security-ip-rules';
 import securityTimeRulesRoutes from './routes/security-time-rules';
 import securityBlockHistoryRoutes from './routes/security-block-history';
+import securityTimeStatusRoutes from './routes/security-time-status';
 import { extractRealIp } from './middleware/extractRealIp';
 import { platformIpGate, tenantIpGate } from './middleware/ipAccess';
 import { timeRulesGate } from './middleware/timeAccess';
@@ -229,6 +230,10 @@ app.use('/api/health', healthRoutes);
 //   → tenantIpGate (Phase 2 — DENY tenant IP rules)
 //   → timeRulesGate (Phase 3 — whitelist strict horaires)
 const protect = [authenticate, tenantIpGate, timeRulesGate];
+
+// Time-status : authenticate + tenantIpGate UNIQUEMENT (sans timeRulesGate)
+// pour permettre au frontend de poller en etat verrouille.
+app.use('/api/security/time-status',    authenticate, tenantIpGate, securityTimeStatusRoutes);
 
 app.use('/api/home',                    ...protect, homeKpisRoutes);
 app.use('/api/clients',                 ...protect, clientRoutes);
