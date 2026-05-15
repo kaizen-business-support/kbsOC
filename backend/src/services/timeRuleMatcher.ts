@@ -18,6 +18,8 @@ export interface MatchableTimeRule {
   appliesTo: AppliesTo;
   targetValues: string[];
   deniedMessage?: string | null;
+  /** Phase 6a — si true, GET autorisé hors fenêtre. Défaut false. */
+  allowReadOnly?: boolean;
 }
 
 export interface MatchableUser {
