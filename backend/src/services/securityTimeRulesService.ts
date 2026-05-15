@@ -93,6 +93,7 @@ export interface CreateTimeRuleInput {
   appliesTo: SecurityAppliesTo;
   targetValues?: string[];
   deniedMessage?: string;
+  allowReadOnly?: boolean;
   isActive?: boolean;
   companyId: string | null;
   createdBy: string;
@@ -107,6 +108,7 @@ export interface UpdateTimeRuleInput {
   appliesTo?: SecurityAppliesTo;
   targetValues?: string[];
   deniedMessage?: string | null;
+  allowReadOnly?: boolean;
   isActive?: boolean;
 }
 
@@ -158,6 +160,7 @@ export async function createTimeRule(input: CreateTimeRuleInput) {
       appliesTo: input.appliesTo,
       targetValues: input.targetValues ?? [],
       deniedMessage: input.deniedMessage ?? null,
+      allowReadOnly: input.allowReadOnly ?? false,
       isActive: input.isActive ?? true,
       companyId: input.companyId,
       createdBy: input.createdBy,
@@ -187,6 +190,7 @@ export async function updateTimeRule(id: string, input: UpdateTimeRuleInput) {
       ...(input.appliesTo !== undefined && { appliesTo: input.appliesTo }),
       ...(input.targetValues !== undefined && { targetValues: input.targetValues }),
       ...(input.deniedMessage !== undefined && { deniedMessage: input.deniedMessage }),
+      ...(input.allowReadOnly !== undefined && { allowReadOnly: input.allowReadOnly }),
       ...(input.isActive !== undefined && { isActive: input.isActive }),
     },
     include: { creator: { select: { id: true, name: true } } },
