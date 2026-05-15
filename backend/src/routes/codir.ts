@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../server';
 import { authenticate, requireCompany, authorize } from '../middleware/auth';
+import { tenantIpGate } from '../middleware/ipAccess';
+import { timeRulesGate } from '../middleware/timeAccess';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
 import { createInAppNotification } from '../services/notificationService';
 import { STEP_NAME_FR } from '../constants/stepNames';
@@ -8,6 +10,8 @@ import { STEP_NAME_FR } from '../constants/stepNames';
 const router = Router();
 router.use(authenticate);
 router.use(requireCompany);
+router.use(tenantIpGate);
+router.use(timeRulesGate);
 
 const SUPERVISOR_ROLE: Record<string, string> = {
   CHARGE_AFFAIRES:          'ANALYSTE_RISQUES',

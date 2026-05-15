@@ -17,6 +17,8 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { prisma } from '../prismaClient';
 import { authenticate, authorize, requireCompany } from '../middleware/auth';
+import { tenantIpGate } from '../middleware/ipAccess';
+import { timeRulesGate } from '../middleware/timeAccess';
 import { finalizeApplicationDuration } from '../services/workflowService';
 import { generateContract } from '../services/contractGenerationService';
 import { validateMagicBytes } from '../services/contractTemplateService';
@@ -30,6 +32,8 @@ const upload = multer({
 const router = Router();
 router.use(authenticate);
 router.use(requireCompany);
+router.use(tenantIpGate);
+router.use(timeRulesGate);
 
 // ─── GET /application/:applicationId ──────────────────────────────────────────
 router.get('/application/:applicationId', authorize(['view_contracts']), async (req: Request, res: Response) => {

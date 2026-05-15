@@ -18,6 +18,8 @@ import crypto from 'crypto';
 import mammoth from 'mammoth';
 import { prisma } from '../prismaClient';
 import { authenticate, authorize, requireCompany } from '../middleware/auth';
+import { tenantIpGate } from '../middleware/ipAccess';
+import { timeRulesGate } from '../middleware/timeAccess';
 import {
   extractVariablesFromDocx, extractVariablesFromHtml,
   classifyVariables, validateMagicBytes, reconcileCustomFields,
@@ -34,6 +36,8 @@ const upload = multer({
 const router = Router();
 router.use(authenticate);
 router.use(requireCompany);
+router.use(tenantIpGate);
+router.use(timeRulesGate);
 
 // ─── GET /catalog/variables ───────────────────────────────────────────────────
 router.get('/catalog/variables', (_req: Request, res: Response) => {
