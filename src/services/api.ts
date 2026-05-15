@@ -68,7 +68,27 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    
+
+    // ─── Phase 6b — IP block / Time lock ───────────────────────────────────────
+    const status = error?.response?.status;
+    const code = error?.response?.data?.error;
+    if (status === 403 && code === 'ip_blocked') {
+      const ip = error.response.data?.blockedIp ?? '';
+      try { sessionStorage.setItem('blockedIp', ip); } catch { /* ignore */ }
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/blocked')) {
+        window.location.href = '/blocked';
+      }
+      return Promise.reject(error);
+    }
+    if (status === 423 && code === 'outside_time_window') {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('security:time-locked', {
+          detail: error.response.data,
+        }));
+      }
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       
@@ -1868,6 +1888,18 @@ export class ApiService {
         if (t) search.set('token', t);
         return `${API_BASE_URL}/security/block-history/export?${search.toString()}`;
       },
+    },
+    timeStatus: async (): Promise<{
+      success: boolean;
+      data: {
+        locked: boolean;
+        message: string | null;
+        nextOpen: string | null;
+        allowReadOnly: boolean;
+      };
+    }> => {
+      const r = await api.get('/security/time-status');
+      return r.data;
     },
   };
 }
