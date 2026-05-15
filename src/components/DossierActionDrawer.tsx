@@ -41,6 +41,8 @@ import {
   WaterDrop as WaterDropIcon,
   Balance as BalanceIcon,
   Autorenew as AutorenewIcon,
+  ThumbUp as ThumbUpIcon,
+  ThumbDown as ThumbDownIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { ApprovalItem, USER_ROLE_LABELS } from '../types';
@@ -147,6 +149,12 @@ function normalizeFinancialData(d: any): any {
   if (!r.tresorerie)        r.tresorerie        = r.tresorerie_actif        ?? r.banques_caisses ?? 0;
   if (!r.passif_circulant)  r.passif_circulant  = r.total_dettes            ?? 0;
   return r;
+}
+
+function calcEvol(curr: number, prev: number): { pct: string; positive: boolean } | null {
+  if (!prev || prev === 0) return null;
+  const pct = ((curr - prev) / Math.abs(prev)) * 100;
+  return { pct: (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%', positive: pct >= 0 };
 }
 
 function resolveFinancialData(entry: any): any | null {
@@ -332,6 +340,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
   // ── Commentaire d'analyse (synthèse + recommandations) ──────────────────────
   const [mySynthesis,    setMySynthesis]    = useState('');
   const [myReco,         setMyReco]         = useState('');
+  const [myOpinion,      setMyOpinion]      = useState<'favorable' | 'defavorable' | null>(null);
   const [savingComment,  setSavingComment]  = useState(false);
   const [commentSaveMsg, setCommentSaveMsg] = useState('');
 
@@ -378,6 +387,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
         .find((c: any) => c.userId === userState.currentUser?.id);
       setMySynthesis(existingComment?.synthesis       ?? '');
       setMyReco(     existingComment?.recommendations ?? '');
+      setMyOpinion(  existingComment?.opinion         ?? null);
     } else {
       setAppError(res.error || 'Erreur chargement dossier');
     }
@@ -397,6 +407,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
       setRecommendations('');
       setMySynthesis('');
       setMyReco('');
+      setMyOpinion(null);
       setCommentSaveMsg('');
       loadApp();
     }
@@ -636,6 +647,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
     const res = await ApiService.saveAnalysisComment(item.applicationId, {
       synthesis: mySynthesis.trim(),
       recommendations: myReco.trim(),
+      opinion: myOpinion,
     });
     if (res.success) {
       setApp((prev: any) => ({
@@ -668,6 +680,14 @@ export const DossierActionDrawer: React.FC<Props> = ({
             {c.isModified && (
               <Chip label="Modifié" size="small" variant="outlined" color="warning"
                 sx={{ height: 16, fontSize: 10 }} />
+            )}
+            {c.opinion === 'favorable' && (
+              <Chip label="Avis favorable" size="small"
+                sx={{ height: 16, fontSize: 10, fontWeight: 700, bgcolor: '#dcfce7', color: '#15803d' }} />
+            )}
+            {c.opinion === 'defavorable' && (
+              <Chip label="Avis défavorable" size="small"
+                sx={{ height: 16, fontSize: 10, fontWeight: 700, bgcolor: '#fee2e2', color: '#b91c1c' }} />
             )}
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
@@ -720,6 +740,50 @@ export const DossierActionDrawer: React.FC<Props> = ({
 
   const CommentsPanelContent = (
     <Stack spacing={1.5}>
+      {/* Synthèse cumulative des avis */}
+      {(() => {
+        const withOpinion = allAnalysisComments.filter((c: any) => c.opinion);
+        if (withOpinion.length === 0) return null;
+        const favorable   = withOpinion.filter((c: any) => c.opinion === 'favorable').length;
+        const defavorable = withOpinion.filter((c: any) => c.opinion === 'defavorable').length;
+        const total       = withOpinion.length;
+        const pct         = Math.round((favorable / total) * 100);
+        return (
+          <Box sx={{
+            p: 1.25, borderRadius: 2,
+            bgcolor: pct >= 50 ? '#f0fdf4' : '#fef2f2',
+            border: `1px solid ${pct >= 50 ? '#bbf7d0' : '#fecaca'}`,
+          }}>
+            <Typography variant="caption" fontWeight={700} fontSize={10} textTransform="uppercase"
+              letterSpacing={0.5} color="text.secondary" display="block" mb={0.75}>
+              Synthèse des avis ({total} intervenant{total > 1 ? 's' : ''})
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <ThumbUpIcon sx={{ fontSize: 14, color: '#16a34a' }} />
+                <Typography fontWeight={700} fontSize={13} color="#16a34a">{favorable}</Typography>
+                <Typography fontSize={11} color="text.secondary">favorable{favorable > 1 ? 's' : ''}</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <ThumbDownIcon sx={{ fontSize: 14, color: '#dc2626' }} />
+                <Typography fontWeight={700} fontSize={13} color="#dc2626">{defavorable}</Typography>
+                <Typography fontSize={11} color="text.secondary">défavorable{defavorable > 1 ? 's' : ''}</Typography>
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <LinearProgress variant="determinate" value={pct}
+                  sx={{
+                    height: 6, borderRadius: 3, bgcolor: '#fecaca',
+                    '& .MuiLinearProgress-bar': { bgcolor: '#16a34a', borderRadius: 3 },
+                  }} />
+              </Box>
+              <Typography fontWeight={700} fontSize={12} color={pct >= 50 ? '#15803d' : '#b91c1c'}>
+                {pct}%
+              </Typography>
+            </Box>
+          </Box>
+        );
+      })()}
+
       {/* Autres intervenants — lecture seule */}
       {othersComments.map((c: any) => <CommentCard key={c.userId} c={c} />)}
 
@@ -758,6 +822,45 @@ export const DossierActionDrawer: React.FC<Props> = ({
             disabled={savingComment}
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px' } }}
           />
+
+          <Box>
+            <Typography variant="caption" fontWeight={700} color="text.secondary"
+              sx={{ textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.4, display: 'block', mb: 0.75 }}>
+              Avis sur le dossier
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                size="small"
+                variant={myOpinion === 'favorable' ? 'contained' : 'outlined'}
+                onClick={() => setMyOpinion(v => v === 'favorable' ? null : 'favorable')}
+                sx={{
+                  textTransform: 'none', fontSize: 12, borderRadius: 2,
+                  borderColor: '#16a34a',
+                  color: myOpinion === 'favorable' ? 'white' : '#16a34a',
+                  bgcolor: myOpinion === 'favorable' ? '#16a34a' : 'transparent',
+                  '&:hover': { bgcolor: myOpinion === 'favorable' ? '#15803d' : '#f0fdf4' },
+                }}
+                startIcon={<ThumbUpIcon sx={{ fontSize: 14 }} />}
+              >
+                Favorable
+              </Button>
+              <Button
+                size="small"
+                variant={myOpinion === 'defavorable' ? 'contained' : 'outlined'}
+                onClick={() => setMyOpinion(v => v === 'defavorable' ? null : 'defavorable')}
+                sx={{
+                  textTransform: 'none', fontSize: 12, borderRadius: 2,
+                  borderColor: '#dc2626',
+                  color: myOpinion === 'defavorable' ? 'white' : '#dc2626',
+                  bgcolor: myOpinion === 'defavorable' ? '#dc2626' : 'transparent',
+                  '&:hover': { bgcolor: myOpinion === 'defavorable' ? '#b91c1c' : '#fef2f2' },
+                }}
+                startIcon={<ThumbDownIcon sx={{ fontSize: 14 }} />}
+              >
+                Défavorable
+              </Button>
+            </Box>
+          </Box>
         </Stack>
 
         {commentSaveMsg && (
@@ -798,7 +901,7 @@ export const DossierActionDrawer: React.FC<Props> = ({
         sx={zIndex ? { zIndex } : undefined}
         PaperProps={{
           sx: {
-            width: { xs: '100vw', sm: 860 },
+            width: { xs: '100vw', sm: 940 },
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
@@ -1161,6 +1264,34 @@ export const DossierActionDrawer: React.FC<Props> = ({
               {/* ── Tab 2 : Financier ── */}
               {tab === 2 && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                  {/* Aperçu du fichier source Excel */}
+                  {(() => {
+                    const finDoc = (app as any)?.documents?.find((d: any) => d.category === 'FINANCIAL');
+                    if (!finDoc) return null;
+                    return (
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<OpenIcon />}
+                          onClick={() => previewDocumentWithAuth(
+                            `${window.location.origin}/api/documents/preview/${finDoc.id}`,
+                          )}
+                          sx={{
+                            color: '#16a34a',
+                            borderColor: '#16a34a',
+                            fontSize: '0.72rem',
+                            textTransform: 'none',
+                            borderRadius: 1.5,
+                            '&:hover': { borderColor: '#15803d', bgcolor: 'rgba(22,163,74,0.08)' },
+                          }}
+                        >
+                          Voir le fichier source (Excel)
+                        </Button>
+                      </Box>
+                    );
+                  })()}
+
                   {/* Sélecteur d'années */}
                   {finYears.length > 1 && (
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.75, flexWrap: 'wrap' }}>
@@ -1193,8 +1324,15 @@ export const DossierActionDrawer: React.FC<Props> = ({
                                 <TableRow sx={{ bgcolor: 'rgba(25,118,210,0.06)' }}>
                                   <TableCell sx={{ fontWeight: 700, py: 0.75 }}>Poste</TableCell>
                                   <TableCell sx={{ fontWeight: 700, py: 0.75, width: 80 }}>Cat.</TableCell>
-                                  {filteredFinYearsData.map(({ year }) => (
-                                    <TableCell key={year} align="right" sx={{ fontWeight: 700, py: 0.75 }}>{year}</TableCell>
+                                  {filteredFinYearsData.map(({ year }, i) => (
+                                    <React.Fragment key={year}>
+                                      {i > 0 && (
+                                        <TableCell align="center" sx={{ width: 60, fontSize: '0.68rem', color: 'text.secondary', fontWeight: 700, py: 0.75 }}>
+                                          Évo.
+                                        </TableCell>
+                                      )}
+                                      <TableCell align="right" sx={{ fontWeight: 700, py: 0.75 }}>{year}</TableCell>
+                                    </React.Fragment>
                                   ))}
                                 </TableRow>
                               </TableHead>
@@ -1209,19 +1347,41 @@ export const DossierActionDrawer: React.FC<Props> = ({
                                     <TableCell sx={{ py: 0.5 }}>
                                       <Chip label={cat} size="small" sx={{ height: 16, fontSize: '9px', fontWeight: 700, bgcolor: catColor, color: catText }} />
                                     </TableCell>
-                                    {filteredFinYearsData.map(({ year, data }) => (
-                                      <TableCell key={year} align="right" sx={{ py: 0.5 }}>{formatCurrencyFin(getNumericValue(data, field))}</TableCell>
-                                    ))}
+                                    {filteredFinYearsData.map(({ year, data }, i) => {
+                                      const curr = getNumericValue(data, field);
+                                      const prev = i > 0 ? getNumericValue(filteredFinYearsData[i - 1].data, field) : 0;
+                                      const evo  = i > 0 ? calcEvol(curr, prev) : null;
+                                      return (
+                                        <React.Fragment key={year}>
+                                          {i > 0 && (
+                                            <TableCell align="center" sx={{ width: 60, py: 0.5, fontSize: '0.72rem', fontWeight: 600, color: evo ? (evo.positive ? '#16a34a' : '#dc2626') : 'text.secondary' }}>
+                                              {evo ? evo.pct : '—'}
+                                            </TableCell>
+                                          )}
+                                          <TableCell align="right" sx={{ py: 0.5 }}>{formatCurrencyFin(curr)}</TableCell>
+                                        </React.Fragment>
+                                      );
+                                    })}
                                   </TableRow>
                                 ))}
                                 <TableRow sx={{ bgcolor: 'rgba(25,118,210,0.08)' }}>
                                   <TableCell sx={{ fontWeight: 700, py: 0.75 }}>TOTAL ACTIF</TableCell>
                                   <TableCell />
-                                  {filteredFinYearsData.map(({ year, data }) => (
-                                    <TableCell key={year} align="right" sx={{ fontWeight: 700, py: 0.75 }}>
-                                      {formatCurrencyFin(computeBalanceTotals(data).totalActif)}
-                                    </TableCell>
-                                  ))}
+                                  {filteredFinYearsData.map(({ year, data }, i) => {
+                                    const curr = computeBalanceTotals(data).totalActif;
+                                    const prev = i > 0 ? computeBalanceTotals(filteredFinYearsData[i - 1].data).totalActif : 0;
+                                    const evo  = i > 0 ? calcEvol(curr, prev) : null;
+                                    return (
+                                      <React.Fragment key={year}>
+                                        {i > 0 && (
+                                          <TableCell align="center" sx={{ width: 60, py: 0.75, fontSize: '0.72rem', fontWeight: 600, color: evo ? (evo.positive ? '#16a34a' : '#dc2626') : 'text.secondary' }}>
+                                            {evo ? evo.pct : '—'}
+                                          </TableCell>
+                                        )}
+                                        <TableCell align="right" sx={{ fontWeight: 700, py: 0.75 }}>{formatCurrencyFin(curr)}</TableCell>
+                                      </React.Fragment>
+                                    );
+                                  })}
                                 </TableRow>
                                 {[
                                   { label: 'Capitaux Propres',   field: 'capitaux_propres',  cat: 'PASSIF', catColor: 'rgba(76,175,80,0.12)', catText: '#2e7d32' },
@@ -1234,19 +1394,41 @@ export const DossierActionDrawer: React.FC<Props> = ({
                                     <TableCell sx={{ py: 0.5 }}>
                                       <Chip label={cat} size="small" sx={{ height: 16, fontSize: '9px', fontWeight: 700, bgcolor: catColor, color: catText }} />
                                     </TableCell>
-                                    {filteredFinYearsData.map(({ year, data }) => (
-                                      <TableCell key={year} align="right" sx={{ py: 0.5 }}>{formatCurrencyFin(getNumericValue(data, field))}</TableCell>
-                                    ))}
+                                    {filteredFinYearsData.map(({ year, data }, i) => {
+                                      const curr = getNumericValue(data, field);
+                                      const prev = i > 0 ? getNumericValue(filteredFinYearsData[i - 1].data, field) : 0;
+                                      const evo  = i > 0 ? calcEvol(curr, prev) : null;
+                                      return (
+                                        <React.Fragment key={year}>
+                                          {i > 0 && (
+                                            <TableCell align="center" sx={{ width: 60, py: 0.5, fontSize: '0.72rem', fontWeight: 600, color: evo ? (evo.positive ? '#16a34a' : '#dc2626') : 'text.secondary' }}>
+                                              {evo ? evo.pct : '—'}
+                                            </TableCell>
+                                          )}
+                                          <TableCell align="right" sx={{ py: 0.5 }}>{formatCurrencyFin(curr)}</TableCell>
+                                        </React.Fragment>
+                                      );
+                                    })}
                                   </TableRow>
                                 ))}
                                 <TableRow sx={{ bgcolor: 'rgba(76,175,80,0.08)' }}>
                                   <TableCell sx={{ fontWeight: 700, py: 0.75 }}>TOTAL PASSIF</TableCell>
                                   <TableCell />
-                                  {filteredFinYearsData.map(({ year, data }) => (
-                                    <TableCell key={year} align="right" sx={{ fontWeight: 700, py: 0.75 }}>
-                                      {formatCurrencyFin(computeBalanceTotals(data).totalPassif)}
-                                    </TableCell>
-                                  ))}
+                                  {filteredFinYearsData.map(({ year, data }, i) => {
+                                    const curr = computeBalanceTotals(data).totalPassif;
+                                    const prev = i > 0 ? computeBalanceTotals(filteredFinYearsData[i - 1].data).totalPassif : 0;
+                                    const evo  = i > 0 ? calcEvol(curr, prev) : null;
+                                    return (
+                                      <React.Fragment key={year}>
+                                        {i > 0 && (
+                                          <TableCell align="center" sx={{ width: 60, py: 0.75, fontSize: '0.72rem', fontWeight: 600, color: evo ? (evo.positive ? '#16a34a' : '#dc2626') : 'text.secondary' }}>
+                                            {evo ? evo.pct : '—'}
+                                          </TableCell>
+                                        )}
+                                        <TableCell align="right" sx={{ fontWeight: 700, py: 0.75 }}>{formatCurrencyFin(curr)}</TableCell>
+                                      </React.Fragment>
+                                    );
+                                  })}
                                 </TableRow>
                               </TableBody>
                             </Table>
@@ -1266,8 +1448,15 @@ export const DossierActionDrawer: React.FC<Props> = ({
                               <TableHead>
                                 <TableRow sx={{ bgcolor: 'grey.50' }}>
                                   <TableCell sx={{ fontWeight: 700, py: 0.75 }}>Indicateur</TableCell>
-                                  {filteredFinYearsData.map(({ year }) => (
-                                    <TableCell key={year} align="right" sx={{ fontWeight: 700, py: 0.75 }}>{year}</TableCell>
+                                  {filteredFinYearsData.map(({ year }, i) => (
+                                    <React.Fragment key={year}>
+                                      {i > 0 && (
+                                        <TableCell align="center" sx={{ width: 60, fontSize: '0.68rem', color: 'text.secondary', fontWeight: 700, py: 0.75 }}>
+                                          Évo.
+                                        </TableCell>
+                                      )}
+                                      <TableCell align="right" sx={{ fontWeight: 700, py: 0.75 }}>{year}</TableCell>
+                                    </React.Fragment>
                                   ))}
                                 </TableRow>
                               </TableHead>
@@ -1288,14 +1477,22 @@ export const DossierActionDrawer: React.FC<Props> = ({
                                       const trend = prevVal !== null && prevVal !== 0
                                         ? val > prevVal ? 'up' : val < prevVal ? 'down' : null
                                         : null;
+                                      const evo = i > 0 ? calcEvol(val, prevVal ?? 0) : null;
                                       return (
-                                        <TableCell key={year} align="right" sx={{ py: 0.5 }}>
-                                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.4 }}>
-                                            <span>{formatCurrencyFin(val)}</span>
-                                            {trend === 'up'   && <TrendingUpIcon   sx={{ fontSize: 13, color: 'success.main' }} />}
-                                            {trend === 'down' && <TrendingDownIcon sx={{ fontSize: 13, color: 'error.main' }} />}
-                                          </Box>
-                                        </TableCell>
+                                        <React.Fragment key={year}>
+                                          {i > 0 && (
+                                            <TableCell align="center" sx={{ width: 60, py: 0.5, fontSize: '0.72rem', fontWeight: 600, color: evo ? (evo.positive ? '#16a34a' : '#dc2626') : 'text.secondary' }}>
+                                              {evo ? evo.pct : '—'}
+                                            </TableCell>
+                                          )}
+                                          <TableCell align="right" sx={{ py: 0.5 }}>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.4 }}>
+                                              <span>{formatCurrencyFin(val)}</span>
+                                              {trend === 'up'   && <TrendingUpIcon   sx={{ fontSize: 13, color: 'success.main' }} />}
+                                              {trend === 'down' && <TrendingDownIcon sx={{ fontSize: 13, color: 'error.main' }} />}
+                                            </Box>
+                                          </TableCell>
+                                        </React.Fragment>
                                       );
                                     })}
                                   </TableRow>
@@ -1615,32 +1812,42 @@ export const DossierActionDrawer: React.FC<Props> = ({
           )}
 
           {/* ANALYSIS : valider l'analyse */}
-          {!readOnly && isAnalysis && (
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
-                onClick={onClose}
-                disabled={submitting}
-                sx={{ textTransform: 'none', color: '#636366', flexShrink: 0 }}
-              >
-                Fermer
-              </Button>
-              <Box sx={{ flex: 1 }} />
-              <Tooltip title={!analystScore || !financialScore ? 'Renseignez les deux scores' : ''}>
-                <span>
-                  <Button
-                    variant="contained"
-                    color="success"
-                    startIcon={submitting ? <CircularProgress size={14} color="inherit" /> : <ApproveIcon />}
-                    disabled={submitting || !analystScore || !financialScore || !!item.isBlocked}
-                    onClick={() => setOtp({ open: true, action: 'save_analysis' })}
-                    sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, boxShadow: 'none' }}
-                  >
-                    Valider l'analyse
-                  </Button>
-                </span>
-              </Tooltip>
-            </Box>
-          )}
+          {!readOnly && isAnalysis && (() => {
+            const commentUnsaved =
+              !!(mySynthesis.trim() || myReco.trim()) &&
+              (myComment?.synthesis !== mySynthesis.trim() || myComment?.recommendations !== myReco.trim());
+            const canValidate = !!analystScore && !!financialScore && !item.isBlocked && !submitting && !commentUnsaved;
+            const tooltipMsg =
+              (!analystScore || !financialScore) ? 'Renseignez les deux scores'
+                : commentUnsaved                  ? 'Enregistrez votre commentaire avant de valider'
+                : '';
+            return (
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  onClick={onClose}
+                  disabled={submitting}
+                  sx={{ textTransform: 'none', color: '#636366', flexShrink: 0 }}
+                >
+                  Fermer
+                </Button>
+                <Box sx={{ flex: 1 }} />
+                <Tooltip title={tooltipMsg}>
+                  <span>
+                    <Button
+                      variant="contained"
+                      color="success"
+                      startIcon={submitting ? <CircularProgress size={14} color="inherit" /> : <ApproveIcon />}
+                      disabled={!canValidate}
+                      onClick={() => setOtp({ open: true, action: 'save_analysis' })}
+                      sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700, boxShadow: 'none' }}
+                    >
+                      Valider l'analyse
+                    </Button>
+                  </span>
+                </Tooltip>
+              </Box>
+            );
+          })()}
 
           {/* Autres étapes : décisions classiques */}
           {!readOnly && !isLegal && !isDispatch && !isAnalysis && (

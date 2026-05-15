@@ -630,7 +630,13 @@ router.put('/:id/analysis-comment', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const userId = (req as any).user?.id as string | undefined;
-    const { synthesis, recommendations } = req.body;
+    const { synthesis, recommendations, opinion } = req.body as {
+      synthesis?: string;
+      recommendations?: string;
+      opinion?: 'favorable' | 'defavorable' | null;
+    };
+    const normalizedOpinion: 'favorable' | 'defavorable' | null =
+      opinion === 'favorable' || opinion === 'defavorable' ? opinion : null;
 
     if (!userId) {
       return res.status(401).json({ success: false, error: 'Utilisateur non identifié' });
@@ -662,6 +668,7 @@ router.put('/:id/analysis-comment', async (req: Request, res: Response) => {
         ...comments[idx],
         synthesis:       synthesis?.trim()       ?? comments[idx].synthesis       ?? '',
         recommendations: recommendations?.trim() ?? comments[idx].recommendations ?? '',
+        opinion:         normalizedOpinion,
         updatedAt:       now,
         isModified:      true,
         userName:        user?.name   ?? comments[idx].userName,
@@ -676,6 +683,7 @@ router.put('/:id/analysis-comment', async (req: Request, res: Response) => {
         userBranch:      user?.branch ?? null,
         synthesis:       synthesis?.trim()       ?? '',
         recommendations: recommendations?.trim() ?? '',
+        opinion:         normalizedOpinion,
         createdAt:       now,
         updatedAt:       now,
         isModified:      false,

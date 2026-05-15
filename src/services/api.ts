@@ -1155,7 +1155,7 @@ export class ApiService {
 
   static async saveAnalysisComment(
     applicationId: string,
-    payload: { synthesis: string; recommendations: string },
+    payload: { synthesis: string; recommendations: string; opinion?: 'favorable' | 'defavorable' | null },
   ): Promise<ApiResponse<any>> {
     try {
       const response = await api.put(`/applications/${applicationId}/analysis-comment`, payload);
