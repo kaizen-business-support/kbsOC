@@ -52,11 +52,14 @@ async function recordBlock(
   }
 }
 
-const BLOCKED_RESPONSE = {
-  success: false,
-  error: 'ip_blocked',
-  message: 'Accès refusé : votre adresse IP est bloquée.',
-};
+function blockedResponse(ip: string) {
+  return {
+    success: false,
+    error: 'ip_blocked',
+    blockedIp: ip,
+    message: 'Accès refusé : votre adresse IP est bloquée.',
+  };
+}
 
 export async function platformIpGate(req: Request, res: Response, next: NextFunction): Promise<void> {
   const ip = req.realIp ?? req.ip ?? '';
@@ -66,7 +69,7 @@ export async function platformIpGate(req: Request, res: Response, next: NextFunc
     const { decision } = evaluateBlock(ip, rules);
     if (decision === 'deny') {
       await recordBlock(ip, null, null, req);
-      res.status(403).json(BLOCKED_RESPONSE);
+      res.status(403).json(blockedResponse(ip));
       return;
     }
   } catch (e) {
@@ -83,7 +86,7 @@ export async function tenantIpGate(req: Request, res: Response, next: NextFuncti
     const { decision } = evaluateBlock(ip, rules);
     if (decision === 'deny') {
       await recordBlock(ip, req.companyId, req.user?.id ?? null, req);
-      res.status(403).json(BLOCKED_RESPONSE);
+      res.status(403).json(blockedResponse(ip));
       return;
     }
   } catch (e) {
