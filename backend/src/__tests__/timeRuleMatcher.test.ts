@@ -1,5 +1,5 @@
 import {
-  userMatches, windowIsOpen, ruleAppliesNow, nextWindows,
+  userMatches, windowIsOpen, ruleAppliesNow, nextWindows, nextOpenAt,
   MatchableTimeRule, MatchableUser,
 } from '../services/timeRuleMatcher';
 
@@ -120,5 +120,48 @@ describe('nextWindows', () => {
     for (const d of result.filter(d => d.allowed)) {
       expect(d.slots).toEqual([{ start: '09:00', end: '18:00' }]);
     }
+  });
+});
+
+describe('nextOpenAt', () => {
+  it('aucune règle ciblant → null', () => {
+    const r = { ...baseRule, appliesTo: 'BRANCH' as const, targetValues: ['AGENCE_THIES'] };
+    expect(nextOpenAt([r], user, new Date('2026-05-11T08:00:00Z'))).toBeNull();
+  });
+
+  it('lun-ven 9-18 Paris, samedi 10h → lundi suivant 09:00 Paris', () => {
+    // Samedi 9 mai 2026 10h UTC
+    const sat = new Date('2026-05-09T10:00:00Z');
+    const result = nextOpenAt([baseRule], user, sat);
+    expect(result).not.toBeNull();
+    // Lundi 11 mai 2026 09:00 Paris = 07:00 UTC (heure d'été)
+    expect(result!.toISOString()).toBe('2026-05-11T07:00:00.000Z');
+  });
+
+  it('lundi 08:30 Paris (06:30 UTC) → lundi 09:00 Paris (07:00 UTC)', () => {
+    const monday830 = new Date('2026-05-11T06:30:00Z');
+    const result = nextOpenAt([baseRule], user, monday830);
+    expect(result!.toISOString()).toBe('2026-05-11T07:00:00.000Z');
+  });
+
+  it('lundi 12:00 (DANS la fenêtre) → mardi 09:00 Paris (07:00 UTC)', () => {
+    // Note : nextOpenAt cherche la prochaine ouverture strictement APRÈS fromDate.
+    // Quand l'utilisateur est dans la fenêtre, la prochaine ouverture est le jour suivant.
+    const monday12 = new Date('2026-05-11T10:00:00Z');
+    const result = nextOpenAt([baseRule], user, monday12);
+    expect(result!.toISOString()).toBe('2026-05-12T07:00:00.000Z');
+  });
+
+  it('deux règles concurrentes → renvoie la plus proche', () => {
+    const weekday: MatchableTimeRule = baseRule; // lun-ven 9-18 Paris
+    const weekend: MatchableTimeRule = {
+      ...baseRule, id: 'r2',
+      daysOfWeek: 32 | 64,    // sam+dim
+      timeStart: '10:00', timeEnd: '14:00',
+    };
+    const fri22 = new Date('2026-05-15T20:00:00Z');  // vendredi 22h Paris
+    const result = nextOpenAt([weekday, weekend], user, fri22);
+    // Samedi 16 mai 2026 10:00 Paris = 08:00 UTC (été)
+    expect(result!.toISOString()).toBe('2026-05-16T08:00:00.000Z');
   });
 });

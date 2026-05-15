@@ -120,6 +120,76 @@ function isoDateInTz(date: Date, timezone: string): string {
   return fmt.format(date);
 }
 
+/**
+ * Calcule le prochain moment d'ouverture (strictement après fromDate)
+ * parmi les règles ciblant l'utilisateur. Renvoie null si aucune
+ * ouverture trouvée dans la fenêtre de recherche (maxDays).
+ *
+ * Utilise nextWindows pour itérer sur les jours autorisés.
+ */
+export function nextOpenAt(
+  rules: MatchableTimeRule[],
+  user: MatchableUser,
+  fromDate: Date,
+  maxDays: number = 14
+): Date | null {
+  const targeting = rules.filter(r => userMatches(user, r));
+  if (targeting.length === 0) return null;
+
+  const fromMs = fromDate.getTime();
+  let best: number | null = null;
+
+  for (const rule of targeting) {
+    const days = nextWindows(rule, fromDate, maxDays);
+    for (const d of days) {
+      if (!d.allowed) continue;
+      for (const slot of d.slots) {
+        // Construire le datetime ISO du début de slot dans la timezone de la règle.
+        // d.date = 'YYYY-MM-DD', slot.start = 'HH:MM'.
+        // On utilise un Date construit en assumant la timezone via formatToParts inverse :
+        // calcul de l'offset à cette date pour cette timezone.
+        const startMs = isoLocalInTzToUtc(d.date, slot.start, rule.timezone);
+        if (startMs === null) continue;
+        if (startMs > fromMs && (best === null || startMs < best)) {
+          best = startMs;
+        }
+      }
+    }
+  }
+
+  return best === null ? null : new Date(best);
+}
+
+/**
+ * Convertit (date YYYY-MM-DD, time HH:MM, timezone IANA) en timestamp UTC.
+ * Utilise Intl.DateTimeFormat pour déterminer l'offset à cette date.
+ */
+function isoLocalInTzToUtc(dateStr: string, timeStr: string, timezone: string): number | null {
+  const [Y, Mo, D] = dateStr.split('-').map(Number);
+  const [H, Mi] = timeStr.split(':').map(Number);
+  if (!Number.isFinite(Y) || !Number.isFinite(Mo) || !Number.isFinite(D) ||
+      !Number.isFinite(H) || !Number.isFinite(Mi)) return null;
+
+  // 1. Faire une 1ère estimation en UTC.
+  const asUtc = Date.UTC(Y, Mo - 1, D, H, Mi, 0, 0);
+  // 2. Calculer ce que cette estimation donne dans la timezone (heure locale rendue).
+  const renderedLocal = (() => {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    });
+    const parts = fmt.formatToParts(new Date(asUtc));
+    const get = (t: string) => Number(parts.find(p => p.type === t)?.value ?? 0);
+    let h = get('hour');
+    if (h === 24) h = 0;
+    return Date.UTC(get('year'), get('month') - 1, get('day'), h, get('minute'), 0, 0);
+  })();
+  // 3. Offset = ce que la timezone rend - ce qu'on voulait. Corriger.
+  const offsetMs = renderedLocal - asUtc;
+  return asUtc - offsetMs;
+}
+
 export function nextWindows(rule: MatchableTimeRule, fromDate: Date, days = 7): PreviewDay[] {
   const result: PreviewDay[] = [];
   for (let i = 0; i < days; i++) {
