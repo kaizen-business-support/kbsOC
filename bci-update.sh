@@ -4,10 +4,23 @@
 #  Usage : sudo bash bci-update.sh [OPTIONS]
 #
 #  Options :
-#    --branch  <nom>    Branche git à déployer (défaut : branche courante)
-#    --skip-pull        Ne pas faire git pull
-#    --skip-seed        Ne pas relancer les seeds
-#    --skip-backup      Ne pas faire de backup BDD avant la mise à jour
+#    --branch  <nom>          Branche git à déployer (défaut : branche courante)
+#    --skip-pull              Ne pas faire git pull
+#    --skip-seed              Ne pas relancer les seeds (TOUS, y compris BCI)
+#    --skip-bci-seed          Ne pas relancer uniquement seed-bci.js
+#    --force-bci-seed         Forcer seed-bci.js même si des users BCI existent
+#                             (écrase les attributs name/role/jobTitle/branch/...
+#                             des users BCI hardcodés — à utiliser avec précaution)
+#    --with-data-migrations   Relancer aussi migrate-approval-limits / -allowed-actions /
+#                             -legal-step-type. Ces scripts UPDATE des données existantes
+#                             (plafonds, allowedActions). Désactivés par défaut depuis
+#                             que la prod est en place pour préserver les configs custom.
+#    --skip-backup            Ne pas faire de backup BDD avant la mise à jour
+#
+#  Comportement par défaut (post-installation) :
+#    - seed-bci.js est skippé automatiquement si des users BCI existent déjà
+#    - migrate-* (data) sont skippés sauf si --with-data-migrations
+#    - Tout le reste tourne (deps, prisma migrate deploy, build, swap, services)
 #
 #  Ce script :
 #    1.  Vérifie Ubuntu 22.04 + dépendances + root
@@ -41,14 +54,20 @@ ok()      { echo -e "  ${GREEN}✓${NC} $1"; }
 GIT_BRANCH=""
 SKIP_PULL=false
 SKIP_SEED=false
+SKIP_BCI_SEED=false
+FORCE_BCI_SEED=false
+WITH_DATA_MIGRATIONS=false
 SKIP_BACKUP=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --branch)      GIT_BRANCH="$2"; shift 2 ;;
-    --skip-pull)   SKIP_PULL=true;  shift ;;
-    --skip-seed)   SKIP_SEED=true;  shift ;;
-    --skip-backup) SKIP_BACKUP=true; shift ;;
+    --branch)                GIT_BRANCH="$2"; shift 2 ;;
+    --skip-pull)             SKIP_PULL=true;  shift ;;
+    --skip-seed)             SKIP_SEED=true;  shift ;;
+    --skip-bci-seed)         SKIP_BCI_SEED=true; shift ;;
+    --force-bci-seed)        FORCE_BCI_SEED=true; shift ;;
+    --with-data-migrations)  WITH_DATA_MIGRATIONS=true; shift ;;
+    --skip-backup)           SKIP_BACKUP=true; shift ;;
     *) warn "Argument inconnu ignoré : $1"; shift ;;
   esac
 done
@@ -237,9 +256,11 @@ if [[ "$SKIP_PULL" == "true" ]]; then
   warn "--skip-pull activé : git pull ignoré."
 else
   STASHED=false
+  STASH_MSG=""
   if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
-    warn "Modifications locales détectées — mise en stash..."
-    git stash push -m "bci-update auto-stash $(date +%Y%m%d_%H%M%S)" 2>/dev/null \
+    STASH_MSG="bci-update auto-stash $(date +%Y%m%d_%H%M%S)"
+    warn "Modifications locales détectées — mise en stash : '$STASH_MSG'"
+    git stash push -m "$STASH_MSG" 2>/dev/null \
       && STASHED=true || warn "git stash échoué — continuation avec les fichiers locaux."
   fi
 
@@ -257,9 +278,20 @@ else
   fi
 
   if [[ "$STASHED" == "true" ]]; then
-    git stash pop 2>/dev/null \
-      && info "Stash restauré." \
-      || warn "Conflit stash — résolvez manuellement : git stash pop"
+    if git stash pop 2>/dev/null; then
+      info "Stash restauré."
+    else
+      warn "╔════════════════════════════════════════════════════════════════╗"
+      warn "║  CONFLIT lors de git stash pop — vos modifications locales      ║"
+      warn "║  sont CONSERVÉES dans le stash (rien n'est perdu).              ║"
+      warn "║  Le déploiement continue avec le code de la branche.            ║"
+      warn "║                                                                  ║"
+      warn "║  Pour récupérer vos modifs après ce script :                    ║"
+      warn "║    cd $APP_DIR"
+      warn "║    git stash list                # voir le stash : $STASH_MSG"
+      warn "║    git stash pop                 # résoudre les conflits        ║"
+      warn "╚════════════════════════════════════════════════════════════════╝"
+    fi
   fi
 fi
 
@@ -313,27 +345,70 @@ sudo -u postgres psql -d "$DB_NAME_VAL" \
 ok "Privilèges DB accordés"
 
 # Seed
-if [[ "$SKIP_SEED" == "false" ]]; then
+if [[ "$SKIP_SEED" == "true" ]]; then
+  warn "--skip-seed activé : aucun seed exécuté."
+else
   cd "$BACKEND_DIR"
-  for seed_file in seed-roles.js seed-data.js seed-policies.js seed-bci.js; do
+
+  # Seeds de référentiels — toujours idempotents, jamais destructeurs.
+  # seed-roles : upsert rôles/permissions (référentiel pur)
+  # seed-data  : create-if-missing departments & branches
+  # seed-policies : create politique seulement si POL-BCI-GENERALE absente
+  for seed_file in seed-roles.js seed-data.js seed-policies.js; do
     if [[ -f "$BACKEND_DIR/prisma/$seed_file" ]]; then
       node "$BACKEND_DIR/prisma/$seed_file" \
         && ok "Seed $seed_file : OK" \
         || warn "$seed_file : erreur non bloquante"
     fi
   done
+
+  # seed-bci.js — décision conditionnelle :
+  # - --skip-bci-seed       → skip explicite
+  # - --force-bci-seed      → exécution forcée (écrase les attributs BCI)
+  # - sinon, on regarde si des users BCI existent déjà : si oui, skip auto.
+  RUN_BCI_SEED=true
+  if [[ "$SKIP_BCI_SEED" == "true" ]]; then
+    RUN_BCI_SEED=false
+    info "seed-bci.js : skip explicite (--skip-bci-seed)"
+  elif [[ "$FORCE_BCI_SEED" == "true" ]]; then
+    warn "seed-bci.js : exécution forcée (--force-bci-seed) — les attributs (name, role, jobTitle, branch, department, permissions, isActive) des users BCI hardcodés vont être réinitialisés."
+  else
+    EXISTING_BCI_USERS=$(PGPASSWORD="$DB_PASS_VAL" psql \
+      -h "$DB_HOST" -p "${DB_PORT:-5432}" \
+      -U "$DB_USER_VAL" -d "$DB_NAME_VAL" -tAc \
+      "SELECT count(*) FROM users WHERE email LIKE '%@bci.sn'" 2>/dev/null \
+      | tr -d '[:space:]' || echo "0")
+    if [[ "${EXISTING_BCI_USERS:-0}" -gt 0 ]]; then
+      RUN_BCI_SEED=false
+      info "seed-bci.js : skippé automatiquement (${EXISTING_BCI_USERS} users BCI déjà présents)"
+      info "  → Pour ré-écrire leurs attributs : sudo bash bci-update.sh --force-bci-seed"
+    fi
+  fi
+
+  if [[ "$RUN_BCI_SEED" == "true" && -f "$BACKEND_DIR/prisma/seed-bci.js" ]]; then
+    node "$BACKEND_DIR/prisma/seed-bci.js" \
+      && ok "Seed seed-bci.js : OK" \
+      || warn "seed-bci.js : erreur non bloquante"
+  fi
 fi
 
-# Migrations de données idempotentes (corrections approval limits, allowedActions…)
-info "Migrations de données post-seed..."
-cd "$BACKEND_DIR"
-for migrate_file in migrate-approval-limits.js migrate-allowed-actions.js migrate-legal-step-type.js; do
-  if [[ -f "$BACKEND_DIR/prisma/$migrate_file" ]]; then
-    node "$BACKEND_DIR/prisma/$migrate_file" 2>&1 | tail -5 \
-      && ok "$migrate_file : OK" \
-      || warn "$migrate_file : erreur non bloquante"
-  fi
-done
+# Migrations de données — UPDATE des données existantes (plafonds, allowedActions,
+# stepType juridiques). Désactivées par défaut depuis que la prod est en place :
+# si BCI a personnalisé ses plafonds via l'UI, ces scripts les écraseraient.
+if [[ "$WITH_DATA_MIGRATIONS" == "true" ]]; then
+  warn "Migrations de données activées (--with-data-migrations) — les plafonds, allowedActions et stepType juridiques vont être réinitialisés aux valeurs des scripts."
+  cd "$BACKEND_DIR"
+  for migrate_file in migrate-approval-limits.js migrate-allowed-actions.js migrate-legal-step-type.js; do
+    if [[ -f "$BACKEND_DIR/prisma/$migrate_file" ]]; then
+      node "$BACKEND_DIR/prisma/$migrate_file" 2>&1 | tail -5 \
+        && ok "$migrate_file : OK" \
+        || warn "$migrate_file : erreur non bloquante"
+    fi
+  done
+else
+  info "Migrations de données idempotentes skippées (préserve les configs custom : plafonds, allowedActions…)"
+  info "  → Pour les rejouer : sudo bash bci-update.sh --with-data-migrations"
+fi
 
 # Vider le cache Redis
 redis-cli DEL cache:departments:active cache:branches:active 2>/dev/null \
@@ -619,9 +694,11 @@ echo "    journalctl -u ${APP_NAME}-backend  -f --no-pager"
 echo "    journalctl -u ${APP_NAME}-frontend -f --no-pager"
 echo ""
 echo -e "  ${YELLOW}${BOLD}Prochaine mise à jour :${NC}"
-echo "    sudo bash bci-update.sh"
-echo "    sudo bash bci-update.sh --branch <branche>"
-echo "    sudo bash bci-update.sh --skip-pull --skip-seed"
+echo "    sudo bash bci-update.sh                          # déploiement standard (non destructif)"
+echo "    sudo bash bci-update.sh --branch <branche>       # déployer une branche précise"
+echo "    sudo bash bci-update.sh --skip-pull --skip-seed  # déploiement code uniquement"
+echo "    sudo bash bci-update.sh --force-bci-seed         # ré-écrire les attributs des users BCI"
+echo "    sudo bash bci-update.sh --with-data-migrations   # re-synchroniser plafonds & allowedActions"
 echo ""
 
 # Avertissement si backend non disponible
