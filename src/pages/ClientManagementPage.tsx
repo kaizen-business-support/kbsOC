@@ -51,6 +51,7 @@ import {
   Today as TodayIcon,
 } from '@mui/icons-material';
 import { ApiService } from '../services/api';
+import { useSecurityLock } from '../hooks/useSecurityLock';
 import { ClientContractsPanel } from '../components/client/ClientContractsPanel';
 import { useUser } from '../contexts/UserContext';
 import { DossierActionDrawer } from '../components/DossierActionDrawer';
@@ -227,6 +228,7 @@ const emptyForm = {
 };
 
 export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNavigate: _onNavigate }) => {
+  const { disabled: lockDisabled, reason: lockReason } = useSecurityLock();
   const { t } = useTranslation();
   const { state: userState } = useUser();
   const userRole = userState.currentUser?.role ?? '';
@@ -521,7 +523,7 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                   sx={{ minWidth: 320 }}
                 />
                 {canCreate && (
-                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCurrentTab(1)}>
+                  <Button variant="contained" startIcon={<AddIcon />} disabled={lockDisabled} title={lockDisabled ? lockReason ?? '' : undefined} onClick={() => setCurrentTab(1)}>
                     Nouveau Client
                   </Button>
                 )}
@@ -780,7 +782,8 @@ export const ClientManagementPage: React.FC<ClientManagementPageProps> = ({ onNa
                       variant="contained"
                       startIcon={isCreating ? <CircularProgress size={16} color="inherit" /> : <AddIcon />}
                       onClick={handleCreateClient}
-                      disabled={isCreating}
+                      disabled={isCreating || lockDisabled}
+                      title={lockDisabled ? lockReason ?? '' : undefined}
                     >
                       Créer le Client
                     </Button>
