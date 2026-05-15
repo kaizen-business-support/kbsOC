@@ -1266,10 +1266,17 @@ export const DossierActionDrawer: React.FC<Props> = ({
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
                   {/* Aperçu du fichier source Excel */}
                   {(() => {
-                    const finDoc = (app as any)?.documents?.find((d: any) => {
-                      const mime = d.mimeType ?? '';
-                      return d.category === 'FINANCIAL' && (mime.includes('excel') || mime.includes('sheet') || mime.includes('xls'));
-                    });
+                    const isExcelDoc = (d: any) => {
+                      const mime = (d?.mimeType ?? '').toLowerCase();
+                      const name = (d?.filename ?? d?.fileName ?? '').toLowerCase();
+                      return mime.includes('excel') || mime.includes('sheet') || mime.includes('xls')
+                          || name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.xlsm');
+                    };
+                    const docs = (app as any)?.documents ?? [];
+                    // Priorité : doc explicitement tagué FINANCIAL et Excel.
+                    // Fallback : n'importe quel Excel du dossier (catégorie OTHER côté upload actuel).
+                    const finDoc = docs.find((d: any) => d.category === 'FINANCIAL' && isExcelDoc(d))
+                                ?? docs.find((d: any) => isExcelDoc(d));
                     if (!finDoc) return null;
                     return (
                       <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
