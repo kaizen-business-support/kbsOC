@@ -30,6 +30,23 @@ const APPLIES_TO = [
   { value: 'USER',       label: 'Utilisateurs spécifiques' },
 ];
 
+// Liste des rôles UserRole (Prisma enum) avec libellé FR pour le Select.
+// Synchronisée avec backend/prisma/schema.prisma::UserRole.
+const ROLE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'CHARGE_AFFAIRES',         label: "Chargé d'affaires" },
+  { value: 'ASSISTANT_COMMERCIAL',    label: 'Assistant commercial' },
+  { value: 'ANALYSTE_RISQUES',        label: 'Analyste risques' },
+  { value: 'RESPONSABLE_RISQUES',     label: 'Responsable risques' },
+  { value: 'RESPONSABLE_ENGAGEMENTS', label: 'Responsable engagements' },
+  { value: 'COMITE_CREDIT',           label: 'Comité de crédit' },
+  { value: 'DIRECTION_GENERALE',      label: 'Direction Générale' },
+  { value: 'DIR_AG',                  label: "Directeur d'agence" },
+  { value: 'BACK_OFFICE',             label: 'Back-office' },
+  { value: 'DIRECTION_JURIDIQUE',     label: 'Direction Juridique' },
+  { value: 'ADMIN',                   label: 'Administrateur' },
+  { value: 'SUPER_ADMIN',             label: 'Super Administrateur' },
+];
+
 export interface TimeRule {
   id: string;
   name: string;
@@ -204,26 +221,58 @@ export function TimeRuleFormDialog({ open, initial, onClose, onSaved }: Props) {
           {appliesTo !== 'ALL' && (
             <Box>
               <Typography sx={{ fontSize: 13, fontWeight: 600, mb: 0.5, color: colors.text.secondary }}>Cibles</Typography>
-              <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-                <TextField
-                  size="small"
-                  fullWidth
-                  value={targetInput}
-                  onChange={e => setTargetInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTarget(); } }}
-                  placeholder={
-                    appliesTo === 'BRANCH'     ? 'Ex : AGENCE_DAKAR' :
-                    appliesTo === 'DEPARTMENT' ? 'Ex : JURIDIQUE' :
-                    appliesTo === 'ROLE'       ? 'Ex : CHARGE_AFFAIRES' :
-                                                 'ID utilisateur'
-                  }
-                />
-                <Button onClick={addTarget} size="small" variant="outlined">Ajouter</Button>
-              </Box>
+              {appliesTo === 'ROLE' ? (
+                <Box sx={{ mb: 1 }}>
+                  <TextField
+                    select
+                    size="small"
+                    fullWidth
+                    value=""
+                    onChange={e => {
+                      const v = e.target.value as string;
+                      if (v && !targetValues.includes(v)) {
+                        setTargetValues([...targetValues, v]);
+                      }
+                    }}
+                    SelectProps={{ displayEmpty: true }}
+                    label="Ajouter un rôle"
+                  >
+                    <MenuItem value="" disabled>
+                      <em>Sélectionner un rôle…</em>
+                    </MenuItem>
+                    {ROLE_OPTIONS
+                      .filter(r => !targetValues.includes(r.value))
+                      .map(r => (
+                        <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>
+                      ))}
+                  </TextField>
+                </Box>
+              ) : (
+                <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    value={targetInput}
+                    onChange={e => setTargetInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTarget(); } }}
+                    placeholder={
+                      appliesTo === 'BRANCH'     ? 'Ex : AGENCE_DAKAR' :
+                      appliesTo === 'DEPARTMENT' ? 'Ex : JURIDIQUE' :
+                                                   'ID utilisateur'
+                    }
+                  />
+                  <Button onClick={addTarget} size="small" variant="outlined">Ajouter</Button>
+                </Box>
+              )}
               <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                {targetValues.map(v => (
-                  <Chip key={v} label={v} size="small" onDelete={() => setTargetValues(targetValues.filter(x => x !== v))} />
-                ))}
+                {targetValues.map(v => {
+                  const label = appliesTo === 'ROLE'
+                    ? (ROLE_OPTIONS.find(r => r.value === v)?.label ?? v)
+                    : v;
+                  return (
+                    <Chip key={v} label={label} size="small" onDelete={() => setTargetValues(targetValues.filter(x => x !== v))} />
+                  );
+                })}
               </Stack>
             </Box>
           )}
