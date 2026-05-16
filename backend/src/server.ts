@@ -17,6 +17,7 @@ import workflowRoutes from './routes/workflows';
 import analyticsRoutes from './routes/analytics';
 import healthRoutes from './routes/health';
 import homeKpisRoutes from './routes/home-kpis';
+import homePulseRoutes from './routes/home-pulse';
 import securityIpRulesRoutes from './routes/security-ip-rules';
 import securityTimeRulesRoutes from './routes/security-time-rules';
 import securityBlockHistoryRoutes from './routes/security-block-history';
@@ -236,6 +237,7 @@ const protect = [authenticate, tenantIpGate, timeRulesGate];
 app.use('/api/security/time-status',    authenticate, tenantIpGate, securityTimeStatusRoutes);
 
 app.use('/api/home',                    ...protect, homeKpisRoutes);
+app.use('/api/home',                    ...protect, homePulseRoutes);
 app.use('/api/clients',                 ...protect, clientRoutes);
 app.use('/api/security/ip-rules',       ...protect, securityIpRulesRoutes);
 app.use('/api/security/time-rules',     ...protect, securityTimeRulesRoutes);

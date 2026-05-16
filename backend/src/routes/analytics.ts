@@ -23,6 +23,25 @@ interface WorkflowTimestamp {
     completedAt?: string;
     duration?: number;
   }>;
+  opinionSummary: { favorable: number; defavorable: number; total: number };
+}
+
+// Extrait les compteurs d'avis Favorable/Défavorable depuis analysisResults.comments[].
+// Toujours retourner l'objet (même 0/0/0) — fail-open sur JSON malformé.
+function extractOpinionSummary(analysisResults: unknown): { favorable: number; defavorable: number; total: number } {
+  try {
+    const comments = (analysisResults as any)?.comments;
+    if (!Array.isArray(comments)) return { favorable: 0, defavorable: 0, total: 0 };
+    let favorable = 0;
+    let defavorable = 0;
+    for (const c of comments) {
+      if (c?.opinion === 'favorable') favorable++;
+      else if (c?.opinion === 'defavorable') defavorable++;
+    }
+    return { favorable, defavorable, total: favorable + defavorable };
+  } catch {
+    return { favorable: 0, defavorable: 0, total: 0 };
+  }
 }
 
 // GET /api/analytics/dashboard - Get dashboard analytics data
@@ -199,7 +218,8 @@ router.get('/dashboard', async (req: Request, res: Response) => {
         requestedAmount: Number(app.amount),
         totalStartedAt: app.createdAt.toISOString(),
         totalDuration,
-        steps
+        steps,
+        opinionSummary: extractOpinionSummary(app.analysisResults),
       };
     });
 

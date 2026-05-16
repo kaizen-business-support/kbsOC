@@ -13,6 +13,23 @@ router.use(requireCompany);
 router.use(tenantIpGate);
 router.use(timeRulesGate);
 
+// Extrait les compteurs d'avis Favorable/Défavorable depuis analysisResults.comments[].
+function extractOpinionSummary(analysisResults: unknown): { favorable: number; defavorable: number; total: number } {
+  try {
+    const comments = (analysisResults as any)?.comments;
+    if (!Array.isArray(comments)) return { favorable: 0, defavorable: 0, total: 0 };
+    let favorable = 0;
+    let defavorable = 0;
+    for (const c of comments) {
+      if (c?.opinion === 'favorable') favorable++;
+      else if (c?.opinion === 'defavorable') defavorable++;
+    }
+    return { favorable, defavorable, total: favorable + defavorable };
+  } catch {
+    return { favorable: 0, defavorable: 0, total: 0 };
+  }
+}
+
 const SUPERVISOR_ROLE: Record<string, string> = {
   CHARGE_AFFAIRES:          'ANALYSTE_RISQUES',
   ANALYSTE_RISQUES:         'RESPONSABLE_RISQUES',
@@ -105,6 +122,7 @@ router.get('/dashboard', authorize(['codir_dashboard']), asyncHandler(async (req
     lastRelancedAt: step.lastRelancedAt?.toISOString() ?? null,
     clientBranch: (step.application.client as any)?.branch ?? null,
     creatorBranch: (step.application as any).creator?.branch ?? null,
+    opinionSummary: extractOpinionSummary(step.application.analysisResults),
   }));
 
   res.json({ success: true, data: { kpis, items } });
