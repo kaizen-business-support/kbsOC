@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import { AnalysisData, FileUploadResult, ApiResponse, ApprovalItem, CodirDashboardData, CodirTimelineData } from '../types';
+import { AnalysisData, FileUploadResult, ApiResponse, ApprovalItem, CodirDashboardData, CodirTimelineData, OpinionPulse, StuckApplication } from '../types';
 
 // API Configuration - Uses same origin as browser (proxied via nginx on port 80)
 const getApiBaseUrl = (): string => {
@@ -1730,6 +1730,25 @@ export class ApiService {
     } catch (error) {
       console.error('getHomeKpis error:', error);
       throw error;
+    }
+  }
+
+  // v1.0 — endpoints pulse pour la page d'accueil
+  static async getOpinionPulse(): Promise<ApiResponse<OpinionPulse>> {
+    try {
+      const response = await api.get('/home/opinion-pulse');
+      return { success: true, data: response.data.data };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur chargement opinions' };
+    }
+  }
+
+  static async getStuckApplications(): Promise<ApiResponse<StuckApplication[]>> {
+    try {
+      const response = await api.get('/home/stuck-applications');
+      return { success: true, data: response.data.data ?? [] };
+    } catch (error: any) {
+      return { success: false, error: error.response?.data?.error || 'Erreur chargement dossiers enlisés' };
     }
   }
 

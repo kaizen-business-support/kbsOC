@@ -254,6 +254,29 @@ export interface WorkflowTimestamps {
   createdByName: string;
   branch: string;
   status: 'in_progress' | 'completed' | 'cancelled' | 'rejected' | 'approved';
+  // v1.0 — synthèse des avis Favorable/Défavorable rendus sur le dossier
+  opinionSummary?: { favorable: number; defavorable: number; total: number };
+}
+
+// v1.0 — types pour les endpoints /api/home/* (release dashboard refresh)
+export interface OpinionPulse {
+  totalCommentsWithOpinion: number;
+  favorable: number;
+  defavorable: number;
+  last7Days: Array<{ date: string; favorable: number; defavorable: number }>;
+}
+
+export interface StuckApplication {
+  applicationId: string;
+  applicationNumber: string;
+  clientName: string;
+  amount: number;
+  currency: string;
+  currentStepLabel: string;
+  currentRoleLabel: string;
+  daysSinceLastAction: number;
+  isOverdue: boolean;
+  hasNegativeOpinion: boolean;
 }
 
 // Performance Analytics Types
@@ -384,6 +407,8 @@ export interface PendingDecisionItem {
   lastRelancedAt: string | null;
   clientBranch?: string | null;
   creatorBranch?: string | null;
+  // v1.0 — synthèse des avis Favorable/Défavorable rendus sur ce dossier
+  opinionSummary?: { favorable: number; defavorable: number; total: number };
 }
 
 export interface CodirDashboardData {
