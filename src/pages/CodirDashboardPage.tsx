@@ -20,6 +20,7 @@ export const CodirDashboardPage: React.FC = () => {
   const [error, setError]             = useState('');
   const [activeTab, setActiveTab]     = useState(0);
   const [stepFilter, setStepFilter]   = useState<string | null>(null);
+  const [opinionFilterActive, setOpinionFilterActive] = useState(false);
   const [agenceType, setAgenceType]   = useState<'client' | 'ca'>('client');
   const [agenceValue, setAgenceValue] = useState('all');
   const [countdown, setCountdown]     = useState(REFRESH_INTERVAL);
@@ -60,15 +61,32 @@ export const CodirDashboardPage: React.FC = () => {
     setAgenceValue(value);
   };
 
-  // Filtrage de l'onglet Tableau par agence
+  // Filtrage de l'onglet Tableau : agence + (v1.0) avis défavorable majoritaire
   const filteredItems = dashData?.items.filter(item => {
-    if (agenceValue === 'all') return true;
-    const branch = agenceType === 'client' ? item.clientBranch : item.creatorBranch;
-    return branch === agenceValue;
+    if (agenceValue !== 'all') {
+      const branch = agenceType === 'client' ? item.clientBranch : item.creatorBranch;
+      if (branch !== agenceValue) return false;
+    }
+    if (opinionFilterActive) {
+      const op = item.opinionSummary;
+      if (!op || op.total === 0) return false;
+      if (op.defavorable <= op.favorable) return false;
+    }
+    return true;
   }) ?? [];
 
   const totalPending = filteredItems.length;
   const totalOverdue = filteredItems.filter(i => i.isOverdue).length;
+
+  // v1.0 — KPI transversal calculé sur filteredItems (donc respecte le filtre agence courant)
+  const negativeOpinionCount = (dashData?.items ?? []).filter(it => {
+    if (agenceValue !== 'all') {
+      const branch = agenceType === 'client' ? it.clientBranch : it.creatorBranch;
+      if (branch !== agenceValue) return false;
+    }
+    const op = it.opinionSummary;
+    return !!op && op.total > 0 && op.defavorable > op.favorable;
+  }).length;
 
   // Agences disponibles (union des deux sources)
   const agences = timelineData?.agences ?? { client: [], ca: [] };
@@ -128,6 +146,9 @@ export const CodirDashboardPage: React.FC = () => {
                 kpis={dashData.kpis}
                 selectedStep={stepFilter}
                 onSelectStep={setStepFilter}
+                negativeOpinionCount={negativeOpinionCount}
+                opinionFilterActive={opinionFilterActive}
+                onToggleOpinionFilter={() => setOpinionFilterActive(v => !v)}
               />
               <PendingDecisionsTable
                 items={filteredItems}

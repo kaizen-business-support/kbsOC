@@ -90,6 +90,34 @@ export const PendingDecisionsTable: React.FC<Props> = ({ items, stepFilter, onRe
       filter: { type: 'text' },
     },
     {
+      id: 'opinion',
+      header: 'Avis du circuit',
+      accessor: (r) => r.opinionSummary?.total ?? 0,
+      filter: { type: 'none' },
+      sortable: false,
+      render: (r) => {
+        const op = r.opinionSummary;
+        if (!op || op.total === 0) {
+          return <Typography sx={{ fontSize: 13, color: '#cbd5e1' }}>—</Typography>;
+        }
+        const dominantFav = op.favorable >= op.defavorable;
+        const bg = dominantFav ? '#dcfce7' : '#fee2e2';
+        const fg = dominantFav ? '#15803d' : '#b91c1c';
+        return (
+          <Box sx={{
+            display: 'inline-flex', alignItems: 'center', gap: 0.5,
+            px: 0.75, py: 0.25, borderRadius: 999,
+            bgcolor: bg, color: fg, fontSize: 11, fontWeight: 700,
+            width: 100, justifyContent: 'center',
+          }}>
+            <span>{op.favorable}👍</span>
+            <span style={{ opacity: 0.5 }}>·</span>
+            <span>{op.defavorable}👎</span>
+          </Box>
+        );
+      },
+    },
+    {
       id: 'amount',
       header: 'Montant',
       accessor: (r) => r.amount,
