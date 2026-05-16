@@ -43,6 +43,8 @@ import {
   CheckCircleOutline as CheckCircleOutlineIcon,
   Cancel as CancelIcon,
   HourglassEmpty as HourglassIcon,
+  ThumbUpAlt as ThumbUpAltIcon,
+  WarningAmber as WarningAmberIcon,
 } from '@mui/icons-material';
 import { useUser } from '../contexts/UserContext';
 import { useTranslation } from 'react-i18next';
@@ -727,60 +729,123 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
   const visibleBranches = getVisibleBranches();
   const visibleManagers = getVisibleManagers();
 
-  // Generate risk distribution from actual workflow data
-  const getFilteredRiskDistribution = () => {
+  // v1.0 — Distribution des avis Analystes (Favorable / Défavorable / Sans avis).
+  // Remplace l'ancien profil de risque synthétique dérivé du seul taux d'approbation.
+  // Chaque dossier est classé selon la majorité de ses avis :
+  //   favorable    = sum(favorable) > sum(défavorable)
+  //   défavorable  = sum(défavorable) >= sum(favorable) ET total > 0
+  //   sans avis    = total === 0
+  const getOpinionDistribution = () => {
     const filteredWorkflows = getFilteredWorkflows();
+    if (filteredWorkflows.length === 0) return [];
 
-    if (filteredWorkflows.length === 0) {
-      return [];
+    let favorable = 0;
+    let defavorable = 0;
+    let neutral = 0;
+    for (const wf of filteredWorkflows) {
+      const op = (wf as any).opinionSummary as { favorable?: number; defavorable?: number; total?: number } | undefined;
+      const fav = op?.favorable ?? 0;
+      const def = op?.defavorable ?? 0;
+      const total = op?.total ?? 0;
+      if (total === 0) neutral++;
+      else if (fav > def) favorable++;
+      else defavorable++;
     }
-    
-    // Calculate approval rate and processing efficiency
-    const completedWorkflows = filteredWorkflows.filter(wf => 
-      wf.status === 'approved' || wf.status === 'rejected'
-    );
-    
-    const approvalRate = completedWorkflows.length > 0 ? 
-      (completedWorkflows.filter(wf => (wf.finalDecision || wf.status) === 'approved').length / completedWorkflows.length) * 100 : 0;
-    
-    // Calculate average processing time for completed workflows
-    const avgProcessingTime = completedWorkflows.length > 0 ?
-      completedWorkflows
-        .filter(wf => wf.totalDuration)
-        .reduce((sum, wf) => sum + (wf.totalDuration! / (1000 * 60 * 60 * 24)), 0) / completedWorkflows.length
-      : 0;
-    
-    // Risk assessment based on performance metrics
-    let riskProfile;
-    if (approvalRate > 80 && avgProcessingTime < 7) {
-      // High approval rate + fast processing = lower risk
-      riskProfile = [
-        { name: 'Faible Risque', value: 60, color: '#4caf50' },
-        { name: 'Risque Modéré', value: 30, color: '#ff9800' },
-        { name: 'Risque Élevé', value: 10, color: '#f44336' },
-      ];
-    } else if (approvalRate < 60 || avgProcessingTime > 14) {
-      // Low approval rate or slow processing = higher risk
-      riskProfile = [
-        { name: 'Faible Risque', value: 30, color: '#4caf50' },
-        { name: 'Risque Modéré', value: 35, color: '#ff9800' },
-        { name: 'Risque Élevé', value: 35, color: '#f44336' },
-      ];
-    } else {
-      // Moderate performance = moderate risk
-      riskProfile = [
-        { name: 'Faible Risque', value: 45, color: '#4caf50' },
-        { name: 'Risque Modéré', value: 35, color: '#ff9800' },
-        { name: 'Risque Élevé', value: 20, color: '#f44336' },
-      ];
+
+    return [
+      { name: 'Avis favorable',   value: favorable,   color: '#16a34a' },
+      { name: 'Avis défavorable', value: defavorable, color: '#dc2626' },
+      { name: 'Sans avis',        value: neutral,     color: '#94a3b8' },
+    ].filter(d => d.value > 0);
+  };
+
+  // v1.0 — KPI taux d'avis favorable (dossiers majoritairement favorables /
+  // dossiers avec au moins 1 avis).
+  const getFavorableOpinionRate = (): { value: number; sampleSize: number } => {
+    const filteredWorkflows = getFilteredWorkflows();
+    let favorable = 0;
+    let withOpinion = 0;
+    for (const wf of filteredWorkflows) {
+      const op = (wf as any).opinionSummary as { favorable?: number; defavorable?: number; total?: number } | undefined;
+      const fav = op?.favorable ?? 0;
+      const def = op?.defavorable ?? 0;
+      const total = op?.total ?? 0;
+      if (total === 0) continue;
+      withOpinion++;
+      if (fav > def) favorable++;
     }
-    
-    return riskProfile;
+    return {
+      value: withOpinion > 0 ? Math.round((favorable / withOpinion) * 100) : 0,
+      sampleSize: withOpinion,
+    };
+  };
+
+  // v1.0 — Données pour la section "Convergence Analyses → Décisions"
+  // Pour chaque dossier décidé (approved/rejected) avec au moins 1 avis :
+  // - convergencePositive : majorité favorable ET approved
+  // - convergenceNegative : majorité défavorable ET rejected
+  // Agrégé par mois (clé YYYY-MM).
+  const getConvergenceData = () => {
+    const filteredWorkflows = getFilteredWorkflows();
+    const buckets = new Map<string, {
+      month: string;
+      favorableApproved: number;
+      favorableTotal: number;
+      defavorableRejected: number;
+      defavorableTotal: number;
+    }>();
+
+    let withOpinionAndDecided = 0;
+    for (const wf of filteredWorkflows) {
+      const decided = wf.status === 'approved' || wf.status === 'rejected';
+      if (!decided) continue;
+      const op = (wf as any).opinionSummary as { favorable?: number; defavorable?: number; total?: number } | undefined;
+      const fav = op?.favorable ?? 0;
+      const def = op?.defavorable ?? 0;
+      if ((fav + def) === 0) continue;
+      withOpinionAndDecided++;
+
+      const startedAt = wf.totalStartedAt ? new Date(wf.totalStartedAt) : null;
+      if (!startedAt || Number.isNaN(startedAt.getTime())) continue;
+      const key = `${startedAt.getFullYear()}-${String(startedAt.getMonth() + 1).padStart(2, '0')}`;
+      const existing = buckets.get(key) ?? {
+        month: key,
+        favorableApproved: 0,
+        favorableTotal: 0,
+        defavorableRejected: 0,
+        defavorableTotal: 0,
+      };
+      const isFavorable = fav > def;
+      const decision = wf.finalDecision || wf.status;
+      if (isFavorable) {
+        existing.favorableTotal++;
+        if (decision === 'approved') existing.favorableApproved++;
+      } else {
+        existing.defavorableTotal++;
+        if (decision === 'rejected') existing.defavorableRejected++;
+      }
+      buckets.set(key, existing);
+    }
+
+    const data = Array.from(buckets.values())
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .map(b => ({
+        month: b.month,
+        convergencePositive: b.favorableTotal > 0
+          ? Math.round((b.favorableApproved / b.favorableTotal) * 100) : 0,
+        convergenceNegative: b.defavorableTotal > 0
+          ? Math.round((b.defavorableRejected / b.defavorableTotal) * 100) : 0,
+        favorableTotal: b.favorableTotal,
+        defavorableTotal: b.defavorableTotal,
+      }));
+    return { data, sampleSize: withOpinionAndDecided };
   };
 
   const portfolioData = generatePortfolioData();
   const processingTrendData = generateProcessingTrend();
-  const filteredRiskDistribution = getFilteredRiskDistribution();
+  const filteredOpinionDistribution = getOpinionDistribution();
+  const favorableOpinionRate = getFavorableOpinionRate();
+  const convergenceData = getConvergenceData();
 
   // Calculate summary statistics from actual workflow data
   const filteredWorkflows = getFilteredWorkflows();
@@ -1086,26 +1151,48 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
               </Card>
             </Grid>
 
-            {/* Performance */}
+            {/* Taux d'avis favorable (v1.0) — affiché si >= 1 dossier a un avis,
+                sinon fallback sur "Performance globale" pour ne pas vider la grille */}
             <Grid item xs={12} sm={6} md={3}>
-              <Card sx={{ borderTop: '4px solid #d97706', borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-                <CardContent sx={{ pb: '16px !important' }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <Box sx={{ flex: 1 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.8, fontSize: 10 }}>
-                        Performance globale
-                      </Typography>
-                      <Typography variant="h3" sx={{ fontWeight: 700, color: '#d97706', lineHeight: 1.1, mt: 0.5 }}>
-                        {avgPerformance.toFixed(0)}%
-                      </Typography>
-                      <LinearProgress variant="determinate" value={avgPerformance}
-                        sx={{ height: 5, borderRadius: 3, mt: 1, bgcolor: '#fef3c7', '& .MuiLinearProgress-bar': { bgcolor: '#d97706' } }}
-                      />
+              {favorableOpinionRate.sampleSize > 0 ? (
+                <Card sx={{ borderTop: '4px solid #0f766e', borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+                  <CardContent sx={{ pb: '16px !important' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.8, fontSize: 10 }}>
+                          Taux d'avis favorable
+                        </Typography>
+                        <Typography variant="h3" sx={{ fontWeight: 700, color: '#0f766e', lineHeight: 1.1, mt: 0.5 }}>
+                          {favorableOpinionRate.value}%
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          sur {favorableOpinionRate.sampleSize} dossier{favorableOpinionRate.sampleSize > 1 ? 's' : ''} avec avis
+                        </Typography>
+                      </Box>
+                      <ThumbUpAltIcon sx={{ color: '#0f766e', fontSize: 32, ml: 1 }} />
                     </Box>
-                    <TrendingUpIcon sx={{ color: '#d97706', fontSize: 32, ml: 1 }} />
-                  </Box>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card sx={{ borderTop: '4px solid #d97706', borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+                  <CardContent sx={{ pb: '16px !important' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.8, fontSize: 10 }}>
+                          Performance globale
+                        </Typography>
+                        <Typography variant="h3" sx={{ fontWeight: 700, color: '#d97706', lineHeight: 1.1, mt: 0.5 }}>
+                          {avgPerformance.toFixed(0)}%
+                        </Typography>
+                        <LinearProgress variant="determinate" value={avgPerformance}
+                          sx={{ height: 5, borderRadius: 3, mt: 1, bgcolor: '#fef3c7', '& .MuiLinearProgress-bar': { bgcolor: '#d97706' } }}
+                        />
+                      </Box>
+                      <TrendingUpIcon sx={{ color: '#d97706', fontSize: 32, ml: 1 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              )}
             </Grid>
           </Grid>
 
@@ -1191,32 +1278,35 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
               </Card>
             </Grid>
 
-            {/* Donut Risk Distribution */}
+            {/* Donut Avis des Analystes (v1.0 — remplace l'ancien profil de risque synthétique) */}
             <Grid item xs={12} md={4}>
               <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)', height: '100%' }}>
                 <CardContent>
                   <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-                    Distribution des Risques
+                    Avis des Analystes
                   </Typography>
-                  {filteredRiskDistribution.length > 0 ? (
+                  {filteredOpinionDistribution.length > 0 ? (
                     <ResponsiveContainer width="100%" height={270}>
                       <PieChart>
                         <Pie
-                          data={filteredRiskDistribution}
+                          data={filteredOpinionDistribution}
                           cx="50%" cy="45%"
                           innerRadius={55} outerRadius={88}
                           paddingAngle={3}
                           dataKey="value"
                           label={false}
                         >
-                          {filteredRiskDistribution.map((entry: any, index: number) => (
+                          {filteredOpinionDistribution.map((entry: any, index: number) => (
                             <Cell key={`cell-${index}`} fill={entry.color} />
                           ))}
                         </Pie>
-                        <RechartsTooltip formatter={(v: number, n: string) => [`${v}%`, n]} contentStyle={{ borderRadius: 8 }} />
+                        <RechartsTooltip
+                          formatter={(v: number, n: string) => [`${v} dossier${v > 1 ? 's' : ''}`, n]}
+                          contentStyle={{ borderRadius: 8 }}
+                        />
                         <Legend
                           verticalAlign="bottom" height={36}
-                          formatter={(value, entry: any) => `${value} (${entry.payload.value}%)`}
+                          formatter={(value, entry: any) => `${value} (${entry.payload.value})`}
                           wrapperStyle={{ fontSize: 12 }}
                         />
                       </PieChart>
@@ -1353,6 +1443,61 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
               </Grid>
             )}
           </Grid>
+
+          {/* ── Convergence Analyses → Décisions (v1.0) ─────── */}
+          <Box sx={{ mt: 1, mb: 3 }}>
+            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ThumbUpAltIcon sx={{ color: '#0f766e', fontSize: 20 }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1e293b' }}>
+                Convergence Analyses → Décisions
+              </Typography>
+            </Box>
+            <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.07)' }}>
+              <CardContent>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Mesure si les avis rendus par les analystes anticipent la décision finale.
+                  Barre verte : % des dossiers à majorité d'avis favorables qui ont été approuvés.
+                  Barre rouge : % des dossiers à majorité d'avis défavorables qui ont été rejetés.
+                </Typography>
+                {convergenceData.sampleSize < 3 ? (
+                  <Box sx={{ textAlign: 'center', py: 4 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Données insuffisantes (min. 3 dossiers avec avis et décision requis — actuellement {convergenceData.sampleSize}).
+                    </Typography>
+                  </Box>
+                ) : (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={convergenceData.data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                      <YAxis
+                        tick={{ fontSize: 11 }}
+                        domain={[0, 100]}
+                        label={{ value: '% convergence', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }}
+                      />
+                      <RechartsTooltip
+                        formatter={(value: number, name: string) => {
+                          const label = name === 'convergencePositive'
+                            ? 'Favorables → approuvés'
+                            : 'Défavorables → rejetés';
+                          return [`${value}% — les analystes anticipent ${value >= 70 ? 'bien' : value >= 50 ? 'partiellement' : 'mal'} la décision`, label];
+                        }}
+                        contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.12)', fontSize: 12 }}
+                      />
+                      <Legend
+                        wrapperStyle={{ fontSize: 12 }}
+                        formatter={(value: string) =>
+                          value === 'convergencePositive' ? 'Favorables → approuvés' : 'Défavorables → rejetés'
+                        }
+                      />
+                      <Bar dataKey="convergencePositive" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="convergenceNegative" fill="#dc2626" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+          </Box>
 
           {/* ── Process Analytics Section ────────────────────── */}
           <Box sx={{ mt: 1 }}>
@@ -1567,9 +1712,30 @@ export const AnalyticsDashboardPage: React.FC<AnalyticsDashboardPageProps> = () 
 
                           {/* Bottlenecks */}
                           <Box sx={{ mt: 3 }}>
-                            <Typography variant="body2" sx={{ fontWeight: 600, mb: 1.5, color: '#475569' }}>
-                              Goulets d'étranglement identifiés
-                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600, color: '#475569' }}>
+                                Goulets d'étranglement identifiés
+                              </Typography>
+                              {(() => {
+                                // Signal d'alerte v1.0 : dossiers en cours avec majorité d'avis défavorable
+                                const stuckNegative = getFilteredWorkflows().filter(wf => {
+                                  if (['approved', 'rejected', 'disbursed'].includes(wf.status)) return false;
+                                  const op = (wf as any).opinionSummary as { favorable?: number; defavorable?: number; total?: number } | undefined;
+                                  const fav = op?.favorable ?? 0;
+                                  const def = op?.defavorable ?? 0;
+                                  return def > fav && (fav + def) > 0;
+                                }).length;
+                                if (stuckNegative === 0) return null;
+                                return (
+                                  <Chip
+                                    icon={<WarningAmberIcon sx={{ fontSize: '14px !important' }} />}
+                                    label={`${stuckNegative} avis défavorable${stuckNegative > 1 ? 's' : ''} en attente`}
+                                    size="small"
+                                    sx={{ height: 22, fontSize: 11, fontWeight: 600, bgcolor: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' }}
+                                  />
+                                );
+                              })()}
+                            </Box>
                             <Grid container spacing={2}>
                               {bottlenecks.length > 0 ? bottlenecks.map((step, index) => {
                                 const expected = step.stepName ? (STEP_EXPECTED_DAYS[step.stepName] ?? 1) : 1;
