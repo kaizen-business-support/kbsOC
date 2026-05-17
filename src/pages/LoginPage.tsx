@@ -21,7 +21,6 @@ import {
 } from '@mui/material';
 import { keyframes } from '@emotion/react';
 import {
-  Login as LoginIcon,
   Person as PersonIcon,
   Email as EmailIcon,
   Lock as LockIcon,
@@ -29,13 +28,13 @@ import {
   LockReset as LockResetIcon,
   Visibility,
   VisibilityOff,
-  CheckCircleOutline as CheckIcon,
   KeyboardArrowDown,
   KeyboardArrowUp,
   AccountTreeOutlined,
   InsightsOutlined,
   GroupsOutlined,
   VerifiedUserOutlined,
+  ArrowForward,
 } from '@mui/icons-material';
 import { useUser } from '../contexts/UserContext';
 import { useCompany } from '../contexts/CompanyContext';
@@ -57,54 +56,40 @@ const fadeInUp = keyframes`
   to   { opacity: 1; transform: translateY(0); }
 `;
 
-const fadeInRight = keyframes`
-  from { opacity: 0; transform: translateX(32px); }
-  to   { opacity: 1; transform: translateX(0); }
-`;
-
 const fadeInLeft = keyframes`
   from { opacity: 0; transform: translateX(-32px); }
   to   { opacity: 1; transform: translateX(0); }
 `;
 
+const fadeInRight = keyframes`
+  from { opacity: 0; transform: translateX(32px); }
+  to   { opacity: 1; transform: translateX(0); }
+`;
+
 const fadeInScale = keyframes`
-  from { opacity: 0; transform: scale(0.85); }
+  from { opacity: 0; transform: scale(0.95); }
   to   { opacity: 1; transform: scale(1); }
 `;
 
-const floatY = keyframes`
-  0%, 100% { transform: translateY(0px); }
-  50%       { transform: translateY(-12px); }
-`;
+// ─── Tokens (Light Concept Theme) ─────────────────────────────────────────────
 
-const pulseDot = keyframes`
-  0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.55); }
-  50%       { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
-`;
-
-const rotateGlow = keyframes`
-  0%   { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-`;
-
-// ─── Tokens ───────────────────────────────────────────────────────────────────
-
-const NAVY  = '#0d2137';
-const BLUE  = '#1f4e79';
-const BLUE2 = '#2e6da4';
+const BG_GRADIENT = 'linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%)';
+const BRAND_PRIMARY = '#0F172A'; // Very dark blue/black
+const BRAND_SECONDARY = '#1F4E79'; // Deep Trust Blue
+const BRAND_ACCENT = '#3B82F6';
 const WHITE = '#ffffff';
+const TEXT_PRIMARY = '#0F172A';
+const TEXT_SECONDARY = '#475569';
+const BORDER_COLOR = '#E2E8F0';
 
-const anim = (
-  name: ReturnType<typeof keyframes>,
-  dur = '0.55s',
-  delay = '0s'
-) => `${name} ${dur} cubic-bezier(0.22, 1, 0.36, 1) ${delay} both`;
+const anim = (name: ReturnType<typeof keyframes>, dur = '0.7s', delay = '0s') =>
+  `${name} ${dur} cubic-bezier(0.22, 1, 0.36, 1) ${delay} both`;
 
 // ─── Shared overlay layout ────────────────────────────────────────────────────
 
 const OverlayBg: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <Box sx={{
-    background: `linear-gradient(135deg, ${NAVY} 0%, ${BLUE} 55%, ${BLUE2} 100%)`,
+    background: BG_GRADIENT,
     minHeight: '100vh',
     display: 'flex',
     alignItems: 'center',
@@ -113,11 +98,9 @@ const OverlayBg: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     position: 'relative',
     overflow: 'hidden',
   }}>
-    {/* Background decorative blobs */}
-    <Box sx={{ position: 'absolute', top: -100, right: -100, width: 350, height: 350, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', pointerEvents: 'none' }} />
-    <Box sx={{ position: 'absolute', bottom: -80, left: -80, width: 280, height: 280, borderRadius: '50%', background: 'rgba(255,255,255,0.03)', pointerEvents: 'none' }} />
-    <Box sx={{ position: 'absolute', top: '40%', left: '20%', width: 160, height: 160, borderRadius: '50%', background: 'rgba(255,255,255,0.02)', pointerEvents: 'none' }} />
-    {children}
+    <Box sx={{ position: 'relative', zIndex: 10, width: '100%', display: 'flex', justifyContent: 'center' }}>
+      {children}
+    </Box>
   </Box>
 );
 
@@ -128,15 +111,75 @@ const GlassCard: React.FC<{ children: React.ReactNode; maxWidth?: number; animDe
 }) => (
   <Box sx={{
     maxWidth, width: '100%',
-    background: WHITE,
+    background: 'rgba(255, 255, 255, 0.75)',
+    backdropFilter: 'blur(40px)',
+    WebkitBackdropFilter: 'blur(40px)',
     borderRadius: '24px',
-    boxShadow: '0 32px 80px rgba(0,0,0,0.35), 0 2px 0 rgba(255,255,255,0.1) inset',
-    border: '1px solid rgba(255,255,255,0.12)',
-    p: { xs: 3, sm: 4.5 },
-    animation: anim(fadeInScale, '0.55s', animDelay),
+    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.1)',
+    border: `1px solid rgba(255,255,255,0.9)`,
+    p: { xs: 3.5, sm: 5 },
+    animation: anim(fadeInScale, '0.6s', animDelay),
   }}>
     {children}
   </Box>
+);
+
+// ─── Styled TextField ─────────────────────────────────────────────────────────
+
+const StyledTextField = (props: any) => (
+  <TextField
+    {...props}
+    sx={{
+      mb: 2.5,
+      '& .MuiOutlinedInput-root': {
+        borderRadius: '12px',
+        bgcolor: WHITE,
+        color: TEXT_PRIMARY,
+        transition: 'all 0.2s ease',
+        '& fieldset': { borderColor: BORDER_COLOR, borderWidth: '1px' },
+        '&:hover fieldset': { borderColor: '#CBD5E1' },
+        '&.Mui-focused fieldset': { 
+          borderColor: BRAND_SECONDARY, 
+          borderWidth: '2px',
+        },
+        '&.Mui-disabled': { opacity: 0.6, bgcolor: '#F1F5F9' },
+      },
+      '& .MuiInputLabel-root': { color: TEXT_SECONDARY },
+      '& .MuiInputLabel-root.Mui-focused': { color: BRAND_SECONDARY, fontWeight: 600 },
+      ...props.sx,
+    }}
+  />
+);
+
+// ─── Styled Button ────────────────────────────────────────────────────────────
+
+const GradientButton = (props: any) => (
+  <Button
+    {...props}
+    sx={{
+      py: 1.5,
+      borderRadius: '14px',
+      fontWeight: 600,
+      fontSize: '1.05rem',
+      background: `linear-gradient(135deg, ${BRAND_PRIMARY} 0%, ${BRAND_SECONDARY} 100%)`,
+      color: WHITE,
+      boxShadow: `0 10px 20px -5px rgba(15, 23, 42, 0.3)`,
+      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+      textTransform: 'none',
+      '&:hover': {
+        background: `linear-gradient(135deg, #000000 0%, ${BRAND_PRIMARY} 100%)`,
+        transform: 'translateY(-1px)',
+        boxShadow: `0 15px 25px -5px rgba(15, 23, 42, 0.4)`,
+      },
+      '&:disabled': {
+        background: '#CBD5E1',
+        color: '#F8FAFC',
+        boxShadow: 'none',
+        transform: 'none'
+      },
+      ...props.sx,
+    }}
+  />
 );
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -177,7 +220,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError,   setForgotError]   = useState('');
 
-  // Company selection state
   const [showCompanySelector, setShowCompanySelector] = useState(false);
   const [partialToken, setPartialToken] = useState('');
   const [companyOptions, setCompanyOptions] = useState<CompanyWithRole[]>([]);
@@ -196,10 +238,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   ];
 
   const features = [
-    { icon: GroupsOutlined,       label: 'Gestion clientèle corporative' },
-    { icon: InsightsOutlined,     label: 'Analyse financière SYSCOHADA' },
-    { icon: AccountTreeOutlined,  label: 'Workflow d\'approbation multi-niveaux' },
-    { icon: VerifiedUserOutlined, label: 'Score dual & benchmark sectoriel' },
+    { icon: VerifiedUserOutlined, label: 'Infrastructure Sécurisée & Conforme' },
+    { icon: GroupsOutlined,       label: 'Gestion Clientèle Corporative' },
+    { icon: InsightsOutlined,     label: 'Analyse Financière SYSCOHADA' },
+    { icon: AccountTreeOutlined,  label: 'Workflows d\'Approbation Dédiés' },
   ];
 
   // ── Handlers ────────────────────────────────────────────────────────────────
@@ -220,7 +262,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         if (dispatch) dispatch({ type: 'SET_LOADING', payload: false });
         return;
       }
-      // If autoSelected or single company, store company in context
       if (data.companies?.length === 1 || data.autoSelected) {
         companyCtx.setActiveCompany(data.companies[0], data.accessToken);
         companyCtx.setCompanies(data.companies || []);
@@ -258,13 +299,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
   const completeLogin = (accessToken: string, refreshToken: string, user: any) => {
     tokenManager.setTokens(accessToken, refreshToken);
-    // Mapping nouveaux rôles RACI → UserContext.UserRole (rôles frontend)
     const roleMapping: Record<string, string> = {
-      // Anciens noms (compat)
       ADMIN: 'admin', MANAGEMENT: 'management', BRANCH_MANAGER: 'branch_manager',
       ACCOUNT_MANAGER: 'account_manager', CREDIT_ANALYST: 'credit_analyst',
       ANALYST_SUPERVISOR: 'analyst_supervisor', CREDIT_COMMITTEE: 'credit_committee',
-      // Nouveaux noms RACI
       SUPER_ADMIN:             'admin',
       CHARGE_AFFAIRES:         'account_manager',
       ANALYSTE_RISQUES:        'credit_analyst',
@@ -352,7 +390,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         companyCtx.setActiveCompany(result.company, result.accessToken);
         companyCtx.setCompanies(companyOptions);
         setShowCompanySelector(false);
-        // Complete login with the final token
         completeLogin(result.accessToken, result.refreshToken, result.user);
       }
     } catch (error: any) {
@@ -381,54 +418,40 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           <Box sx={{ textAlign: 'center', mb: 3 }}>
             <Box sx={{
               width: 72, height: 72, borderRadius: '20px', mx: 'auto', mb: 2.5,
-              background: 'linear-gradient(135deg, #1e40af, #3b82f6)',
+              background: `linear-gradient(135deg, ${BRAND_PRIMARY}, ${BRAND_SECONDARY})`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 8px 24px rgba(59,130,246,0.4)',
+              boxShadow: `0 10px 20px -5px rgba(15, 23, 42, 0.3)`,
             }}>
               <ShieldIcon sx={{ color: WHITE, fontSize: 36 }} />
             </Box>
-            <Typography variant="h5" fontWeight={700} sx={{ color: '#1e293b', mb: 0.5 }}>
+            <Typography variant="h5" fontWeight={700} sx={{ color: TEXT_PRIMARY, mb: 0.5, letterSpacing: '-0.5px' }}>
               Vérification 2FA
             </Typography>
-            <Typography variant="body2" sx={{ color: '#64748b', lineHeight: 1.6 }}>
+            <Typography variant="body2" sx={{ color: TEXT_SECONDARY, lineHeight: 1.6 }}>
               Entrez le code à 6 chiffres de votre application d'authentification ou l'un de vos codes de secours.
             </Typography>
           </Box>
 
           {otpError && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setOtpError('')}>{otpError}</Alert>}
 
-          <TextField
+          <StyledTextField
             value={otpCode}
-            onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            onChange={(e: any) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
             inputProps={{ style: { textAlign: 'center', fontSize: 32, letterSpacing: 10, fontWeight: 700 }, maxLength: 8 }}
-            sx={{
-              mb: 3, width: '100%',
-              '& .MuiOutlinedInput-root': { borderRadius: '14px', bgcolor: '#f8fafc' },
-            }}
+            sx={{ mb: 3, width: '100%' }}
             autoFocus
             placeholder="• • • • • •"
-            onKeyDown={(e) => e.key === 'Enter' && otpCode.length >= 6 && handleOtpVerify()}
+            onKeyDown={(e: any) => e.key === 'Enter' && otpCode.length >= 6 && handleOtpVerify()}
           />
 
-          <Button
-            variant="contained" fullWidth size="large"
-            onClick={handleOtpVerify}
-            disabled={otpCode.length < 6 || otpLoading}
-            sx={{
-              mb: 2, py: 1.5, borderRadius: '14px', fontWeight: 700, fontSize: '1rem',
-              background: `linear-gradient(135deg, ${BLUE}, ${BLUE2})`,
-              boxShadow: '0 4px 16px rgba(31,78,121,0.35)',
-              '&:hover': { boxShadow: '0 6px 24px rgba(31,78,121,0.45)', transform: 'translateY(-1px)' },
-              transition: 'all 0.2s ease',
-            }}
-          >
+          <GradientButton fullWidth onClick={handleOtpVerify} disabled={otpCode.length < 6 || otpLoading} sx={{ mb: 2 }}>
             {otpLoading ? <CircularProgress size={22} sx={{ color: WHITE }} /> : 'Vérifier'}
-          </Button>
+          </GradientButton>
 
           <Button
             variant="text" fullWidth size="small"
             onClick={() => { setLoginStep('credentials'); setOtpCode(''); setOtpError(''); setTempToken(''); }}
-            sx={{ color: '#64748b', '&:hover': { color: BLUE } }}
+            sx={{ color: TEXT_SECONDARY, fontWeight: 600, '&:hover': { color: BRAND_PRIMARY } }}
           >
             ← Retour à la connexion
           </Button>
@@ -445,62 +468,51 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           <Box sx={{ textAlign: 'center', mb: 3 }}>
             <Box sx={{
               width: 72, height: 72, borderRadius: '20px', mx: 'auto', mb: 2.5,
-              background: 'linear-gradient(135deg, #92400e, #f59e0b)',
+              background: `linear-gradient(135deg, ${BRAND_PRIMARY}, ${BRAND_SECONDARY})`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 8px 24px rgba(245,158,11,0.35)',
+              boxShadow: `0 10px 20px -5px rgba(15, 23, 42, 0.3)`,
             }}>
               <LockResetIcon sx={{ color: WHITE, fontSize: 36 }} />
             </Box>
-            <Typography variant="h5" fontWeight={700} sx={{ color: '#1e293b', mb: 0.5 }}>
+            <Typography variant="h5" fontWeight={700} sx={{ color: TEXT_PRIMARY, mb: 0.5, letterSpacing: '-0.5px' }}>
               Nouveau mot de passe requis
             </Typography>
-            <Typography variant="body2" sx={{ color: '#64748b', lineHeight: 1.6 }}>
+            <Typography variant="body2" sx={{ color: TEXT_SECONDARY, lineHeight: 1.6 }}>
               Pour des raisons de sécurité, définissez un nouveau mot de passe avant de continuer.
             </Typography>
           </Box>
 
           {changePasswordError && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setChangePasswordError('')}>{changePasswordError}</Alert>}
 
-          <TextField
+          <StyledTextField
             label="Nouveau mot de passe"
             type={showNewPassword ? 'text' : 'password'}
             value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            fullWidth sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
+            onChange={(e: any) => setNewPassword(e.target.value)}
+            fullWidth
             autoFocus
             InputProps={{
               endAdornment: (
                 <InputAdornment position="end">
                   <IconButton onClick={() => setShowNewPassword(v => !v)} edge="end" size="small">
-                    {showNewPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                    {showNewPassword ? <VisibilityOff fontSize="small" sx={{ color: TEXT_SECONDARY }} /> : <Visibility fontSize="small" sx={{ color: TEXT_SECONDARY }} />}
                   </IconButton>
                 </InputAdornment>
               )
             }}
           />
-          <TextField
+          <StyledTextField
             label="Confirmer le mot de passe"
             type="password"
             value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            fullWidth sx={{ mb: 3, '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
-            onKeyDown={(e) => e.key === 'Enter' && handleForceChangePassword()}
+            onChange={(e: any) => setConfirmPassword(e.target.value)}
+            fullWidth sx={{ mb: 3 }}
+            onKeyDown={(e: any) => e.key === 'Enter' && handleForceChangePassword()}
           />
 
-          <Button
-            variant="contained" fullWidth size="large"
-            onClick={handleForceChangePassword}
-            disabled={!newPassword || !confirmPassword || changePasswordLoading}
-            sx={{
-              py: 1.5, borderRadius: '14px', fontWeight: 700,
-              background: `linear-gradient(135deg, ${BLUE}, ${BLUE2})`,
-              boxShadow: '0 4px 16px rgba(31,78,121,0.35)',
-              '&:hover': { transform: 'translateY(-1px)', boxShadow: '0 6px 24px rgba(31,78,121,0.45)' },
-              transition: 'all 0.2s ease',
-            }}
-          >
+          <GradientButton fullWidth onClick={handleForceChangePassword} disabled={!newPassword || !confirmPassword || changePasswordLoading}>
             {changePasswordLoading ? <CircularProgress size={22} sx={{ color: WHITE }} /> : 'Définir mon mot de passe'}
-          </Button>
+          </GradientButton>
         </GlassCard>
       </OverlayBg>
     );
@@ -514,13 +526,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           <Box sx={{ textAlign: 'center', mb: 3 }}>
             <Box sx={{
               width: 72, height: 72, borderRadius: '20px', mx: 'auto', mb: 2.5,
-              background: 'linear-gradient(135deg, #1d4ed8, #6366f1)',
+              background: `linear-gradient(135deg, ${BRAND_PRIMARY}, ${BRAND_SECONDARY})`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 8px 24px rgba(99,102,241,0.35)',
+              boxShadow: `0 10px 20px -5px rgba(15, 23, 42, 0.3)`,
             }}>
               <EmailIcon sx={{ color: WHITE, fontSize: 36 }} />
             </Box>
-            <Typography variant="h5" fontWeight={700} sx={{ color: '#1e293b', mb: 0.5 }}>
+            <Typography variant="h5" fontWeight={700} sx={{ color: TEXT_PRIMARY, mb: 0.5, letterSpacing: '-0.5px' }}>
               Mot de passe oublié
             </Typography>
           </Box>
@@ -533,51 +545,37 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
               <Button
                 variant="outlined" fullWidth
                 onClick={() => { setLoginStep('credentials'); setForgotSent(false); setForgotEmail(''); }}
-                sx={{ borderRadius: '14px', borderColor: BLUE, color: BLUE, fontWeight: 600 }}
+                sx={{ borderRadius: '14px', borderColor: BORDER_COLOR, color: BRAND_PRIMARY, fontWeight: 700, textTransform: 'none', py: 1.2, '&:hover': { borderColor: BRAND_PRIMARY, bgcolor: 'rgba(31,78,121,0.05)' } }}
               >
                 ← Retour à la connexion
               </Button>
             </>
           ) : (
             <>
-              <Typography variant="body2" sx={{ color: '#64748b', mb: 3, textAlign: 'center', lineHeight: 1.6 }}>
+              <Typography variant="body2" sx={{ color: TEXT_SECONDARY, mb: 3, textAlign: 'center', lineHeight: 1.6 }}>
                 Saisissez votre adresse email. Nous vous enverrons un lien pour réinitialiser votre mot de passe.
               </Typography>
 
               {forgotError && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setForgotError('')}>{forgotError}</Alert>}
 
-              <TextField
+              <StyledTextField
                 label="Adresse email"
                 type="email"
                 value={forgotEmail}
-                onChange={(e) => setForgotEmail(e.target.value)}
-                fullWidth sx={{ mb: 3, '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
+                onChange={(e: any) => setForgotEmail(e.target.value)}
+                fullWidth sx={{ mb: 3 }}
                 autoFocus
-                onKeyDown={(e) => e.key === 'Enter' && handleForgotPassword()}
-                InputProps={{
-                  startAdornment: <InputAdornment position="start"><EmailIcon sx={{ color: '#94a3b8', fontSize: 20 }} /></InputAdornment>
-                }}
+                onKeyDown={(e: any) => e.key === 'Enter' && handleForgotPassword()}
               />
 
-              <Button
-                variant="contained" fullWidth size="large"
-                onClick={handleForgotPassword}
-                disabled={!forgotEmail.trim() || forgotLoading}
-                sx={{
-                  mb: 2, py: 1.5, borderRadius: '14px', fontWeight: 700,
-                  background: `linear-gradient(135deg, ${BLUE}, ${BLUE2})`,
-                  boxShadow: '0 4px 16px rgba(31,78,121,0.35)',
-                  '&:hover': { transform: 'translateY(-1px)', boxShadow: '0 6px 24px rgba(31,78,121,0.45)' },
-                  transition: 'all 0.2s ease',
-                }}
-              >
+              <GradientButton fullWidth onClick={handleForgotPassword} disabled={!forgotEmail.trim() || forgotLoading} sx={{ mb: 2 }}>
                 {forgotLoading ? <CircularProgress size={22} sx={{ color: WHITE }} /> : 'Envoyer le lien'}
-              </Button>
+              </GradientButton>
 
               <Button
                 variant="text" fullWidth size="small"
                 onClick={() => { setLoginStep('credentials'); setForgotError(''); }}
-                sx={{ color: '#64748b', '&:hover': { color: BLUE } }}
+                sx={{ color: TEXT_SECONDARY, fontWeight: 600, '&:hover': { color: BRAND_PRIMARY } }}
               >
                 ← Retour à la connexion
               </Button>
@@ -604,62 +602,44 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   // ── Main login screen ────────────────────────────────────────────────────────
   return (
     <Box sx={{
-      background: `linear-gradient(135deg, ${NAVY} 0%, ${BLUE} 55%, ${BLUE2} 100%)`,
+      background: BG_GRADIENT,
       minHeight: '100vh',
       overflowY: 'auto',
       position: 'relative',
     }}>
-      {/* Decorative blobs */}
-      <Box sx={{ position: 'absolute', top: -120, right: -120, width: 480, height: 480, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', pointerEvents: 'none' }} />
-      <Box sx={{ position: 'absolute', bottom: -100, left: -100, width: 400, height: 400, borderRadius: '50%', background: 'rgba(255,255,255,0.03)', pointerEvents: 'none' }} />
-      <Box sx={{ position: 'absolute', top: '30%', right: '25%', width: 200, height: 200, borderRadius: '50%', background: 'rgba(255,255,255,0.025)', pointerEvents: 'none' }} />
-
       <Grid
         container
-        sx={{ maxWidth: 1200, mx: 'auto', minHeight: '100vh', px: { xs: 2, md: 4 } }}
+        sx={{ maxWidth: 1200, mx: 'auto', minHeight: '100vh', px: { xs: 2, md: 4 }, position: 'relative', zIndex: 10 }}
         alignItems="center"
       >
         {/* ── Mobile header ── */}
         <Grid item xs={12} sx={{ display: { xs: 'block', md: 'none' }, textAlign: 'center', pt: 5, pb: 3 }}>
           <Box sx={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 72, height: 72, borderRadius: '20px', mb: 2,
-            background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)',
+            width: 72, height: 72, mb: 2,
             animation: anim(fadeInScale, '0.55s', '0s'),
           }}>
-            <img src={optimusIcon} alt="OptimusCredit" style={{ width: 46, height: 46 }} />
+            <img src={optimusIcon} alt="OptimusCredit" style={{ width: 56, height: 56 }} />
           </Box>
-          <Typography variant="h5" fontWeight={800} sx={{ color: WHITE, animation: anim(fadeInUp, '0.5s', '0.1s') }}>
+          <Typography variant="h5" fontWeight={800} sx={{ color: TEXT_PRIMARY, letterSpacing: '-0.5px', animation: anim(fadeInUp, '0.5s', '0.1s') }}>
             OptimusCredit
           </Typography>
-          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', animation: anim(fadeInUp, '0.5s', '0.18s') }}>
+          <Typography variant="body2" sx={{ color: TEXT_SECONDARY, animation: anim(fadeInUp, '0.5s', '0.18s') }}>
             {t('login.platformSubtitle')}
           </Typography>
         </Grid>
 
         {/* ── Left branding (desktop) ── */}
-        <Grid item md={6} sx={{ display: { xs: 'none', md: 'block' }, pr: 4 }}>
-          {/* Floating logo */}
+        <Grid item md={6} sx={{ display: { xs: 'none', md: 'block' }, pr: 6 }}>
+          {/* Logo */}
           <Box sx={{
-            display: 'flex', alignItems: 'center', gap: 2.5, mb: 5,
+            display: 'flex', alignItems: 'center', gap: 2.5, mb: 6,
             animation: anim(fadeInLeft, '0.6s', '0s'),
           }}>
-            <Box sx={{
-              width: 64, height: 64, borderRadius: '18px',
-              background: 'rgba(255,255,255,0.12)',
-              border: '1px solid rgba(255,255,255,0.22)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              animation: `${floatY} 4s ease-in-out infinite`,
-              boxShadow: '0 12px 40px rgba(0,0,0,0.2)',
-            }}>
-              <img src={optimusIcon} alt="OptimusCredit" style={{ width: 42, height: 42 }} />
-            </Box>
+            <img src={optimusIcon} alt="OptimusCredit" style={{ width: 48, height: 48 }} />
             <Box>
-              <Typography variant="h5" fontWeight={800} sx={{ color: WHITE, lineHeight: 1.1 }}>
+              <Typography variant="h5" fontWeight={800} sx={{ color: BRAND_PRIMARY, lineHeight: 1.1, letterSpacing: '-0.5px' }}>
                 OptimusCredit
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', letterSpacing: 0.5 }}>
-                Gestion de Crédit Professionnelle
               </Typography>
             </Box>
           </Box>
@@ -669,98 +649,64 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             variant="h3"
             fontWeight={800}
             sx={{
-              color: WHITE, lineHeight: 1.15, mb: 2,
+              color: TEXT_PRIMARY, lineHeight: 1.15, mb: 2,
               animation: anim(fadeInLeft, '0.6s', '0.1s'),
+              letterSpacing: '-1px'
             }}
           >
-            Votre plateforme
-            <Box component="span" sx={{
-              display: 'block',
-              background: 'linear-gradient(90deg, #93c5fd, #c4b5fd)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}>
-              de crédit bancaire
-            </Box>
-          </Typography>
-
-          <Typography variant="body1" sx={{
-            color: 'rgba(255,255,255,0.72)', mb: 5, lineHeight: 1.75, maxWidth: 440,
-            animation: anim(fadeInLeft, '0.6s', '0.18s'),
-          }}>
-            {t('login.platformDescription')}
+            Bienvenue sur votre <br />Espace Digital
           </Typography>
 
           {/* Feature list */}
-          <Box sx={{ animation: anim(fadeInLeft, '0.6s', '0.26s') }}>
+          <Box sx={{ mt: 5, animation: anim(fadeInLeft, '0.6s', '0.2s') }}>
             {features.map((f, i) => {
               const Icon = f.icon;
               return (
                 <Box
                   key={i}
                   sx={{
-                    display: 'flex', alignItems: 'center', gap: 2, mb: 2,
-                    animation: anim(fadeInLeft, '0.5s', `${0.3 + i * 0.08}s`),
+                    display: 'flex', alignItems: 'center', gap: 2.5, mb: 3,
                   }}
                 >
                   <Box sx={{
-                    width: 38, height: 38, borderRadius: '10px',
-                    background: 'rgba(255,255,255,0.10)',
-                    border: '1px solid rgba(255,255,255,0.15)',
+                    width: 40, height: 40, borderRadius: '12px',
+                    background: WHITE,
+                    border: `1px solid ${BORDER_COLOR}`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     flexShrink: 0,
+                    boxShadow: `0 4px 6px -1px rgba(0,0,0,0.05)`,
                   }}>
-                    <Icon sx={{ color: '#93c5fd', fontSize: 20 }} />
+                    <Icon sx={{ color: TEXT_SECONDARY, fontSize: 20 }} />
                   </Box>
-                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.85)', fontWeight: 500 }}>
+                  <Typography variant="body1" sx={{ color: TEXT_PRIMARY, fontWeight: 500, fontSize: '1.05rem' }}>
                     {f.label}
                   </Typography>
                 </Box>
               );
             })}
           </Box>
-
-          {/* Tags */}
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 4, animation: anim(fadeInLeft, '0.6s', '0.55s') }}>
-            {['SYSCOHADA', 'Bilingue', 'Multi-rôles', 'Score Dual'].map((tag) => (
-              <Chip
-                key={tag}
-                label={tag}
-                size="small"
-                sx={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.9)', fontWeight: 600, fontSize: '0.73rem' }}
-              />
-            ))}
-          </Box>
         </Grid>
 
         {/* ── Right side: login form ── */}
         <Grid item xs={12} md={6} sx={{ py: { xs: 0, md: 5 }, pb: { xs: 5, md: 5 } }}>
           <Box sx={{
-            maxWidth: 480, mx: 'auto',
+            maxWidth: 440, mx: 'auto', ml: 'auto',
             animation: anim(fadeInRight, '0.6s', '0.1s'),
           }}>
             {/* Card */}
             <Box sx={{
-              bgcolor: WHITE,
+              background: 'rgba(255, 255, 255, 0.85)',
+              backdropFilter: 'blur(40px)',
+              WebkitBackdropFilter: 'blur(40px)',
               borderRadius: '24px',
-              boxShadow: '0 32px 80px rgba(0,0,0,0.35)',
-              p: { xs: 3, sm: 4.5 },
+              border: `1px solid rgba(255,255,255,0.9)`,
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.1)',
+              p: { xs: 3.5, sm: 5 },
             }}>
               {/* Header */}
-              <Box sx={{ textAlign: 'center', mb: 3.5 }}>
-                <Box sx={{
-                  width: 56, height: 56, borderRadius: '16px', mx: 'auto', mb: 2,
-                  background: `linear-gradient(135deg, ${BLUE}, ${BLUE2})`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: '0 8px 20px rgba(31,78,121,0.35)',
-                }}>
-                  <LoginIcon sx={{ color: WHITE, fontSize: 28 }} />
-                </Box>
-                <Typography variant="h5" fontWeight={700} sx={{ color: '#1e293b', mb: 0.5 }}>
+              <Box sx={{ textAlign: 'center', mb: 4 }}>
+                <Typography variant="h4" fontWeight={800} sx={{ color: TEXT_PRIMARY, mb: 0.5, letterSpacing: '-0.5px' }}>
                   {t('login.title')}
-                </Typography>
-                <Typography variant="body2" sx={{ color: '#94a3b8' }}>
-                  {t('login.subtitle')}
                 </Typography>
               </Box>
 
@@ -774,95 +720,72 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
               )}
 
               <form onSubmit={handleSubmit}>
-                <TextField
+                <StyledTextField
                   fullWidth label={t('login.email')} type="text"
                   inputMode="email"
-                  value={email} onChange={(e) => setEmail(e.target.value)}
+                  value={email} onChange={(e: any) => setEmail(e.target.value)}
                   disabled={state.isLoading}
                   autoComplete="email"
                   autoCapitalize="none"
                   autoCorrect="off"
-                  sx={{
-                    mb: 2,
-                    '& .MuiOutlinedInput-root': { borderRadius: '12px', bgcolor: '#f8fafc' },
-                    '& .MuiOutlinedInput-root.Mui-focused': { bgcolor: WHITE },
-                  }}
-                  InputProps={{ startAdornment: <InputAdornment position="start"><EmailIcon sx={{ color: '#94a3b8', fontSize: 20 }} /></InputAdornment> }}
                 />
 
-                <TextField
+                <StyledTextField
                   fullWidth label={t('login.password')} type={showPassword ? 'text' : 'password'}
-                  value={password} onChange={(e) => setPassword(e.target.value)}
+                  value={password} onChange={(e: any) => setPassword(e.target.value)}
                   required disabled={state.isLoading}
                   autoComplete="current-password"
-                  sx={{
-                    mb: 1,
-                    '& .MuiOutlinedInput-root': { borderRadius: '12px', bgcolor: '#f8fafc' },
-                    '& .MuiOutlinedInput-root.Mui-focused': { bgcolor: WHITE },
-                  }}
+                  sx={{ mb: 1.5 }}
                   InputProps={{
-                    startAdornment: <InputAdornment position="start"><LockIcon sx={{ color: '#94a3b8', fontSize: 20 }} /></InputAdornment>,
                     endAdornment: (
                       <InputAdornment position="end">
                         <IconButton onClick={() => setShowPassword(v => !v)} edge="end" size="small">
-                          {showPassword ? <VisibilityOff fontSize="small" sx={{ color: '#94a3b8' }} /> : <Visibility fontSize="small" sx={{ color: '#94a3b8' }} />}
+                          {showPassword ? <VisibilityOff fontSize="small" sx={{ color: TEXT_SECONDARY }} /> : <Visibility fontSize="small" sx={{ color: TEXT_SECONDARY }} />}
                         </IconButton>
                       </InputAdornment>
                     )
                   }}
                 />
 
-                <Box sx={{ textAlign: 'right', mb: 2.5 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3.5 }}>
                   <Button
                     variant="text" size="small"
                     onClick={() => { setLoginStep('forgot_password'); setForgotEmail(email); }}
-                    sx={{ textTransform: 'none', fontSize: 13, color: BLUE2, p: '2px 4px' }}
+                    sx={{ textTransform: 'none', fontSize: 14, color: BRAND_SECONDARY, p: 0, fontWeight: 600, '&:hover': { color: BRAND_PRIMARY, background: 'none' } }}
                   >
                     Mot de passe oublié ?
                   </Button>
                 </Box>
 
-                <Button
-                  type="submit" fullWidth variant="contained" size="large"
-                  disabled={state.isLoading || state.loginAttempts >= 3}
-                  sx={{
-                    mb: 2.5, py: 1.5, borderRadius: '14px',
-                    fontWeight: 700, fontSize: '1rem',
-                    background: `linear-gradient(135deg, ${BLUE} 0%, ${BLUE2} 100%)`,
-                    boxShadow: '0 4px 16px rgba(31,78,121,0.35)',
-                    '&:hover': {
-                      background: `linear-gradient(135deg, #163d61, ${BLUE})`,
-                      transform: 'translateY(-2px)',
-                      boxShadow: '0 8px 28px rgba(31,78,121,0.45)',
-                    },
-                    '&:disabled': { background: '#e2e8f0', color: '#94a3b8', boxShadow: 'none', transform: 'none' },
-                    transition: 'all 0.25s ease',
-                  }}
+                <GradientButton
+                  type="submit" fullWidth disabled={state.isLoading || state.loginAttempts >= 3} sx={{ mb: 2.5 }}
+                  endIcon={state.isLoading ? null : <ArrowForward fontSize="small" />}
                 >
                   {state.isLoading
                     ? <><CircularProgress size={20} sx={{ mr: 1, color: WHITE }} />{t('login.connecting')}</>
                     : t('login.connect')
                   }
-                </Button>
+                </GradientButton>
               </form>
 
               {/* Microsoft login */}
               {isMsalAvailable && (
                 <>
-                  <Divider sx={{ my: 2.5 }}><Typography variant="caption" sx={{ color: '#94a3b8', px: 1 }}>ou</Typography></Divider>
+                  <Divider sx={{ my: 3, borderColor: BORDER_COLOR }}><Typography variant="caption" sx={{ color: TEXT_SECONDARY, px: 1, fontWeight: 600 }}>ou</Typography></Divider>
                   <Button
                     fullWidth variant="outlined" size="large"
                     onClick={handleMicrosoftLogin}
                     disabled={state.isLoading}
                     sx={{
-                      mb: 2.5, py: 1.4, borderRadius: '14px', fontWeight: 600,
-                      borderColor: '#e2e8f0', color: '#374151',
-                      '&:hover': { borderColor: '#cbd5e1', bgcolor: '#f8fafc' },
+                      mb: 2.5, py: 1.2, borderRadius: '14px', fontWeight: 600,
+                      borderColor: BORDER_COLOR, color: TEXT_PRIMARY,
+                      bgcolor: WHITE, textTransform: 'none',
+                      '&:hover': { borderColor: '#CBD5E1', bgcolor: '#F8FAFC' },
                     }}
                     startIcon={
                       <img
                         src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjEiIGhlaWdodD0iMjEiIHZpZXdCb3g9IjAgMCAyMSAyMSIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3QgeD0iMSIgeT0iMSIgd2lkdGg9IjkiIGhlaWdodD0iOSIgZmlsbD0iI0YzNTMyNSIvPgo8cmVjdCB4PSIxMSIgeT0iMSIgd2lkdGg9IjkiIGhlaWdodD0iOSIgZmlsbD0iIzgxQkM2RiIvPgo8cmVjdCB4PSIxIiB5PSIxMSIgd2lkdGg9IjkiIGhlaWdodD0iOSIgZmlsbD0iIzA1QTNGNCIvPgo8cmVjdCB4PSIxMSIgeT0iMTEiIHdpZHRoPSI5IiBoZWlnaHQ9IjkiIGZpbGw9IiNGRkI5MDAiLz4KPC9zdmc+"
-                        alt="Microsoft" style={{ width: 20, height: 20 }}
+                        alt="Microsoft" style={{ width: 18, height: 18 }}
                       />
                     }
                   >
@@ -872,22 +795,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
               )}
 
               {/* Demo accounts */}
-              <Divider sx={{ my: 2 }}><Typography variant="caption" sx={{ color: '#cbd5e1', px: 1 }}>{t('login.demonstration')}</Typography></Divider>
+              <Divider sx={{ my: 3, borderColor: BORDER_COLOR }} />
 
               <Button
                 fullWidth variant="text" size="small"
                 onClick={() => setShowDemo(!showDemo)}
                 endIcon={showDemo ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
-                sx={{ color: '#64748b', textTransform: 'none', fontWeight: 600, mb: 1, borderRadius: '10px', '&:hover': { bgcolor: '#f8fafc' } }}
+                sx={{ color: TEXT_SECONDARY, textTransform: 'none', fontWeight: 600, mb: 1, borderRadius: '10px', '&:hover': { bgcolor: '#F1F5F9', color: BRAND_PRIMARY } }}
               >
                 {showDemo ? t('login.hideDemoAccounts') : t('login.showDemoAccounts')}
               </Button>
 
               <Collapse in={showDemo}>
-                <Paper elevation={0} sx={{ p: 1.5, bgcolor: '#f8fafc', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
-                  <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, display: 'block', mb: 1, px: 1 }}>
-                    Cliquer sur un compte pour le pré-remplir automatiquement
-                  </Typography>
+                <Paper elevation={0} sx={{ p: 1.5, bgcolor: WHITE, borderRadius: '14px', border: `1px solid ${BORDER_COLOR}` }}>
                   <List dense disablePadding>
                     {demoUsers.map((user) => (
                       <ListItem
@@ -896,46 +816,33 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                         onClick={() => handleDemoLogin(user.email)}
                         sx={{
                           borderRadius: '10px', mb: 0.5, py: 0.75,
-                          '&:hover': { bgcolor: 'rgba(31,78,121,0.06)' },
+                          '&:hover': { bgcolor: '#F8FAFC' },
                         }}
                       >
                         <ListItemIcon sx={{ minWidth: 36 }}>
-                          <Avatar sx={{ width: 28, height: 28, bgcolor: 'rgba(31,78,121,0.1)', color: BLUE, fontSize: '0.75rem' }}>
+                          <Avatar sx={{ width: 28, height: 28, bgcolor: '#F1F5F9', color: TEXT_SECONDARY, fontSize: '0.75rem' }}>
                             <PersonIcon sx={{ fontSize: 14 }} />
                           </Avatar>
                         </ListItemIcon>
                         <ListItemText
                           primary={user.email}
                           secondary={user.role}
-                          primaryTypographyProps={{ fontSize: '12.5px', color: '#374151', fontWeight: 500 }}
-                          secondaryTypographyProps={{ fontSize: '11px', color: '#94a3b8' }}
+                          primaryTypographyProps={{ fontSize: '12.5px', color: TEXT_PRIMARY, fontWeight: 600 }}
+                          secondaryTypographyProps={{ fontSize: '11px', color: TEXT_SECONDARY, fontWeight: 500 }}
                         />
                         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.3 }}>
-                          <Chip label={user.role} size="small" color={user.color} variant="outlined" sx={{ fontSize: '10px', height: 20 }} />
-                          <Typography sx={{ fontSize: '10px', color: '#94a3b8', fontFamily: 'monospace' }}>{user.password}</Typography>
+                          <Chip label={user.role} size="small" color={user.color} variant="outlined" sx={{ fontSize: '10px', height: 20, fontWeight: 600 }} />
                         </Box>
                       </ListItem>
                     ))}
                   </List>
                 </Paper>
               </Collapse>
-
-              {/* Dev clear cache */}
-              {process.env.NODE_ENV === 'development' && (
-                <Box sx={{ mt: 2, textAlign: 'center' }}>
-                  <Button
-                    variant="text" size="small" onClick={clearAllData}
-                    sx={{ color: '#f59e0b', textTransform: 'none', fontSize: '0.75rem' }}
-                  >
-                    🗑️ Clear cache & reload (dev)
-                  </Button>
-                </Box>
-              )}
             </Box>
 
             {/* Footer */}
-            <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', color: 'rgba(255,255,255,0.35)', mt: 2.5 }}>
-              © 2025 OptimusCredit — Tous droits réservés
+            <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', color: TEXT_SECONDARY, mt: 3, fontWeight: 500 }}>
+              OptimusCredit • Gestion de Crédit Professionnelle | Tous droits réservés
             </Typography>
           </Box>
         </Grid>
