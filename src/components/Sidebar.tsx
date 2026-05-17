@@ -162,6 +162,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'data-input' as PageType, label: t('navigation.dataInput'), icon: DataInputIcon },
     { id: 'analysis'   as PageType, label: t('navigation.analysis'),  icon: AnalysisIcon, requiresData: true },
     ...(canViewReports ? [{ id: 'reports' as PageType, label: t('navigation.reports'), icon: ReportsIcon, requiresData: true }] : []),
+    ...(canViewReports ? [{ id: 'credit-reports' as PageType, label: 'Rapports de Crédit', icon: InsightsIcon }] : []),
   ] : [];
 
   // Configuration — admin seulement

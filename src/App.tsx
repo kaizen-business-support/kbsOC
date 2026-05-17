@@ -58,6 +58,7 @@ const ContractTemplatesPage  = lazy(() => import('./pages/ContractTemplatesPage'
 const LegalStepPage          = lazy(() => import('./pages/LegalStepPage').then(m => ({ default: m.LegalStepPage })));
 const CodirDashboardPage     = lazy(() => import('./pages/CodirDashboardPage').then(m => ({ default: m.CodirDashboardPage })));
 const SecuritySettingsPage   = lazy(() => import('./pages/SecuritySettingsPage').then(m => ({ default: m.SecuritySettingsPage })));
+const CreditReportsMenu      = lazy(() => import('./pages/CreditReportsMenu').then(m => ({ default: m.CreditReportsMenu })));
 
 // Wrapper pour récupérer l'applicationId depuis l'URL et le passer en prop
 function LegalStepPageWrapper() {
@@ -317,6 +318,11 @@ const AppContent: React.FC = () => {
                   {hasAnalysisData()
                     ? <ReportsPage onNavigate={handlePageChange} />
                     : <Navigate to="/upload" replace />}
+                </ProtectedRoute>
+              } />
+              <Route path="/credit-reports" element={
+                <ProtectedRoute permissions={['reports', 'financial_analysis', 'view_applications']}>
+                  <CreditReportsMenu onNavigate={handlePageChange} />
                 </ProtectedRoute>
               } />
               <Route path="/credit-scoring" element={
