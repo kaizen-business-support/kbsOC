@@ -477,7 +477,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', py: 1 }}>
         {/* Tableaux de bord & Rapports */}
         {dashboardItems.length > 0 && (
-          <>
+          <Box data-tour="sidebar-dashboard">
             <SectionHeader
               label="Pilotage & Rapports"
               expanded={dashboardExpanded}
@@ -490,12 +490,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 ))}
               </List>
             </Collapse>
-          </>
+          </Box>
         )}
 
         {/* Processus Crédit — masqué si aucun item accessible */}
         {creditProcessItems.length > 0 && (
-          <>
+          <Box data-tour="sidebar-credit">
             <SectionHeader
               label={t('navigation.creditProcess')}
               expanded={creditExpanded}
@@ -508,12 +508,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 ))}
               </List>
             </Collapse>
-          </>
+          </Box>
         )}
 
         {/* Analyse hors-processus — uniquement pour les profils financiers */}
         {outOfProcessItems.length > 0 && (
-          <>
+          <Box data-tour="sidebar-analysis">
             <SectionHeader
               label={t('navigation.outOfProcessAnalysis')}
               expanded={analysisExpanded}
@@ -585,7 +585,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
               </List>
             </Collapse>
-          </>
+          </Box>
         )}
 
         {/* Outils — uniquement pour les profils concernés */}
@@ -610,7 +610,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Configuration — admin seulement */}
         {configItems.length > 0 && (
-          <>
+          <Box data-tour="sidebar-config">
             <SectionHeader
               label="Configuration"
               expanded={configExpanded}
@@ -668,7 +668,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
               </List>
             </Collapse>
-          </>
+          </Box>
         )}
 
         {/* Support */}
