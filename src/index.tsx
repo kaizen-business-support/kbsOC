@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import './index.css';
+import './styles/shepherd.css';
 import './i18n'; // Initialize i18n
 
 // Reload once when a lazy chunk fails to load (stale cache after deployment)
