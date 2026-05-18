@@ -31,6 +31,9 @@ export const OnboardingProvider: React.FC<OnboardingProviderProps> = ({ children
   const isMobile = useMediaQuery('(max-width:600px)');
 
   const tourRef = useRef<any | null>(null);
+  const buildAndStartTourRef = useRef<() => void>(() => {});
+  const destroyTourRef = useRef<() => void>(() => {});
+  const autoStartedForUserRef = useRef<string | null>(null);
   const [isActive, setIsActive] = useState(false);
 
   const user = userState.currentUser;
@@ -114,23 +117,35 @@ export const OnboardingProvider: React.FC<OnboardingProviderProps> = ({ children
     setTimeout(() => buildAndStartTour(), 300);
   }, [buildAndStartTour]);
 
-  // Auto-launch on first login.
-  useEffect(() => {
-    if (!userId) return;
-    let cancelled = false;
+  // Keep refs current so the auto-launch effect can call the latest callbacks
+  // without re-running on every render (callbacks change identity on each render
+  // because useModuleAccess returns a fresh canAccess).
+  useEffect(() => { buildAndStartTourRef.current = buildAndStartTour; }, [buildAndStartTour]);
+  useEffect(() => { destroyTourRef.current = destroyTour; }, [destroyTour]);
 
+  // Auto-launch on first login. Fires once per userId (guarded by autoStartedForUserRef)
+  // to prevent re-trigger loops caused by parent context updates.
+  useEffect(() => {
+    if (!userId) {
+      autoStartedForUserRef.current = null;
+      return;
+    }
+    if (autoStartedForUserRef.current === userId) return;
+    autoStartedForUserRef.current = userId;
+
+    let cancelled = false;
     getOnboardingStatus()
       .then(({ shouldShow }) => {
         if (cancelled || !shouldShow) return;
-        setTimeout(() => { if (!cancelled) buildAndStartTour(); }, 600);
+        setTimeout(() => { if (!cancelled) buildAndStartTourRef.current(); }, 600);
       })
       .catch(e => console.warn('onboarding status fetch failed', e));
 
     return () => {
       cancelled = true;
-      destroyTour();
+      destroyTourRef.current();
     };
-  }, [userId, buildAndStartTour, destroyTour]);
+  }, [userId]);
 
   const value = useMemo(() => ({ start, restart, skip, isActive }), [start, restart, skip, isActive]);
 
