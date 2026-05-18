@@ -73,6 +73,7 @@ model User {
   isOnLeave                Boolean                @default(false) @map("is_on_leave")
   azureId                  String?                @unique @map("azure_id")
   lastLogin                DateTime?              @map("last_login")
+  onboardingCompletedAt    DateTime?              @map("onboarding_completed_at")
   // 2FA fields
   twoFactorEnabled         Boolean                @default(false) @map("two_factor_enabled")
   twoFactorSecret          String?                @map("two_factor_secret")
