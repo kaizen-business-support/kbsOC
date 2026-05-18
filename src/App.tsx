@@ -8,6 +8,7 @@ import { SecurityLockProvider } from './contexts/SecurityLockContext';
 import { LockedBanner } from './components/security/LockedBanner';
 import { CompanyProvider } from './contexts/CompanyContext';
 import { ModuleProfileProvider } from './contexts/ModuleProfileContext';
+import { OnboardingProvider } from './components/onboarding/OnboardingProvider';
 import { ApiService } from './services/api';
 import { ThemeWrapper } from './components/ThemeWrapper';
 import { MsalWrapper } from './components/MsalWrapper';
@@ -593,9 +594,11 @@ function App() {
         <UserProvider>
           <AppProvider>
             <ModuleProfileProvider>
-              <ThemeWrapper>
-                <AppContent />
-              </ThemeWrapper>
+              <OnboardingProvider>
+                <ThemeWrapper>
+                  <AppContent />
+                </ThemeWrapper>
+              </OnboardingProvider>
             </ModuleProfileProvider>
           </AppProvider>
         </UserProvider>
