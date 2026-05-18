@@ -39,6 +39,8 @@ import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
 import { PolicyGuideDialog } from './PolicyGuideDialog';
 import { usePolicyGuide } from '../hooks/usePolicyGuide';
+import TourIcon from '@mui/icons-material/TourOutlined';
+import { useOnboarding } from './onboarding/useOnboarding';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -65,6 +67,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onPage
   const { t } = useTranslation();
   const { state: userState, logout, getRoleLabel } = useUser();
   const { open: policyGuideOpen, policy: policyGuide, openGuide, closeGuide } = usePolicyGuide(userState.isAuthenticated);
+  const { restart: restartOnboarding } = useOnboarding();
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
   const { canInstall, isInstalled, installViaPWA, downloadWindowsInstaller, downloadMacInstaller } = usePWAInstall();
   const [installMenuAnchor, setInstallMenuAnchor] = useState<null | HTMLElement>(null);
@@ -152,6 +155,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onPage
     >
       <Toolbar>
         <IconButton
+          data-tour="mobile-menu-trigger"
           aria-label="open drawer"
           onClick={onMenuClick}
           edge="start"
@@ -353,6 +357,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onPage
               {/* Avatar */}
               <Tooltip title="Mon compte" enterDelay={400}>
                 <IconButton
+                  data-tour="header-profile"
                   onClick={handleUserMenuClick}
                   sx={{
                     p:          0.5,
@@ -469,6 +474,16 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onPage
                 <MenuItem onClick={handleChangePasswordClick}>
                   <ListItemIcon><LockIcon fontSize="small" sx={{ color: HDR.textMuted }} /></ListItemIcon>
                   <ListItemText primary="Changer mon mot de passe" />
+                </MenuItem>
+
+                <MenuItem
+                  onClick={() => {
+                    handleUserMenuClose();
+                    restartOnboarding();
+                  }}
+                >
+                  <ListItemIcon><TourIcon fontSize="small" sx={{ color: HDR.textMuted }} /></ListItemIcon>
+                  <ListItemText primary="Refaire le tour de bienvenue" />
                 </MenuItem>
 
                 <Divider sx={{ borderColor: HDR.menuDivider }} />
