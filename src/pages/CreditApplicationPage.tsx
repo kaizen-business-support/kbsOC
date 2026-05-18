@@ -14,12 +14,15 @@ import {
   Avatar,
   Alert,
   Chip,
-  Paper,
   Autocomplete,
   LinearProgress,
-  Divider,
-  IconButton,
-  Tooltip,
+  Backdrop,
+  CircularProgress,
+  Snackbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Business as BusinessIcon,
@@ -30,12 +33,10 @@ import {
   ArrowForward as NextIcon,
   ArrowBack as BackIcon,
   Send as SubmitIcon,
-  Delete as ClearIcon,
   Info as InfoIcon,
   CalendarToday as CalIcon,
   Timeline as TimelineIcon,
 } from '@mui/icons-material';
-import { RichTextEditor } from '../components/RichTextEditor';
 import { DocumentManager } from '../components/DocumentManager';
 import { FinancialDataInputTabs } from '../components/FinancialDataInputTabs';
 import { ApiService } from '../services/api';
@@ -46,6 +47,11 @@ import { OtpVerificationDialog } from '../components/OtpVerificationDialog';
 import { useSecurityLock } from '../hooks/useSecurityLock';
 
 const DRAFT_KEY = 'credit_application';
+
+// Bornes de validation (alignées avec le backend POST /api/applications)
+const AMOUNT_CAP = 100_000_000_000; // 100 milliards XOF
+const PURPOSE_MIN_LEN = 20;
+const PURPOSE_MAX_LEN = 1000;
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
 const BG = '#f7f8fc';
@@ -185,6 +191,10 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
   const [draftRestored, setDraftRestored] = useState(false);
   const [showDraftBanner, setShowDraftBanner] = useState(false);
   const [otpOpen, setOtpOpen] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [uploadErrorDialog, setUploadErrorDialog] = useState<{ open: boolean; failed: number; applicationId: string | null }>({
+    open: false, failed: 0, applicationId: null,
+  });
   const [creationPermission, setCreationPermission] = useState<{
     canCreate: boolean | null;
     requiredRole: string | null;
@@ -217,7 +227,7 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
     };
   });
 
-  const [preliminaryAnalysis, setPreliminaryAnalysis] = useState<string>(() => {
+  const [preliminaryAnalysis] = useState<string>(() => {
     const d = loadFormDraft<any>(DRAFT_KEY);
     return d?.preliminaryAnalysis ?? '';
   });
@@ -239,12 +249,19 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
   const [pendingDocuments, setPendingDocuments] = useState<any[]>([]);
 
   // ── Brouillon ────────────────────────────────────────────────────────────────
+  const [draftHadDocuments, setDraftHadDocuments] = useState(false);
+
   useEffect(() => {
     if (!draftRestored && hasSavedDraft(DRAFT_KEY)) {
       const d = loadFormDraft<any>(DRAFT_KEY);
       if (d) {
         if (d.activeStep !== undefined) setActiveStep(d.activeStep);
         if (d.selectedClientId) setSelectedClientId(d.selectedClientId);
+        // L'utilisateur avait atteint l'étape documents ou au-delà → on l'avertit
+        // que les pièces uploadées localement ne sont pas restaurables.
+        if (d.activeStep !== undefined && d.activeStep >= 3) {
+          setDraftHadDocuments(true);
+        }
         setShowDraftBanner(true);
       }
       setDraftRestored(true);
@@ -259,7 +276,27 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
   });
 
   // ── Vérification permission création ─────────────────────────────────────────
+  // Reset l'état du wizard au changement de société active (cloisonnement multi-tenant)
+  // pour éviter qu'un client / type de crédit / draft d'une société A subsiste sur B.
+  const previousCompanyIdRef = React.useRef<string | undefined>(activeCompany?.id);
   useEffect(() => {
+    const prev = previousCompanyIdRef.current;
+    const curr = activeCompany?.id;
+    if (prev !== undefined && curr !== undefined && prev !== curr) {
+      // Le user a basculé de société — on purge brouillon + sélections
+      clearFormDraft(DRAFT_KEY);
+      setActiveStep(0);
+      setSelectedClient(null);
+      setSelectedClientId('');
+      setCreditRequest(r => ({ ...r, creditTypeId: '', amount: 0, purpose: '' }));
+      setFinancialData({});
+      setFinancialDocuments([]);
+      setPendingDocuments([]);
+      setShowDraftBanner(false);
+    }
+    previousCompanyIdRef.current = curr;
+
+    setCreationPermission({ canCreate: null, requiredRole: null, requiredRoleLabel: null });
     ApiService.getCreationPermission().then(r => {
       if (r.success && r.data) {
         setCreationPermission({
@@ -269,7 +306,6 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
         });
       } else {
         // Erreur API : on bloque par défaut — le backend est le vrai garde-fou.
-        // Afficher canCreate: null pour distinguer "pas encore chargé" de "refusé".
         setCreationPermission({ canCreate: false, requiredRole: null, requiredRoleLabel: null });
       }
     });
@@ -317,11 +353,98 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
   const handleFinancialDocumentUploaded = (document: any) =>
     setFinancialDocuments(prev => [...prev, { ...document, category: 'financial', uploadSource: 'financial_statements' }]);
 
+  // ── Validation de l'étape Crédit ─────────────────────────────────────────────
+  const selectedCreditTypeForValidation = creditTypes.find(ct => ct.id === creditRequest.creditTypeId);
+  const validateStep1 = (): Record<string, string> => {
+    const errs: Record<string, string> = {};
+    const ct = selectedCreditTypeForValidation;
+
+    if (!creditRequest.creditTypeId) {
+      errs.creditTypeId = 'Sélectionnez un type de financement.';
+    }
+
+    if (!creditRequest.amount || creditRequest.amount <= 0) {
+      errs.amount = 'Le montant doit être strictement positif.';
+    } else if (!Number.isInteger(creditRequest.amount)) {
+      errs.amount = 'Le montant doit être un entier (sans décimales).';
+    } else if (creditRequest.amount > AMOUNT_CAP) {
+      errs.amount = `Le montant ne peut pas dépasser ${AMOUNT_CAP.toLocaleString('fr-FR')} XOF.`;
+    }
+
+    const purposeLen = creditRequest.purpose?.trim().length || 0;
+    if (purposeLen === 0) {
+      errs.purpose = "L'objet du crédit est obligatoire.";
+    } else if (purposeLen < PURPOSE_MIN_LEN) {
+      errs.purpose = `Décrivez l'objet en au moins ${PURPOSE_MIN_LEN} caractères (${purposeLen}/${PURPOSE_MIN_LEN}).`;
+    } else if (purposeLen > PURPOSE_MAX_LEN) {
+      errs.purpose = `L'objet est trop long (${purposeLen}/${PURPOSE_MAX_LEN} max).`;
+    }
+
+    if (!Number.isInteger(creditRequest.duration) || creditRequest.duration < 1) {
+      errs.duration = 'La durée doit être un entier ≥ 1 mois.';
+    } else if (ct?.minDuration != null && creditRequest.duration < ct.minDuration) {
+      errs.duration = `Durée inférieure au minimum (${ct.minDuration} mois).`;
+    } else if (ct?.maxDuration != null && creditRequest.duration > ct.maxDuration) {
+      errs.duration = `Durée supérieure au maximum (${ct.maxDuration} mois).`;
+    }
+
+    if (creditRequest.proposedRate < 0) {
+      errs.proposedRate = 'Le taux ne peut pas être négatif.';
+    } else if (ct?.minRate != null && creditRequest.proposedRate > 0 && creditRequest.proposedRate < Number(ct.minRate)) {
+      errs.proposedRate = `Taux inférieur au minimum (${ct.minRate} %).`;
+    } else if (ct?.maxRate != null && creditRequest.proposedRate > Number(ct.maxRate)) {
+      errs.proposedRate = `Taux supérieur au maximum (${ct.maxRate} %).`;
+    } else if (creditRequest.proposedRate && Math.round(creditRequest.proposedRate * 100) !== creditRequest.proposedRate * 100) {
+      errs.proposedRate = 'Maximum 2 décimales.';
+    }
+
+    if (ct?.requiresCollateral) {
+      if (!creditRequest.collateralType?.trim()) {
+        errs.collateralType = 'Le type de garantie est obligatoire pour ce type de crédit.';
+      }
+      if (!creditRequest.collateralValue || creditRequest.collateralValue <= 0) {
+        errs.collateralValue = 'La valeur de la garantie est obligatoire et doit être > 0.';
+      }
+    }
+
+    return errs;
+  };
+
+  const step1Errors = validateStep1();
+
+  // Indicateurs clés requis pour considérer un exercice comptable comme "saisi".
+  const REQUIRED_FINANCIAL_KEYS = [
+    'chiffre_affaires', 'resultat_net', 'total_actif', 'capitaux_propres', 'dettes_financieres',
+  ];
+
+  const isYearComplete = (year: number): boolean => {
+    const entry = financialData[year];
+    if (!entry) return false;
+    const d = entry?.multiyear_data?.N?.data ?? entry;
+    return REQUIRED_FINANCIAL_KEYS.every(k => {
+      const v = d?.[k];
+      return v != null && v !== '' && Number(v) !== 0;
+    });
+  };
+
+  const completedYearsCount = (): number => {
+    const referenceYearsArr = Array.from({ length: numberOfYears }, (_, i) => referenceYear - i);
+    return referenceYearsArr.filter(isYearComplete).length;
+  };
+
   const isStepComplete = (step: number): boolean => {
     if (step === 0) return !!selectedClientId;
-    if (step === 1) return !!(creditRequest.amount > 0 && creditRequest.purpose && creditRequest.creditTypeId);
+    if (step === 1) return Object.keys(step1Errors).length === 0;
+    // Étape 2 : exiger au moins 2 exercices complets (N + N-1) avec les 5 indicateurs clés.
+    if (step === 2) return completedYearsCount() >= 2;
+    // Étape 3 : avertissement non-bloquant — voir le panneau « Pièces recommandées ».
+    if (step === 3) return true;
     return true;
   };
+
+  // Étape 4 : la soumission est autorisée uniquement si toutes les étapes 0-3 sont valides.
+  const canSubmitApplication =
+    isStepComplete(0) && isStepComplete(1) && isStepComplete(2) && isStepComplete(3);
 
   const canGoNext = isStepComplete(activeStep);
 
@@ -329,8 +452,9 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
     new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', minimumFractionDigits: 0 }).format(amount);
 
   const handleSubmitApplication = async () => {
-    if (!selectedClientId) throw new Error('Aucun client sélectionné. Veuillez sélectionner un client.');
-    if (!userState.currentUser?.id) throw new Error('Session expirée. Veuillez vous reconnecter.');
+    setSubmitError(null);
+    if (!selectedClientId) { setSubmitError('Aucun client sélectionné. Veuillez sélectionner un client.'); return; }
+    if (!userState.currentUser?.id) { setSubmitError('Session expirée. Veuillez vous reconnecter.'); return; }
     setIsSubmitting(true);
     try {
       const result = await ApiService.createApplication({
@@ -358,15 +482,15 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
       });
 
       if (!result.success) {
-        throw new Error(result.error || 'Erreur lors de la création de la demande');
+        setSubmitError(result.error || 'Erreur lors de la création de la demande');
+        return;
       }
 
-      clearFormDraft(DRAFT_KEY);
       const realAppId = result.data?.id || (result.data as any)?.application?.id;
+      let uploadErrors = 0;
       if (realAppId && pendingDocuments.length > 0) {
         const token = localStorage.getItem('optimus_access_token');
         const uploadUrl = `${window.location.origin}/api/documents/${realAppId}/upload`;
-        let uploadErrors = 0;
         for (const doc of pendingDocuments) {
           if (!doc.file) continue;
           const fd = new FormData();
@@ -384,11 +508,17 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
             console.error('Upload network error:', e);
           }
         }
-        if (uploadErrors > 0) {
-          console.warn(`${uploadErrors} document(s) n'ont pas pu être téléversés.`);
-        }
       }
-      onNavigate('workflow');
+
+      // Si des documents ont échoué, demander confirmation à l'utilisateur avant de naviguer.
+      if (uploadErrors > 0) {
+        setUploadErrorDialog({ open: true, failed: uploadErrors, applicationId: realAppId });
+      } else {
+        clearFormDraft(DRAFT_KEY);
+        onNavigate('workflow');
+      }
+    } catch (e: any) {
+      setSubmitError(e?.message || 'Erreur inattendue lors de la création de la demande.');
     } finally {
       setIsSubmitting(false);
     }
@@ -397,6 +527,19 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
   const selectedCreditType = creditTypes.find(ct => ct.id === creditRequest.creditTypeId);
   const financialYears = Array.from({ length: numberOfYears }, (_, i) => referenceYear - i);
   const filledYears = financialYears.filter(y => !!financialData[y]).length;
+
+  // ── Loader plein écran tant que la permission de création n'est pas connue ───
+  if (creationPermission.canCreate === null) {
+    return (
+      <Box sx={{ bgcolor: BG, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 2 }}>
+        <CircularProgress size={48} />
+        <Typography variant="body2" color="text.secondary">Vérification de vos droits…</Typography>
+        <Box sx={{ width: 240 }}>
+          <LinearProgress />
+        </Box>
+      </Box>
+    );
+  }
 
   // ── Blocage si le rôle ne correspond pas à l'étape de création ───────────────
   if (creationPermission.canCreate === false) {
@@ -471,6 +614,11 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
             }
           >
             Vos saisies précédentes ont été restaurées automatiquement.
+            {draftHadDocuments && (
+              <Typography variant="caption" sx={{ display: 'block', mt: 0.5, opacity: 0.9 }}>
+                ⚠️ Les documents joints n'ont pas pu être restaurés, veuillez les re-téléverser à l'étape « Documents ».
+              </Typography>
+            )}
           </Alert>
         )}
 
@@ -603,7 +751,18 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
                 {creditTypes.map(ct => (
                   <Grid item xs={12} sm={6} key={ct.id}>
                     <Box
-                      onClick={() => setCreditRequest(r => ({ ...r, creditTypeId: ct.id }))}
+                      onClick={() => setCreditRequest(r => ({
+                        ...r,
+                        creditTypeId: ct.id,
+                        // Pré-remplir le taux par défaut si l'utilisateur n'a pas encore saisi de taux.
+                        proposedRate: r.proposedRate && r.proposedRate > 0
+                          ? r.proposedRate
+                          : Number(ct.defaultRate) || 0,
+                        // Pré-remplir la durée min si la valeur actuelle est la valeur par défaut (12).
+                        duration: r.duration && r.duration !== 12
+                          ? r.duration
+                          : (ct.minDuration ?? 12),
+                      }))}
                       sx={{
                         p: 2.5, borderRadius: 3, cursor: 'pointer',
                         border: '2px solid',
@@ -634,6 +793,21 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
               )}
             </SectionCard>
 
+            {selectedCreditType?.requiresCollateral && (
+              <Alert
+                severity="warning"
+                icon={<InfoIcon />}
+                sx={{ mb: 3, borderRadius: 3 }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Garantie obligatoire
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Ce type de crédit ({selectedCreditType.name}) exige une garantie. Renseignez le type et la valeur de la garantie ci-dessous.
+                </Typography>
+              </Alert>
+            )}
+
             <SectionCard
               title="Paramètres du crédit"
               icon={<TimelineIcon sx={{ fontSize: 18, color: STEP_COLORS[1] }} />}
@@ -646,23 +820,38 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
                     value={creditRequest.amount || ''}
                     onChange={e => setCreditRequest(r => ({ ...r, amount: Number(e.target.value) }))}
                     InputProps={{ endAdornment: <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>XOF</Typography> }}
-                    helperText={creditRequest.amount > 0 ? formatCurrency(creditRequest.amount) : ' '}
+                    inputProps={{ min: 1, max: AMOUNT_CAP, step: 1 }}
+                    error={!!step1Errors.amount}
+                    helperText={step1Errors.amount || (creditRequest.amount > 0 ? formatCurrency(creditRequest.amount) : ' ')}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField
-                    fullWidth label="Durée (mois)" type="number"
+                    fullWidth label="Durée (mois) *" type="number"
                     value={creditRequest.duration}
                     onChange={e => setCreditRequest(r => ({ ...r, duration: Number(e.target.value) }))}
-                    helperText={creditRequest.duration ? `${Math.round(creditRequest.duration / 12 * 10) / 10} an(s)` : ' '}
+                    inputProps={{ min: 1, step: 1 }}
+                    error={!!step1Errors.duration}
+                    helperText={step1Errors.duration || (() => {
+                      const min = selectedCreditType?.minDuration;
+                      const max = selectedCreditType?.maxDuration;
+                      const range = (min != null && max != null) ? `Plage autorisée : ${min}–${max} mois` : '';
+                      const yrs = creditRequest.duration ? `${Math.round(creditRequest.duration / 12 * 10) / 10} an(s)` : '';
+                      return [range, yrs].filter(Boolean).join(' · ') || ' ';
+                    })()}
                   />
                 </Grid>
                 <Grid item xs={12}>
                   <TextField
                     fullWidth label="Objet du crédit *" multiline rows={3}
                     value={creditRequest.purpose}
-                    onChange={e => setCreditRequest(r => ({ ...r, purpose: e.target.value }))}
-                    helperText="Décrivez précisément l'utilisation prévue des fonds"
+                    onChange={e => setCreditRequest(r => ({ ...r, purpose: e.target.value.slice(0, PURPOSE_MAX_LEN) }))}
+                    inputProps={{ maxLength: PURPOSE_MAX_LEN }}
+                    error={!!step1Errors.purpose}
+                    helperText={
+                      step1Errors.purpose
+                        || `Décrivez précisément l'utilisation prévue des fonds — ${creditRequest.purpose.length}/${PURPOSE_MAX_LEN} caractères`
+                    }
                     placeholder="Ex : Financement du fonds de roulement pour l'extension des activités…"
                   />
                 </Grid>
@@ -671,7 +860,15 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
                     fullWidth label="Taux proposé (%)" type="number"
                     value={creditRequest.proposedRate || ''}
                     onChange={e => setCreditRequest(r => ({ ...r, proposedRate: Number(e.target.value) }))}
-                    inputProps={{ step: '0.1' }}
+                    inputProps={{ step: '0.01', min: 0 }}
+                    error={!!step1Errors.proposedRate}
+                    helperText={step1Errors.proposedRate || (() => {
+                      const min = selectedCreditType?.minRate;
+                      const max = selectedCreditType?.maxRate;
+                      if (min != null && max != null) return `Plage autorisée : ${min}–${max} %`;
+                      if (selectedCreditType?.defaultRate != null) return `Taux par défaut : ${selectedCreditType.defaultRate} %`;
+                      return ' ';
+                    })()}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -688,18 +885,26 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField
-                    fullWidth label="Type de garantie"
+                    fullWidth
+                    label={selectedCreditType?.requiresCollateral ? 'Type de garantie *' : 'Type de garantie'}
                     value={creditRequest.collateralType}
                     onChange={e => setCreditRequest(r => ({ ...r, collateralType: e.target.value }))}
                     placeholder="Ex : Hypothèque, Nantissement, Caution…"
+                    error={!!step1Errors.collateralType}
+                    helperText={step1Errors.collateralType || ' '}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField
-                    fullWidth label="Valeur de la garantie" type="number"
+                    fullWidth
+                    label={selectedCreditType?.requiresCollateral ? 'Valeur de la garantie *' : 'Valeur de la garantie'}
+                    type="number"
                     value={creditRequest.collateralValue || ''}
                     onChange={e => setCreditRequest(r => ({ ...r, collateralValue: Number(e.target.value) }))}
                     InputProps={{ endAdornment: <Typography variant="body2" color="text.secondary">XOF</Typography> }}
+                    inputProps={{ min: 0 }}
+                    error={!!step1Errors.collateralValue}
+                    helperText={step1Errors.collateralValue || ' '}
                   />
                 </Grid>
               </Grid>
@@ -810,6 +1015,19 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
               )}
             </SectionCard>
 
+            {/* Avertissement bloquant : min 2 exercices complets requis */}
+            {completedYearsCount() < 2 && (
+              <Alert severity="info" sx={{ mb: 3, borderRadius: 3 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Saisissez au moins 2 exercices complets (N et N-1) pour continuer.
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Indicateurs requis par exercice : chiffre d'affaires, résultat net, total actif, capitaux propres, dettes financières.
+                  Actuellement {completedYearsCount()} exercice(s) complet(s).
+                </Typography>
+              </Alert>
+            )}
+
             {/* Financial input */}
             <SectionCard
               title={`États financiers SYSCOHADA — ${referenceYear} à ${referenceYear - (numberOfYears - 1)}`}
@@ -830,122 +1048,50 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
         )}
 
         {/* ── STEP 3 : Documents ───────────────────────────────────────────────── */}
-        {activeStep === 3 && (
-          <SectionCard
-            title="Documents justificatifs"
-            icon={<DocumentIcon sx={{ fontSize: 18, color: STEP_COLORS[3] }} />}
-            accent={STEP_COLORS[3]}
-          >
-            {financialDocuments.length > 0 && (
-              <Alert severity="success" sx={{ mb: 3, borderRadius: 3 }}>
-                {financialDocuments.length} document(s) financier(s) importé(s) depuis l'étape précédente.
-              </Alert>
-            )}
-            <DocumentManager
-              clientId={selectedClientId || 'new'}
-              initialDocuments={financialDocuments}
-              onDocumentsChange={setPendingDocuments}
-              onDocumentProcessed={() => {}}
-            />
-          </SectionCard>
-        )}
+        {activeStep === 3 && (() => {
+          const allDocs = [...financialDocuments, ...pendingDocuments];
+          const hasFinancial = allDocs.some(d => (d.category || '').toLowerCase() === 'financial' || (d.category || '').toLowerCase() === 'financial_statements');
+          const hasLegal = allDocs.some(d => (d.category || '').toLowerCase() === 'legal');
+          const missing: string[] = [];
+          if (!hasFinancial) missing.push('États financiers (FINANCIAL_STATEMENTS)');
+          if (!hasLegal) missing.push('Documents juridiques (LEGAL) — RCCM, statuts');
+          return (
+            <SectionCard
+              title="Documents justificatifs"
+              icon={<DocumentIcon sx={{ fontSize: 18, color: STEP_COLORS[3] }} />}
+              accent={STEP_COLORS[3]}
+            >
+              {financialDocuments.length > 0 && (
+                <Alert severity="success" sx={{ mb: 3, borderRadius: 3 }}>
+                  {financialDocuments.length} document(s) financier(s) importé(s) depuis l'étape précédente.
+                </Alert>
+              )}
 
-        {/* ── STEP 4 : Résumé des données financières ─────────────────────────── */}
-        {activeStep === 4 && filledYears > 0 && (
-          <SectionCard
-            title="Résumé des données financières"
-            icon={<FinancialIcon sx={{ fontSize: 18, color: STEP_COLORS[2] }} />}
-            accent={STEP_COLORS[2]}
-          >
-            <Box sx={{ overflowX: 'auto' }}>
-              <Box
-                component="table"
-                sx={{
-                  width: '100%', borderCollapse: 'collapse',
-                  '& th, & td': { px: 2, py: 1.25, textAlign: 'right', fontSize: '0.8rem', borderBottom: '1px solid rgba(0,0,0,0.06)' },
-                  '& th': { fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', bgcolor: '#f8fafc' },
-                  '& td:first-of-type, & th:first-of-type': { textAlign: 'left' },
-                  '& tr:last-child td': { borderBottom: 'none' },
-                  '& tr:hover td': { bgcolor: '#f8fafc' },
-                }}
-              >
-                <thead>
-                  <tr>
-                    <th>Indicateur</th>
-                    {financialYears.filter(y => !!financialData[y]).sort((a, b) => b - a).map(y => (
-                      <th key={y}>{y === referenceYear ? `${y} (N)` : `${y} (N-${referenceYear - y})`}</th>
+              {/* Panneau « Pièces recommandées » — avertissement non-bloquant */}
+              {missing.length > 0 && (
+                <Alert severity="warning" sx={{ mb: 3, borderRadius: 3 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Pièces recommandées manquantes
+                  </Typography>
+                  <Typography variant="caption" component="div" sx={{ color: 'text.secondary' }}>
+                    Vous pouvez continuer sans elles, mais elles seront probablement réclamées plus tard par les analystes :
+                  </Typography>
+                  <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
+                    {missing.map(m => (
+                      <li key={m}><Typography variant="caption">{m}</Typography></li>
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { key: 'chiffre_affaires',   label: "Chiffre d'affaires" },
-                    { key: 'resultat_net',        label: 'Résultat net' },
-                    { key: 'total_actif',         label: 'Total actif' },
-                    { key: 'capitaux_propres',    label: 'Capitaux propres' },
-                    { key: 'dettes_financieres',  label: 'Dettes financières' },
-                  ].map(({ key, label }) => (
-                    <tr key={key}>
-                      <td><Typography variant="body2" fontWeight={600}>{label}</Typography></td>
-                      {financialYears.filter(y => !!financialData[y]).sort((a, b) => b - a).map(y => {
-                        const entry = financialData[y];
-                        const d = entry?.multiyear_data?.N?.data ?? entry;
-                        const val = d?.[key];
-                        return (
-                          <td key={y}>
-                            <Typography variant="body2" color={key === 'resultat_net' && val < 0 ? 'error.main' : 'text.primary'}>
-                              {val != null ? formatCurrency(val) : '—'}
-                            </Typography>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                  <tr>
-                    <td colSpan={financialYears.filter(y => !!financialData[y]).length + 1}>
-                      <Box sx={{ height: 8 }} />
-                    </td>
-                  </tr>
-                  {[
-                    { key: 'netMargin',     label: 'Marge nette',       isRatio: true },
-                    { key: 'currentRatio',  label: 'Ratio de liquidité', isRatio: true },
-                    { key: 'roa',           label: 'ROA',               isRatio: true },
-                    { key: 'debtToEquity',  label: 'Dette / FP',        isRatio: true },
-                  ].map(({ key, label }) => (
-                    <tr key={key}>
-                      <td><Typography variant="body2" fontWeight={600} color="text.secondary">{label}</Typography></td>
-                      {financialYears.filter(y => !!financialData[y]).sort((a, b) => b - a).map(y => {
-                        const entry = financialData[y];
-                        const d = entry?.multiyear_data?.N?.data ?? entry;
-                        const ca = Number(d?.chiffre_affaires) || 0;
-                        const rn = Number(d?.resultat_net) || 0;
-                        const ta = Number(d?.total_actif) || 0;
-                        const cp = Number(d?.capitaux_propres) || 0;
-                        const df = Number(d?.dettes_financieres) || 0;
-                        const actifCirculant = Number(d?.actif_circulant) || 0;
-                        const passifCourant = Number(d?.passif_courant) || Number(d?.dettes_court_terme) || 0;
-                        const computedRatios: Record<string, number | null> = {
-                          netMargin: ca > 0 ? rn / ca : null,
-                          currentRatio: passifCourant > 0 ? actifCirculant / passifCourant : null,
-                          roa: ta > 0 ? rn / ta : null,
-                          debtToEquity: cp > 0 ? df / cp : null,
-                        };
-                        const val = entry?.ratios?.[key] ?? computedRatios[key];
-                        return (
-                          <td key={y}>
-                            <Typography variant="body2" color="text.secondary">
-                              {val != null ? (key === 'netMargin' || key === 'roa' ? `${(val * 100).toFixed(1)}%` : Number(val).toFixed(2)) : '—'}
-                            </Typography>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </Box>
-            </Box>
-          </SectionCard>
-        )}
+                  </Box>
+                </Alert>
+              )}
+
+              <DocumentManager
+                clientId={selectedClientId || 'new'}
+                initialDocuments={financialDocuments}
+                onDocumentsChange={setPendingDocuments}
+              />
+            </SectionCard>
+          );
+        })()}
 
         {/* ── STEP 4 : Récapitulatif & soumission ──────────────────────────────── */}
         {activeStep === 4 && (
@@ -1005,7 +1151,7 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
               icon={<FinancialIcon sx={{ fontSize: 18, color: STEP_COLORS[2] }} />}
               accent={STEP_COLORS[2]}
             >
-              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: filledYears > 0 ? 3 : 0 }}>
                 {financialYears.map((y, i) => (
                   <Box key={y} sx={{
                     px: 3, py: 2, borderRadius: 3,
@@ -1024,6 +1170,97 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
                   </Box>
                 ))}
               </Box>
+
+              {/* Détail des indicateurs et ratios (en complément des pills ci-dessus) */}
+              {filledYears > 0 && (
+                <Box sx={{ overflowX: 'auto' }}>
+                  <Box
+                    component="table"
+                    sx={{
+                      width: '100%', borderCollapse: 'collapse',
+                      '& th, & td': { px: 2, py: 1.25, textAlign: 'right', fontSize: '0.8rem', borderBottom: '1px solid rgba(0,0,0,0.06)' },
+                      '& th': { fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.7rem', bgcolor: '#f8fafc' },
+                      '& td:first-of-type, & th:first-of-type': { textAlign: 'left' },
+                      '& tr:last-child td': { borderBottom: 'none' },
+                      '& tr:hover td': { bgcolor: '#f8fafc' },
+                    }}
+                  >
+                    <thead>
+                      <tr>
+                        <th>Indicateur</th>
+                        {financialYears.filter(y => !!financialData[y]).sort((a, b) => b - a).map(y => (
+                          <th key={y}>{y === referenceYear ? `${y} (N)` : `${y} (N-${referenceYear - y})`}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { key: 'chiffre_affaires',   label: "Chiffre d'affaires" },
+                        { key: 'resultat_net',        label: 'Résultat net' },
+                        { key: 'total_actif',         label: 'Total actif' },
+                        { key: 'capitaux_propres',    label: 'Capitaux propres' },
+                        { key: 'dettes_financieres',  label: 'Dettes financières' },
+                      ].map(({ key, label }) => (
+                        <tr key={key}>
+                          <td><Typography variant="body2" fontWeight={600}>{label}</Typography></td>
+                          {financialYears.filter(y => !!financialData[y]).sort((a, b) => b - a).map(y => {
+                            const entry = financialData[y];
+                            const d = entry?.multiyear_data?.N?.data ?? entry;
+                            const val = d?.[key];
+                            return (
+                              <td key={y}>
+                                <Typography variant="body2" color={key === 'resultat_net' && val < 0 ? 'error.main' : 'text.primary'}>
+                                  {val != null ? formatCurrency(val) : '—'}
+                                </Typography>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                      <tr>
+                        <td colSpan={financialYears.filter(y => !!financialData[y]).length + 1}>
+                          <Box sx={{ height: 8 }} />
+                        </td>
+                      </tr>
+                      {[
+                        { key: 'netMargin',     label: 'Marge nette' },
+                        { key: 'currentRatio',  label: 'Ratio de liquidité' },
+                        { key: 'roa',           label: 'ROA' },
+                        { key: 'debtToEquity',  label: 'Dette / FP' },
+                      ].map(({ key, label }) => (
+                        <tr key={key}>
+                          <td><Typography variant="body2" fontWeight={600} color="text.secondary">{label}</Typography></td>
+                          {financialYears.filter(y => !!financialData[y]).sort((a, b) => b - a).map(y => {
+                            const entry = financialData[y];
+                            const d = entry?.multiyear_data?.N?.data ?? entry;
+                            const ca = Number(d?.chiffre_affaires) || 0;
+                            const rn = Number(d?.resultat_net) || 0;
+                            const ta = Number(d?.total_actif) || 0;
+                            const cp = Number(d?.capitaux_propres) || 0;
+                            const df = Number(d?.dettes_financieres) || 0;
+                            const actifCirculant = Number(d?.actif_circulant) || 0;
+                            const passifCourant = Number(d?.passif_courant) || Number(d?.dettes_court_terme) || 0;
+                            const computedRatios: Record<string, number | null> = {
+                              netMargin: ca > 0 ? rn / ca : null,
+                              currentRatio: passifCourant > 0 ? actifCirculant / passifCourant : null,
+                              roa: ta > 0 ? rn / ta : null,
+                              debtToEquity: cp > 0 ? df / cp : null,
+                            };
+                            const val = entry?.ratios?.[key] ?? computedRatios[key];
+                            return (
+                              <td key={y}>
+                                <Typography variant="body2" color="text.secondary">
+                                  {val != null ? (key === 'netMargin' || key === 'roa' ? `${(val * 100).toFixed(1)}%` : Number(val).toFixed(2)) : '—'}
+                                </Typography>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Box>
+                </Box>
+              )}
             </SectionCard>
 
             <Box sx={{
@@ -1106,8 +1343,14 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
                 variant="contained"
                 endIcon={<SubmitIcon />}
                 onClick={() => setOtpOpen(true)}
-                disabled={isSubmitting || lockDisabled}
-                title={lockDisabled ? lockReason ?? '' : undefined}
+                disabled={isSubmitting || lockDisabled || !canSubmitApplication}
+                title={
+                  lockDisabled
+                    ? lockReason ?? ''
+                    : !canSubmitApplication
+                      ? 'Complétez toutes les étapes (client, crédit, états financiers) avant de soumettre.'
+                      : undefined
+                }
                 sx={{
                   borderRadius: 3, px: 4, fontWeight: 700,
                   background: 'linear-gradient(135deg, #2e7d32, #388e3c)',
@@ -1130,6 +1373,61 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
         onClose={() => setOtpOpen(false)}
         onVerified={handleSubmitApplication}
       />
+
+      {/* Snackbar erreurs submit */}
+      <Snackbar
+        open={!!submitError}
+        autoHideDuration={8000}
+        onClose={() => setSubmitError(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert severity="error" onClose={() => setSubmitError(null)} sx={{ minWidth: 320 }}>
+          {submitError}
+        </Alert>
+      </Snackbar>
+
+      {/* Dialog erreurs upload de documents */}
+      <Dialog
+        open={uploadErrorDialog.open}
+        onClose={() => setUploadErrorDialog(d => ({ ...d, open: false }))}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>Documents non téléversés</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {uploadErrorDialog.failed} document(s) n'ont pas pu être téléversés vers le serveur. Le dossier de crédit a bien été créé.
+          </Alert>
+          <Typography variant="body2">
+            Souhaitez-vous tout de même finaliser le dossier ? Les pièces manquantes pourront être ajoutées plus tard depuis la fiche du dossier.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setUploadErrorDialog(d => ({ ...d, open: false }))}
+            variant="outlined"
+          >
+            Retenter l'upload
+          </Button>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={() => {
+              clearFormDraft(DRAFT_KEY);
+              setUploadErrorDialog({ open: false, failed: 0, applicationId: null });
+              onNavigate('workflow');
+            }}
+          >
+            Finaliser quand même
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Backdrop pendant la soumission */}
+      <Backdrop open={isSubmitting} sx={{ zIndex: 1300, color: 'white', flexDirection: 'column', gap: 2 }}>
+        <CircularProgress color="inherit" />
+        <Typography variant="body2">Soumission du dossier en cours…</Typography>
+      </Backdrop>
     </Box>
   );
 };

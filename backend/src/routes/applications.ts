@@ -206,7 +206,6 @@ router.post('/', async (req: Request, res: Response) => {
       collateralValue,
       repaymentSchedule,
       createdBy,
-      assignedAnalystId,
       analysisResults
     } = req.body;
 
@@ -278,39 +277,25 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Récupère dynamiquement le rôle autorisé à créer une demande depuis la
     // première étape de type CREATION de la politique active (peu importe son stepName).
+    // Réutilise activePolicy déjà chargée ci-dessus pour éviter un second findFirst.
     if (userExists.role !== 'SUPER_ADMIN') {
-      const now = new Date();
-      const activePolicy = await prisma.creditPolicy.findFirst({
-        where: {
-          status: 'ACTIVE' as any,
-          isActive: true,
-          validFrom: { lte: now },
-          OR: [{ validTo: null }, { validTo: { gte: now } }],
-          companyId: req.companyId,
-        },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true },
+      const creationStep = await prisma.creditPolicyStep.findFirst({
+        where: { policyId: activePolicy.id, stepType: 'CREATION' as any, isActive: true },
+        orderBy: { order: 'asc' },
+        select: { assignedRole: true },
       });
 
-      if (activePolicy) {
-        const creationStep = await prisma.creditPolicyStep.findFirst({
-          where: { policyId: activePolicy.id, stepType: 'CREATION' as any, isActive: true },
-          orderBy: { order: 'asc' },
-          select: { assignedRole: true },
-        });
-
-        // Si la politique ne définit aucune étape CREATION, on n'impose pas de
-        // restriction de rôle ici : la création reste ouverte aux rôles disposant
-        // du permission applicatif (create_application).
-        if (creationStep) {
-          const requiredRole = creationStep.assignedRole;
-          if (userExists.role !== requiredRole) {
-            return res.status(403).json({
-              success: false,
-              error: `Votre rôle (${userExists.role}) ne vous permet pas de créer une demande de crédit. Cette action est réservée au rôle "${requiredRole}" selon la politique de crédit active.`,
-              requiredRole,
-            });
-          }
+      // Si la politique ne définit aucune étape CREATION, on n'impose pas de
+      // restriction de rôle ici : la création reste ouverte aux rôles disposant
+      // du permission applicatif (create_application).
+      if (creationStep) {
+        const requiredRole = creationStep.assignedRole;
+        if (userExists.role !== requiredRole) {
+          return res.status(403).json({
+            success: false,
+            error: `Votre rôle (${userExists.role}) ne vous permet pas de créer une demande de crédit. Cette action est réservée au rôle "${requiredRole}" selon la politique de crédit active.`,
+            requiredRole,
+          });
         }
       }
     }

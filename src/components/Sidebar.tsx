@@ -100,6 +100,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { activeCompany } = useCompany();
   const { canAccess, canAction } = useModuleAccess();
 
+  const [dashboardExpanded, setDashboardExpanded] = useState(true);
   const [creditExpanded, setCreditExpanded]     = useState(true);
   const [analysisExpanded, setAnalysisExpanded] = useState(true);
   const [configExpanded, setConfigExpanded]     = useState(true);
@@ -154,7 +155,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ...(canDispatching       ? [{ id: 'dispatching'         as PageType, label: 'Dispatching',                icon: DispatchIcon    }] : []),
     ...(canViewApplications  ? [{ id: 'approvals'           as PageType, label: 'Approbations',               icon: ApprovalMenuIcon, badgeCount: pendingApprovalsCount }] : []),
     ...(canViewApplications  ? [{ id: 'workflow'            as PageType, label: t('navigation.workflow'),     icon: WorkflowIcon    }] : []),
-    ...(canViewAnalytics     ? [{ id: 'analytics'           as PageType, label: t('navigation.analytics'),   icon: InsightsIcon    }] : []),
+  ];
+
+  // Pilotage & Rapports
+  const dashboardItems = [
+    { id: 'home' as PageType, label: t('navigation.home'), icon: DashboardIcon },
+    ...(canViewCodir    ? [{ id: 'codir-dashboard' as PageType, label: 'Tableau de Bord CODIR', icon: InsightsIcon }] : []),
+    ...(canViewAnalytics ? [{ id: 'analytics'       as PageType, label: t('navigation.analytics'), icon: InsightsIcon }] : []),
+    ...(canViewReports  ? [{ id: 'credit-reports'   as PageType, label: 'Rapports de Crédit',     icon: ReportsIcon  }] : []),
   ];
 
   // Analyse hors-processus — uniquement pour les profils d'analyse financière
@@ -162,7 +170,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'data-input' as PageType, label: t('navigation.dataInput'), icon: DataInputIcon },
     { id: 'analysis'   as PageType, label: t('navigation.analysis'),  icon: AnalysisIcon, requiresData: true },
     ...(canViewReports ? [{ id: 'reports' as PageType, label: t('navigation.reports'), icon: ReportsIcon, requiresData: true }] : []),
-    ...(canViewReports ? [{ id: 'credit-reports' as PageType, label: 'Rapports de Crédit', icon: InsightsIcon }] : []),
   ] : [];
 
   // Configuration — admin seulement
@@ -468,13 +475,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Scrollable nav */}
       <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', py: 1 }}>
-        {/* Dashboard */}
-        <List disablePadding sx={{ px: 0.5 }}>
-          <NavItem id="home" label={t('navigation.home')} icon={DashboardIcon} />
-          {canViewCodir && (
-            <NavItem id="codir-dashboard" label="Tableau de Bord CODIR" icon={InsightsIcon} />
-          )}
-        </List>
+        {/* Tableaux de bord & Rapports */}
+        {dashboardItems.length > 0 && (
+          <>
+            <SectionHeader
+              label="Pilotage & Rapports"
+              expanded={dashboardExpanded}
+              onToggle={() => setDashboardExpanded(p => !p)}
+            />
+            <Collapse in={open ? dashboardExpanded : true} timeout="auto" unmountOnExit={false}>
+              <List disablePadding sx={{ px: 0.5 }}>
+                {dashboardItems.map(item => (
+                  <NavItem key={item.id} id={item.id} label={item.label} icon={item.icon} />
+                ))}
+              </List>
+            </Collapse>
+          </>
+        )}
 
         {/* Processus Crédit — masqué si aucun item accessible */}
         {creditProcessItems.length > 0 && (
