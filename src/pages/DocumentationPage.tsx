@@ -328,8 +328,8 @@ export const DocumentationPage: React.FC<DocumentationPageProps> = ({ onNavigate
                 </Typography>
               </Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Récapitulatif des évolutions livrées dans cette version, à connaître avant
-                le déploiement en production.
+                Les principales améliorations apportées à OptimusCredit pour faciliter
+                votre travail quotidien.
               </Typography>
 
               <Accordion defaultExpanded>
@@ -346,29 +346,29 @@ export const DocumentationPage: React.FC<DocumentationPageProps> = ({ onNavigate
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Drawer d'analyse élargi (940 px sur écran large)"
-                        secondary="Plus d'espace pour les tableaux multi-années et la colonne d'évolution."
+                        primary="Vue d'analyse plus spacieuse"
+                        secondary="Davantage d'espace pour consulter les tableaux financiers pluriannuels et la variation entre exercices."
                       />
                     </ListItem>
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Nouvelle colonne « Évo. » sur le Bilan et le Compte de Résultat"
-                        secondary="Variation en pourcentage d'une année à l'autre, verte si positive (+x,x %), rouge si négative."
+                        primary="Évolution annuelle sur le Bilan et le Compte de Résultat"
+                        secondary="Comparaison directe d'une année à l'autre, signalée en vert (progression) ou en rouge (régression)."
                       />
                     </ListItem>
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Bouton « Voir le fichier source (Excel) »"
-                        secondary="Aperçu direct du fichier financier uploadé par le chargé d'affaires (détecté par mimeType ou extension .xlsx/.xls/.xlsm)."
+                        primary="Consultation du fichier financier d'origine"
+                        secondary="Accès en un clic au document Excel transmis par le client, pour recouper rapidement les chiffres affichés."
                       />
                     </ListItem>
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Tooltips explicatifs sur les cartes de ratios"
-                        secondary="Liquidité Générale, Marge Nette, Dette/Capitaux et Rotation Actif : chaque ratio est désormais accompagné d'une définition métier et de la norme cible."
+                        primary="Définitions et normes sur les ratios clés"
+                        secondary="Liquidité Générale, Marge Nette, Dette / Capitaux propres, Rotation de l'Actif : chaque ratio s'accompagne d'une explication métier et de sa norme de référence."
                       />
                     </ListItem>
                   </List>
@@ -387,35 +387,35 @@ export const DocumentationPage: React.FC<DocumentationPageProps> = ({ onNavigate
                 <AccordionDetails>
                   <Typography variant="body2" paragraph>
                     Chaque intervenant peut désormais accompagner son commentaire d'un avis
-                    explicite favorable / défavorable, restitué dans la synthèse globale du dossier.
+                    explicite favorable ou défavorable, restitué dans la synthèse globale du dossier.
                   </Typography>
                   <List dense>
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Sélecteur « Avis sur le dossier »"
-                        secondary="Boutons Favorable (vert) / Défavorable (rouge) — toggle on/off — dans le formulaire de saisie du commentaire."
+                        primary="Avis sur le dossier"
+                        secondary="Choix Favorable / Défavorable directement dans le formulaire de commentaire, ajustable à tout moment."
                       />
                     </ListItem>
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Badge dans chaque carte de commentaire"
-                        secondary="« Avis favorable » / « Avis défavorable » visible aux côtés du nom de l'intervenant."
+                        primary="Visibilité de l'avis sur chaque commentaire"
+                        secondary="L'avis exprimé apparaît clairement à côté du nom de l'intervenant, pour une lecture rapide du dossier."
                       />
                     </ListItem>
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Synthèse cumulative en tête du panneau Commentaires"
-                        secondary="Nombre de favorables/défavorables, barre de progression et pourcentage global (fond vert si ≥ 50 %, rouge sinon)."
+                        primary="Synthèse globale des avis"
+                        secondary="Vue d'ensemble en tête du panneau Commentaires : nombre d'avis favorables / défavorables et tendance générale du dossier."
                       />
                     </ListItem>
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Garde « Valider l'analyse »"
-                        secondary="Le bouton est désactivé tant qu'un commentaire saisi n'a pas été enregistré, pour éviter de perdre la saisie en cours."
+                        primary="Protection contre la perte d'un commentaire en cours"
+                        secondary="La validation de l'analyse n'est possible qu'après enregistrement du commentaire saisi, pour ne perdre aucune note."
                       />
                     </ListItem>
                   </List>
@@ -436,36 +436,29 @@ export const DocumentationPage: React.FC<DocumentationPageProps> = ({ onNavigate
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Règles IP par tenant"
-                        secondary="Whitelist / blacklist d'adresses ou de plages CIDR, appliquées après authentification (tenantIpGate)."
+                        primary="Contrôle des accès par adresse"
+                        secondary="Restriction des connexions aux adresses autorisées par votre établissement, pour limiter l'usage de la plateforme aux postes habilités."
                       />
                     </ListItem>
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
                         primary="Plages horaires d'accès"
-                        secondary="Définition de fenêtres autorisées par rôle, agence ou utilisateur — verrouillage hors fenêtre avec mode lecture seule optionnel."
+                        secondary="Définition de fenêtres d'utilisation autorisées par rôle, agence ou utilisateur, avec possibilité d'autoriser un accès en consultation seule en dehors de ces plages."
                       />
                     </ListItem>
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Détection brute-force"
-                        secondary="Verrouillage user-level (jamais IP, pour éviter les faux positifs derrière NAT) + notification email à l'utilisateur."
+                        primary="Protection contre les tentatives de connexion frauduleuses"
+                        secondary="Verrouillage automatique du compte concerné en cas de tentatives répétées erronées, avec notification immédiate par e-mail à l'utilisateur."
                       />
                     </ListItem>
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Historique des blocages"
-                        secondary="Tableau de bord dédié avec export CSV ; bannière verrouillage en direct côté UI (LockedBanner)."
-                      />
-                    </ListItem>
-                    <ListItem>
-                      <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
-                      <ListItemText
-                        primary="Sémantique HTTP 423 vs 403"
-                        secondary="423 Locked pour les blocages temporaires (hors horaires, brute-force) ; 403 Forbidden pour les règles IP — exposés via /api/security/time-status (polling 60 s)."
+                        primary="Historique des blocages et exports"
+                        secondary="Tableau de bord dédié au suivi des incidents de sécurité, avec export pour l'audit interne."
                       />
                     </ListItem>
                   </List>
@@ -477,7 +470,7 @@ export const DocumentationPage: React.FC<DocumentationPageProps> = ({ onNavigate
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <BuildIcon sx={{ color: '#f57c00', fontSize: 20 }} />
                     <Typography variant="subtitle1" fontWeight={700}>
-                      Workflow & dispatching — corrections systémiques
+                      Circuit d'approbation et dispatching — fluidité accrue
                     </Typography>
                   </Box>
                 </AccordionSummary>
@@ -486,36 +479,36 @@ export const DocumentationPage: React.FC<DocumentationPageProps> = ({ onNavigate
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Tolérance des deux encodages de rôle"
-                        secondary="Les comparaisons workflow_steps.role ↔ user.role acceptent à la fois la forme UPPER_CASE (CHARGE_AFFAIRES) et la forme @map snake_case (account_manager). Plus de dossiers invisibles en /pending-approvals selon l'historique de la politique."
+                        primary="Affichage fiable des dossiers à traiter"
+                        secondary="Les approbations en attente apparaissent désormais systématiquement dans la file de l'intervenant concerné, quelle que soit la politique de crédit appliquée."
                       />
                     </ListItem>
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Multi-dispatch : workflows à plusieurs étapes DISPATCH"
-                        secondary="Le moteur supporte désormais les politiques où le chargé d'affaires intervient plusieurs fois sur le même dossier (création + reprise après request_info)."
+                        primary="Retours en arrière maîtrisés"
+                        secondary="Lorsqu'une demande de complément d'information est émise, le dossier revient correctement au chargé d'affaires pour reprise, avant d'être réinjecté dans le circuit."
                       />
                     </ListItem>
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Lookup dynamique du rôle créateur (stepType=CREATION)"
-                        secondary="L'étape « Création du dossier » n'est plus codée en dur sur CHARGE_AFFAIRES — elle suit le rôle défini dans la politique active."
+                        primary="Création de dossier alignée sur la politique de crédit"
+                        secondary="Le rôle autorisé à créer une demande s'adapte automatiquement à la politique active de votre établissement, sans intervention technique."
                       />
                     </ListItem>
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Sélecteur de rôle déroulant dans les plages horaires"
-                        secondary="Plus de saisie libre pour le champ « applies_to=ROLE » : liste des rôles disponibles en dropdown, évite les fautes de frappe silencieuses."
+                        primary="Sélection des rôles facilitée pour les plages horaires"
+                        secondary="Les rôles disponibles sont proposés dans une liste déroulante, évitant les erreurs de saisie lors du paramétrage."
                       />
                     </ListItem>
                     <ListItem>
                       <ListItemIcon><CheckIcon sx={{ color: '#16a34a' }} /></ListItemIcon>
                       <ListItemText
-                        primary="Tables de validation CODIR — scroll horizontal et colonne Action sticky-right"
-                        secondary="Lisibilité préservée sur écrans étroits / navigateurs ne respectant pas overflow-x:auto."
+                        primary="Lecture des tableaux CODIR optimisée"
+                        secondary="Les colonnes d'action restent visibles même sur les tableaux larges, pour une validation rapide des dossiers en comité."
                       />
                     </ListItem>
                   </List>

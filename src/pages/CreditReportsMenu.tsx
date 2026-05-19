@@ -35,15 +35,17 @@ interface CreditReportsMenuProps {
   onNavigate: (page: PageType) => void;
 }
 
-// All available reports mapping
-const availableReports: Record<string, ReportConfig> = {
-  'loan_portfolio': loanPortfolioReportConfig,
-  'npl_report': nplReportConfig,
-  'disbursements': disbursementsReportConfig,
-  'repayment_schedule': repaymentScheduleReportConfig,
-  'interest_accrual': interestAccrualReportConfig,
-  'credit_scoring_stats': creditScoringStatsReportConfig,
-};
+// All available reports mapping.
+// Currently all 6 reports are pending real data integration — kept empty so they
+// display the "Bientôt disponible" badge. Re-add an entry here when its backend
+// data source is wired up.
+const availableReports: Record<string, ReportConfig> = {};
+void loanPortfolioReportConfig;
+void nplReportConfig;
+void disbursementsReportConfig;
+void repaymentScheduleReportConfig;
+void interestAccrualReportConfig;
+void creditScoringStatsReportConfig;
 
 const reportCategories = [
   {
