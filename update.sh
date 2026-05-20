@@ -289,13 +289,49 @@ npm install --prefer-offline 2>&1 | tail -3
 dep_ok "Frontend npm : OK"
 
 # ─── 6. Migration Prisma ────────────────────────────────────────────────────
+# Robuste face à P3005 (DB pré-existante sans historique _prisma_migrations) :
+# si `migrate deploy` échoue parce que la base existe déjà (cas typique d'un
+# install via SQL dump ou prisma db push), on baseline automatiquement toutes
+# les migrations comme déjà appliquées puis on relance.
 section "Migration base de données (Prisma)"
 cd "$APP_DIR/backend"
-# Export explicite — plus fiable que set -o allexport pour les sous-processus Prisma
 export DATABASE_URL="$DB_URL"
-npx prisma generate
-npx prisma migrate deploy
-dep_ok "Schéma Prisma synchronisé"
+npx prisma generate >/dev/null 2>&1 && dep_ok "Client Prisma régénéré"
+
+# Tentative normale
+migrate_output=$(npx prisma migrate deploy 2>&1)
+migrate_rc=$?
+echo "$migrate_output" | tail -8
+
+if [[ $migrate_rc -ne 0 ]] && echo "$migrate_output" | grep -qE "P3005|database schema is not empty"; then
+  warn "P3005 détecté — DB pré-existante sans historique. Baseline automatique en cours…"
+  baselined=0
+  for m in prisma/migrations/*/; do
+    [[ -d "$m" ]] || continue
+    name=$(basename "$m")
+    if npx prisma migrate resolve --applied "$name" >/dev/null 2>&1; then
+      baselined=$((baselined + 1))
+    fi
+  done
+  dep_ok "$baselined migration(s) marquée(s) comme appliquée(s)"
+
+  # Vérifie qu'il n'y a pas de drift résiduel après le baseline
+  status_output=$(npx prisma migrate status 2>&1)
+  if echo "$status_output" | grep -qE "Database schema is up to date|in sync"; then
+    dep_ok "Schéma Prisma aligné après baseline"
+  else
+    warn "Drift potentiel après baseline (une migration récente n'est peut-être pas réellement appliquée en DB)."
+    warn "Pour la rejouer manuellement :"
+    warn "  cd $APP_DIR/backend"
+    warn "  npx prisma migrate resolve --rolled-back <migration_name>"
+    warn "  npx prisma migrate deploy"
+    echo "$status_output" | tail -6
+  fi
+elif [[ $migrate_rc -ne 0 ]]; then
+  error "Migration Prisma échouée. Sortie : $migrate_output"
+else
+  dep_ok "Schéma Prisma synchronisé"
+fi
 
 # Seed données initiales (idempotent — ne recrée pas si déjà existant)
 cd "$APP_DIR/backend"

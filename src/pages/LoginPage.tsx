@@ -224,8 +224,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [partialToken, setPartialToken] = useState('');
   const [companyOptions, setCompanyOptions] = useState<CompanyWithRole[]>([]);
 
+  // Le compte Super Admin Plateforme est volontairement masqué de la liste démo
+  // pour ne pas exposer un point d'entrée privilégié sur l'écran de connexion publique.
+  // Il reste accessible en saisissant manuellement l'email + mot de passe.
   const demoUsers = [
-    { email: 'superadmin@optimuscredit.sn', role: 'Super Admin Plateforme',   color: 'error'     as const, password: 'SuperAdmin2024!' },
     { email: 'admin@bci.sn',               role: 'Administrateur BCI',        color: 'error'     as const, password: 'Demo2024!' },
     { email: 'dg@bci.sn',                  role: 'Direction Générale',        color: 'info'      as const, password: 'Demo2024!' },
     { email: 'comite@bci.sn',              role: 'Comité de Crédit',          color: 'warning'   as const, password: 'Demo2024!' },
