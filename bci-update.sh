@@ -16,6 +16,12 @@
 #                             (plafonds, allowedActions). Désactivés par défaut depuis
 #                             que la prod est en place pour préserver les configs custom.
 #    --skip-backup            Ne pas faire de backup BDD avant la mise à jour
+#    --reset-db               DESTRUCTIF — drop le schéma 'public' puis recrée toutes
+#                             les tables via migrations et relance les seeds.
+#                             À utiliser uniquement si la DB est corrompue ou
+#                             désynchronisée et que le baseline auto ne suffit pas.
+#                             Backup automatique avant. Demande confirmation 'OUI'.
+#    --reset-db-force         Comme --reset-db mais sans le prompt (pour scripts/CI).
 #
 #  Comportement par défaut (post-installation) :
 #    - seed-bci.js est skippé automatiquement si des users BCI existent déjà
@@ -58,6 +64,8 @@ SKIP_BCI_SEED=false
 FORCE_BCI_SEED=false
 WITH_DATA_MIGRATIONS=false
 SKIP_BACKUP=false
+RESET_DB=false
+RESET_DB_FORCE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -68,6 +76,12 @@ while [[ $# -gt 0 ]]; do
     --force-bci-seed)        FORCE_BCI_SEED=true; shift ;;
     --with-data-migrations)  WITH_DATA_MIGRATIONS=true; shift ;;
     --skip-backup)           SKIP_BACKUP=true; shift ;;
+    # --reset-db : DROP du schéma 'public', recréation via migrations + seed complet.
+    # DESTRUCTIF — efface toutes les données. Backup automatique avant.
+    --reset-db)              RESET_DB=true; FORCE_BCI_SEED=true; shift ;;
+    # --reset-db-force : skip le prompt de confirmation (à utiliser uniquement en CI ou
+    # quand vous savez exactement ce que vous faites).
+    --reset-db-force)        RESET_DB=true; RESET_DB_FORCE=true; FORCE_BCI_SEED=true; shift ;;
     *) warn "Argument inconnu ignoré : $1"; shift ;;
   esac
 done
@@ -322,7 +336,51 @@ info "Génération du client Prisma..."
 npx prisma generate 2>&1 | tail -2
 ok "Client Prisma généré"
 
-info "Application des migrations..."
+# ─── Reset DB (opt-in via --reset-db) ────────────────────────────────────────
+# DESTRUCTIF : drop le schéma 'public' et le recrée via migrations.
+# À n'utiliser qu'en cas de DB corrompue / désynchronisée irrécupérable.
+# Backup automatique fait en section 4 si --skip-backup n'a pas été utilisé.
+if [[ "$RESET_DB" == "true" ]]; then
+  warn "════════════════════════════════════════════════════════════"
+  warn "  --reset-db : DROP COMPLET DU SCHÉMA 'public'"
+  warn "  Toutes les données seront effacées."
+  warn "  Recréation des tables via migrations + seeds."
+  warn "════════════════════════════════════════════════════════════"
+  if [[ "$RESET_DB_FORCE" != "true" ]]; then
+    read -rp "  Continuer ? Tapez 'OUI' pour confirmer : " confirm
+    if [[ "$confirm" != "OUI" ]]; then
+      die "Reset annulé par l'utilisateur."
+    fi
+  fi
+
+  info "Arrêt du backend pour libérer les connexions DB..."
+  systemctl stop optimuscredit-backend 2>/dev/null || true
+
+  info "DROP SCHEMA public CASCADE…"
+  PGPASSWORD="$DB_PASS_VAL" psql \
+    -h "$DB_HOST" -p "${DB_PORT:-5432}" \
+    -U "$DB_USER_VAL" -d "$DB_NAME_VAL" \
+    -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;' \
+    && ok "Schéma 'public' recréé vide" \
+    || die "Échec du DROP SCHEMA. Vérifiez les droits PostgreSQL."
+
+  # Re-grant ownership et droits par défaut
+  sudo -u postgres psql -d "$DB_NAME_VAL" \
+    -c "ALTER SCHEMA public OWNER TO ${DB_USER_VAL};" 2>/dev/null || true
+  sudo -u postgres psql -d "$DB_NAME_VAL" \
+    -c "GRANT ALL ON SCHEMA public TO ${DB_USER_VAL};" 2>/dev/null || true
+
+  info "Application de TOUTES les migrations sur DB vide…"
+  if npx prisma migrate deploy; then
+    ok "32+ migrations appliquées sur DB neuve"
+  else
+    die "Échec de la migration sur DB vide. Voir la sortie ci-dessus."
+  fi
+
+  # Saute la logique baseline standard puisqu'on vient de tout reconstruire.
+  ok "Reset DB terminé — passage direct aux seeds."
+else
+  info "Application des migrations..."
 # Robuste face à P3005 (DB pré-existante sans table _prisma_migrations) :
 # on baseline automatiquement plutôt que de tomber sur `db push --accept-data-loss`
 # qui peut silencieusement effacer des colonnes.
@@ -379,6 +437,7 @@ else
   echo "$migrate_output" | tail -10
   warn "Diagnostic manuel requis. NE PAS lancer 'db push --accept-data-loss' (risque de perte de données)."
 fi
+fi  # ← clôt le if RESET_DB_FORCE / else (flux normal vs reset)
 
 info "Migration données multi-tenant..."
 node "$BACKEND_DIR/prisma/migrate-tenant.js" 2>&1 | tail -10 \
