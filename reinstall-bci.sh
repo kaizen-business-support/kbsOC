@@ -251,10 +251,14 @@ run_seed() {
   fi
 }
 
-run_seed "seed-roles.js"     "Rôles système"
-run_seed "seed-data.js"      "Départements et agences"
-run_seed "seed-policies.js"  "Politiques de crédit"
-run_seed "seed-bci.js"       "Utilisateurs et données BCI"
+# Ordre obligatoire (dépendances) :
+# 1. Rôles → 2. Départements/agences → 3. Politiques → 4. Tenant BCI (company)
+#                                                       → 5. Users BCI (dépendent du tenant)
+run_seed "seed-roles.js"      "Rôles système"
+run_seed "seed-data.js"       "Départements et agences"
+run_seed "seed-policies.js"   "Politiques de crédit"
+run_seed "migrate-tenant.js"  "Compagnie BCI (tenant)"
+run_seed "seed-bci.js"        "Utilisateurs et données BCI"
 
 # =============================================================================
 # 10. BUILD FRONTEND
