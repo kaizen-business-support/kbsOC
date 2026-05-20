@@ -349,12 +349,30 @@ elif echo "$migrate_output" | grep -qE "P3005|database schema is not empty"; the
   if echo "$status_output" | grep -qE "Database schema is up to date|in sync"; then
     ok "Schéma Prisma aligné après baseline"
   else
-    warn "Drift potentiel après baseline (une migration récente n'est peut-être pas réellement appliquée en DB)."
-    warn "Pour la rejouer manuellement :"
-    warn "  cd $BACKEND_DIR"
-    warn "  npx prisma migrate resolve --rolled-back <migration_name>"
-    warn "  npx prisma migrate deploy"
-    echo "$status_output" | tail -6
+    warn "Drift détecté après baseline — réconciliation idempotente de la dernière migration…"
+    # Réconciliation auto : rejoue UNIQUEMENT la dernière migration en SQL brut
+    # via 'prisma db execute'. Doit être idempotente (IF NOT EXISTS, etc.)
+    # pour ne pas casser si elle a déjà été partiellement appliquée.
+    latest_migration_dir=$(ls -d prisma/migrations/*/ 2>/dev/null | sort | tail -1)
+    if [[ -n "$latest_migration_dir" && -f "${latest_migration_dir}migration.sql" ]]; then
+      latest_name=$(basename "$latest_migration_dir")
+      info "  → rejeu de $latest_name (idempotent)"
+      if npx prisma db execute --file "${latest_migration_dir}migration.sql" --schema prisma/schema.prisma >/dev/null 2>&1; then
+        ok "  Migration $latest_name rejouée"
+      else
+        warn "  Échec du rejeu — diagnostic manuel requis :"
+        warn "    cd $BACKEND_DIR && npx prisma db execute --file ${latest_migration_dir}migration.sql --schema prisma/schema.prisma"
+      fi
+      # Re-check
+      status_output2=$(npx prisma migrate status 2>&1)
+      if echo "$status_output2" | grep -qE "Database schema is up to date|in sync"; then
+        ok "Schéma Prisma aligné après réconciliation"
+      else
+        warn "Drift persistant. Si une migration plus ancienne manque, lance :"
+        warn "  cd $BACKEND_DIR && npx prisma migrate resolve --rolled-back <migration_name> && npx prisma migrate deploy"
+        echo "$status_output2" | tail -6
+      fi
+    fi
   fi
 else
   warn "Migration Prisma en erreur (autre que P3005). Sortie :"
