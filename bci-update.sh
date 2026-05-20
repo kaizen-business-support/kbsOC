@@ -323,13 +323,43 @@ npx prisma generate 2>&1 | tail -2
 ok "Client Prisma généré"
 
 info "Application des migrations..."
-if npx prisma migrate deploy; then
+# Robuste face à P3005 (DB pré-existante sans table _prisma_migrations) :
+# on baseline automatiquement plutôt que de tomber sur `db push --accept-data-loss`
+# qui peut silencieusement effacer des colonnes.
+migrate_output=$(npx prisma migrate deploy 2>&1)
+migrate_rc=$?
+echo "$migrate_output" | tail -8
+
+if [[ $migrate_rc -eq 0 ]]; then
   ok "Migrations appliquées (migrate deploy)"
+elif echo "$migrate_output" | grep -qE "P3005|database schema is not empty"; then
+  warn "P3005 détecté — DB pré-existante sans historique. Baseline automatique en cours…"
+  baselined=0
+  for m in prisma/migrations/*/; do
+    [[ -d "$m" ]] || continue
+    name=$(basename "$m")
+    if npx prisma migrate resolve --applied "$name" >/dev/null 2>&1; then
+      baselined=$((baselined + 1))
+    fi
+  done
+  ok "$baselined migration(s) marquée(s) comme appliquée(s)"
+
+  # Vérifie qu'il n'y a pas de drift résiduel
+  status_output=$(npx prisma migrate status 2>&1)
+  if echo "$status_output" | grep -qE "Database schema is up to date|in sync"; then
+    ok "Schéma Prisma aligné après baseline"
+  else
+    warn "Drift potentiel après baseline (une migration récente n'est peut-être pas réellement appliquée en DB)."
+    warn "Pour la rejouer manuellement :"
+    warn "  cd $BACKEND_DIR"
+    warn "  npx prisma migrate resolve --rolled-back <migration_name>"
+    warn "  npx prisma migrate deploy"
+    echo "$status_output" | tail -6
+  fi
 else
-  warn "migrate deploy non disponible — db push en fallback..."
-  npx prisma db push --accept-data-loss \
-    && ok "Schéma synchronisé (db push)" \
-    || warn "db push échoué — vérifiez la connexion DB."
+  warn "Migration Prisma en erreur (autre que P3005). Sortie :"
+  echo "$migrate_output" | tail -10
+  warn "Diagnostic manuel requis. NE PAS lancer 'db push --accept-data-loss' (risque de perte de données)."
 fi
 
 info "Migration données multi-tenant..."
