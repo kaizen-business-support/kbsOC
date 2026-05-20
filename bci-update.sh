@@ -16,6 +16,10 @@
 #                             (plafonds, allowedActions). Désactivés par défaut depuis
 #                             que la prod est en place pour préserver les configs custom.
 #    --skip-backup            Ne pas faire de backup BDD avant la mise à jour
+#    --first-install          Relance migrate-tenant.js + TOUS les seeds (référentiels + BCI).
+#                             À utiliser pour un premier déploiement ou après reset DB.
+#    --seed-refs              Relance les seeds de référentiels (roles, data, policies).
+#                             ATTENTION : écrase les permissions de rôle customisées via UI.
 #    --reset-db               DESTRUCTIF — drop le schéma 'public' puis recrée toutes
 #                             les tables via migrations et relance les seeds.
 #                             À utiliser uniquement si la DB est corrompue ou
@@ -23,10 +27,19 @@
 #                             Backup automatique avant. Demande confirmation 'OUI'.
 #    --reset-db-force         Comme --reset-db mais sans le prompt (pour scripts/CI).
 #
-#  Comportement par défaut (post-installation) :
-#    - seed-bci.js est skippé automatiquement si des users BCI existent déjà
-#    - migrate-* (data) sont skippés sauf si --with-data-migrations
-#    - Tout le reste tourne (deps, prisma migrate deploy, build, swap, services)
+#  Comportement par défaut (post-installation, PRODUCTION) :
+#    Le script détecte automatiquement si la DB est déjà peuplée (table companies
+#    non-vide). Si oui, mode PRODUCTION UPDATE activé :
+#      - migrate-tenant.js     → SKIPPÉ (aucun écrasement de tenant)
+#      - seed-roles.js         → SKIPPÉ (préserve les rôles customisés via UI)
+#      - seed-data.js          → SKIPPÉ (préserve agences/départements modifiés)
+#      - seed-policies.js      → SKIPPÉ (préserve politique de crédit éditée)
+#      - seed-bci.js           → SKIPPÉ (users BCI déjà créés)
+#      - migrate-* (data)      → SKIPPÉ (préserve plafonds/allowedActions custom)
+#      - prisma migrate deploy → RUN (applique nouvelles migrations de schéma)
+#      - npm install + build   → RUN
+#      - restart services      → RUN
+#    Pour forcer un re-seed, utilise les flags explicites ci-dessus.
 #
 #  Ce script :
 #    1.  Vérifie Ubuntu 22.04 + dépendances + root
@@ -66,6 +79,8 @@ WITH_DATA_MIGRATIONS=false
 SKIP_BACKUP=false
 RESET_DB=false
 RESET_DB_FORCE=false
+FIRST_INSTALL=false
+SEED_REFS=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -76,12 +91,19 @@ while [[ $# -gt 0 ]]; do
     --force-bci-seed)        FORCE_BCI_SEED=true; shift ;;
     --with-data-migrations)  WITH_DATA_MIGRATIONS=true; shift ;;
     --skip-backup)           SKIP_BACKUP=true; shift ;;
+    # --first-install : relance migrate-tenant.js + TOUS les seeds (référentiels + BCI).
+    # À n'utiliser que pour un premier déploiement ou après un reset DB.
+    --first-install)         FIRST_INSTALL=true; FORCE_BCI_SEED=true; SEED_REFS=true; shift ;;
+    # --seed-refs : relance les seeds de référentiels (roles, data, policies).
+    # Écrase les permissions de rôle, donc à utiliser si tu veux RESET les rôles
+    # à leur état hardcodé (perd les customisations faites via l'UI).
+    --seed-refs)             SEED_REFS=true; shift ;;
     # --reset-db : DROP du schéma 'public', recréation via migrations + seed complet.
     # DESTRUCTIF — efface toutes les données. Backup automatique avant.
-    --reset-db)              RESET_DB=true; FORCE_BCI_SEED=true; shift ;;
+    --reset-db)              RESET_DB=true; FIRST_INSTALL=true; FORCE_BCI_SEED=true; SEED_REFS=true; shift ;;
     # --reset-db-force : skip le prompt de confirmation (à utiliser uniquement en CI ou
     # quand vous savez exactement ce que vous faites).
-    --reset-db-force)        RESET_DB=true; RESET_DB_FORCE=true; FORCE_BCI_SEED=true; shift ;;
+    --reset-db-force)        RESET_DB=true; RESET_DB_FORCE=true; FIRST_INSTALL=true; FORCE_BCI_SEED=true; SEED_REFS=true; shift ;;
     *) warn "Argument inconnu ignoré : $1"; shift ;;
   esac
 done
@@ -439,10 +461,35 @@ else
 fi
 fi  # ← clôt le if RESET_DB_FORCE / else (flux normal vs reset)
 
-info "Migration données multi-tenant..."
-node "$BACKEND_DIR/prisma/migrate-tenant.js" 2>&1 | tail -10 \
-  && ok "Migration multi-tenant : OK" \
-  || warn "migrate-tenant.js : erreur non bloquante (données peut-être déjà migrées)"
+# ─── Détection mode "production update" vs "first install" ──────────────────
+# Si la table companies contient déjà au moins une ligne, on considère que la
+# DB est en production : on skip TOUS les seeds et migrate-tenant.js par défaut
+# pour ne JAMAIS écraser des données existantes (rôles custom, plafonds custom,
+# attributs users modifiés via l'UI, etc).
+# L'utilisateur peut forcer le re-seed via les flags explicites.
+PRODUCTION_MODE=false
+COMPANY_COUNT=$(PGPASSWORD="$DB_PASS_VAL" psql \
+  -h "$DB_HOST" -p "${DB_PORT:-5432}" \
+  -U "$DB_USER_VAL" -d "$DB_NAME_VAL" -tAc \
+  "SELECT count(*) FROM companies" 2>/dev/null | tr -d '[:space:]' || echo "0")
+if [[ "${COMPANY_COUNT:-0}" -gt 0 ]]; then
+  PRODUCTION_MODE=true
+  info "Mode PRODUCTION UPDATE détecté ($COMPANY_COUNT companies en DB) — seeds et migrate-tenant skippés par défaut."
+  info "  → Pour forcer un seed précis :"
+  info "      --first-install     (relance migrate-tenant + tous les seeds)"
+  info "      --seed-refs         (relance seed-roles + seed-data + seed-policies)"
+  info "      --force-bci-seed    (relance seed-bci → écrase attributs users BCI)"
+fi
+
+# migrate-tenant.js : uniquement en first-install ou si DB vide
+if [[ "$PRODUCTION_MODE" == "false" || "$FIRST_INSTALL" == "true" ]]; then
+  info "Migration données multi-tenant..."
+  node "$BACKEND_DIR/prisma/migrate-tenant.js" 2>&1 | tail -10 \
+    && ok "Migration multi-tenant : OK" \
+    || warn "migrate-tenant.js : erreur non bloquante (données peut-être déjà migrées)"
+else
+  info "migrate-tenant.js skippé (DB déjà peuplée)"
+fi
 
 # Re-grant post-migration
 sudo -u postgres psql -d "$DB_NAME_VAL" \
@@ -451,16 +498,34 @@ sudo -u postgres psql -d "$DB_NAME_VAL" \
   -c "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO ${DB_USER_VAL};" 2>/dev/null || true
 ok "Privilèges DB accordés"
 
-# Seed
+# ─── Seeds : skip par défaut en mode production ──────────────────────────────
+# Conditions pour lancer les seeds de référentiels (roles, data, policies) :
+# - DB vide (first install)
+# - OU --first-install passé
+# - OU --seed-refs passé (re-écrit roles/data/policies)
+# - ET pas --skip-seed
+RUN_REF_SEEDS=false
+if [[ "$SKIP_SEED" != "true" ]]; then
+  if [[ "$PRODUCTION_MODE" == "false" ]] || [[ "$FIRST_INSTALL" == "true" ]] || [[ "$SEED_REFS" == "true" ]]; then
+    RUN_REF_SEEDS=true
+  fi
+fi
+
 if [[ "$SKIP_SEED" == "true" ]]; then
   warn "--skip-seed activé : aucun seed exécuté."
+elif [[ "$RUN_REF_SEEDS" == "false" ]]; then
+  info "Seeds de référentiels skippés (mode PRODUCTION). Utilise --seed-refs ou --first-install pour les forcer."
 else
   cd "$BACKEND_DIR"
 
-  # Seeds de référentiels — toujours idempotents, jamais destructeurs.
-  # seed-roles : upsert rôles/permissions (référentiel pur)
-  # seed-data  : create-if-missing departments & branches
-  # seed-policies : create politique seulement si POL-BCI-GENERALE absente
+  if [[ "$SEED_REFS" == "true" || "$FIRST_INSTALL" == "true" ]]; then
+    warn "Seeds de référentiels (--seed-refs/--first-install) — les rôles, départements, agences et politiques par défaut vont être réécrits."
+  fi
+
+  # Seeds de référentiels — idempotents mais peuvent écraser les CUSTOMISATIONS UI :
+  # seed-roles : upsert des permissions de chaque rôle → écrase customisations UI
+  # seed-data  : create-if-missing departments & branches (safe)
+  # seed-policies : create politique seulement si POL-BCI-GENERALE absente (safe)
   for seed_file in seed-roles.js seed-data.js seed-policies.js; do
     if [[ -f "$BACKEND_DIR/prisma/$seed_file" ]]; then
       node "$BACKEND_DIR/prisma/$seed_file" \
