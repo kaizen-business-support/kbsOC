@@ -37,6 +37,89 @@ interface ExtractedFinancialData {
   confidence?: number;
 }
 
+// ─── Vérification approfondie « état financier » ─────────────────────────────
+// 4 niveaux qui doivent TOUS passer pour qu'un document soit accepté par
+// l'OCR. Niveau 4 (cohérence comptable) est non bloquant — il produit un
+// warning visible mais n'interrompt pas l'extraction.
+
+export interface VerificationLevel {
+  passed: boolean;
+  label: string;
+  detail: string;
+  reason?: string;
+}
+
+export interface DocumentVerification {
+  passed: boolean;
+  confidence: number;            // 0-100
+  level1: VerificationLevel;     // Contexte SYSCOHADA/BCEAO
+  level2: VerificationLevel;     // ≥1 état détecté à confiance ≥ 60 %
+  level3: VerificationLevel;     // Tableaux avec ≥15 cellules numériques
+  level4: VerificationLevel;     // Cohérence comptable (non bloquant)
+  evidence: {
+    syscohadaTerms: string[];
+    syscohadaCodes: string[];
+    pagesScanned: number;
+    pagesWithNumericTables: number;
+    detectedStatements: Array<{ type: string; page: number; confidence: number }>;
+    coherenceWarnings: string[];
+  };
+  rejectionReasons: string[];
+  warnings: string[];
+}
+
+export class FinancialDocumentVerificationError extends Error {
+  verification: DocumentVerification;
+  constructor(verification: DocumentVerification) {
+    super(
+      verification.rejectionReasons.length > 0
+        ? verification.rejectionReasons.join(' · ')
+        : 'Document refusé : ce n\'est pas un état financier SYSCOHADA/BCEAO valide.'
+    );
+    this.name = 'FinancialDocumentVerificationError';
+    this.verification = verification;
+  }
+}
+
+// Termes haute-valeur qui identifient un document comme un état financier
+// SYSCOHADA/BCEAO. Au moins UNE occurrence requise pour Niveau 1.
+const SYSCOHADA_TERMS = [
+  'SYSCOHADA', 'OHADA', 'BCEAO',
+  'Plan Comptable',
+  'FCFA', 'F CFA', 'XOF',
+  'Exercice clos au', 'Exercice clos le',
+  'Acte Uniforme', 'Acte uniforme',
+  'Système Comptable', 'Systeme Comptable',
+];
+
+// Codes SYSCOHADA à forte signature — apparaissent en début de ligne dans
+// les états officiels. Reconnaître ≥3 codes distincts est une preuve très
+// forte que le document est un état financier (cumulable avec les termes).
+const SYSCOHADA_CODES = [
+  // ACTIF immobilisé
+  'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL', 'AM', 'AN',
+  // ACTIF circulant
+  'AP', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AV', 'AW', 'AX',
+  // Trésorerie actif
+  'BA', 'BB', 'BC',
+  // Totaux ACTIF
+  'BG', 'BH', 'BI', 'BJ', 'BK', 'BQ', 'BR', 'BT', 'BU', 'BZ',
+  // PASSIF capitaux propres
+  'CA', 'CB', 'CC', 'CD', 'CE', 'CF', 'CG', 'CH', 'CI', 'CJ', 'CK', 'CL', 'CM', 'CP',
+  // PASSIF dettes financières
+  'DA', 'DB', 'DC', 'DD', 'DF', 'DG', 'DH', 'DI', 'DJ',
+  // Trésorerie passif & totaux
+  'DQ', 'DR', 'DT', 'DV', 'DZ',
+  // Compte de résultat — produits / charges / soldes intermédiaires
+  'RA', 'RB', 'RC', 'RD', 'RE', 'RF', 'RG', 'RH', 'RI', 'RJ', 'RK',
+  'RL', 'RM', 'RN', 'RO', 'RP', 'RQ', 'RR', 'RS', 'RT', 'RU', 'RV', 'RW', 'RX', 'RY', 'RZ',
+  'SA', 'SB', 'SC', 'SD', 'SE', 'SF', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SR',
+  'TA', 'TB', 'TC', 'TD', 'TE', 'TF', 'TG', 'TH', 'TI', 'TJ', 'TK', 'TL', 'TN', 'TQ',
+  'XA', 'XB', 'XC', 'XD', 'XE', 'XF', 'XG', 'XH', 'XI',
+  // Tableau de flux
+  'ZA', 'ZB', 'ZC', 'ZD', 'ZE', 'ZF', 'ZG', 'ZH',
+];
+
 // Financial statement detection criteria as specified
 // Enhanced statement criteria with core terms for better detection
 const STATEMENT_CRITERIA = {
@@ -188,18 +271,26 @@ export class OcrService {
       onProgress?.('init', 'Initialisation des moteurs OCR Tesseract…', 5);
       console.log('🚀 Starting SYSCOHADA financial statement detection and extraction...');
 
-      // Step 1: Detect financial statements in the document
+      // Step 1: Detect financial statements + collect verification evidence
       onProgress?.('scan', `Lecture du document : ${file.name}`, 10);
-      const detectedStatements = await this.detectFinancialStatements(file, onProgress);
+      const detection = await this.detectFinancialStatements(file, onProgress);
+      const detectedStatements = detection.statements;
 
-      if (detectedStatements.length === 0) {
-        onProgress?.('warn', 'Aucun état financier détecté dans le document', 40);
-        console.warn('⚠️ No financial statements detected in the document');
-        return { confidence: 0 };
+      // Step 1bis: Vérification approfondie « état financier »
+      // Niveaux 1-3 sont bloquants ; si l'un échoue, l'extraction est refusée.
+      // Niveau 4 (cohérence) est vérifié plus bas, post-extraction, en warning.
+      const verification = this.verifyFinancialDocument(detection.evidence, detectedStatements);
+      if (!verification.passed) {
+        const reasons = verification.rejectionReasons.join(' · ');
+        onProgress?.('error',
+          `Document refusé : ${reasons}`, 50, { verification });
+        console.warn('🚫 Document rejected by verification:', verification);
+        throw new FinancialDocumentVerificationError(verification);
       }
-
-      onProgress?.('detect', `${detectedStatements.length} état(s) financier(s) détecté(s)`, 55,
-        { statements: detectedStatements });
+      onProgress?.('detect',
+        `Vérification réussie (${verification.confidence}/100) — ${detectedStatements.length} état(s) à extraire`,
+        55,
+        { statements: detectedStatements, verification });
 
       // Step 2: Extract data from each detected statement, for BOTH year
       // columns when detectable (SYSCOHADA statements always show N and N-1).
@@ -265,23 +356,212 @@ export class OcrService {
         ? [effectiveYearN, effectiveYearN1]
         : [effectiveYearN];
 
+      // Niveau 4 — cohérence comptable (non bloquant, warning visible)
+      this.checkCoherence(dataN, verification);
+      (extractedData as any).verification = verification;
+
       const fieldCount = Object.keys(dataN).filter(k => dataN[k] !== undefined).length;
+      if (verification.warnings.length > 0) {
+        for (const w of verification.warnings) {
+          onProgress?.('warn', w, 95);
+        }
+      }
       onProgress?.('done', `Extraction terminée — ${fieldCount} champs (N${hasN1Data ? ' + N-1' : ''}) — confiance ${confidence.toFixed(0)}%`, 100,
-        { fieldCount, confidence });
+        { fieldCount, confidence, verification });
 
       return extractedData;
 
     } catch (error) {
       console.error('❌ OCR extraction failed:', error);
+      if (error instanceof FinancialDocumentVerificationError) {
+        onProgress?.('error', `Document refusé : ${error.message}`, 100);
+        throw error;
+      }
       onProgress?.('error', `Erreur OCR : ${error instanceof Error ? error.message : 'Erreur inconnue'}`, 100);
       throw new Error(`Erreur lors de l'extraction OCR: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
     }
   }
 
+  // ─── Helpers de vérification approfondie ────────────────────────────────────
+
+  /** Recense les termes haute-valeur SYSCOHADA présents dans un texte. */
+  collectSyscohadaTerms(text: string): string[] {
+    const upper = text.toUpperCase();
+    const found = new Set<string>();
+    for (const term of SYSCOHADA_TERMS) {
+      if (upper.includes(term.toUpperCase())) found.add(term);
+    }
+    return Array.from(found);
+  }
+
   /**
-   * Detect financial statements in PDF by scanning all pages
+   * Recense les codes SYSCOHADA reconnus en début de ligne ou de colonne
+   * (e.g. "AB Frais d'établissement", "RA Ventes de marchandises").
+   * Un code = 2 lettres majuscules suivies d'un espace puis d'une lettre
+   * majuscule (label en MAJ commun dans les états officiels).
    */
-  async detectFinancialStatements(file: File, onProgress?: OcrOptions['onProgress']): Promise<FinancialStatement[]> {
+  collectSyscohadaCodes(text: string): string[] {
+    const found = new Set<string>();
+    const codesSet = new Set(SYSCOHADA_CODES);
+    for (const line of text.split('\n')) {
+      // Try start of line and after each pipe (column separator)
+      const segments = line.split('|');
+      for (const seg of segments) {
+        const m = seg.trim().match(/^([A-Z]{2})\s+[A-Z]/);
+        if (m && codesSet.has(m[1])) found.add(m[1]);
+      }
+    }
+    return Array.from(found);
+  }
+
+  /** Compte les cellules numériques (montants) extraites d'un texte de page. */
+  countNumericCells(text: string): number {
+    let count = 0;
+    for (const line of text.split('\n')) {
+      count += this.numsFromLine(line).length;
+    }
+    return count;
+  }
+
+  /**
+   * Construit le verdict de vérification à partir de l'evidence collectée
+   * pendant le scan + des états détectés.
+   */
+  verifyFinancialDocument(
+    evidence: {
+      syscohadaTerms: Set<string>;
+      syscohadaCodes: Set<string>;
+      pagesScanned: number;
+      pagesWithNumericTables: number;
+    },
+    statements: FinancialStatement[],
+  ): DocumentVerification {
+    const termsArr = Array.from(evidence.syscohadaTerms);
+    const codesArr = Array.from(evidence.syscohadaCodes);
+
+    // Niveau 1 — Contexte SYSCOHADA/BCEAO
+    const level1Passed = termsArr.length > 0 || codesArr.length >= 3;
+    const level1: VerificationLevel = {
+      passed: level1Passed,
+      label: 'Contexte SYSCOHADA/BCEAO',
+      detail: level1Passed
+        ? `Termes (${termsArr.length}) : ${termsArr.slice(0, 3).join(', ') || '—'} · Codes (${codesArr.length}) : ${codesArr.slice(0, 5).join(', ') || '—'}`
+        : 'Aucune référence SYSCOHADA, BCEAO, OHADA, FCFA/XOF ni code comptable normalisé détecté.',
+      reason: level1Passed ? undefined : 'Document non identifié comme un état financier SYSCOHADA/BCEAO',
+    };
+
+    // Niveau 2 — ≥1 état financier reconnaissable à confiance ≥ 60 %
+    const strong = statements.filter(s => s.confidence >= 60);
+    const level2Passed = strong.length >= 1;
+    const fmtStmt = (s: FinancialStatement) => `${s.type} p.${s.pageNumber} (${s.confidence.toFixed(0)}%)`;
+    const level2: VerificationLevel = {
+      passed: level2Passed,
+      label: 'Structure d\'état financier reconnaissable',
+      detail: level2Passed
+        ? `${strong.length} état(s) à confiance ≥ 60 % : ${strong.map(fmtStmt).join(' · ')}`
+        : statements.length > 0
+          ? `Détections trop faibles : ${statements.map(fmtStmt).join(', ')}`
+          : 'Aucun bilan, compte de résultat ou tableau de flux identifié.',
+      reason: level2Passed ? undefined : 'Aucun état financier reconnaissable (Bilan, CR ou TFT) à confiance ≥ 60 %',
+    };
+
+    // Niveau 3 — Tableaux numériques exploitables
+    const level3Passed = evidence.pagesWithNumericTables >= 1;
+    const level3: VerificationLevel = {
+      passed: level3Passed,
+      label: 'Tableaux numériques exploitables',
+      detail: level3Passed
+        ? `${evidence.pagesWithNumericTables}/${evidence.pagesScanned} page(s) avec tableau financier (≥15 cellules numériques)`
+        : `Aucune page avec tableau financier exploitable sur ${evidence.pagesScanned} scannée(s)`,
+      reason: level3Passed ? undefined : 'Tableaux financiers absents ou illisibles',
+    };
+
+    // Niveau 4 — Cohérence comptable : placeholder (rempli post-extraction)
+    const level4: VerificationLevel = {
+      passed: true,
+      label: 'Cohérence comptable',
+      detail: 'Vérification effectuée après extraction (total actif = total passif, CA > 0).',
+    };
+
+    // Confiance globale : base + bonus codes
+    const baseConfidence = (Number(level1Passed) + Number(level2Passed) + Number(level3Passed)) * 30;
+    const codeBonus = Math.min(codesArr.length * 2, 10);
+    const confidence = Math.min(100, baseConfidence + codeBonus);
+
+    const passed = level1Passed && level2Passed && level3Passed;
+    const rejectionReasons: string[] = [];
+    if (!level1Passed) rejectionReasons.push(level1.reason!);
+    if (!level2Passed) rejectionReasons.push(level2.reason!);
+    if (!level3Passed) rejectionReasons.push(level3.reason!);
+
+    return {
+      passed,
+      confidence,
+      level1, level2, level3, level4,
+      evidence: {
+        syscohadaTerms: termsArr,
+        syscohadaCodes: codesArr,
+        pagesScanned: evidence.pagesScanned,
+        pagesWithNumericTables: evidence.pagesWithNumericTables,
+        detectedStatements: statements.map(s => ({ type: s.type, page: s.pageNumber, confidence: s.confidence })),
+        coherenceWarnings: [],
+      },
+      rejectionReasons,
+      warnings: [],
+    };
+  }
+
+  /**
+   * Niveau 4 — cohérence comptable. Non bloquant : remplit warnings et met à
+   * jour level4 dans la verification fournie.
+   */
+  checkCoherence(data: ExtractedFinancialData, verification: DocumentVerification): void {
+    const warnings: string[] = [];
+
+    const totalActif = data.total_actif;
+    const totalPassif = data.total_passif;
+    if (totalActif !== undefined && totalPassif !== undefined && totalActif > 0) {
+      const diff = Math.abs(totalActif - totalPassif);
+      const tolerance = Math.max(Math.abs(totalActif) * 0.01, 1);
+      if (diff > tolerance) {
+        const pct = (diff / Math.abs(totalActif)) * 100;
+        warnings.push(
+          `Bilan déséquilibré : ACTIF=${totalActif.toLocaleString('fr-FR')} vs PASSIF=${totalPassif.toLocaleString('fr-FR')} (écart ${pct.toFixed(1)} %).`
+        );
+      }
+    }
+
+    if (data.chiffre_affaires !== undefined && data.chiffre_affaires <= 0) {
+      warnings.push("Chiffre d'affaires extrait ≤ 0 — vérifiez la lecture du Compte de Résultat.");
+    }
+
+    verification.evidence.coherenceWarnings = warnings;
+    verification.warnings.push(...warnings);
+    verification.level4 = {
+      passed: warnings.length === 0,
+      label: 'Cohérence comptable',
+      detail: warnings.length === 0
+        ? totalActif !== undefined && totalPassif !== undefined
+          ? `ACTIF (${totalActif.toLocaleString('fr-FR')}) = PASSIF (${totalPassif.toLocaleString('fr-FR')})`
+          : 'Pas de bilan extrait — cohérence non testée'
+        : warnings.join(' · '),
+    };
+  }
+
+  /**
+   * Detect financial statements in PDF by scanning all pages.
+   * Returns the detected statements AND the verification evidence collected
+   * during scanning so the caller can run the strict gate check.
+   */
+  async detectFinancialStatements(file: File, onProgress?: OcrOptions['onProgress']): Promise<{
+    statements: FinancialStatement[];
+    evidence: {
+      syscohadaTerms: Set<string>;
+      syscohadaCodes: Set<string>;
+      pagesScanned: number;
+      pagesWithNumericTables: number;
+    };
+  }> {
     console.log('🔍 Starting financial statement detection...');
     
     // Validate file parameter
@@ -290,9 +570,15 @@ export class OcrService {
     }
     
     console.log(`📄 File validation: ${file.name}, type: ${file.type}, size: ${file.size} bytes`);
-    
+
     const detectedStatements: FinancialStatement[] = [];
-    
+    const evidence = {
+      syscohadaTerms: new Set<string>(),
+      syscohadaCodes: new Set<string>(),
+      pagesScanned: 0,
+      pagesWithNumericTables: 0,
+    };
+
     try {
       const fileArrayBuffer = await file.arrayBuffer();
       console.log(`📊 File read successfully: ${fileArrayBuffer.byteLength} bytes`);
@@ -442,18 +728,26 @@ export class OcrService {
             }
           }
         }
-        
+
+        // ── Collecte d'evidence pour la vérification approfondie ──────────
+        evidence.pagesScanned++;
+        for (const term of this.collectSyscohadaTerms(analysisText)) evidence.syscohadaTerms.add(term);
+        for (const code of this.collectSyscohadaCodes(analysisText)) evidence.syscohadaCodes.add(code);
+        const numericCells = this.countNumericCells(analysisText);
+        if (numericCells >= 15) evidence.pagesWithNumericTables++;
+
       } catch (error) {
         console.warn(`⚠️ Error processing page ${pageNum}:`, error);
       }
     }
-    
+
       console.log(`🎯 Detection complete. Found ${detectedStatements.length} financial statements:`);
       detectedStatements.forEach(stmt => {
         console.log(`  - ${stmt.type}: Page ${stmt.pageNumber} (${stmt.confidence.toFixed(1)}% confidence)`);
       });
-      
-      return detectedStatements;
+      console.log(`🔎 Evidence — SYSCOHADA terms: ${Array.from(evidence.syscohadaTerms).join(', ') || '(none)'}; codes (${evidence.syscohadaCodes.size}): ${Array.from(evidence.syscohadaCodes).slice(0,10).join(', ')}; tables on ${evidence.pagesWithNumericTables}/${evidence.pagesScanned} pages.`);
+
+      return { statements: detectedStatements, evidence };
       
     } catch (fileError) {
       console.error('❌ Failed to read or process PDF file:', fileError);

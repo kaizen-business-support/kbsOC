@@ -20,7 +20,7 @@ import {
   PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
-import { ocrService } from '../services/ocrService';
+import { ocrService, FinancialDocumentVerificationError, DocumentVerification } from '../services/ocrService';
 import { ExcelProcessor } from '../services/excelProcessor';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -43,7 +43,7 @@ interface DetectedStatement {
   confidence: number;
 }
 
-type Phase = 'idle' | 'scanning' | 'done' | 'review' | 'error';
+type Phase = 'idle' | 'scanning' | 'done' | 'review' | 'error' | 'rejected';
 type FileMode = 'pdf' | 'excel';
 
 const EXCEL_TYPES = [
@@ -98,6 +98,7 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
   const [reviewData, setReviewData] = useState<any>({});
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [verification, setVerification] = useState<DocumentVerification | null>(null);
 
   const logRef = useRef<HTMLDivElement>(null);
   const logId = useRef(0);
@@ -121,6 +122,7 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
     setScanningPage(null);
     setError(null);
     setWarnings([]);
+    setVerification(null);
     logId.current = 0;
 
     const mode: FileMode = isExcel(f) ? 'excel' : 'pdf';
@@ -205,8 +207,13 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
             } else if (step === 'done' && extra) {
               setFieldsFound(extra.fieldCount ?? 0);
               setConfidence(extra.confidence ?? 0);
+              if (extra.verification) setVerification(extra.verification as DocumentVerification);
               pushLog(detail, 'done');
+            } else if (step === 'detect' && extra?.verification) {
+              setVerification(extra.verification as DocumentVerification);
+              pushLog(detail, 'success');
             } else if (step === 'warn') {
+              setWarnings(prev => [...prev, detail]);
               pushLog(detail, 'warn');
             } else if (step === 'error') {
               pushLog(detail, 'error');
@@ -240,6 +247,13 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
         });
       }
     } catch (err) {
+      // Document refusé par la vérification approfondie → écran dédié
+      if (err instanceof FinancialDocumentVerificationError) {
+        setVerification(err.verification);
+        pushLog('Document refusé par la vérification approfondie', 'error');
+        setPhase('rejected');
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Erreur inconnue';
       pushLog(`ERREUR : ${msg}`, 'error');
       setError(msg);
@@ -585,6 +599,108 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // REJECTED — document not an état financier
+  // ─────────────────────────────────────────────────────────────────────────────
+  if (phase === 'rejected' && verification) {
+    const renderLevel = (key: 'level1' | 'level2' | 'level3' | 'level4') => {
+      const lvl = verification[key];
+      const icon = lvl.passed ? '✓' : '✗';
+      const color = lvl.passed ? '#15803d' : '#dc2626';
+      const bg = lvl.passed ? '#f0fdf4' : '#fef2f2';
+      return (
+        <Box key={key} sx={{
+          p: 1.5, mb: 1, borderRadius: 2, bgcolor: bg,
+          border: `1px solid ${lvl.passed ? '#bbf7d0' : '#fecaca'}`,
+          display: 'flex', gap: 1.5, alignItems: 'flex-start',
+        }}>
+          <Typography sx={{
+            fontFamily: 'monospace', fontWeight: 700, fontSize: '1.1rem',
+            color, lineHeight: 1, flexShrink: 0,
+          }}>
+            {icon}
+          </Typography>
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="body2" sx={{ fontWeight: 700, color, mb: 0.25 }}>
+              {lvl.label}
+            </Typography>
+            <Typography variant="caption" sx={{ color: '#374151', display: 'block' }}>
+              {lvl.detail}
+            </Typography>
+          </Box>
+        </Box>
+      );
+    };
+
+    return (
+      <Box>
+        <Box sx={{
+          p: 3, mb: 2, borderRadius: 3,
+          background: 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%)',
+          color: 'white',
+        }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+            Document refusé
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#fecaca', mb: 1 }}>
+            Cet OCR ne traite que les états financiers SYSCOHADA/BCEAO (Bilan, Compte de Résultat, Tableau de Flux).
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#fecaca', fontFamily: 'monospace' }}>
+            {file?.name}
+          </Typography>
+        </Box>
+
+        {verification.rejectionReasons.length > 0 && (
+          <Box sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: '#fef2f2', border: '1px solid #fecaca' }}>
+            <Typography variant="subtitle2" sx={{ color: '#991b1b', fontWeight: 700, mb: 0.5 }}>
+              Motifs du refus
+            </Typography>
+            {verification.rejectionReasons.map((r, i) => (
+              <Typography key={i} variant="body2" sx={{ color: '#7f1d1d', mb: 0.25 }}>
+                · {r}
+              </Typography>
+            ))}
+          </Box>
+        )}
+
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1e293b', mb: 1 }}>
+          Vérification approfondie — détail des contrôles
+        </Typography>
+        {renderLevel('level1')}
+        {renderLevel('level2')}
+        {renderLevel('level3')}
+
+        <Box sx={{ p: 2, my: 2, bgcolor: '#fffbeb', borderRadius: 2, border: '1px solid #fde68a' }}>
+          <Typography variant="caption" sx={{ color: '#92400e', display: 'block', fontWeight: 700, mb: 0.5 }}>
+            Que faire ?
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#92400e', display: 'block' }}>
+            · Téléversez un Bilan, un Compte de Résultat ou un Tableau de Flux SYSCOHADA/BCEAO (PDF ou Excel).
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#92400e', display: 'block' }}>
+            · Vérifiez que le document mentionne SYSCOHADA, OHADA, BCEAO ou FCFA/XOF.
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#92400e', display: 'block' }}>
+            · Si le PDF est scanné en basse qualité, fournissez une version texte (export comptable / Excel).
+          </Typography>
+        </Box>
+
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button variant="outlined" size="small" startIcon={<RetryIcon />} onClick={handleRetry} sx={{ borderRadius: 3 }}>
+            Réessayer ce fichier
+          </Button>
+          <Button
+            variant="contained" size="small"
+            onClick={() => { setPhase('idle'); setFile(null); setVerification(null); }}
+            sx={{ borderRadius: 3, bgcolor: '#7f1d1d', '&:hover': { bgcolor: '#991b1b' } }}
+          >
+            Choisir un autre fichier
+          </Button>
+        </Box>
+      </Box>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // ERROR
   // ─────────────────────────────────────────────────────────────────────────────
   if (phase === 'error') {
@@ -645,11 +761,50 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
           </Box>
         </Box>
 
+        {/* Vérification approfondie — checklist verte */}
+        {verification && (
+          <Box sx={{
+            p: 2, mb: 2, borderRadius: 2,
+            bgcolor: '#f0fdf4', border: '1px solid #bbf7d0',
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+              <CheckIcon sx={{ fontSize: 18, color: '#15803d', mr: 1 }} />
+              <Typography variant="caption" sx={{ fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Document vérifié — état financier SYSCOHADA/BCEAO ({verification.confidence}/100)
+              </Typography>
+            </Box>
+            {(['level1', 'level2', 'level3', 'level4'] as const).map(k => {
+              const lvl = verification[k];
+              return (
+                <Box key={k} sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.75, mb: 0.25 }}>
+                  <Typography sx={{
+                    fontFamily: 'monospace', fontWeight: 700, fontSize: '0.8rem',
+                    color: lvl.passed ? '#15803d' : '#dc2626', minWidth: 12,
+                  }}>
+                    {lvl.passed ? '✓' : '⚠'}
+                  </Typography>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: '#0f172a', display: 'block' }}>
+                      {lvl.label}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#475569', fontSize: '0.7rem' }}>
+                      {lvl.detail}
+                    </Typography>
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+        )}
+
         {/* Warnings */}
         {warnings.length > 0 && (
           <Box sx={{ p: 2, mb: 2, bgcolor: '#fffbeb', borderRadius: 2, border: '1px solid #fde68a' }}>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', mb: 0.5 }}>
+              Avertissements
+            </Typography>
             {warnings.map((w, i) => (
-              <Typography key={i} variant="caption" sx={{ display: 'block', color: '#92400e' }}>{w}</Typography>
+              <Typography key={i} variant="caption" sx={{ display: 'block', color: '#92400e' }}>· {w}</Typography>
             ))}
           </Box>
         )}

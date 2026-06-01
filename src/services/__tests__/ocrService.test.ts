@@ -334,3 +334,177 @@ describe('findAllLinesByLabel', () => {
     expect(lines.length).toBe(2);
   });
 });
+
+// ─── Vérification approfondie ─────────────────────────────────────────────────
+
+describe('collectSyscohadaTerms', () => {
+  const collect = (s: string) => (ocrService as any).collectSyscohadaTerms(s) as string[];
+
+  test('detects SYSCOHADA term', () => {
+    expect(collect('Etats financiers SYSCOHADA au 31/12/2024').length).toBeGreaterThan(0);
+  });
+
+  test('detects BCEAO', () => {
+    expect(collect('Banque Centrale BCEAO').length).toBeGreaterThan(0);
+  });
+
+  test('detects FCFA / XOF', () => {
+    expect(collect('Montants en FCFA').length).toBeGreaterThan(0);
+    expect(collect('XOF').length).toBeGreaterThan(0);
+  });
+
+  test('returns empty on irrelevant text', () => {
+    expect(collect('Rapport hebdomadaire de l\'équipe marketing')).toEqual([]);
+  });
+});
+
+describe('collectSyscohadaCodes', () => {
+  const collect = (s: string) => (ocrService as any).collectSyscohadaCodes(s) as string[];
+
+  test('detects codes at start of line', () => {
+    const text = [
+      'AB IMMOBILISATIONS INCORPORELLES|1 000',
+      'AC Frais de développement|500',
+      'RA Ventes de marchandises|2 000',
+    ].join('\n');
+    const codes = collect(text);
+    expect(codes).toEqual(expect.arrayContaining(['AB', 'AC', 'RA']));
+  });
+
+  test('detects codes after pipe', () => {
+    expect(collect('Label|XB CHIFFRE AFFAIRES|10 000')).toContain('XB');
+  });
+
+  test('ignores non-SYSCOHADA codes', () => {
+    expect(collect('ZZ Random|100')).not.toContain('ZZ');
+  });
+});
+
+describe('countNumericCells', () => {
+  const count = (s: string) => (ocrService as any).countNumericCells(s) as number;
+
+  test('counts numeric cells across pipes and lines', () => {
+    const text = [
+      'Terrains|1 000|0|1 000|800',
+      'Batiments|10 000|2 000|8 000|7 500',
+    ].join('\n');
+    expect(count(text)).toBe(8);
+  });
+
+  test('returns 0 for non-numeric text', () => {
+    expect(count('This is a marketing report.\nNo numbers here.')).toBe(0);
+  });
+});
+
+describe('verifyFinancialDocument', () => {
+  const verify = (e: any, s: any[]) =>
+    (ocrService as any).verifyFinancialDocument(e, s) as any;
+
+  const mkEvidence = (overrides: Partial<{
+    terms: string[]; codes: string[]; pagesScanned: number; pagesWithNumericTables: number;
+  }> = {}) => ({
+    syscohadaTerms: new Set<string>(overrides.terms ?? ['SYSCOHADA']),
+    syscohadaCodes: new Set<string>(overrides.codes ?? []),
+    pagesScanned: overrides.pagesScanned ?? 5,
+    pagesWithNumericTables: overrides.pagesWithNumericTables ?? 3,
+  });
+
+  const mkStmt = (type: any, confidence = 75, page = 1) =>
+    ({ type, pageNumber: page, confidence, text: '' });
+
+  test('passes when all 3 levels satisfied', () => {
+    const v = verify(mkEvidence(), [mkStmt('bilan', 80), mkStmt('compte_resultat', 75)]);
+    expect(v.passed).toBe(true);
+    expect(v.level1.passed).toBe(true);
+    expect(v.level2.passed).toBe(true);
+    expect(v.level3.passed).toBe(true);
+    expect(v.rejectionReasons).toEqual([]);
+  });
+
+  test('fails Level 1 when no SYSCOHADA terms nor codes', () => {
+    const v = verify(
+      mkEvidence({ terms: [], codes: [] }),
+      [mkStmt('bilan', 80)],
+    );
+    expect(v.passed).toBe(false);
+    expect(v.level1.passed).toBe(false);
+    expect(v.rejectionReasons).toContain(v.level1.reason);
+  });
+
+  test('passes Level 1 via ≥3 SYSCOHADA codes (terms absent)', () => {
+    const v = verify(
+      mkEvidence({ terms: [], codes: ['AB', 'AC', 'RA'] }),
+      [mkStmt('bilan', 80)],
+    );
+    expect(v.level1.passed).toBe(true);
+  });
+
+  test('fails Level 2 when no statement detected', () => {
+    const v = verify(mkEvidence(), []);
+    expect(v.passed).toBe(false);
+    expect(v.level2.passed).toBe(false);
+  });
+
+  test('fails Level 2 when statements below 60% confidence', () => {
+    const v = verify(mkEvidence(), [mkStmt('bilan', 45), mkStmt('compte_resultat', 50)]);
+    expect(v.passed).toBe(false);
+    expect(v.level2.passed).toBe(false);
+  });
+
+  test('fails Level 3 when no pages with numeric tables', () => {
+    const v = verify(
+      mkEvidence({ pagesWithNumericTables: 0 }),
+      [mkStmt('bilan', 80)],
+    );
+    expect(v.passed).toBe(false);
+    expect(v.level3.passed).toBe(false);
+  });
+
+  test('confidence reflects passed levels + code bonus', () => {
+    const v = verify(
+      mkEvidence({ codes: ['AB', 'AC', 'RA', 'XB', 'XE'] }),
+      [mkStmt('bilan', 85)],
+    );
+    expect(v.confidence).toBeGreaterThanOrEqual(90);
+  });
+});
+
+describe('checkCoherence', () => {
+  test('flags unbalanced bilan (ACTIF != PASSIF > 1%)', () => {
+    const data = { total_actif: 100_000, total_passif: 95_000 } as any;
+    const verification: any = { warnings: [], evidence: {}, level4: { passed: true, label: '', detail: '' } };
+    (ocrService as any).checkCoherence(data, verification);
+    expect(verification.warnings.length).toBeGreaterThan(0);
+    expect(verification.warnings[0]).toMatch(/Bilan déséquilibré/);
+    expect(verification.level4.passed).toBe(false);
+  });
+
+  test('passes when ACTIF ~= PASSIF (within 1%)', () => {
+    const data = { total_actif: 100_000, total_passif: 100_500 } as any;
+    const verification: any = { warnings: [], evidence: {}, level4: { passed: true, label: '', detail: '' } };
+    (ocrService as any).checkCoherence(data, verification);
+    expect(verification.warnings).toEqual([]);
+    expect(verification.level4.passed).toBe(true);
+  });
+
+  test('flags CA <= 0', () => {
+    const data = { chiffre_affaires: 0 } as any;
+    const verification: any = { warnings: [], evidence: {}, level4: { passed: true, label: '', detail: '' } };
+    (ocrService as any).checkCoherence(data, verification);
+    expect(verification.warnings.some((w: string) => w.includes("Chiffre d'affaires"))).toBe(true);
+  });
+});
+
+describe('FinancialDocumentVerificationError', () => {
+  test('carries verification + message', () => {
+    const { FinancialDocumentVerificationError } = require('../ocrService');
+    const verification = {
+      passed: false,
+      rejectionReasons: ['Pas SYSCOHADA', 'Pas de table'],
+    } as any;
+    const err = new FinancialDocumentVerificationError(verification);
+    expect(err.name).toBe('FinancialDocumentVerificationError');
+    expect(err.verification).toBe(verification);
+    expect(err.message).toContain('Pas SYSCOHADA');
+  });
+});
