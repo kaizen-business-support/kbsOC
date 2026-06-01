@@ -220,7 +220,15 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
         const conf = (financialData.confidence ?? 0) as number;
         setResult(optimusData);
         setConfidence(conf);
-        setFieldsFound(Object.keys(optimusData).length);
+        // Count only real financial fields, not meta keys (multiyear_data, detectedYears).
+        const META_KEYS = new Set(['multiyear_data', 'detectedYears', 'confidence']);
+        setFieldsFound(Object.keys(optimusData).filter(k => !META_KEYS.has(k)).length);
+
+        // Multi-year banner: announce which years were extracted.
+        const years: number[] | undefined = (financialData as any).detectedYears;
+        if (years && years.length > 1) {
+          pushLog(`Années extraites : ${years.join(' + ')}`, 'success');
+        }
         setPhase('done');
       }
 
@@ -704,18 +712,25 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
               Aperçu des champs extraits
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-              {Object.entries(result ?? {}).slice(0, 18).map(([k, v]) => (
-                <Chip
-                  key={k}
-                  label={`${k.replace(/_/g, ' ')}: ${new Intl.NumberFormat('fr-FR').format(v as number)}`}
-                  size="small"
-                  variant="outlined"
-                  sx={{ fontSize: '0.7rem', fontFamily: 'monospace' }}
-                />
-              ))}
-              {Object.keys(result ?? {}).length > 18 && (
-                <Chip label={`+${Object.keys(result ?? {}).length - 18} autres`} size="small" />
-              )}
+              {Object.entries(result ?? {})
+                .filter(([k, v]) => typeof v === 'number' && k !== 'confidence')
+                .slice(0, 18)
+                .map(([k, v]) => (
+                  <Chip
+                    key={k}
+                    label={`${k.replace(/_/g, ' ')}: ${new Intl.NumberFormat('fr-FR').format(v as number)}`}
+                    size="small"
+                    variant="outlined"
+                    sx={{ fontSize: '0.7rem', fontFamily: 'monospace' }}
+                  />
+                ))}
+              {(() => {
+                const numericKeys = Object.entries(result ?? {})
+                  .filter(([k, v]) => typeof v === 'number' && k !== 'confidence').length;
+                return numericKeys > 18 ? (
+                  <Chip label={`+${numericKeys - 18} autres`} size="small" />
+                ) : null;
+              })()}
             </Box>
           </Box>
         )}

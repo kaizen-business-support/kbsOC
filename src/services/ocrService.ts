@@ -201,8 +201,12 @@ export class OcrService {
       onProgress?.('detect', `${detectedStatements.length} état(s) financier(s) détecté(s)`, 55,
         { statements: detectedStatements });
 
-      // Step 2: Extract data from each detected statement
-      const extractedData: ExtractedFinancialData = {};
+      // Step 2: Extract data from each detected statement, for BOTH year
+      // columns when detectable (SYSCOHADA statements always show N and N-1).
+      const dataN: ExtractedFinancialData = {};
+      const dataN1: ExtractedFinancialData = {};
+      let yearN: number | null = null;
+      let yearN1: number | null = null;
       let totalConfidence = 0;
       let stepIdx = 0;
 
@@ -213,11 +217,24 @@ export class OcrService {
             60 + stepIdx * 10);
           const rawData = await this.extractStatementData(file, statement);
           await this.saveDebugOutput(statement.type, rawData);
-          const parsedData = this.parseStatementData(statement.type, rawData);
-          Object.assign(extractedData, parsedData);
+
+          // Pull year columns from headers when present.
+          const yearCols = statement.type === 'bilan'
+            ? this.detectBilanColumns(rawData)
+            : this.detectYearColumns(rawData);
+          if (yearCols) {
+            if (yearCols.yearN != null && (yearN == null || yearCols.yearN > yearN)) yearN = yearCols.yearN;
+            if (yearCols.yearN1 != null && (yearN1 == null || yearCols.yearN1 > yearN1)) yearN1 = yearCols.yearN1;
+          }
+
+          const parsedN = this.parseStatementData(statement.type, rawData, 0);
+          const parsedN1 = this.parseStatementData(statement.type, rawData, 1);
+          Object.assign(dataN, parsedN);
+          Object.assign(dataN1, parsedN1);
           totalConfidence += statement.confidence;
-          onProgress?.('field', `${label} : ${Object.keys(parsedData).length} champ(s) extrait(s)`,
-            65 + stepIdx * 10, { count: Object.keys(parsedData).length });
+          const nCount = Object.values(parsedN).filter(v => v !== undefined).length;
+          onProgress?.('field', `${label} : ${nCount} champ(s) extrait(s)`,
+            65 + stepIdx * 10, { count: nCount });
           stepIdx++;
         } catch (error) {
           console.warn(`⚠️ Error extracting ${statement.type}:`, error);
@@ -225,10 +242,32 @@ export class OcrService {
         }
       }
 
-      extractedData.confidence = detectedStatements.length > 0 ? totalConfidence / detectedStatements.length : 0;
-      const fieldCount = Object.keys(extractedData).filter(k => k !== 'confidence').length;
-      onProgress?.('done', `Extraction terminée — ${fieldCount} champs — confiance ${extractedData.confidence?.toFixed(0)}%`, 100,
-        { fieldCount, confidence: extractedData.confidence });
+      const confidence = detectedStatements.length > 0 ? totalConfidence / detectedStatements.length : 0;
+
+      // Build the final result. Backwards-compat: flat fields are the N
+      // (current year) values; multiyear_data is always populated (with N
+      // alone when N-1 wasn't found) so downstream handleDataInput can pick
+      // the snake_case data for the requested year instead of falling back to
+      // the convertToOptimusFormat-renamed flat shape (which mismatches the
+      // review/UI field names).
+      const hasN1Data = Object.values(dataN1).some(v => v !== undefined);
+      const extractedData: ExtractedFinancialData = { ...dataN, confidence };
+
+      const nowYear = new Date().getFullYear();
+      const effectiveYearN = yearN ?? nowYear;
+      const effectiveYearN1 = yearN1 ?? (effectiveYearN - 1);
+      const my: Record<string, { year: number; data: ExtractedFinancialData }> = {
+        'N': { year: effectiveYearN, data: dataN },
+      };
+      if (hasN1Data) my['N-1'] = { year: effectiveYearN1, data: dataN1 };
+      (extractedData as any).multiyear_data = my;
+      (extractedData as any).detectedYears = hasN1Data
+        ? [effectiveYearN, effectiveYearN1]
+        : [effectiveYearN];
+
+      const fieldCount = Object.keys(dataN).filter(k => dataN[k] !== undefined).length;
+      onProgress?.('done', `Extraction terminée — ${fieldCount} champs (N${hasN1Data ? ' + N-1' : ''}) — confiance ${confidence.toFixed(0)}%`, 100,
+        { fieldCount, confidence });
 
       return extractedData;
 
@@ -681,16 +720,17 @@ export class OcrService {
   }
   
   /**
-   * Parse statement data based on type
+   * Parse statement data for a specific year column.
+   * @param yearOffset 0 = current year (N), 1 = previous year (N-1).
    */
-  private parseStatementData(statementType: string, rawData: string): ExtractedFinancialData {
+  private parseStatementData(statementType: string, rawData: string, yearOffset: 0 | 1 = 0): ExtractedFinancialData {
     switch (statementType) {
       case 'bilan':
-        return this.parseBilanData(rawData);
+        return this.parseBilanDataForYear(rawData, yearOffset);
       case 'compte_resultat':
-        return this.parseCompteResultatData(rawData);
+        return this.parseCompteResultatForYear(rawData, yearOffset);
       case 'tableau_flux':
-        return this.parseTableauFluxData(rawData);
+        return this.parseTableauFluxForYear(rawData, yearOffset);
       default:
         return {};
     }
@@ -723,70 +763,258 @@ export class OcrService {
   }
 
   /**
-   * Find the first line in `text` that matches any of the given label variants.
+   * Find ALL lines matching any of the labels, ordered by match specificity.
+   * Critical for ambiguous labels (e.g. "TOTAL GENERAL" appears in ACTIF and
+   * PASSIF; "RESULTAT NET" in both CR and Bilan passif).
    */
-  private findLineByLabel(text: string, ...labels: string[]): string | null {
-    for (const line of text.split('\n')) {
+  private findAllLinesByLabel(text: string, ...labels: string[]): string[] {
+    const matches: Array<{ line: string; index: number; score: number }> = [];
+    const allLines = text.split('\n');
+    for (let i = 0; i < allLines.length; i++) {
+      const line = allLines[i];
       const norm = this.normalizeFr(line);
+      let bestScore = 0;
       for (const label of labels) {
         const normLabel = this.normalizeFr(label);
-        if (norm.includes(normLabel) || this.fuzzyContains(norm, normLabel)) {
-          return line;
+        if (!normLabel) continue;
+        if (norm.includes(normLabel)) {
+          // Exact substring match wins; longer (more specific) labels score higher.
+          bestScore = Math.max(bestScore, 100 + normLabel.length);
+        } else if (this.fuzzyContains(norm, normLabel)) {
+          const words = normLabel.split(' ').filter(w => w.length > 3);
+          const matched = words.filter(w => norm.includes(w)).length;
+          if (words.length > 0) bestScore = Math.max(bestScore, 50 * matched / words.length);
         }
       }
+      if (bestScore > 0) matches.push({ line, index: i, score: bestScore });
+    }
+    // Sort by score desc, stable on document order.
+    matches.sort((a, b) => b.score - a.score || a.index - b.index);
+    return matches.map(m => m.line);
+  }
+
+  /**
+   * Find the first line in `text` that matches any of the given label variants.
+   * @deprecated Use findAllLinesByLabel for ambiguous labels.
+   */
+  private findLineByLabel(text: string, ...labels: string[]): string | null {
+    const lines = this.findAllLinesByLabel(text, ...labels);
+    return lines[0] ?? null;
+  }
+
+  /**
+   * Parse a single cell into a financial amount.
+   * Handles: French thousand spaces, decimal commas, parens-negatives
+   * (accounting), signed numbers, currency tokens stripped, and dash
+   * placeholders (returns null = "no value", not zero).
+   */
+  parseAmount(cell: string): number | null {
+    if (!cell) return null;
+    const trimmed = cell.trim();
+    if (!trimmed) return null;
+    if (/^[—–_\s]+$/.test(trimmed)) return null;
+    if (/^-+$/.test(trimmed)) return null;
+
+    const isNegative = /^\(.*\)$/.test(trimmed);
+    let str = trimmed.replace(/[()]/g, '').trim();
+    str = str.replace(/(FCFA|XOF|F\s?CFA|€|\$|£|¥|₦)/gi, '').trim();
+    str = str.replace(/[\s  ]/g, '');
+    str = str.replace(/,(\d+)$/, '.$1');
+    if (!/^-?\d+(\.\d+)?$/.test(str)) return null;
+    const n = parseFloat(str);
+    if (isNaN(n)) return null;
+    return isNegative ? -Math.abs(n) : n;
+  }
+
+  /**
+   * Extract numeric cells from a line, preserving null gaps for empty cells.
+   * Lets callers identify NET-N as column 3 even when AMORT is empty.
+   */
+  extractNumbersWithGaps(line: string): (number | null)[] {
+    const cells = line.includes('|') ? line.split('|') : line.split(/\s{2,}|\t+/);
+    return cells.map(c => this.parseAmount(c));
+  }
+
+  /**
+   * Extract all financial numbers (non-null) from a pipe/space-separated line.
+   * Delegates to extractNumbersWithGaps + parseAmount which handle French
+   * formats (parens-negatives, decimal commas, currency tokens, smaller
+   * numbers, dash placeholders).
+   */
+  private numsFromLine(line: string): number[] {
+    return this.extractNumbersWithGaps(line).filter((n): n is number => n !== null);
+  }
+
+  /**
+   * Find a line by label, then pick a number by index.
+   * numIdx: 0 = first, -1 = last, 2 = third (NET_N in SYSCOHADA ACTIF format).
+   */
+  private labelValue(text: string, numIdx: number, ...labels: string[]): number | undefined {
+    for (const line of this.findAllLinesByLabel(text, ...labels)) {
+      const nums = this.numsFromLine(line);
+      if (nums.length === 0) continue;
+      const idx = numIdx < 0 ? nums.length + numIdx : numIdx;
+      return nums[Math.max(0, Math.min(idx, nums.length - 1))];
+    }
+    return undefined;
+  }
+
+  /**
+   * Pick the NET-N value for an ACTIF line. Uses detected column position when
+   * available; otherwise falls back to a length-aware heuristic.
+   *
+   * SYSCOHADA layouts:
+   *   4 cols: BRUT | AMORT/DEPREC | NET-N | NET-N-1 -> NET-N at index 2
+   *   3 cols: BRUT | NET-N | NET-N-1               -> NET-N at index 1
+   *   2 cols: NET-N | NET-N-1                      -> NET-N at index 0
+   *   1 col:  NET-N only                           -> that single value
+   */
+  private actifWithHint(text: string, columnHint: number | null, ...labels: string[]): number | undefined {
+    for (const line of this.findAllLinesByLabel(text, ...labels)) {
+      const cells = this.extractNumbersWithGaps(line);
+      const nums = cells.filter((n): n is number => n !== null);
+      if (nums.length === 0) continue;
+
+      if (columnHint !== null && columnHint >= 0 && columnHint < cells.length) {
+        const v = cells[columnHint];
+        if (v !== null) return v;
+      }
+      if (nums.length >= 3) return nums[nums.length - 2];
+      return nums[0];
+    }
+    return undefined;
+  }
+
+  /** Backwards-compatible: pick ACTIF NET-N without explicit column hint. */
+  private actif(text: string, ...labels: string[]): number | undefined {
+    return this.actifWithHint(text, null, ...labels);
+  }
+
+  /** For PASSIF/CR/TFT lines: current year is typically the first number after the label. */
+  private cr(text: string, ...labels: string[]): number | undefined {
+    return this.crWithHint(text, null, ...labels);
+  }
+
+  /**
+   * Same as cr() but accepts a column hint. The hint is interpreted as a YEAR
+   * column index across the numeric cells (0 = first year present on the line,
+   * 1 = second year), NOT a raw cell index — CR/TFT/PASSIF lines start with a
+   * non-numeric label so the label cell would otherwise be counted.
+   */
+  private crWithHint(text: string, columnHint: number | null, ...labels: string[]): number | undefined {
+    for (const line of this.findAllLinesByLabel(text, ...labels)) {
+      const nums = this.numsFromLine(line);
+      if (nums.length === 0) continue;
+      if (columnHint !== null && columnHint >= 0 && columnHint < nums.length) {
+        return nums[columnHint];
+      }
+      return nums[0];
+    }
+    return undefined;
+  }
+
+  /**
+   * Split a Bilan extraction into ACTIF / PASSIF subtexts so labels that
+   * appear in both sections (TOTAL GENERAL, RESULTAT NET) can be resolved
+   * unambiguously.
+   */
+  splitBilanSections(text: string): { actif: string; passif: string } {
+    const lines = text.split('\n');
+    let passifIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const norm = this.normalizeFr(lines[i]);
+      if (/\bpassif\b/.test(norm) && !/\bactif\b/.test(norm)) {
+        passifIdx = i;
+        break;
+      }
+    }
+    if (passifIdx < 0) {
+      for (let i = 0; i < lines.length; i++) {
+        if (/capitaux\s+propres/.test(this.normalizeFr(lines[i]))) {
+          passifIdx = i;
+          break;
+        }
+      }
+    }
+    if (passifIdx < 0) return { actif: text, passif: text };
+    return {
+      actif: lines.slice(0, passifIdx).join('\n'),
+      passif: lines.slice(passifIdx).join('\n'),
+    };
+  }
+
+  /**
+   * Detect Bilan column layout from a header row containing "brut" and "net".
+   * Returns null when no header line is found - callers fall back to heuristics.
+   */
+  detectBilanColumns(text: string): {
+    brutIdx: number; amortIdx: number; netNIdx: number; netN1Idx: number;
+    yearN: number | null; yearN1: number | null;
+  } | null {
+    for (const line of text.split('\n')) {
+      const norm = this.normalizeFr(line);
+      if (!(norm.includes('brut') && norm.includes('net'))) continue;
+      const rawCells = line.includes('|') ? line.split('|') : line.split(/\s{2,}/);
+      const cells = rawCells.map(c => this.normalizeFr(c).trim());
+      const brutIdx = cells.findIndex(c => /^brut/.test(c));
+      const amortIdx = cells.findIndex(c => /amort|deprec/.test(c));
+      const netIdxs = cells
+        .map((c, i) => (/^net\b|^nets\b/.test(c) ? i : -1))
+        .filter(i => i >= 0);
+      const yearMatches = (line.match(/(19|20)\d{2}/g) || []).map(y => parseInt(y, 10));
+      const sortedYears = Array.from(new Set(yearMatches)).sort((a, b) => b - a);
+      return {
+        brutIdx,
+        amortIdx,
+        netNIdx: netIdxs[0] ?? -1,
+        netN1Idx: netIdxs[1] ?? -1,
+        yearN: sortedYears[0] ?? null,
+        yearN1: sortedYears[1] ?? null,
+      };
     }
     return null;
   }
 
   /**
-   * Extract all financial numbers (≥3 digits) from a pipe/space-separated line.
+   * Detect year columns (N vs N-1) for CR / TFT by scanning the first dozen
+   * lines for 4-digit year tokens.
    */
-  private numsFromLine(line: string): number[] {
-    const nums: number[] = [];
-    for (const part of line.split('|')) {
-      const clean = part.trim().replace(/[\s\u00A0]/g, '');
-      if (/^-?\d{3,}$/.test(clean)) {
-        const n = parseInt(clean, 10);
-        if (!isNaN(n)) nums.push(n);
-      }
+  detectYearColumns(text: string): { yearN: number | null; yearN1: number | null } {
+    for (const line of text.split('\n').slice(0, 12)) {
+      const yearMatches = (line.match(/(19|20)\d{2}/g) || []).map(y => parseInt(y, 10));
+      const sorted = Array.from(new Set(yearMatches)).sort((a, b) => b - a);
+      if (sorted.length >= 1) return { yearN: sorted[0], yearN1: sorted[1] ?? null };
     }
-    return nums;
-  }
-
-  /**
-   * Find a line by label, then pick a number by index.
-   * numIdx: 0 = first, -1 = last, 2 = third (NET_N in SYSCOHADA ACTIF format: BRUT_N, AMORT_N, NET_N, NET_N-1)
-   */
-  private labelValue(text: string, numIdx: number, ...labels: string[]): number | undefined {
-    const line = this.findLineByLabel(text, ...labels);
-    if (!line) return undefined;
-    const nums = this.numsFromLine(line);
-    if (nums.length === 0) return undefined;
-    const idx = numIdx < 0 ? nums.length + numIdx : numIdx;
-    return nums[Math.max(0, Math.min(idx, nums.length - 1))];
-  }
-
-  /** For ACTIF lines: SYSCOHADA format has BRUT_N | AMORT_N | NET_N | NET_N-1.
-   *  We want NET_N = 3rd number (idx 2). Fallback to first if fewer columns. */
-  private actif(text: string, ...labels: string[]): number | undefined {
-    const line = this.findLineByLabel(text, ...labels);
-    if (!line) return undefined;
-    const nums = this.numsFromLine(line);
-    if (nums.length === 0) return undefined;
-    if (nums.length >= 3) return nums[2];
-    return nums[0];
-  }
-
-  /** For PASSIF/CR/TFT lines: current year is typically the first number after the label. */
-  private cr(text: string, ...labels: string[]): number | undefined {
-    return this.labelValue(text, 0, ...labels);
+    return { yearN: null, yearN1: null };
   }
 
   // ─── Parse methods ───────────────────────────────────────────────────────────
 
-  private parseBilanData(text: string): ExtractedFinancialData {
-    const a = ((...l: string[]) => this.actif(text, ...l));
-    const p = ((...l: string[]) => this.cr(text, ...l));
+  /**
+   * Parse Bilan data for a specific year column. Use sections (ACTIF/PASSIF)
+   * to disambiguate labels that appear in both, and column detection (from
+   * BRUT/AMORT/NET headers) to pick the right value when available.
+   *
+   * @param yearOffset 0 = current year (NET-N), 1 = previous year (NET-N-1).
+   */
+  private parseBilanDataForYear(text: string, yearOffset: 0 | 1 = 0): ExtractedFinancialData {
+    const { actif, passif } = this.splitBilanSections(text);
+    const cols = this.detectBilanColumns(actif);
+
+    // ACTIF column hint: prefer detected NET-N / NET-N-1 from header row.
+    const actifHint = yearOffset === 0
+      ? (cols?.netNIdx ?? null)
+      : (cols?.netN1Idx ?? null);
+    // PASSIF column hint: 2 cols (N | N-1) — first = N, second = N-1.
+    const passifHint = yearOffset;
+
+    const a = (...l: string[]) => this.actifWithHint(actif, actifHint, ...l);
+    const p = (...l: string[]) => this.crWithHint(passif, passifHint, ...l);
+    // Some PASSIF labels (résultat exercice, dettes location) are not always
+    // in the PASSIF subtext if section splitter misfires — fall back to full
+    // text scope. Use full text only when section-scoped returns undefined.
+    const pf = (...l: string[]) => p(...l) ?? this.crWithHint(text, passifHint, ...l);
+
     return {
       // ── ACTIF IMMOBILISÉ ────────────────────────────────────────────────
       immobilisations_incorporelles:  a('IMMOBILISATIONS INCORPORELLES'),
@@ -800,104 +1028,157 @@ export class OcrService {
       agencements:                    a('Agencements', 'amenagements'),
       materiel_mobilier:              a('Materiel mobilier', 'Matériel mobilier', 'actifs biologiques'),
       materiel_transport:             a('Materiel de transport', 'Matériel de transport'),
-      avances_immobilisations:        a('Avances', 'acomptes', 'immobilisations'),
+      avances_immobilisations:        a('Avances et acomptes', 'Avances acomptes immobilisations'),
       immobilisations_financieres:    a('IMMOBILISATIONS FINANCIERES'),
       titres_participation:           a('Titres de participation'),
       autres_immob_financieres:       a('Autres immobilisations financieres', 'Autres Immobilisations Financières'),
+      depots_cautionnements:          a('Depots et cautionnements', 'Dépôts et cautionnements'),
       total_actif_immobilise:         a('TOTAL ACTIF IMMOBILISE', 'TOTAL IMMOBILISATIONS'),
       // ── ACTIF CIRCULANT ─────────────────────────────────────────────────
-      actif_circulant_hao:            a('ACTIF CIRCULANT H.A.O', 'ACTIF CIRCULANT HAO'),
+      actif_circulant_hao:            a('ACTIF CIRCULANT H.A.O', 'ACTIF CIRCULANT HAO', 'Créances HAO', 'Creances HAO'),
       stocks:                         a('STOCKS ET ENCOURS', 'STOCKS'),
-      creances_clients:               a('CREANCES ET EMPLOIS'),
-      fournisseurs_avances:           a('Fournisseurs avances', 'Fournisseurs, avances versees'),
-      clients:                        a('Clients'),
+      creances_clients:               a('Créances clients', 'Creances clients', 'CREANCES ET EMPLOIS'),
+      fournisseurs_avances:           a('Fournisseurs avances versees', 'Fournisseurs, avances versees', 'Fournisseurs avances versées'),
+      clients:                        a('Clients et comptes rattaches', 'Clients et comptes rattachés', 'Clients'),
       autres_creances:                a('Autres creances', 'Autres créances'),
       total_actif_circulant:          a('TOTAL ACTIF CIRCULANT'),
       // ── TRÉSORERIE ACTIF ────────────────────────────────────────────────
       titres_placement:               a('Titres de placement'),
       valeurs_encaisser:              a('Valeurs a encaisser', 'Valeurs à encaisser'),
-      banques_caisses:                a('Banques', 'cheques postaux', 'caisse'),
+      banques_caisses:                a('Banques chèques postaux caisse', 'Banques cheques postaux caisse', 'Banque', 'Caisse'),
       tresorerie_actif:               a('TOTAL TRESORERIE ACTIF', 'TRESORERIE ACTIF'),
       ecart_conversion_actif:         a('Ecart de conversion actif', 'Ecarts de conversion Actif'),
+      // TOTAL GENERAL en ACTIF → vraie valeur totale du bilan
       total_actif:                    a('TOTAL GENERAL', 'TOTAL ACTIF'),
+
       // ── PASSIF CAPITAUX PROPRES ─────────────────────────────────────────
-      capital_social:                 p('CA|CAPITAL', 'CAPITAL'),
-      actionnaires_capital:           p('Apporteurs capital', 'capital non appele'),
-      primes_capital:                 p('Primes liees au capital', 'Primes liées au capital'),
-      ecarts_reevaluation:            p('Ecarts de reevaluation', 'Ecarts de réévaluation'),
-      reserves_indisponibles:         p('Reserves indisponibles', 'Réserves indisponibles'),
-      reserves_libres:                p('Reserves libres', 'Réserves libres'),
-      report_nouveau:                 p('Report a nouveau', 'Report à nouveau'),
-      resultat_exercice:              p('Resultat net de l\'exercice', 'Résultat de l\'exercice'),
-      subventions_investissement:     p('Subventions d\'investissement'),
-      provisions_reglementees:        p('Provisions reglementees', 'Provisions réglementées'),
-      capitaux_propres:               p('TOTAL CAPITAUX PROPRES'),
+      // Fix bug: previous code used 'CA|CAPITAL' (literal pipe) which never
+      // matched. Now matches "Capital", "CA - Capital", "CAPITAL SOCIAL"...
+      capital_social:                 pf('Capital social', 'Capital'),
+      actionnaires_capital:           pf('Apporteurs capital non appele', 'Apporteurs capital non appelé', 'Actionnaires capital non appele', 'capital non appele'),
+      primes_capital:                 pf('Primes liees au capital', 'Primes liées au capital'),
+      ecarts_reevaluation:            pf('Ecarts de reevaluation', 'Ecarts de réévaluation'),
+      reserves_indisponibles:         pf('Reserves indisponibles', 'Réserves indisponibles'),
+      reserves_libres:                pf('Reserves libres', 'Réserves libres'),
+      report_nouveau:                 pf('Report a nouveau', 'Report à nouveau'),
+      resultat_exercice:              pf('Resultat net de l\'exercice', 'Résultat net de l\'exercice', 'Resultat de l\'exercice', 'Résultat de l\'exercice'),
+      subventions_investissement:     pf('Subventions d\'investissement'),
+      provisions_reglementees:        pf('Provisions reglementees', 'Provisions réglementées'),
+      capitaux_propres:               pf('TOTAL CAPITAUX PROPRES'),
       // ── PASSIF DETTES ───────────────────────────────────────────────────
-      emprunts_dettes_financieres:    p('Emprunts et dettes financieres', 'Emprunts et dettes financières'),
-      dettes_location:                p('Dettes de location'),
-      provisions_risques:             p('Provisions pour risques'),
-      fournisseurs:                   p('Fournisseurs d\'exploitation', 'Dettes fournisseurs'),
-      dettes_fiscales:                p('Dettes fiscales', 'Organismes sociaux'),
-      tresorerie_passif:              p('TOTAL TRESORERIE PASSIF', 'TRESORERIE PASSIF'),
-      total_passif:                   p('TOTAL GENERAL', 'TOTAL PASSIF'),
+      emprunts_dettes_financieres:    pf('Emprunts et dettes financieres', 'Emprunts et dettes financières'),
+      dettes_location:                pf('Dettes de location acquisition', 'Dettes de location-acquisition', 'Dettes de location'),
+      provisions_risques:             pf('Provisions pour risques et charges', 'Provisions pour risques'),
+      total_dettes_financieres:       pf('TOTAL DETTES FINANCIERES', 'TOTAL DETTES FINANCIÈRES'),
+      fournisseurs:                   pf('Fournisseurs d\'exploitation', 'Dettes fournisseurs', 'Fournisseurs et comptes rattaches', 'Fournisseurs et comptes rattachés'),
+      dettes_fiscales:                pf('Dettes fiscales et sociales', 'Dettes fiscales', 'Organismes sociaux'),
+      tva_a_payer:                    pf('TVA a payer', 'TVA à payer', 'TVA collectee', 'TVA collectée'),
+      passif_circulant_hao:           pf('PASSIF CIRCULANT HAO', 'Dettes circulantes HAO'),
+      total_passif_circulant:         pf('TOTAL PASSIF CIRCULANT'),
+      tresorerie_passif:              pf('TOTAL TRESORERIE PASSIF', 'TRESORERIE PASSIF'),
+      ecart_conversion_passif:        pf('Ecart de conversion passif', 'Ecarts de conversion Passif'),
+      // TOTAL GENERAL en PASSIF → maintenant correctement résolu via section
+      total_passif:                   pf('TOTAL GENERAL', 'TOTAL PASSIF'),
     };
   }
 
-  private parseCompteResultatData(text: string): ExtractedFinancialData {
-    const v = ((...l: string[]) => this.cr(text, ...l));
+  private parseBilanData(text: string): ExtractedFinancialData {
+    return this.parseBilanDataForYear(text, 0);
+  }
+
+  /**
+   * Parse Compte de Résultat for a specific year column.
+   * @param yearOffset 0 = current year (col N), 1 = previous year (col N-1).
+   */
+  private parseCompteResultatForYear(text: string, yearOffset: 0 | 1 = 0): ExtractedFinancialData {
+    const v = (...l: string[]) => this.crWithHint(text, yearOffset, ...l);
     return {
       ventes_marchandises:            v('Ventes de marchandises'),
       achats_marchandises:            v('Achats de marchandises'),
       variation_stocks_marchandises:  v('Variation de stocks de marchandises'),
       marge_brute_marchandises:       v('MARGE BRUTE SUR MARCHANDISES', 'MARGE COMMERCIALE'),
       ventes_produits_fabriques:      v('Ventes de produits fabriques', 'Ventes de produits finis'),
-      travaux_services:               v('Travaux', 'services vendus'),
+      travaux_services:               v('Travaux services vendus', 'Travaux, services vendus'),
       produits_accessoires:           v('Produits accessoires'),
       chiffre_affaires:               v('CHIFFRE D\'AFFAIRES', 'CHIFFRE AFFAIRES'),
       production_stockee:             v('Production stockee', 'Production stockée'),
       production_immobilisee:         v('Production immobilisee', 'Production immobilisée'),
-      subvention_exploitation:        v('Subvention d\'exploitation'),
+      subvention_exploitation:        v('Subvention d\'exploitation', 'Subventions d\'exploitation'),
       autres_produits:                v('Autres produits'),
       transferts_charges:             v('Transferts de charges d\'exploitation'),
       achats_matieres_premieres:      v('Achats de matieres premieres', 'Achats de matières premières'),
       variation_stocks_mp:            v('Variation de stocks de matieres', 'Variation de stocks de matières'),
       autres_achats:                  v('Autres achats'),
+      variation_autres_stocks:        v('Variation des autres stocks', 'Variation autres stocks'),
       transports:                     v('Transports'),
       services_exterieurs:            v('Services exterieurs', 'Services extérieurs'),
       impots_taxes:                   v('Impots et taxes', 'Impôts et taxes'),
       autres_charges:                 v('Autres charges'),
       valeur_ajoutee:                 v('VALEUR AJOUTEE', 'VALEUR AJOUTÉE'),
       charges_personnel:              v('Charges de personnel'),
-      excedent_brut_exploitation:     v('EXCEDENT BRUT D\'EXPLOITATION', 'EXCEDENT BRUT'),
+      impots_taxes_remunerations:     v('Impots et taxes sur remunerations', 'Impôts et taxes sur rémunérations'),
+      excedent_brut_exploitation:     v('EXCEDENT BRUT D\'EXPLOITATION', 'EXCÉDENT BRUT D\'EXPLOITATION', 'EXCEDENT BRUT'),
+      reprises_provisions:            v('Reprises de provisions et depreciations', 'Reprises de provisions et dépréciations', 'Reprises de provisions'),
       reprises_amortissements:        v('Reprises d\'amortissements'),
-      dotations_amortissements:       v('Dotations aux amortissements'),
+      autres_produits_exploitation:   v('Autres produits d\'exploitation'),
+      dotations_amortissements:       v('Dotations aux amortissements et depreciations', 'Dotations aux amortissements et dépréciations', 'Dotations aux amortissements'),
+      dotations_provisions:           v('Dotations aux provisions'),
+      autres_charges_exploitation:    v('Autres charges d\'exploitation'),
       resultat_exploitation:          v('RESULTAT D\'EXPLOITATION', 'RÉSULTAT D\'EXPLOITATION'),
-      revenus_financiers:             v('Revenus financiers'),
-      frais_financiers:               v('Frais financiers'),
+      revenus_financiers:             v('Revenus financiers', 'Revenus financiers et assimiles', 'Revenus financiers et assimilés'),
+      reprises_provisions_financieres: v('Reprises de provisions financieres', 'Reprises de provisions financières'),
+      transferts_charges_financieres: v('Transferts de charges financieres', 'Transferts de charges financières'),
+      frais_financiers:               v('Frais financiers', 'Frais financiers et charges assimilees', 'Frais financiers et charges assimilées'),
+      dotations_provisions_financieres: v('Dotations aux provisions financieres', 'Dotations aux provisions financières'),
       resultat_financier:             v('RESULTAT FINANCIER', 'RÉSULTAT FINANCIER'),
-      resultat_courant:               v('RESULTAT DES ACTIVITES ORDINAIRES', 'RESULTAT COURANT'),
-      resultat_hao:                   v('RESULTAT HORS ACTIVITES ORDINAIRES', 'RESULTAT HAO'),
+      resultat_courant:               v('RESULTAT DES ACTIVITES ORDINAIRES', 'RÉSULTAT DES ACTIVITÉS ORDINAIRES', 'RESULTAT COURANT'),
+      produits_cessions:              v('Produits des cessions d\'immobilisations'),
+      valeurs_comptables_cessions:    v('Valeurs comptables des cessions d\'immobilisations'),
+      autres_produits_hao:            v('Autres produits HAO', 'Autres produits H.A.O'),
+      autres_charges_hao:             v('Autres charges HAO', 'Autres charges H.A.O'),
+      resultat_hao:                   v('RESULTAT HORS ACTIVITES ORDINAIRES', 'RÉSULTAT HORS ACTIVITÉS ORDINAIRES', 'RESULTAT HAO', 'RESULTAT H.A.O'),
       participation_travailleurs:     v('Participation des travailleurs'),
       impots_resultat:                v('Impots sur le resultat', 'Impôts sur le résultat'),
       resultat_net:                   v('RESULTAT NET', 'RÉSULTAT NET'),
     };
   }
 
-  private parseTableauFluxData(text: string): ExtractedFinancialData {
-    const v = ((...l: string[]) => this.cr(text, ...l));
+  private parseCompteResultatData(text: string): ExtractedFinancialData {
+    return this.parseCompteResultatForYear(text, 0);
+  }
+
+  /**
+   * Parse Tableau de Flux de Trésorerie for a specific year column.
+   * @param yearOffset 0 = current year (col N), 1 = previous year (col N-1).
+   */
+  private parseTableauFluxForYear(text: string, yearOffset: 0 | 1 = 0): ExtractedFinancialData {
+    const v = (...l: string[]) => this.crWithHint(text, yearOffset, ...l);
     return {
-      tresorerie_debut_periode:                 v('Tresorerie nette au 1er Janvier', 'Tresorerie nette au 1er janvier'),
-      capacite_autofinancement:                 v('Capacite d\'autofinancement', 'CAFG'),
-      flux_tresorerie_activites_operationnelles: v('activites operationnelles', 'activités opérationnelles', 'FLUX OPERATIONNELS'),
-      flux_tresorerie_activites_investissement:  v('operations d\'investissement', 'activites d\'investissement'),
-      flux_tresorerie_activites_financement:     v('activites de financement', 'activités de financement'),
+      tresorerie_debut_periode:                 v('Tresorerie nette au 1er Janvier', 'Trésorerie nette au 1er janvier', 'Tresorerie nette au 1er janvier'),
+      capacite_autofinancement:                 v('Capacite d\'autofinancement', 'Capacité d\'autofinancement', 'CAFG'),
+      variation_actif_circulant:                v('Variation de l\'actif circulant'),
+      variation_passif_circulant:               v('Variation du passif circulant'),
+      flux_tresorerie_activites_operationnelles: v('Flux de tresorerie provenant des activites operationnelles', 'Flux de trésorerie provenant des activités opérationnelles', 'activites operationnelles', 'activités opérationnelles', 'FLUX OPERATIONNELS'),
+      acquisitions_immobilisations:             v('Acquisitions d\'immobilisations', 'Decaissements lies aux acquisitions', 'Décaissements liés aux acquisitions'),
+      cessions_immobilisations:                 v('Cessions d\'immobilisations', 'Encaissements lies aux cessions', 'Encaissements liés aux cessions'),
+      flux_tresorerie_activites_investissement:  v('Flux de tresorerie provenant des activites d\'investissement', 'Flux de trésorerie provenant des activités d\'investissement', 'operations d\'investissement', 'opérations d\'investissement', 'activites d\'investissement'),
+      augmentations_capital:                    v('Augmentations de capital', 'Augmentation de capital'),
+      emprunts_nouveaux:                        v('Emprunts'),
+      remboursements_emprunts:                  v('Remboursements d\'emprunts', 'Remboursement d\'emprunts'),
+      dividendes:                               v('Dividendes verses', 'Dividendes versés', 'Dividendes'),
+      flux_tresorerie_activites_financement:     v('Flux de tresorerie provenant des activites de financement', 'Flux de trésorerie provenant des activités de financement', 'activites de financement', 'activités de financement'),
       variation_tresorerie:                     v('VARIATION DE LA TRESORERIE NETTE', 'VARIATION TRESORERIE'),
-      tresorerie_fin_periode:                   v('Tresorerie nette au 31 Decembre', 'Tresorerie nette au 31 décembre'),
-      flux_activites_operationnelles:           v('activites operationnelles', 'FLUX OPERATIONNELS'),
-      flux_activites_investissement:            v('operations d\'investissement'),
-      flux_activites_financement:               v('activites de financement'),
+      tresorerie_fin_periode:                   v('Tresorerie nette au 31 Decembre', 'Trésorerie nette au 31 décembre', 'Tresorerie nette au 31 décembre'),
+      // Aliases sans "tresorerie" en préfixe (compat ancien format)
+      flux_activites_operationnelles:           v('Flux de tresorerie provenant des activites operationnelles', 'activites operationnelles', 'FLUX OPERATIONNELS'),
+      flux_activites_investissement:            v('Flux de tresorerie provenant des activites d\'investissement', 'operations d\'investissement'),
+      flux_activites_financement:               v('Flux de tresorerie provenant des activites de financement', 'activites de financement'),
       variation_tresorerie_nette:               v('VARIATION DE LA TRESORERIE NETTE'),
     };
+  }
+
+  private parseTableauFluxData(text: string): ExtractedFinancialData {
+    return this.parseTableauFluxForYear(text, 0);
   }
 
 
@@ -928,12 +1209,19 @@ export class OcrService {
     };
     
     for (const [key, value] of Object.entries(extractedData)) {
-      if (key !== 'confidence' && value !== null && value !== undefined) {
-        const mappedKey = fieldMapping[key] || key;
-        optimusData[mappedKey] = value;
-      }
+      if (key === 'confidence' || key === 'multiyear_data' || key === 'detectedYears') continue;
+      if (value === null || value === undefined) continue;
+      const mappedKey = fieldMapping[key] || key;
+      optimusData[mappedKey] = value;
     }
-    
+
+    // Pass multi-year data through untouched so downstream handleDataInput can
+    // fill all matching years in one shot.
+    const my = (extractedData as any).multiyear_data;
+    if (my) optimusData.multiyear_data = my;
+    const dy = (extractedData as any).detectedYears;
+    if (dy) optimusData.detectedYears = dy;
+
     console.log(`✅ Converted ${Object.keys(optimusData).length} fields to OptimusCredit format`);
     return optimusData;
   }
