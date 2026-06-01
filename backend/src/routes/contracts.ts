@@ -23,6 +23,7 @@ import { finalizeApplicationDuration } from '../services/workflowService';
 import { generateContract } from '../services/contractGenerationService';
 import { validateMagicBytes } from '../services/contractTemplateService';
 import { getProvider } from '../services/signatureService';
+import { triggerNotification } from '../services/notificationService';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -259,7 +260,9 @@ router.post('/:id/cancel', authorize(['generate_contracts']), async (req: Reques
 
 /**
  * Complète automatiquement l'étape LEGAL en cours dès qu'un contrat est signé.
- * Si c'était la dernière étape, passe le dossier en APPROVED.
+ * Si c'était la dernière étape, passe le dossier en APPROVED et crée le
+ * final_decision step pour clore le workflow proprement (mêmes effets que
+ * approveWorkflow : notifications + final_decision step).
  */
 async function completeLegalStepOnSigned(applicationId: string): Promise<void> {
   const legalStep = await prisma.workflowStep.findFirst({
@@ -286,6 +289,11 @@ async function completeLegalStepOnSigned(applicationId: string): Promise<void> {
     },
   });
 
+  triggerNotification('STEP_APPROVED', applicationId, {
+    stepName: legalStep.stepName,
+    decision: 'Contrat signé — étape juridique complétée automatiquement',
+  });
+
   const remaining = await prisma.workflowStep.findFirst({
     where: { applicationId, status: { in: ['PENDING', 'IN_REVIEW'] } },
   });
@@ -296,6 +304,34 @@ async function completeLegalStepOnSigned(applicationId: string): Promise<void> {
       data: { status: 'APPROVED' },
     });
     await finalizeApplicationDuration(applicationId);
+
+    // Créer la step final_decision pour clore le workflow proprement —
+    // mêmes effets que la branche "approbation finale" de approveWorkflow.
+    // Sans cette step, les écrans aval qui détectent la clôture par sa
+    // présence (timeline CODIR, KPIs) restent bloqués.
+    const application = await prisma.creditApplication.findUnique({
+      where: { id: applicationId },
+      select: { createdBy: true },
+    });
+    const closerId = legalStep.assigneeId ?? application?.createdBy ?? null;
+    if (closerId) {
+      await prisma.workflowStep.create({
+        data: {
+          applicationId,
+          stepName: 'final_decision',
+          role: 'CHARGE_AFFAIRES',
+          status: 'APPROVED',
+          completedAt: now,
+          assigneeId: closerId,
+          comments: 'Dossier approuvé — toutes les validations requises ont été obtenues',
+        },
+      });
+    }
+
+    triggerNotification('APPLICATION_APPROVED', applicationId, {
+      stepName: legalStep.stepName,
+      decision: 'Contrat signé — dossier approuvé',
+    });
   }
 }
 

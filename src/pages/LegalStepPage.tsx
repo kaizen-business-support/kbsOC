@@ -62,11 +62,26 @@ export function LegalStepPage({ applicationId }: Props) {
       if (!ok) return;
     }
 
+    const isLegal = (s: any) =>
+      s.policyStep?.stepType === 'LEGAL'
+      || s.stepName?.toLowerCase().includes('legal')
+      || s.stepName?.toLowerCase().includes('juridique');
+
     // Trouver l'étape LEGAL dans le workflow pour passer le stepId explicitement.
     // Sans stepId, le backend prend pendingSteps[0] qui peut être un step ANALYSTE_RISQUES.
-    const legalStep = application?.workflowSteps?.find(
-      (s: any) => !s.completedAt && (s.policyStep?.stepType === 'LEGAL' || s.stepName?.toLowerCase().includes('legal') || s.stepName?.toLowerCase().includes('juridique'))
-    );
+    const legalStep = application?.workflowSteps?.find((s: any) => !s.completedAt && isLegal(s));
+
+    // Cas auto-complétion : un upload de PDF signé (ou un webhook DocuSeal) a déjà
+    // clôturé l'étape LEGAL côté backend. Sans ce garde, le bouton renvoyait
+    // "No pending workflow step found" alors que tout est déjà OK.
+    if (!legalStep) {
+      const completedLegalStep = application?.workflowSteps?.find((s: any) => s.completedAt && isLegal(s));
+      if (completedLegalStep) {
+        setSnack({ msg: 'Étape juridique déjà clôturée (contrat signé)', sev: 'success' });
+        setTimeout(() => navigateTo('approvals'), 1200);
+        return;
+      }
+    }
 
     setCompleting(true);
     try {
@@ -190,18 +205,40 @@ export function LegalStepPage({ applicationId }: Props) {
 
       <Divider sx={{ my: 3 }} />
 
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-        <Button onClick={() => navigateTo('approvals')}>Retour</Button>
-        <Button
-          variant="contained"
-          color="success"
-          startIcon={<CheckCircleIcon />}
-          onClick={handleCompleteStep}
-          disabled={completing}
-        >
-          {completing ? 'Clôture…' : "Terminer l'étape juridique"}
-        </Button>
-      </Box>
+      {(() => {
+        const isLegal = (s: any) =>
+          s.policyStep?.stepType === 'LEGAL'
+          || s.stepName?.toLowerCase().includes('legal')
+          || s.stepName?.toLowerCase().includes('juridique');
+        const alreadyCompleted = !!application?.workflowSteps?.find(
+          (s: any) => s.completedAt && isLegal(s)
+        );
+        return (
+          <>
+            {alreadyCompleted && (
+              <Alert severity="success" sx={{ mb: 2 }}>
+                Étape juridique déjà clôturée — le contrat signé a finalisé le dossier.
+              </Alert>
+            )}
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+              <Button onClick={() => navigateTo('approvals')}>Retour</Button>
+              <Button
+                variant="contained"
+                color="success"
+                startIcon={<CheckCircleIcon />}
+                onClick={handleCompleteStep}
+                disabled={completing}
+              >
+                {completing
+                  ? 'Clôture…'
+                  : alreadyCompleted
+                    ? 'Revenir aux approbations'
+                    : "Terminer l'étape juridique"}
+              </Button>
+            </Box>
+          </>
+        );
+      })()}
 
       {generating && (
         <GenerateContractDialog
