@@ -886,19 +886,41 @@ export class OcrService {
           rowGroups[rowKey].push(item);
         });
         
-        // Convert each row to pipe-separated format
-        const formattedRows = Object.keys(rowGroups)
-          .sort((a, b) => parseFloat(b) - parseFloat(a)) // Sort rows by Y position (top to bottom)
-          .map(rowKey => {
-            const rowItems = rowGroups[rowKey]
-              .sort((a, b) => a.x - b.x) // Sort items in row by X position (left to right)
-              .map(item => item.text);
-            
-            return rowItems.join('|'); // Join with pipes for consistent format
-          })
-          .filter(row => row.trim().length > 0);
-        
-        extractionText = formattedRows.join('\n');
+        // For Bilan pages the ACTIF section is on the left half and PASSIF on the
+        // right half. pdfjs groups both halves into the same Y-row, which confuses
+        // column-index heuristics. Split each Y-group at the page X midpoint, then
+        // emit ALL left (ACTIF) rows first followed by ALL right (PASSIF) rows so
+        // that splitBilanSections can cleanly identify the two sections.
+        const isBilan = statement.type === 'bilan';
+        const viewport = page.getViewport({ scale: 1.0 });
+        const midX = viewport.width / 2;
+
+        const sortedRowKeys = Object.keys(rowGroups)
+          .sort((a, b) => parseFloat(b) - parseFloat(a)); // top-to-bottom
+
+        let formattedRows: string[];
+        if (isBilan) {
+          const leftRows:  string[] = [];
+          const rightRows: string[] = [];
+          sortedRowKeys.forEach(rowKey => {
+            const sorted = rowGroups[rowKey].sort((a, b) => a.x - b.x);
+            const left  = sorted.filter(item => item.x <  midX).map(item => item.text);
+            const right = sorted.filter(item => item.x >= midX).map(item => item.text);
+            if (left.length  > 0) leftRows.push(left.join('|'));
+            if (right.length > 0) rightRows.push(right.join('|'));
+          });
+          formattedRows = [...leftRows, ...rightRows];
+        } else {
+          formattedRows = sortedRowKeys.map(rowKey => {
+            const rowText = rowGroups[rowKey]
+              .sort((a, b) => a.x - b.x)
+              .map(item => item.text)
+              .join('|');
+            return rowText;
+          });
+        }
+
+        extractionText = formattedRows.filter(r => r.trim().length > 0).join('\n');
         console.log(`📝 Formatted ${formattedRows.length} rows with pipe separators`);
       } else {
         // Image-based PDF: fall back to OCR with intensive preprocessing
