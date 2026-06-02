@@ -1530,35 +1530,17 @@ export class OcrService {
 
   convertToOptimusFormat(extractedData: ExtractedFinancialData): any {
     console.log('🔄 Converting to OptimusCredit format...');
-    
-    // Convert the extracted data to the expected format
+
     const optimusData: any = {};
-    
-    // Map the extracted fields to OptimusCredit field names
-    const fieldMapping: { [key: string]: string } = {
-      'chiffre_affaires': 'Chiffre Affaires',
-      'marge_brute_marchandises': 'Marge Brute Marchandises',
-      'valeur_ajoutee': 'Valeur Ajoutee',
-      'excedent_brut_exploitation': 'Excedent Brut Exploitation',
-      'resultat_net': 'Resultat Net',
-      'total_actif': 'Total Actif',
-      'total_passif': 'Total Passif',
-      'total_general': 'Total General',
-      'actif_immobilise': 'Actif Immobilise',
-      'actif_circulant': 'Actif Circulant',
-      'tresorerie_actif': 'Tresorerie Actif',
-      'capitaux_propres': 'Capitaux Propres',
-      'flux_activites_operationnelles': 'Flux Activites Operationnelles',
-      'flux_activites_investissement': 'Flux Activites Investissement',
-      'flux_activites_financement': 'Flux Activites Financement',
-      'variation_tresorerie_nette': 'Variation Tresorerie Nette'
-    };
-    
+
+    // Keep all keys in their original snake_case form — the entire UI reads
+    // snake_case (chiffre_affaires, capitaux_propres, etc.). A previous
+    // fieldMapping renamed them to human-readable strings, which silently broke
+    // every mapped field in the review screen and in the form.
     for (const [key, value] of Object.entries(extractedData)) {
       if (key === 'confidence' || key === 'multiyear_data' || key === 'detectedYears') continue;
       if (value === null || value === undefined) continue;
-      const mappedKey = fieldMapping[key] || key;
-      optimusData[mappedKey] = value;
+      optimusData[key] = value;
     }
 
     // Pass multi-year data through untouched so downstream handleDataInput can
