@@ -1136,7 +1136,15 @@ export class OcrService {
    * numbers, dash placeholders).
    */
   private numsFromLine(line: string): number[] {
-    return this.extractNumbersWithGaps(line).filter((n): n is number => n !== null);
+    const structured = this.extractNumbersWithGaps(line).filter((n): n is number => n !== null);
+    if (structured.length > 0) return structured;
+    // Fallback for tight OCR output where columns aren't 2+-space separated.
+    // Only match compact integer tokens (no thousand-space) to avoid greedily
+    // merging adjacent French-format numbers into one huge value.
+    const tokens = line.match(/-?\d+(?:[.,]\d+)?/g) ?? [];
+    return tokens
+      .map(t => this.parseAmount(t))
+      .filter((n): n is number => n !== null);
   }
 
   /**
@@ -1157,11 +1165,16 @@ export class OcrService {
    * Pick the NET-N value for an ACTIF line. Uses detected column position when
    * available; otherwise falls back to a length-aware heuristic.
    *
-   * SYSCOHADA layouts:
+   * SYSCOHADA layouts (financial cols only, excluding Note ref):
    *   4 cols: BRUT | AMORT/DEPREC | NET-N | NET-N-1 -> NET-N at index 2
    *   3 cols: BRUT | NET-N | NET-N-1               -> NET-N at index 1
    *   2 cols: NET-N | NET-N-1                      -> NET-N at index 0
    *   1 col:  NET-N only                           -> that single value
+   *
+   * SYSCOHADA documents include a NOTE reference column (integer 1-50) between
+   * the label and the financial values. When the columnHint points to what looks
+   * like a Note ref, the heuristic fallback (second-to-last non-null) is used
+   * instead — it correctly gives NET-N regardless of whether a Note ref is present.
    */
   private actifWithHint(text: string, columnHint: number | null, ...labels: string[]): number | undefined {
     for (const line of this.findAllLinesByLabel(text, ...labels)) {
@@ -1171,7 +1184,10 @@ export class OcrService {
 
       if (columnHint !== null && columnHint >= 0 && columnHint < cells.length) {
         const v = cells[columnHint];
-        if (v !== null) return v;
+        // If the cell at columnHint is a SYSCOHADA Note reference (small integer),
+        // fall through to the heuristic instead of returning the Note number.
+        const isNoteRef = v !== null && Number.isInteger(v) && v >= 1 && v <= 50 && nums.length >= 3;
+        if (v !== null && !isNoteRef) return v;
       }
       if (nums.length >= 3) return nums[nums.length - 2];
       return nums[0];
@@ -1194,11 +1210,19 @@ export class OcrService {
    * column index across the numeric cells (0 = first year present on the line,
    * 1 = second year), NOT a raw cell index — CR/TFT/PASSIF lines start with a
    * non-numeric label so the label cell would otherwise be counted.
+   *
+   * SYSCOHADA documents include a NOTE reference column (integer 1-50) between
+   * the label and the financial values. When detected, it is skipped before
+   * applying the column hint.
    */
   private crWithHint(text: string, columnHint: number | null, ...labels: string[]): number | undefined {
     for (const line of this.findAllLinesByLabel(text, ...labels)) {
-      const nums = this.numsFromLine(line);
+      let nums = this.numsFromLine(line);
       if (nums.length === 0) continue;
+      // Skip SYSCOHADA Note reference: small integer (1-50) before financial values.
+      if (nums.length >= 2 && Number.isInteger(nums[0]) && nums[0] >= 1 && nums[0] <= 50) {
+        nums = nums.slice(1);
+      }
       if (columnHint !== null && columnHint >= 0 && columnHint < nums.length) {
         return nums[columnHint];
       }
@@ -1373,6 +1397,12 @@ export class OcrService {
       ecart_conversion_passif:        pf('Ecart de conversion passif', 'Ecarts de conversion Passif'),
       // TOTAL GENERAL en PASSIF → maintenant correctement résolu via section
       total_passif:                   pf('TOTAL GENERAL', 'TOTAL PASSIF'),
+      // ── Aliases requis par les ratios et isYearComplete ──────────────────
+      // L'app utilise ces clés courtes; le parseur ci-dessus émet les clés
+      // longues — on les duplique pour éviter les "—" dans le tableau de synthèse.
+      dettes_financieres:             pf('TOTAL DETTES FINANCIERES', 'TOTAL DETTES FINANCIÈRES', 'Emprunts et dettes financieres', 'Emprunts et dettes financières'),
+      actif_circulant:                a('TOTAL ACTIF CIRCULANT'),
+      passif_courant:                 pf('TOTAL PASSIF CIRCULANT'),
     };
   }
 
