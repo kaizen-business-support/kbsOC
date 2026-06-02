@@ -99,6 +99,7 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [verification, setVerification] = useState<DocumentVerification | null>(null);
+  const [dataApplied, setDataApplied] = useState(false);
 
   const logRef = useRef<HTMLDivElement>(null);
   const logId = useRef(0);
@@ -123,6 +124,7 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
     setError(null);
     setWarnings([]);
     setVerification(null);
+    setDataApplied(false);
     logId.current = 0;
 
     const mode: FileMode = isExcel(f) ? 'excel' : 'pdf';
@@ -289,16 +291,22 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
   });
 
   const handleUseData = () => {
-    if (result) onDataExtracted(result, targetYear);
+    if (!result) return;
+    onDataExtracted(result, targetYear);
+    setDataApplied(true);
   };
 
   const handleReview = () => {
     setReviewData(result ?? {});
+    setDataApplied(false);
     setPhase('review');
   };
 
   const handleConfirmReview = () => {
     onDataExtracted(reviewData, targetYear);
+    setResult(reviewData);
+    setDataApplied(true);
+    setPhase('done');
   };
 
   const handleRetry = () => {
@@ -832,19 +840,46 @@ export const OcrUpload: React.FC<OcrUploadProps> = ({ onDataExtracted, onDocumen
           )}
         </Box>
 
+        {/* Success banner — shown after data is applied */}
+        {dataApplied && (
+          <Box sx={{
+            p: 2, mb: 2, borderRadius: 3, bgcolor: '#f0fdf4',
+            border: '1px solid #86efac', display: 'flex', alignItems: 'center', gap: 1.5,
+          }}>
+            <CheckIcon sx={{ color: '#16a34a', fontSize: 20 }} />
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 700, color: '#15803d' }}>
+                Données appliquées avec succès
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#166534' }}>
+                {fieldsFound} champs transmis au formulaire pour l'exercice {targetYear ?? ''}
+              </Typography>
+            </Box>
+            <Button
+              size="small" variant="outlined"
+              onClick={() => { setDataApplied(false); setPhase('idle'); setFile(null); setResult(null); }}
+              sx={{ borderRadius: 3, color: '#15803d', borderColor: '#86efac', fontSize: '0.7rem' }}
+            >
+              Nouveau fichier
+            </Button>
+          </Box>
+        )}
+
         {/* Action buttons */}
         <Box sx={{ display: 'flex', gap: 1, mb: 3, flexWrap: 'wrap' }}>
           <Button
             variant="contained"
-            startIcon={<CheckIcon />}
+            startIcon={dataApplied ? <CheckIcon /> : <CheckIcon />}
             onClick={handleUseData}
-            disabled={fieldsFound === 0}
+            disabled={fieldsFound === 0 || dataApplied}
             sx={{
               borderRadius: 3, fontWeight: 700, px: 3,
-              background: 'linear-gradient(135deg, #1565c0, #1976d2)',
+              background: dataApplied
+                ? 'linear-gradient(135deg, #16a34a, #15803d)'
+                : 'linear-gradient(135deg, #1565c0, #1976d2)',
             }}
           >
-            Utiliser ces données
+            {dataApplied ? 'Données appliquées ✓' : 'Utiliser ces données'}
           </Button>
           <Button
             variant="outlined"
