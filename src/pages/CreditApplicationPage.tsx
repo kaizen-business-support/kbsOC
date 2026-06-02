@@ -488,10 +488,17 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
 
       const realAppId = result.data?.id || (result.data as any)?.application?.id;
       let uploadErrors = 0;
-      if (realAppId && pendingDocuments.length > 0) {
+      // Merge financial docs (from OCR) + pending docs, dedup by id so we never upload twice.
+      const seenIds = new Set<string>();
+      const docsToUpload = [...financialDocuments, ...pendingDocuments].filter(d => {
+        if (seenIds.has(d.id)) return false;
+        seenIds.add(d.id);
+        return true;
+      });
+      if (realAppId && docsToUpload.length > 0) {
         const token = localStorage.getItem('optimus_access_token');
         const uploadUrl = `${window.location.origin}/api/documents/${realAppId}/upload`;
-        for (const doc of pendingDocuments) {
+        for (const doc of docsToUpload) {
           if (!doc.file) continue;
           const fd = new FormData();
           fd.append('documents', doc.file, doc.name);
