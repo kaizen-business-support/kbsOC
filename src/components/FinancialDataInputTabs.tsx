@@ -171,7 +171,21 @@ export const FinancialDataInputTabs: React.FC<FinancialDataInputTabsProps> = ({
                 <TabPanel value={activeDataTab} index={2}>
                   <OcrUpload
                     targetYear={year}
-                    onDataExtracted={(data: any) => onDataInput(year, data)}
+                    onDataExtracted={(data: any) => {
+                      onDataInput(year, data);
+                      // Auto-populate other years extracted from the same document
+                      // (SYSCOHADA always includes N and N-1 columns — the OCR
+                      // extracts both into multiyear_data, but only year N was
+                      // being stored, keeping the "Suivant" button disabled).
+                      const my = data?.multiyear_data;
+                      if (my) {
+                        Object.values(my).forEach((slot: any) => {
+                          if (slot?.year && slot.year !== year && slot.data) {
+                            onDataInput(slot.year, slot.data);
+                          }
+                        });
+                      }
+                    }}
                     onDocumentUploaded={onDocumentUploaded}
                   />
                 </TabPanel>

@@ -1029,9 +1029,32 @@ export const CreditApplicationPage: React.FC<CreditApplicationPageProps> = ({ on
                   Saisissez au moins 2 exercices complets (N et N-1) pour continuer.
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Indicateurs requis par exercice : chiffre d'affaires, résultat net, total actif, capitaux propres, dettes financières.
                   Actuellement {completedYearsCount()} exercice(s) complet(s).
+                  Indicateurs requis : chiffre d'affaires, résultat net, total actif, capitaux propres, dettes financières.
                 </Typography>
+                {/* Détail des champs manquants par exercice déjà saisi */}
+                {(() => {
+                  const KEY_LABELS: Record<string, string> = {
+                    chiffre_affaires: 'CA', resultat_net: 'Résultat net',
+                    total_actif: 'Total actif', capitaux_propres: 'Capitaux propres',
+                    dettes_financieres: 'Dettes financières',
+                  };
+                  return financialYears.map(y => {
+                    const entry = financialData[y];
+                    if (!entry) return null;
+                    const d = entry?.multiyear_data?.N?.data ?? entry;
+                    const missing = REQUIRED_FINANCIAL_KEYS.filter(k => {
+                      const v = d?.[k];
+                      return v == null || v === '' || Number(v) === 0;
+                    });
+                    if (missing.length === 0) return null;
+                    return (
+                      <Typography key={y} variant="caption" sx={{ display: 'block', mt: 0.5, color: 'warning.dark' }}>
+                        {y} : manquants — {missing.map(k => KEY_LABELS[k] || k).join(', ')}
+                      </Typography>
+                    );
+                  });
+                })()}
               </Alert>
             )}
 
