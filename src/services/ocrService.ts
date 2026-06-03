@@ -841,106 +841,112 @@ export class OcrService {
     try {
       const fileArrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: fileArrayBuffer }).promise;
-      const page = await pdf.getPage(statement.pageNumber);
-      
-      // Check if page has extractable text first
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items
+
+      // Load the detected page first to decide text-based vs. image-based path.
+      const firstPage = await pdf.getPage(statement.pageNumber);
+      const firstTextContent = await firstPage.getTextContent();
+      const firstPageText = firstTextContent.items
         .filter((item: any) => item.str && item.str.trim())
         .map((item: any) => item.str)
         .join(' ');
-      
+
       let extractionText = '';
-      
-      if (pageText.trim().length > 100) {
-        // Text-based PDF: use extracted text directly with better formatting
-        console.log(`📝 Using direct text extraction for ${statement.type} (${pageText.length} chars)`);
-        
-        // Get text with positioning information for better table structure
-        const textItems = textContent.items as any[];
-        const positionedItems = textItems
-          .filter((item: any) => item.str && item.str.trim())
-          .map((item: any) => ({
-            text: item.str.trim(),
-            x: item.transform[4],
-            y: item.transform[5]
-          }))
-          .sort((a, b) => b.y - a.y || a.x - b.x); // Sort by Y (top to bottom), then X (left to right)
-        
-        // Group items by rows (similar Y positions) and create pipe-separated format
-        const rowGroups: { [key: string]: any[] } = {};
-        const yTolerance = 5; // Pixels tolerance for same row
-        
-        positionedItems.forEach(item => {
-          // Find existing row group with similar Y position
-          const existingRowKey = Object.keys(rowGroups).find(key => 
-            Math.abs(parseFloat(key) - item.y) <= yTolerance
-          );
-          
-          const rowKey = existingRowKey || item.y.toString();
-          
-          if (!rowGroups[rowKey]) {
-            rowGroups[rowKey] = [];
-          }
-          
-          rowGroups[rowKey].push(item);
-        });
-        
-        // For Bilan pages the ACTIF section is on the left half and PASSIF on the
-        // right half. pdfjs groups both halves into the same Y-row, which confuses
-        // column-index heuristics. Split each Y-group at the page X midpoint, then
-        // emit ALL left (ACTIF) rows first followed by ALL right (PASSIF) rows so
-        // that splitBilanSections can cleanly identify the two sections.
+
+      if (firstPageText.trim().length > 100) {
+        // ── Text-based PDF ──────────────────────────────────────────────────
+        // SYSCOHADA statements (especially Bilan) often span two pages.
+        // Process the detected page and the next page together so that
+        // ACTIF CIRCULANT / TRÉSORERIE (page 2) are not silently dropped.
+        console.log(`📝 Using direct text extraction for ${statement.type} (${firstPageText.length} chars)`);
+
         const isBilan = statement.type === 'bilan';
-        const viewport = page.getViewport({ scale: 1.0 });
-        const midX = viewport.width / 2;
+        const allLeftRows:  string[] = [];   // ACTIF side (bilan only)
+        const allRightRows: string[] = [];   // PASSIF side (bilan only)
+        const allPlainRows: string[] = [];   // CdR / TFT rows
 
-        const sortedRowKeys = Object.keys(rowGroups)
-          .sort((a, b) => parseFloat(b) - parseFloat(a)); // top-to-bottom
+        // Pages to process: detected page + next page (if it exists).
+        const endPage = Math.min(statement.pageNumber + 1, pdf.numPages);
+        for (let pgNum = statement.pageNumber; pgNum <= endPage; pgNum++) {
+          const pg = pgNum === statement.pageNumber ? firstPage : await pdf.getPage(pgNum);
+          const tc = pgNum === statement.pageNumber
+            ? firstTextContent
+            : await pg.getTextContent();
 
-        let formattedRows: string[];
-        if (isBilan) {
-          const leftRows:  string[] = [];
-          const rightRows: string[] = [];
-          sortedRowKeys.forEach(rowKey => {
-            const sorted = rowGroups[rowKey].sort((a, b) => a.x - b.x);
-            const left  = sorted.filter(item => item.x <  midX).map(item => item.text);
-            const right = sorted.filter(item => item.x >= midX).map(item => item.text);
-            if (left.length  > 0) leftRows.push(left.join('|'));
-            if (right.length > 0) rightRows.push(right.join('|'));
+          // Skip image-based continuation pages (they'd need Tesseract too).
+          if (pgNum > statement.pageNumber) {
+            const pgText = (tc.items as any[])
+              .filter((i: any) => i.str && i.str.trim())
+              .map((i: any) => i.str)
+              .join(' ');
+            if (pgText.trim().length < 100) break;
+          }
+
+          const positionedItems = (tc.items as any[])
+            .filter((item: any) => item.str && item.str.trim())
+            .map((item: any) => ({
+              text: item.str.trim(),
+              x: item.transform[4],
+              y: item.transform[5],
+            }))
+            .sort((a, b) => b.y - a.y || a.x - b.x);
+
+          // Group by Y-coordinate into rows.
+          const rowGroups: { [key: string]: any[] } = {};
+          const yTolerance = 5;
+          positionedItems.forEach(item => {
+            const existingKey = Object.keys(rowGroups).find(
+              k => Math.abs(parseFloat(k) - item.y) <= yTolerance
+            );
+            const rowKey = existingKey ?? item.y.toString();
+            if (!rowGroups[rowKey]) rowGroups[rowKey] = [];
+            rowGroups[rowKey].push(item);
           });
-          formattedRows = [...leftRows, ...rightRows];
-        } else {
-          formattedRows = sortedRowKeys.map(rowKey => {
-            const rowText = rowGroups[rowKey]
-              .sort((a, b) => a.x - b.x)
-              .map(item => item.text)
-              .join('|');
-            return rowText;
-          });
+
+          const viewport = pg.getViewport({ scale: 1.0 });
+          const midX = viewport.width / 2;
+          const sortedKeys = Object.keys(rowGroups).sort((a, b) => parseFloat(b) - parseFloat(a));
+
+          if (isBilan) {
+            // Keep ACTIF (left) and PASSIF (right) rows separate across all pages
+            // so that splitBilanSections always sees a clean ACTIF block followed
+            // by a clean PASSIF block regardless of how many pages the Bilan spans.
+            sortedKeys.forEach(rowKey => {
+              const sorted = rowGroups[rowKey].sort((a, b) => a.x - b.x);
+              const left  = sorted.filter(item => item.x <  midX).map(item => item.text);
+              const right = sorted.filter(item => item.x >= midX).map(item => item.text);
+              if (left.length  > 0) allLeftRows.push(left.join('|'));
+              if (right.length > 0) allRightRows.push(right.join('|'));
+            });
+          } else {
+            sortedKeys.forEach(rowKey => {
+              const rowText = rowGroups[rowKey]
+                .sort((a, b) => a.x - b.x)
+                .map((item: any) => item.text)
+                .join('|');
+              if (rowText.trim()) allPlainRows.push(rowText);
+            });
+          }
         }
 
-        extractionText = formattedRows.filter(r => r.trim().length > 0).join('\n');
-        console.log(`📝 Formatted ${formattedRows.length} rows with pipe separators`);
+        const allRows = isBilan ? [...allLeftRows, ...allRightRows] : allPlainRows;
+        extractionText = allRows.filter(r => r.trim()).join('\n');
+        const pagesUsed = Math.min(endPage - statement.pageNumber + 1, pdf.numPages);
+        console.log(`📝 Formatted ${allRows.length} rows from ${pagesUsed} page(s)`);
+
       } else {
-        // Image-based PDF: fall back to OCR with intensive preprocessing
-        console.log(`🖼️ Using OCR extraction for ${statement.type} (minimal text: ${pageText.length} chars)`);
-        
-        const viewport = page.getViewport({ scale: 3.5 }); // Even higher resolution for data extraction
-        
+        // ── Image-based PDF: Tesseract OCR (single page only) ──────────────
+        console.log(`🖼️ Using OCR extraction for ${statement.type} (minimal text: ${firstPageText.length} chars)`);
+
+        const viewport = firstPage.getViewport({ scale: 3.5 }); // Even higher resolution for data extraction
+
         // Create canvas and render page
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d')!;
         canvas.height = viewport.height;
         canvas.width = viewport.width;
-        
-        const renderContext = {
-          canvasContext: context,
-          viewport: viewport
-        };
-        
-        await page.render(renderContext).promise;
-        
+
+        await firstPage.render({ canvasContext: context, viewport }).promise;
+
         // Apply intensive preprocessing for data extraction
         const preprocessedCanvas = await this.preprocessImage(canvas, {
           dpi: 400, // Higher DPI for data extraction
@@ -952,33 +958,29 @@ export class OcrService {
           useNoiseReduction: true,
           useSharpening: true
         });
-        
+
         // OCR with enhanced table-optimized settings
         await this.worker.setParameters({
           tessedit_pageseg_mode: '6', // Uniform block of text (better for tables)
           preserve_interword_spaces: '1',
           textord_tablefind_good_width: '3',
           textord_tabfind_find_tables: '1',
-          // Additional parameters for financial data extraction
           tessedit_enable_numeric_mode: '1',
           numeric_punctuation: '.,',
           textord_heavy_nr: '1',
           textord_debug_tabfind: '0',
           textord_tabfind_show_vlines: '0'
         });
-        
+
         const { data: { text, confidence } } = await this.financialWorker.recognize(preprocessedCanvas);
         console.log(`📊 OCR confidence for ${statement.type}: ${confidence}%`);
         extractionText = text;
       }
-      
-      // Process extracted text (either from direct extraction or OCR)
+
       const processedText = this.processTableData(extractionText);
-      
       console.log(`✅ Extracted ${processedText.split('\n').length} lines from ${statement.type}`);
-      
       return processedText;
-      
+
     } catch (extractError) {
       console.error(`❌ Failed to extract data from ${statement.type}:`, extractError);
       throw new Error(`Data extraction failed: ${extractError instanceof Error ? extractError.message : 'Unknown error'}`);
