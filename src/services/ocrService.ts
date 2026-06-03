@@ -864,21 +864,28 @@ export class OcrService {
         const allRightRows: string[] = [];   // PASSIF side (bilan only)
         const allPlainRows: string[] = [];   // CdR / TFT rows
 
-        // Pages to process: detected page + next page (if it exists).
+        // SYSCOHADA Bilan spans up to 3 pages. The detector may land on any of
+        // them (page with most matching keywords wins). Extract a 3-page window
+        // centred on the detected page: N-1, N, N+1. Non-Bilan statements
+        // (CdR, TFT) are usually 1-2 pages so N and N+1 suffice.
+        const startPage = isBilan
+          ? Math.max(1, statement.pageNumber - 1)
+          : statement.pageNumber;
         const endPage = Math.min(statement.pageNumber + 1, pdf.numPages);
-        for (let pgNum = statement.pageNumber; pgNum <= endPage; pgNum++) {
+
+        for (let pgNum = startPage; pgNum <= endPage; pgNum++) {
           const pg = pgNum === statement.pageNumber ? firstPage : await pdf.getPage(pgNum);
           const tc = pgNum === statement.pageNumber
             ? firstTextContent
             : await pg.getTextContent();
 
-          // Skip image-based continuation pages (they'd need Tesseract too).
-          if (pgNum > statement.pageNumber) {
+          // Skip image-based pages outside the originally detected page.
+          if (pgNum !== statement.pageNumber) {
             const pgText = (tc.items as any[])
               .filter((i: any) => i.str && i.str.trim())
               .map((i: any) => i.str)
               .join(' ');
-            if (pgText.trim().length < 100) break;
+            if (pgText.trim().length < 100) continue; // skip, but keep scanning
           }
 
           const positionedItems = (tc.items as any[])
@@ -930,8 +937,7 @@ export class OcrService {
 
         const allRows = isBilan ? [...allLeftRows, ...allRightRows] : allPlainRows;
         extractionText = allRows.filter(r => r.trim()).join('\n');
-        const pagesUsed = Math.min(endPage - statement.pageNumber + 1, pdf.numPages);
-        console.log(`📝 Formatted ${allRows.length} rows from ${pagesUsed} page(s)`);
+        console.log(`📝 Formatted ${allRows.length} rows from pages ${startPage}–${endPage}`);
 
       } else {
         // ── Image-based PDF: Tesseract OCR (single page only) ──────────────
