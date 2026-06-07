@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import { seedDashboardTemplates } from './seed-dashboards';
 
 const prisma = new PrismaClient();
 
@@ -441,6 +442,9 @@ async function main() {
   const totalUnderReview = createdApplications.filter(app => app.status === 'UNDER_REVIEW').length;
   const totalSubmitted = createdApplications.filter(app => app.status === 'SUBMITTED').length;
   const totalVolume = createdApplications.reduce((sum, app) => sum + Number(app.amount), 0);
+
+  // Seed dashboard templates
+  await seedDashboardTemplates();
 
   console.log('✅ Enhanced database seeding completed successfully!');
   console.log('📊 Summary:');
