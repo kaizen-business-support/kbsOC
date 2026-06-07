@@ -117,7 +117,7 @@ async function getApplicationsData(params: WidgetDataParams, companyId: string):
 
   if (params.metric === 'list') {
     const apps = await prisma.creditApplication.findMany({
-      where: { companyId, createdAt: { gte: from, lte: to } },
+      where: { ...baseWhere, createdAt: { gte: from, lte: to } },
       include: { client: { select: { companyName: true } }, creator: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
       take: params.limit ?? 10,
@@ -160,6 +160,8 @@ async function getApplicationsData(params: WidgetDataParams, companyId: string):
         map.set(item.status, (map.get(item.status) ?? 0) + 1);
       }
       return { series: Array.from(map.entries()).map(([name, value]) => ({ name, value })) };
+    } else if (params.groupBy === 'branch') {
+      throw new Error('groupBy branch non supporté dans cette version');
     }
   }
 
