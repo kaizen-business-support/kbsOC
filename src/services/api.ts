@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import { AnalysisData, FileUploadResult, ApiResponse, ApprovalItem, CodirDashboardData, CodirTimelineData, OpinionPulse, StuckApplication, Dashboard, DashboardWidget, DashboardShare, DashboardTemplate } from '../types';
+import { AnalysisData, FileUploadResult, ApiResponse, ApprovalItem, CodirDashboardData, CodirTimelineData, OpinionPulse, StuckApplication, Dashboard, DashboardWidget, DashboardShare, DashboardTemplate, WidgetDataResult, WidgetDataParams, Period } from '../types';
 
 // API Configuration - Uses same origin as browser (proxied via nginx on port 80)
 const getApiBaseUrl = (): string => {
@@ -1854,6 +1854,27 @@ export class ApiService {
   static async applyDashboardTemplate(templateId: string, name?: string): Promise<ApiResponse<Dashboard>> {
     try {
       const res = await api.post(`/dashboard-templates/${templateId}/apply`, { name });
+      return res.data;
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réseau' };
+    }
+  }
+
+  static async getWidgetData(params: WidgetDataParams): Promise<ApiResponse<WidgetDataResult>> {
+    try {
+      const queryParams: Record<string, any> = {
+        source: params.source,
+        metric: params.metric,
+        period: params.period,
+      };
+      if (params.groupBy) queryParams.groupBy = params.groupBy;
+      if (params.limit) queryParams.limit = params.limit;
+      if (params.filter) {
+        Object.entries(params.filter).forEach(([k, v]) => {
+          queryParams[`filter[${k}]`] = v;
+        });
+      }
+      const res = await api.get('/widget-data', { params: queryParams });
       return res.data;
     } catch (e: any) {
       return { success: false, error: e.response?.data?.error || 'Erreur réseau' };

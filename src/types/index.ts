@@ -502,3 +502,23 @@ export interface DashboardTemplate {
   createdAt: string;
   updatedAt: string;
 }
+
+export type Period = 'this_month' | 'this_quarter' | 'this_year' | 'last_6_months' | 'last_12_months';
+
+export interface WidgetDataResult {
+  value?: number;
+  trend?: number;
+  label?: string;
+  series?: Array<{ name: string; value: number; [key: string]: any }>;
+  rows?: Record<string, any>[];
+  columns?: Array<{ key: string; label: string }>;
+}
+
+export interface WidgetDataParams {
+  source: 'applications' | 'clients' | 'analytics';
+  metric: string;
+  groupBy?: 'status' | 'month' | 'branch' | 'manager';
+  period: Period;
+  filter?: Record<string, string>;
+  limit?: number;
+}
