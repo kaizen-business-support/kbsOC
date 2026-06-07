@@ -130,7 +130,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const canViewClients       = (canViewApplications || hasPermission('create_client') || hasPermission('manage_clients')) && canAccess('clients');
   const canCreateApplication = hasPermission('create_application') && canAccess('credit-application');
   const canDispatching       = hasPermission('dispatch_applications') && canAccess('dispatching');
-  const canViewAnalytics     = hasPermission('analytics') && canAccess('analytics');
+  const canViewAnalytics     = hasPermission('analytics') && canAccess('dashboard-builder');
   const canFinancialAnalysis = hasPermission('financial_analysis') || hasPermission('analyze_credit');
   const canViewReports       = (hasPermission('reports') || isAdmin) && canAccess('analytics');
   const canViewConfiguration = hasPermission('user_management') || isAdmin;
@@ -161,7 +161,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const dashboardItems = [
     { id: 'home' as PageType, label: t('navigation.home'), icon: DashboardIcon },
     ...(canViewCodir    ? [{ id: 'codir-dashboard' as PageType, label: 'Tableau de Bord CODIR', icon: InsightsIcon }] : []),
-    ...(canViewAnalytics ? [{ id: 'analytics'       as PageType, label: t('navigation.analytics'), icon: InsightsIcon }] : []),
+    ...(canViewAnalytics ? [{ id: 'dashboard-builder' as PageType, label: 'Mes Dashboards', icon: DashboardIcon }] : []),
     ...(canViewReports  ? [{ id: 'credit-reports'   as PageType, label: 'Rapports de Crédit',     icon: ReportsIcon  }] : []),
   ];
 

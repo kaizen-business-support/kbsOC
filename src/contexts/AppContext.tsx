@@ -377,6 +377,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       'security-settings':  '/security-settings',
       'credit-reports': '/credit-reports',
       'report-viewer': '/report-viewer',
+      'dashboard-builder': '/dashboard-builder',
     };
     
     const route = routeMap[page];

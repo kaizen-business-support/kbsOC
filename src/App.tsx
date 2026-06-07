@@ -39,7 +39,7 @@ const ClientManagementPage  = lazy(() => import('./pages/ClientManagementPage').
 const CreditScoringPage     = lazy(() => import('./pages/CreditScoringPage').then(m => ({ default: m.CreditScoringPage })));
 const CreditApplicationPage = lazy(() => import('./pages/CreditApplicationPage').then(m => ({ default: m.CreditApplicationPage })));
 const WorkflowPage          = lazy(() => import('./pages/WorkflowPage').then(m => ({ default: m.WorkflowPage })));
-const AnalyticsDashboardPage = lazy(() => import('./pages/AnalyticsDashboardPage').then(m => ({ default: m.AnalyticsDashboardPage })));
+const DashboardsPage         = lazy(() => import('./pages/DashboardsPage').then(m => ({ default: m.DashboardsPage })));
 const BankHolidaysAdminPage  = lazy(() => import('./pages/BankHolidaysAdminPage').then(m => ({ default: m.BankHolidaysAdminPage })));
 const UserManagementPage    = lazy(() => import('./pages/UserManagementPage').then(m => ({ default: m.UserManagementPage })));
 const CreditSimulationPage  = lazy(() => import('./pages/CreditSimulationPage').then(m => ({ default: m.CreditSimulationPage })));
@@ -371,9 +371,9 @@ const AppContent: React.FC = () => {
               } />
 
               {/* ── Tableaux de bord ── */}
-              <Route path="/analytics" element={
-                <ProtectedRoute permissions={['analytics']} moduleKey="analytics">
-                  <AnalyticsDashboardPage />
+              <Route path="/dashboard-builder" element={
+                <ProtectedRoute permissions={['analytics']} moduleKey="dashboard-builder">
+                  <DashboardsPage />
                 </ProtectedRoute>
               } />
               <Route path="/codir-dashboard" element={

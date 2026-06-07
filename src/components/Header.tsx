@@ -110,6 +110,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onPage
     'security-settings':  'Paramètres de sécurité',
     'credit-reports': 'Rapports de Crédit',
     'report-viewer': 'Visualiseur de Rapport',
+    'dashboard-builder': 'Mes Dashboards',
   };
 
   const handleUserMenuClick = (event: React.MouseEvent<HTMLElement>) => {
