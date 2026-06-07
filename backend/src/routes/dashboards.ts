@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 import { prisma } from '../prismaClient';
 import { authenticate, requireCompany } from '../middleware/auth';
 import { getMergedProfile } from '../services/moduleProfileService';
@@ -27,11 +28,12 @@ async function getDashboardOrFail(id: string, companyId: string, res: Response):
   return dashboard;
 }
 
-function canAccessDashboard(dashboard: any, userId: string, requiredPermission: 'VIEW' | 'EDIT'): boolean {
+function canAccessDashboard(dashboard: any, userId: string, userRole: string | undefined, requiredPermission: 'VIEW' | 'EDIT'): boolean {
   if (dashboard.ownerId === userId) return true;
   return dashboard.shares.some((s: any) => {
     if (s.permission === 'VIEW' && requiredPermission === 'EDIT') return false;
     if (s.shareType === 'USER' && s.targetId === userId) return true;
+    if (s.shareType === 'ROLE' && s.targetId === userRole) return true;
     if (s.shareType === 'COMPANY' && s.targetId === dashboard.companyId) return true;
     return false;
   });
@@ -82,7 +84,7 @@ router.post('/', async (req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   const dashboard = await getDashboardOrFail(req.params.id, req.companyId!, res);
   if (!dashboard) return;
-  if (!canAccessDashboard(dashboard, req.user!.id, 'VIEW'))
+  if (!canAccessDashboard(dashboard, req.user!.id, req.user?.role, 'VIEW'))
     return res.status(403).json({ success: false, error: 'Accès interdit' }) as any;
   res.json({ success: true, data: dashboard });
 });
@@ -91,7 +93,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   const dashboard = await getDashboardOrFail(req.params.id, req.companyId!, res);
   if (!dashboard) return;
-  if (!canAccessDashboard(dashboard, req.user!.id, 'EDIT') &&
+  if (!canAccessDashboard(dashboard, req.user!.id, req.user?.role, 'EDIT') &&
       !(await canDashboardAction(req.user!.id, req.companyId!, 'manage')))
     return res.status(403).json({ success: false, error: 'Permission edit requise' }) as any;
   try {
@@ -131,22 +133,25 @@ router.delete('/:id', async (req: Request, res: Response) => {
 router.post('/:id/widgets', async (req: Request, res: Response) => {
   const dashboard = await getDashboardOrFail(req.params.id, req.companyId!, res);
   if (!dashboard) return;
-  if (!canAccessDashboard(dashboard, req.user!.id, 'EDIT') &&
+  if (!canAccessDashboard(dashboard, req.user!.id, req.user?.role, 'EDIT') &&
       !(await canDashboardAction(req.user!.id, req.companyId!, 'manage')))
     return res.status(403).json({ success: false, error: 'Permission edit requise' }) as any;
   const { type, title, config = {}, position } = req.body;
   if (!type || !title) return res.status(400).json({ success: false, error: 'type et title sont obligatoires' }) as any;
   try {
-    const widget = await prisma.dashboardWidget.create({
-      data: { dashboardId: req.params.id, type, title, config, order: 0 },
-    });
+    const widgetId = randomUUID();
     const currentLayout = Array.isArray(dashboard.layout) ? dashboard.layout as any[] : [];
-    const newLayoutItem = { i: widget.id, x: position?.x ?? 0, y: position?.y ?? 0, w: position?.w ?? 4, h: position?.h ?? 2 };
-    const updatedDashboard = await prisma.dashboard.update({
-      where: { id: req.params.id },
-      data: { layout: [...currentLayout, newLayoutItem] },
-      include: { widgets: true },
-    });
+    const newLayoutItem = { i: widgetId, x: position?.x ?? 0, y: position?.y ?? 0, w: position?.w ?? 4, h: position?.h ?? 2 };
+    const [widget, updatedDashboard] = await prisma.$transaction([
+      prisma.dashboardWidget.create({
+        data: { id: widgetId, dashboardId: req.params.id, type, title, config, order: 0 },
+      }),
+      prisma.dashboard.update({
+        where: { id: req.params.id },
+        data: { layout: [...currentLayout, newLayoutItem] },
+        include: { widgets: true },
+      }),
+    ]);
     res.status(201).json({ success: true, data: { widget, layout: updatedDashboard.layout } });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e.message });
@@ -157,7 +162,7 @@ router.post('/:id/widgets', async (req: Request, res: Response) => {
 router.put('/:id/widgets/:wid', async (req: Request, res: Response) => {
   const dashboard = await getDashboardOrFail(req.params.id, req.companyId!, res);
   if (!dashboard) return;
-  if (!canAccessDashboard(dashboard, req.user!.id, 'EDIT') &&
+  if (!canAccessDashboard(dashboard, req.user!.id, req.user?.role, 'EDIT') &&
       !(await canDashboardAction(req.user!.id, req.companyId!, 'manage')))
     return res.status(403).json({ success: false, error: 'Permission edit requise' }) as any;
   const widget = await prisma.dashboardWidget.findUnique({ where: { id: req.params.wid } });
@@ -183,19 +188,21 @@ router.put('/:id/widgets/:wid', async (req: Request, res: Response) => {
 router.delete('/:id/widgets/:wid', async (req: Request, res: Response) => {
   const dashboard = await getDashboardOrFail(req.params.id, req.companyId!, res);
   if (!dashboard) return;
-  if (!canAccessDashboard(dashboard, req.user!.id, 'EDIT') &&
+  if (!canAccessDashboard(dashboard, req.user!.id, req.user?.role, 'EDIT') &&
       !(await canDashboardAction(req.user!.id, req.companyId!, 'manage')))
     return res.status(403).json({ success: false, error: 'Permission edit requise' }) as any;
   const widget = await prisma.dashboardWidget.findUnique({ where: { id: req.params.wid } });
   if (!widget || widget.dashboardId !== req.params.id)
     return res.status(404).json({ success: false, error: 'Widget introuvable' }) as any;
   try {
-    await prisma.dashboardWidget.delete({ where: { id: req.params.wid } });
     const currentLayout = Array.isArray(dashboard.layout) ? dashboard.layout as any[] : [];
-    await prisma.dashboard.update({
-      where: { id: req.params.id },
-      data: { layout: currentLayout.filter((item: any) => item.i !== req.params.wid) },
-    });
+    await prisma.$transaction([
+      prisma.dashboardWidget.delete({ where: { id: req.params.wid } }),
+      prisma.dashboard.update({
+        where: { id: req.params.id },
+        data: { layout: currentLayout.filter((item: any) => item.i !== req.params.wid) },
+      }),
+    ]);
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e.message });
@@ -206,7 +213,7 @@ router.delete('/:id/widgets/:wid', async (req: Request, res: Response) => {
 router.get('/:id/shares', async (req: Request, res: Response) => {
   const dashboard = await getDashboardOrFail(req.params.id, req.companyId!, res);
   if (!dashboard) return;
-  if (!canAccessDashboard(dashboard, req.user!.id, 'VIEW') &&
+  if (!canAccessDashboard(dashboard, req.user!.id, req.user?.role, 'VIEW') &&
       !(await canDashboardAction(req.user!.id, req.companyId!, 'manage')))
     return res.status(403).json({ success: false, error: 'Accès interdit' }) as any;
   const shares = await prisma.dashboardShare.findMany({ where: { dashboardId: req.params.id } });

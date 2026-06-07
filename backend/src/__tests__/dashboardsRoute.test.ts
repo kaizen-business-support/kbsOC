@@ -50,6 +50,7 @@ const mockPrisma = {
     update: jest.fn(),
     delete: jest.fn(),
   },
+  $transaction: jest.fn((ops: any[]) => Promise.all(ops)),
 };
 
 jest.mock('../prismaClient', () => ({ prisma: mockPrisma }));
