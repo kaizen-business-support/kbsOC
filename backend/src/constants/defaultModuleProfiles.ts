@@ -35,6 +35,7 @@ const ALL_MODULES: Record<string, ModuleAccess> = {
   'notifications-config':{ visible: true, actions: ['edit'], sections: [] },
   announcements:         { visible: true, actions: ['create','edit','delete'], sections: [] },
   'codir-dashboard':     { visible: true, actions: [], sections: [] },
+  'dashboard-builder':   { visible: true, actions: ['create','edit','delete','share','manage','export','templates_use','templates_create'], sections: [] },
 };
 
 function none(overrides: Partial<Record<string, Partial<ModuleAccess>>> = {}): Record<string, ModuleAccess> {
@@ -59,6 +60,7 @@ export const DEFAULT_ROLE_PROFILES: Record<string, ModuleProfileData> = {
       'credit-application': { actions: ['create','submit'] },
       approvals:            { actions: ['comment'], sections: ['pending'] },
       workflow:             {},
+      'dashboard-builder':  { actions: ['create','edit','delete','share','export','templates_use'] },
     }),
   },
   ANALYSTE_RISQUES: {
@@ -73,6 +75,7 @@ export const DEFAULT_ROLE_PROFILES: Record<string, ModuleProfileData> = {
       analysis:         { actions: ['export'], sections: ['ratios','benchmarks','bceao'] },
       reports:          { actions: ['export'] },
       'credit-scoring': {},
+      'dashboard-builder': { actions: ['create','edit','delete','share','export','templates_use'] },
     }),
   },
   RESPONSABLE_RISQUES: {
@@ -88,6 +91,7 @@ export const DEFAULT_ROLE_PROFILES: Record<string, ModuleProfileData> = {
       reports:          { actions: ['export','print'] },
       analytics:        { sections: ['portfolio','performance'] },
       'credit-scoring': {},
+      'dashboard-builder': { actions: ['create','edit','delete','share','export','templates_use'] },
     }),
   },
   RESPONSABLE_ENGAGEMENTS: {
@@ -101,6 +105,7 @@ export const DEFAULT_ROLE_PROFILES: Record<string, ModuleProfileData> = {
       analytics:       { actions: ['export'], sections: ['portfolio','performance','compliance'] },
       'credit-policy': {},
       workflow:        {},
+      'dashboard-builder': { actions: ['create','edit','delete','share','export','templates_use'] },
     }),
   },
   COMITE_CREDIT: {
@@ -114,6 +119,7 @@ export const DEFAULT_ROLE_PROFILES: Record<string, ModuleProfileData> = {
       analytics:       { actions: ['export'], sections: ['portfolio','performance','compliance'] },
       'credit-policy': {},
       workflow:        {},
+      'dashboard-builder': { actions: ['create','edit','delete','share','export','templates_use'] },
     }),
   },
   DIRECTION_GENERALE: {
@@ -132,6 +138,7 @@ export const DEFAULT_ROLE_PROFILES: Record<string, ModuleProfileData> = {
       workflow:             {},
       'legal-step':         { actions: ['validate','reject'] },
       'contract-templates': { actions: ['upload'] },
+      'dashboard-builder':  { actions: ['create','edit','delete','share','export','templates_use'] },
     }),
   },
   DIRECTION_JURIDIQUE: {
@@ -146,6 +153,7 @@ export const DEFAULT_ROLE_PROFILES: Record<string, ModuleProfileData> = {
       'legal-step':          { actions: ['validate','reject'] },
       'contract-templates':  { actions: ['upload','edit','delete'] },
       approvals:             { actions: ['comment'], sections: ['history'] },
+      'dashboard-builder':   { actions: ['create','edit','delete','share','export','templates_use'] },
     }),
   },
   ADMIN: {
