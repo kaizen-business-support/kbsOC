@@ -90,7 +90,7 @@ describe('GET /api/widget-data', () => {
     );
   });
 
-  it('500 si service throw', async () => {
+  it('400 si service throw avec message "invalide"', async () => {
     mockGetWidgetData.mockRejectedValue(new Error('Source invalide: xyz'));
     const res = await request(makeApp())
       .get('/api/widget-data?source=applications&metric=count&period=this_month')
