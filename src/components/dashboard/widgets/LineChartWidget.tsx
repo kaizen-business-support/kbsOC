@@ -1,0 +1,52 @@
+import React from 'react';
+import { Box, Typography } from '@mui/material';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Dot,
+} from 'recharts';
+import { WidgetDataResult } from '../../../types';
+
+interface LineChartWidgetProps {
+  data: WidgetDataResult;
+  title: string;
+  height?: number;
+  color?: string;
+}
+
+function formatYAxis(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
+  return String(value);
+}
+
+export const LineChartWidget: React.FC<LineChartWidgetProps> = ({ data, title, height = 220, color = '#1565c0' }) => {
+  const series = data.series ?? [];
+
+  if (series.length === 0) {
+    return (
+      <Box sx={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Typography variant="caption" color="text.disabled">Aucune donnée</Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ height }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={series} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+          <YAxis tickFormatter={formatYAxis} tick={{ fontSize: 11 }} width={40} />
+          <Tooltip formatter={(v: any) => [Number(v).toLocaleString('fr-FR'), title]} />
+          <Line
+            type="monotone"
+            dataKey="value"
+            stroke={color}
+            strokeWidth={2.5}
+            dot={<Dot r={4} fill={color} stroke="#fff" strokeWidth={2} />}
+            activeDot={{ r: 6 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </Box>
+  );
+};
