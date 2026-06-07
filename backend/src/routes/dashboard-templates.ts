@@ -59,13 +59,13 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   if (!(await canTemplateAction(req.user!.id, req.companyId!, 'templates_create')))
     return res.status(403).json({ success: false, error: 'Permission templates_create requise' }) as any;
-  const template = await prisma.dashboardTemplate.findUnique({ where: { id: req.params.id }, include: { widgets: true } });
-  if (!template) return res.status(404).json({ success: false, error: 'Template introuvable' }) as any;
-  if (template.isGlobal && req.user!.role !== 'SUPER_ADMIN')
-    return res.status(403).json({ success: false, error: 'Seul SUPER_ADMIN peut modifier les templates globaux' }) as any;
-  if (!template.isGlobal && template.companyId !== req.companyId)
-    return res.status(403).json({ success: false, error: 'Accès interdit' }) as any;
   try {
+    const template = await prisma.dashboardTemplate.findUnique({ where: { id: req.params.id }, include: { widgets: true } });
+    if (!template) return res.status(404).json({ success: false, error: 'Template introuvable' }) as any;
+    if (template.isGlobal && req.user!.role !== 'SUPER_ADMIN')
+      return res.status(403).json({ success: false, error: 'Seul SUPER_ADMIN peut modifier les templates globaux' }) as any;
+    if (!template.isGlobal && template.companyId !== req.companyId)
+      return res.status(403).json({ success: false, error: 'Accès interdit' }) as any;
     const { name, description, layout } = req.body;
     const updated = await prisma.dashboardTemplate.update({
       where: { id: req.params.id },
@@ -86,13 +86,13 @@ router.put('/:id', async (req: Request, res: Response) => {
 router.delete('/:id', async (req: Request, res: Response) => {
   if (!(await canTemplateAction(req.user!.id, req.companyId!, 'templates_create')))
     return res.status(403).json({ success: false, error: 'Permission templates_create requise' }) as any;
-  const template = await prisma.dashboardTemplate.findUnique({ where: { id: req.params.id } });
-  if (!template) return res.status(404).json({ success: false, error: 'Template introuvable' }) as any;
-  if (template.isGlobal && req.user!.role !== 'SUPER_ADMIN')
-    return res.status(403).json({ success: false, error: 'Seul SUPER_ADMIN peut supprimer les templates globaux' }) as any;
-  if (!template.isGlobal && template.companyId !== req.companyId)
-    return res.status(403).json({ success: false, error: 'Accès interdit' }) as any;
   try {
+    const template = await prisma.dashboardTemplate.findUnique({ where: { id: req.params.id } });
+    if (!template) return res.status(404).json({ success: false, error: 'Template introuvable' }) as any;
+    if (template.isGlobal && req.user!.role !== 'SUPER_ADMIN')
+      return res.status(403).json({ success: false, error: 'Seul SUPER_ADMIN peut supprimer les templates globaux' }) as any;
+    if (!template.isGlobal && template.companyId !== req.companyId)
+      return res.status(403).json({ success: false, error: 'Accès interdit' }) as any;
     await prisma.dashboardTemplate.delete({ where: { id: req.params.id } });
     res.json({ success: true });
   } catch (e: any) {
@@ -104,11 +104,11 @@ router.delete('/:id', async (req: Request, res: Response) => {
 router.post('/:id/apply', async (req: Request, res: Response) => {
   if (!(await canTemplateAction(req.user!.id, req.companyId!, 'templates_use')))
     return res.status(403).json({ success: false, error: 'Permission templates_use requise' }) as any;
-  const template = await prisma.dashboardTemplate.findUnique({ where: { id: req.params.id }, include: { widgets: true } });
-  if (!template) return res.status(404).json({ success: false, error: 'Template introuvable' }) as any;
-  if (!template.isGlobal && template.companyId !== req.companyId)
-    return res.status(403).json({ success: false, error: 'Accès interdit' }) as any;
   try {
+    const template = await prisma.dashboardTemplate.findUnique({ where: { id: req.params.id }, include: { widgets: true } });
+    if (!template) return res.status(404).json({ success: false, error: 'Template introuvable' }) as any;
+    if (!template.isGlobal && template.companyId !== req.companyId)
+      return res.status(403).json({ success: false, error: 'Accès interdit' }) as any;
     const name = req.body.name?.trim() || template.name;
     const dashboard = await prisma.dashboard.create({
       data: {
