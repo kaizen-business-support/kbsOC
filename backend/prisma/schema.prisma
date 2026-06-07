@@ -37,6 +37,8 @@ model Company {
   securityIpRules      SecurityIpRule[]
   securityTimeRules    SecurityTimeRule[]
   securityBlockHistory SecurityBlockHistory[]
+  dashboards           Dashboard[]
+  dashboardTemplates   DashboardTemplate[]
 
   @@map("companies")
 }
@@ -110,6 +112,7 @@ model User {
   createdTimeRules         SecurityTimeRule[]     @relation("UserCreatedTimeRules")
   blockAttempts            SecurityBlockHistory[] @relation("UserBlockAttempts")
   unblocksPerformed        SecurityBlockHistory[] @relation("UserUnblocks")
+  ownedDashboards          Dashboard[]            @relation("DashboardOwner")
 
   @@map("users")
 }
@@ -1175,4 +1178,86 @@ enum SecurityBlockStatus {
   UNBLOCKED @map("unblocked")
 
   @@map("security_block_status")
+}
+
+model Dashboard {
+  id               String   @id @default(cuid())
+  name             String
+  description      String?
+  companyId        String   @map("company_id")
+  ownerId          String   @map("owner_id")
+  isShared         Boolean  @default(false) @map("is_shared")
+  layout           Json     @default("[]")
+  templateSourceId String?  @map("template_source_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  company Company           @relation(fields: [companyId], references: [id])
+  owner   User              @relation("DashboardOwner", fields: [ownerId], references: [id])
+  widgets DashboardWidget[]
+  shares  DashboardShare[]
+
+  @@index([companyId])
+  @@index([ownerId])
+  @@map("dashboards")
+}
+
+model DashboardWidget {
+  id          String @id @default(cuid())
+  dashboardId String @map("dashboard_id")
+  type        String
+  title       String
+  config      Json   @default("{}")
+  order       Int    @default(0)
+
+  dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@index([dashboardId])
+  @@map("dashboard_widgets")
+}
+
+model DashboardShare {
+  id          String   @id @default(cuid())
+  dashboardId String   @map("dashboard_id")
+  shareType   String
+  targetId    String   @map("target_id")
+  permission  String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@unique([dashboardId, shareType, targetId])
+  @@index([dashboardId])
+  @@map("dashboard_shares")
+}
+
+model DashboardTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  companyId   String?  @map("company_id")
+  isGlobal    Boolean  @default(false) @map("is_global")
+  layout      Json     @default("[]")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  company Company?                  @relation(fields: [companyId], references: [id])
+  widgets DashboardTemplateWidget[]
+
+  @@index([companyId])
+  @@map("dashboard_templates")
+}
+
+model DashboardTemplateWidget {
+  id         String @id @default(cuid())
+  templateId String @map("template_id")
+  type       String
+  title      String
+  config     Json   @default("{}")
+  order      Int    @default(0)
+
+  template DashboardTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@map("dashboard_template_widgets")
 }
