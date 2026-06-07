@@ -231,6 +231,21 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     ],
     sections: [],
   },
+  {
+    key: 'dashboard-builder',
+    label: 'Dashboards & Rapports',
+    actions: [
+      { key: 'create', label: 'Créer un dashboard' },
+      { key: 'edit', label: 'Modifier ses dashboards' },
+      { key: 'delete', label: 'Supprimer ses dashboards' },
+      { key: 'share', label: 'Partager un dashboard' },
+      { key: 'manage', label: 'Gérer tous les dashboards (company)' },
+      { key: 'export', label: 'Exporter en PDF/Excel' },
+      { key: 'templates_use', label: 'Utiliser les templates' },
+      { key: 'templates_create', label: 'Créer/modifier des templates' },
+    ],
+    sections: [],
+  },
   // Modules SUPER_ADMIN uniquement (hors tenant)
   {
     key: 'backup',
