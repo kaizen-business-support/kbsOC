@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import { AnalysisData, FileUploadResult, ApiResponse, ApprovalItem, CodirDashboardData, CodirTimelineData, OpinionPulse, StuckApplication } from '../types';
+import { AnalysisData, FileUploadResult, ApiResponse, ApprovalItem, CodirDashboardData, CodirTimelineData, OpinionPulse, StuckApplication, Dashboard, DashboardWidget, DashboardShare, DashboardTemplate } from '../types';
 
 // API Configuration - Uses same origin as browser (proxied via nginx on port 80)
 const getApiBaseUrl = (): string => {
@@ -1789,6 +1789,74 @@ export class ApiService {
       return { success: true, data: response.data.data };
     } catch (error: any) {
       return { success: false, error: error.response?.data?.error || 'Erreur mise à jour remboursement' };
+    }
+  }
+
+  // ── Dashboard Builder ──────────────────────────────────────────────────────
+
+  static async getDashboards(): Promise<ApiResponse<Dashboard[]>> {
+    try {
+      const res = await api.get('/dashboards');
+      return res.data;
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réseau' };
+    }
+  }
+
+  static async createDashboard(data: { name: string; description?: string }): Promise<ApiResponse<Dashboard>> {
+    try {
+      const res = await api.post('/dashboards', data);
+      return res.data;
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réseau' };
+    }
+  }
+
+  static async getDashboard(id: string): Promise<ApiResponse<Dashboard>> {
+    try {
+      const res = await api.get(`/dashboards/${id}`);
+      return res.data;
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réseau' };
+    }
+  }
+
+  static async updateDashboard(
+    id: string,
+    data: Partial<{ name: string; description: string; layout: any[] }>
+  ): Promise<ApiResponse<Dashboard>> {
+    try {
+      const res = await api.put(`/dashboards/${id}`, data);
+      return res.data;
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réseau' };
+    }
+  }
+
+  static async deleteDashboard(id: string): Promise<ApiResponse<void>> {
+    try {
+      const res = await api.delete(`/dashboards/${id}`);
+      return res.data;
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réseau' };
+    }
+  }
+
+  static async getDashboardTemplates(): Promise<ApiResponse<DashboardTemplate[]>> {
+    try {
+      const res = await api.get('/dashboard-templates');
+      return res.data;
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réseau' };
+    }
+  }
+
+  static async applyDashboardTemplate(templateId: string, name?: string): Promise<ApiResponse<Dashboard>> {
+    try {
+      const res = await api.post(`/dashboard-templates/${templateId}/apply`, { name });
+      return res.data;
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réseau' };
     }
   }
 

@@ -447,3 +447,58 @@ export interface CodirTimelineData {
   agences: { client: string[]; ca: string[] };
   applications: ApplicationTimeline[];
 }
+
+// ─── Dashboard Builder Types ────────────────────────────────────────────────────
+
+export interface Dashboard {
+  id: string;
+  name: string;
+  description: string | null;
+  companyId: string;
+  ownerId: string;
+  isShared: boolean;
+  layout: Array<{ i: string; x: number; y: number; w: number; h: number }>;
+  templateSourceId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  widgets: DashboardWidget[];
+  shares: DashboardShare[];
+  owner: { id: string; name: string; email: string };
+}
+
+export interface DashboardWidget {
+  id: string;
+  dashboardId: string;
+  type: string;
+  title: string;
+  config: Record<string, any>;
+  order: number;
+}
+
+export interface DashboardShare {
+  id: string;
+  dashboardId: string;
+  shareType: 'USER' | 'ROLE' | 'COMPANY';
+  targetId: string;
+  permission: 'VIEW' | 'EDIT';
+  createdAt: string;
+}
+
+export interface DashboardTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  companyId: string | null;
+  isGlobal: boolean;
+  layout: Array<{ i: string; x: number; y: number; w: number; h: number }>;
+  widgets: Array<{
+    id: string;
+    templateId: string;
+    type: string;
+    title: string;
+    config: Record<string, any>;
+    order: number;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}
