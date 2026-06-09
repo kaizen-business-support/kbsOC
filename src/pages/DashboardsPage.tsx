@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -28,6 +29,7 @@ import { Dashboard, DashboardTemplate } from '../types';
 import { useModuleAccess } from '../hooks/useModuleAccess';
 
 export const DashboardsPage: React.FC = () => {
+  const navigate = useNavigate();
   const { canAction } = useModuleAccess();
   const canCreate = canAction('dashboard-builder', 'create');
   const canUseTemplate = canAction('dashboard-builder', 'templates_use');
@@ -194,6 +196,7 @@ export const DashboardsPage: React.FC = () => {
                 }}
               >
                 <CardActionArea
+                  onClick={() => navigate(`/dashboard-builder/${d.id}`)}
                   sx={{
                     p: 0,
                     height: '100%',
