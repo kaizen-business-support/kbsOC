@@ -571,6 +571,14 @@ else
   fi
 fi
 
+# Templates dashboard globaux — toujours exécuté (idempotent, skip si déjà présents)
+if [[ -f "$BACKEND_DIR/prisma/seed-dashboard-templates.js" ]]; then
+  cd "$BACKEND_DIR"
+  node prisma/seed-dashboard-templates.js \
+    && ok "Templates dashboard globaux : OK" \
+    || warn "seed-dashboard-templates.js : erreur non bloquante"
+fi
+
 # Migrations de données — UPDATE des données existantes (plafonds, allowedActions,
 # stepType juridiques). Désactivées par défaut depuis que la prod est en place :
 # si BCI a personnalisé ses plafonds via l'UI, ces scripts les écraseraient.

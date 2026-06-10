@@ -364,6 +364,11 @@ if [[ -f "$APP_DIR/backend/prisma/seed-bci.js" ]]; then
     && dep_ok "Utilisateurs BCI seedés (clients préservés si existants)" \
     || warn "seed-bci.js : erreur (non bloquant)"
 fi
+if [[ -f "$APP_DIR/backend/prisma/seed-dashboard-templates.js" ]]; then
+  node "$APP_DIR/backend/prisma/seed-dashboard-templates.js" \
+    && dep_ok "Templates dashboard globaux seedés" \
+    || warn "seed-dashboard-templates.js : erreur (non bloquant)"
+fi
 
 # Vider les clés Redis liées aux listes (cache périmé après seed)
 redis-cli DEL cache:departments:active cache:branches:active 2>/dev/null \
