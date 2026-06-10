@@ -1896,7 +1896,7 @@ export class ApiService {
   static async updateWidget(
     dashboardId: string,
     widgetId: string,
-    data: { title?: string; config?: Record<string, any> }
+    data: { type?: string; title?: string; config?: Record<string, any> }
   ): Promise<ApiResponse<DashboardWidget>> {
     try {
       const res = await api.put(`/dashboards/${dashboardId}/widgets/${widgetId}`, data);

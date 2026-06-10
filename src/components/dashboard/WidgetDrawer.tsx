@@ -50,7 +50,7 @@ export const WidgetDrawer: React.FC<WidgetDrawerProps> = ({
       const config = buildConfig(values);
 
       if (editingWidget) {
-        const res = await ApiService.updateWidget(dashboardId, editingWidget.id, { title: values.title, config });
+        const res = await ApiService.updateWidget(dashboardId, editingWidget.id, { type: values.type, title: values.title, config });
         if (res.success && res.data) onWidgetUpdated(res.data);
       } else {
         const size = DEFAULT_SIZES[values.type] ?? { w: 4, h: 3 };
