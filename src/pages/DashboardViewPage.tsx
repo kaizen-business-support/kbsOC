@@ -78,6 +78,13 @@ export const DashboardViewPage: React.FC = () => {
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!id) return;
     setLoading(true);
     ApiService.getDashboard(id).then(res => {
@@ -134,6 +141,7 @@ export const DashboardViewPage: React.FC = () => {
     deleteTimerRef.current = setTimeout(async () => {
       await ApiService.deleteWidget(id!, widgetId);
       setDeletedWidget(null);
+      deleteTimerRef.current = null;
     }, 4000);
   };
 
