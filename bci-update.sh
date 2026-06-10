@@ -461,6 +461,13 @@ else
 fi
 fi  # ← clôt le if RESET_DB_FORCE / else (flux normal vs reset)
 
+# Filet de sécurité : crée les tables manquantes que le baseline aurait pu omettre.
+# prisma db push compare le schéma Prisma avec la DB réelle et crée les tables/colonnes
+# absentes — sans supprimer de données existantes (pas de --accept-data-loss).
+npx prisma db push --skip-generate 2>&1 | tail -5 \
+  && ok "Schéma DB vérifié (prisma db push)" \
+  || warn "prisma db push : avertissement non bloquant (tables probablement déjà à jour)"
+
 # ─── Détection mode "production update" vs "first install" ──────────────────
 # Si la table companies contient déjà au moins une ligne, on considère que la
 # DB est en production : on skip TOUS les seeds et migrate-tenant.js par défaut

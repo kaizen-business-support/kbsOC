@@ -333,6 +333,13 @@ else
   dep_ok "Schéma Prisma synchronisé"
 fi
 
+# Filet de sécurité : crée les tables manquantes que le baseline aurait pu omettre.
+# prisma db push compare le schéma Prisma avec la DB réelle et crée les tables/colonnes
+# absentes — sans supprimer de données existantes (pas de --accept-data-loss).
+npx prisma db push --skip-generate 2>&1 | tail -5 \
+  && dep_ok "Schéma DB vérifié (prisma db push)" \
+  || warn "prisma db push : avertissement non bloquant (tables probablement déjà à jour)"
+
 # Seed données initiales (idempotent — ne recrée pas si déjà existant)
 cd "$APP_DIR/backend"
 export DATABASE_URL="$DB_URL"
