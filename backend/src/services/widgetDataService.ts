@@ -111,12 +111,14 @@ function buildMonthSeries(
 // ── Source: applications ──────────────────────────────────────────────────────
 
 const APPLICATION_METRICS = ['count', 'sum_amount', 'approval_rate', 'avg_processing_time', 'list'];
+const VALID_STATUSES = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'DISBURSED', 'CANCELLED'];
 
 async function getApplicationsData(params: WidgetDataParams, companyId: string): Promise<WidgetDataResult> {
   if (!APPLICATION_METRICS.includes(params.metric)) throw new Error(`Metric invalide: ${params.metric} pour applications`);
 
   const { from, to, prevFrom, prevTo } = getPeriodRange(params.period);
-  const statusFilter = params.filter?.status;
+  const rawStatus = params.filter?.status;
+  const statusFilter = rawStatus && VALID_STATUSES.includes(rawStatus) ? rawStatus : undefined;
   const baseWhere = {
     companyId,
     ...(statusFilter && { status: statusFilter as any }),

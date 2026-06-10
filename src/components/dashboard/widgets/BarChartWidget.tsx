@@ -41,7 +41,12 @@ export const BarChartWidget: React.FC<BarChartWidgetProps> = ({ data, title, hei
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
           <XAxis dataKey="name" tick={{ fontSize: 11 }} />
           <YAxis tickFormatter={formatYAxis} tick={{ fontSize: 11 }} width={40} />
-          <Tooltip formatter={(v: any) => [Number(v).toLocaleString('fr-FR'), title]} />
+          <Tooltip
+            formatter={(v: any) => [Number(v).toLocaleString('fr-FR'), title]}
+            isAnimationActive={false}
+            wrapperStyle={{ zIndex: 1000, outline: 'none' }}
+            contentStyle={{ borderRadius: 8, fontSize: 13, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', border: '1px solid #e0e0e0' }}
+          />
           <Bar dataKey="value" radius={[4, 4, 0, 0]}>
             {series.map((entry, i) => (
               <Cell key={i} fill={STATUS_COLORS[entry.name] ?? color} />

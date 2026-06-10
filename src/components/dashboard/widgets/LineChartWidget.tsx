@@ -36,7 +36,12 @@ export const LineChartWidget: React.FC<LineChartWidgetProps> = ({ data, title, h
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
           <XAxis dataKey="name" tick={{ fontSize: 11 }} />
           <YAxis tickFormatter={formatYAxis} tick={{ fontSize: 11 }} width={40} />
-          <Tooltip formatter={(v: any) => [Number(v).toLocaleString('fr-FR'), title]} />
+          <Tooltip
+            formatter={(v: any) => [Number(v).toLocaleString('fr-FR'), title]}
+            isAnimationActive={false}
+            wrapperStyle={{ zIndex: 1000, outline: 'none' }}
+            contentStyle={{ borderRadius: 8, fontSize: 13, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', border: '1px solid #e0e0e0' }}
+          />
           <Line
             type="monotone"
             dataKey="value"

@@ -104,7 +104,7 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
           />
         )}
       </Box>
-      <CardContent sx={{ flexGrow: 1, p: '8px 12px !important', overflow: 'hidden' }}>
+      <CardContent sx={{ flexGrow: 1, p: '8px 12px !important', overflow: 'visible', position: 'relative' }}>
         {loading && (
           <Box sx={{ height: CONTENT_HEIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <CircularProgress size={28} />
