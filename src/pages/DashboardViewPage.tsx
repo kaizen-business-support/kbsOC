@@ -6,6 +6,7 @@ import {
 import {
   Add as AddIcon,
   ArrowBack as BackIcon,
+  Bookmark as BookmarkIcon,
   Close as CloseIcon,
   Edit as EditIcon,
 } from '@mui/icons-material';
@@ -16,6 +17,8 @@ import { useUser } from '../contexts/UserContext';
 import { WidgetContainer, DashboardPeriodSelector } from '../components/dashboard';
 import { DashboardEditorGrid } from '../components/dashboard/DashboardEditorGrid';
 import { WidgetDrawer } from '../components/dashboard/WidgetDrawer';
+import { ExportMenu } from '../components/dashboard/ExportMenu';
+import { SaveAsTemplateDialog } from '../components/dashboard/SaveAsTemplateDialog';
 
 type LayoutItem = { i: string; x: number; y: number; w: number; h: number };
 type SaveStatus = 'saved' | 'saving' | 'unsaved';
@@ -76,6 +79,9 @@ export const DashboardViewPage: React.FC = () => {
   const [deletedWidget, setDeletedWidget] = useState<DashboardWidget | null>(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [templateSavedSnack, setTemplateSavedSnack] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -106,6 +112,9 @@ export const DashboardViewPage: React.FC = () => {
         (s.shareType === 'ROLE' && s.targetId === state.currentUser?.role && s.permission === 'EDIT')
       )
     : false;
+
+  const canSaveTemplate = state.currentUser?.role === 'ADMIN' ||
+    state.currentUser?.role === 'SUPER_ADMIN';
 
   const enterEditMode = () => {
     setLayoutSnapshot([...pendingLayout]);
@@ -200,6 +209,25 @@ export const DashboardViewPage: React.FC = () => {
         </Box>
         {isEditMode && <SaveIndicator status={saveStatus} />}
         <DashboardPeriodSelector value={globalPeriod} onChange={setGlobalPeriod} />
+        <ExportMenu
+          dashboard={dashboard}
+          widgets={widgets}
+          globalPeriod={globalPeriod}
+          gridRef={gridRef}
+        />
+        {canSaveTemplate && !isEditMode && (
+          <Tooltip title="Sauvegarder comme template">
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<BookmarkIcon />}
+              onClick={() => setSaveTemplateOpen(true)}
+              sx={{ borderRadius: 2 }}
+            >
+              Template
+            </Button>
+          </Tooltip>
+        )}
         {canEdit && !isEditMode && (
           <Button variant="outlined" size="small" startIcon={<EditIcon />} onClick={enterEditMode} sx={{ borderRadius: 2 }}>
             Modifier
@@ -212,43 +240,45 @@ export const DashboardViewPage: React.FC = () => {
         )}
       </Box>
 
-      {widgets.length === 0 && !isEditMode ? (
-        <Box sx={{ textAlign: 'center', py: 10 }}>
-          <Typography variant="h6" color="text.secondary">Ce dashboard n'a pas encore de widgets.</Typography>
-          {canEdit && (
-            <Button variant="contained" startIcon={<AddIcon />} onClick={enterEditMode} sx={{ mt: 2, borderRadius: 2 }}>
-              Ajouter des widgets
-            </Button>
-          )}
-        </Box>
-      ) : isEditMode ? (
-        <DashboardEditorGrid
-          widgets={widgets}
-          layout={pendingLayout}
-          globalPeriod={globalPeriod}
-          onLayoutChange={handleLayoutChange}
-          onDeleteWidget={handleDeleteWidget}
-          onEditWidget={w => { setEditingWidget(w); setDrawerOpen(true); }}
-        />
-      ) : (
-        <Grid container spacing={2.5}>
-          {widgets.map(widget => (
-            <Grid
-              item
-              key={widget.id}
-              xs={12}
-              sm={widget.type === 'kpi_card' ? 6 : 12}
-              md={widget.type === 'kpi_card' ? 3 : widget.type === 'table' ? 8 : 6}
-            >
-              <WidgetContainer
-                widget={widget}
-                globalPeriod={globalPeriod}
-                height={widget.type === 'kpi_card' ? 140 : widget.type === 'table' ? 320 : 280}
-              />
-            </Grid>
-          ))}
-        </Grid>
-      )}
+      <Box ref={gridRef}>
+        {widgets.length === 0 && !isEditMode ? (
+          <Box sx={{ textAlign: 'center', py: 10 }}>
+            <Typography variant="h6" color="text.secondary">Ce dashboard n'a pas encore de widgets.</Typography>
+            {canEdit && (
+              <Button variant="contained" startIcon={<AddIcon />} onClick={enterEditMode} sx={{ mt: 2, borderRadius: 2 }}>
+                Ajouter des widgets
+              </Button>
+            )}
+          </Box>
+        ) : isEditMode ? (
+          <DashboardEditorGrid
+            widgets={widgets}
+            layout={pendingLayout}
+            globalPeriod={globalPeriod}
+            onLayoutChange={handleLayoutChange}
+            onDeleteWidget={handleDeleteWidget}
+            onEditWidget={w => { setEditingWidget(w); setDrawerOpen(true); }}
+          />
+        ) : (
+          <Grid container spacing={2.5}>
+            {widgets.map(widget => (
+              <Grid
+                item
+                key={widget.id}
+                xs={12}
+                sm={widget.type === 'kpi_card' ? 6 : 12}
+                md={widget.type === 'kpi_card' ? 3 : widget.type === 'table' ? 8 : 6}
+              >
+                <WidgetContainer
+                  widget={widget}
+                  globalPeriod={globalPeriod}
+                  height={widget.type === 'kpi_card' ? 140 : widget.type === 'table' ? 320 : 280}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        )}
+      </Box>
 
       {isEditMode && (
         <Fab
@@ -268,6 +298,24 @@ export const DashboardViewPage: React.FC = () => {
         onWidgetAdded={handleWidgetAdded}
         onWidgetUpdated={handleWidgetUpdated}
         currentLayout={pendingLayout}
+      />
+
+      {dashboard && (
+        <SaveAsTemplateDialog
+          open={saveTemplateOpen}
+          onClose={() => setSaveTemplateOpen(false)}
+          dashboard={dashboard}
+          widgets={widgets}
+          layout={pendingLayout}
+          onSaved={() => setTemplateSavedSnack(true)}
+        />
+      )}
+
+      <Snackbar
+        open={templateSavedSnack}
+        autoHideDuration={3000}
+        onClose={() => setTemplateSavedSnack(false)}
+        message="Template sauvegardé avec succès"
       />
 
       <Snackbar
