@@ -79,9 +79,12 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
 
   useEffect(() => {
     const sources = SOURCE_BY_TYPE[values.type] ?? ['applications'];
-    if (!sources.includes(values.source)) {
-      setValues(v => ({ ...v, source: sources[0] as WidgetFormValues['source'], metric: '' }));
-    }
+    const needsSeries = values.type === 'bar_chart' || values.type === 'line_chart';
+    setValues(v => ({
+      ...v,
+      ...(needsSeries && !v.groupBy ? { groupBy: 'month' } : {}),
+      ...(!sources.includes(v.source) ? { source: sources[0] as WidgetFormValues['source'], metric: '' } : {}),
+    }));
   }, [values.type]);
 
   useEffect(() => {

@@ -87,7 +87,11 @@ function monthLabel(date: Date): string {
   return date.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
 }
 
-function buildMonthSeries(from: Date, to: Date, items: { createdAt: Date }[]): Array<{ name: string; value: number }> {
+function buildMonthSeries(
+  from: Date, to: Date,
+  items: { createdAt: Date; amount?: any }[],
+  mode: 'count' | 'sum_amount' = 'count',
+): Array<{ name: string; value: number }> {
   const series: Map<string, number> = new Map();
   const cursor = new Date(from.getFullYear(), from.getMonth(), 1);
   while (cursor <= to) {
@@ -96,7 +100,10 @@ function buildMonthSeries(from: Date, to: Date, items: { createdAt: Date }[]): A
   }
   for (const item of items) {
     const key = monthLabel(item.createdAt);
-    if (series.has(key)) series.set(key, (series.get(key) ?? 0) + 1);
+    if (series.has(key)) {
+      const increment = mode === 'sum_amount' ? Number(item.amount ?? 0) : 1;
+      series.set(key, (series.get(key) ?? 0) + increment);
+    }
   }
   return Array.from(series.entries()).map(([name, value]) => ({ name, value }));
 }
@@ -150,14 +157,16 @@ async function getApplicationsData(params: WidgetDataParams, companyId: string):
     });
 
     if (params.groupBy === 'month') {
-      const series = buildMonthSeries(from, to, items as { createdAt: Date }[]);
+      const mode = params.metric === 'sum_amount' ? 'sum_amount' : 'count';
+      const series = buildMonthSeries(from, to, items as { createdAt: Date; amount?: any }[], mode);
       return { series };
     }
 
     if (params.groupBy === 'status') {
       const map = new Map<string, number>();
       for (const item of items as any[]) {
-        map.set(item.status, (map.get(item.status) ?? 0) + 1);
+        const increment = params.metric === 'sum_amount' ? Number(item.amount ?? 0) : 1;
+        map.set(item.status, (map.get(item.status) ?? 0) + increment);
       }
       return { series: Array.from(map.entries()).map(([name, value]) => ({ name, value })) };
     } else if (params.groupBy === 'branch') {
