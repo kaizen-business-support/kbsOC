@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 import { prisma } from '../prismaClient';
 import { authenticate, requireCompany } from '../middleware/auth';
 import { getMergedProfile } from '../services/moduleProfileService';
@@ -110,26 +111,37 @@ router.post('/:id/apply', async (req: Request, res: Response) => {
     if (!template.isGlobal && template.companyId !== req.companyId)
       return res.status(403).json({ success: false, error: 'Accès interdit' }) as any;
     const name = req.body.name?.trim() || template.name;
+
+    // Map each template widget ID → new UUID so layout and widgets stay in sync
+    const idMap = new Map<string, string>();
+    for (const w of template.widgets as any[]) {
+      idMap.set(w.id, randomUUID());
+    }
+
+    const templateLayout = Array.isArray(template.layout) ? (template.layout as any[]) : [];
+    const newLayout = templateLayout.map((item: any) => ({
+      i: idMap.get(item.i) ?? randomUUID(),
+      x: item.x, y: item.y, w: item.w, h: item.h,
+    }));
+
+    const newWidgets = (template.widgets as any[]).map((w) => ({
+      id: idMap.get(w.id)!,
+      type: w.type, title: w.title, config: w.config ?? {}, order: w.order,
+    }));
+
     const dashboard = await prisma.dashboard.create({
       data: {
         name, description: template.description ?? null,
         companyId: req.companyId!, ownerId: req.user!.id,
-        layout: template.layout as any, templateSourceId: template.id,
+        layout: newLayout, templateSourceId: template.id,
       },
     });
-    if (template.widgets.length > 0) {
+    if (newWidgets.length > 0) {
       await prisma.dashboardWidget.createMany({
-        data: (template.widgets as any[]).map((w) => ({
-          dashboardId: dashboard.id, type: w.type, title: w.title, config: w.config, order: w.order,
-        })),
+        data: newWidgets.map((w) => ({ ...w, dashboardId: dashboard.id })),
       });
     }
-    // Return directly from create result + populate empty relations to avoid an extra findUnique
-    const result = {
-      ...dashboard,
-      widgets: [],
-      shares: [],
-    };
+    const result = { ...dashboard, widgets: newWidgets.map(w => ({ ...w, dashboardId: dashboard.id })), shares: [] };
     res.status(201).json({ success: true, data: result });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e.message });

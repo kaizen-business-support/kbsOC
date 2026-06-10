@@ -97,7 +97,20 @@ export const DashboardViewPage: React.FC = () => {
       if (res.success && res.data) {
         setDashboard(res.data);
         setWidgets(res.data.widgets);
-        setPendingLayout(res.data.layout as LayoutItem[]);
+
+        // Rebuild layout: ensure every widget has a layout item (handles template import bug)
+        const stored = (res.data.layout ?? []) as LayoutItem[];
+        const storedIds = new Set(stored.map(l => l.i));
+        let nextY = stored.reduce((m, l) => Math.max(m, l.y + l.h), 0);
+        const extra: LayoutItem[] = [];
+        for (const w of res.data.widgets) {
+          if (!storedIds.has(w.id)) {
+            const size = DEFAULT_SIZES[w.type] ?? { w: 4, h: 3 };
+            extra.push({ i: w.id, x: 0, y: nextY, ...size });
+            nextY += size.h;
+          }
+        }
+        setPendingLayout([...stored, ...extra]);
       } else {
         setError(res.error ?? 'Dashboard introuvable');
       }
