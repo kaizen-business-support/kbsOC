@@ -64,7 +64,7 @@ export const DashboardViewPage: React.FC = () => {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [globalPeriod, setGlobalPeriod] = useState<Period>('this_month');
+  const [globalPeriod, setGlobalPeriod] = useState<Period>('last_6_months');
 
   const [isEditMode, setIsEditMode] = useState(false);
   const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
