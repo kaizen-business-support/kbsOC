@@ -1,6 +1,6 @@
 // src/components/dashboard/DashboardEditorGrid.tsx
 import React, { useCallback } from 'react';
-import { ReactGridLayout, WidthProvider, Layout } from 'react-grid-layout/dist/legacy';
+import { ReactGridLayout, WidthProvider } from 'react-grid-layout/legacy';
 import { Box, IconButton, Tooltip } from '@mui/material';
 import { Close as CloseIcon, Edit as EditIcon } from '@mui/icons-material';
 import { DashboardWidget, Period } from '../../types';
@@ -27,7 +27,7 @@ const MARGIN: [number, number] = [16, 16];
 export const DashboardEditorGrid: React.FC<DashboardEditorGridProps> = ({
   widgets, layout, globalPeriod, onLayoutChange, onDeleteWidget, onEditWidget,
 }) => {
-  const handleLayoutChange = useCallback((newLayout: Layout) => {
+  const handleLayoutChange = useCallback((newLayout: LayoutItem[]) => {
     const simplified = [...newLayout].map(l => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h }));
     const changed = simplified.some(item => {
       const old = layout.find(l => l.i === item.i);
