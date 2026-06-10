@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
-  CircularProgress, IconButton, ListItemIcon,
-  Menu, MenuItem, Tooltip,
+  Alert, CircularProgress, IconButton, ListItemIcon,
+  Menu, MenuItem, Snackbar, Tooltip,
 } from '@mui/material';
 import {
   Download as DownloadIcon,
@@ -34,23 +34,29 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const slug = slugify(dashboard.name);
-  const date = new Date().toISOString().slice(0, 10);
 
   const handleExportPDF = async () => {
+    if (busy) return;
+    const date = new Date().toISOString().slice(0, 10);
     setAnchorEl(null);
     if (!gridRef.current) return;
     setExportingPdf(true);
     await new Promise<void>(r => requestAnimationFrame(() => r()));
     try {
       await exportToPDF(gridRef.current, `dashboard-${slug}-${date}.pdf`);
+    } catch {
+      setExportError('Échec de l\'export PDF. Veuillez réessayer.');
     } finally {
       setExportingPdf(false);
     }
   };
 
   const handleExportExcel = async () => {
+    if (busy) return;
+    const date = new Date().toISOString().slice(0, 10);
     setAnchorEl(null);
     if (widgets.length === 0) return;
     setExportingExcel(true);
@@ -84,6 +90,8 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({
         return { name: w.title || `Widget ${i + 1}`, rows };
       });
       exportToExcel(sheets, `dashboard-${slug}-${date}.xlsx`);
+    } catch {
+      setExportError('Échec de l\'export Excel. Veuillez réessayer.');
     } finally {
       setExportingExcel(false);
     }
@@ -110,6 +118,15 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({
           Exporter les données (Excel)
         </MenuItem>
       </Menu>
+      <Snackbar
+        open={Boolean(exportError)}
+        autoHideDuration={4000}
+        onClose={() => setExportError(null)}
+      >
+        <Alert severity="error" onClose={() => setExportError(null)}>
+          {exportError}
+        </Alert>
+      </Snackbar>
     </>
   );
 };
