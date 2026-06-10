@@ -1918,7 +1918,7 @@ export class ApiService {
   static async createDashboardTemplate(data: {
     name: string;
     description?: string;
-    layout: any[];
+    layout: Array<{ i: string; x: number; y: number; w: number; h: number }>;
     widgets: Array<{ type: string; title: string; config: Record<string, any> }>;
   }): Promise<ApiResponse<DashboardTemplate>> {
     try {
