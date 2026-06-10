@@ -71,7 +71,6 @@ export const DashboardViewPage: React.FC = () => {
   const [pendingLayout, setPendingLayout] = useState<LayoutItem[]>([]);
   const [layoutSnapshot, setLayoutSnapshot] = useState<LayoutItem[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingWidget, setEditingWidget] = useState<DashboardWidget | null>(null);
@@ -85,7 +84,6 @@ export const DashboardViewPage: React.FC = () => {
 
   useEffect(() => {
     return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
     };
   }, []);
@@ -141,15 +139,18 @@ export const DashboardViewPage: React.FC = () => {
     setSaveStatus('saved');
   };
 
+  // Live update during drag — local state only, no server call
   const handleLayoutChange = (newLayout: LayoutItem[]) => {
     setPendingLayout(newLayout);
     setSaveStatus('unsaved');
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(async () => {
-      setSaveStatus('saving');
-      await ApiService.updateDashboard(id!, { layout: newLayout });
-      setSaveStatus('saved');
-    }, 800);
+  };
+
+  // Called once on drag/resize end — saves immediately so refresh doesn't lose changes
+  const handleLayoutSave = async (newLayout: LayoutItem[]) => {
+    setPendingLayout(newLayout);
+    setSaveStatus('saving');
+    await ApiService.updateDashboard(id!, { layout: newLayout });
+    setSaveStatus('saved');
   };
 
   const handleDeleteWidget = (widgetId: string) => {
@@ -269,6 +270,7 @@ export const DashboardViewPage: React.FC = () => {
             layout={pendingLayout}
             globalPeriod={globalPeriod}
             onLayoutChange={handleLayoutChange}
+            onLayoutSave={handleLayoutSave}
             onDeleteWidget={handleDeleteWidget}
             onEditWidget={w => { setEditingWidget(w); setDrawerOpen(true); }}
           />

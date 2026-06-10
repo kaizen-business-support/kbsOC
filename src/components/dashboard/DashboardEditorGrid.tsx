@@ -17,6 +17,7 @@ interface DashboardEditorGridProps {
   layout: LayoutItem[];
   globalPeriod: Period;
   onLayoutChange: (layout: LayoutItem[]) => void;
+  onLayoutSave: (layout: LayoutItem[]) => void;
   onDeleteWidget: (widgetId: string) => void;
   onEditWidget: (widget: DashboardWidget) => void;
 }
@@ -24,17 +25,31 @@ interface DashboardEditorGridProps {
 const ROW_HEIGHT = 80;
 const MARGIN: [number, number] = [16, 16];
 
+function simplify(layout: LayoutItem[]): LayoutItem[] {
+  return layout.map(l => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h }));
+}
+
 export const DashboardEditorGrid: React.FC<DashboardEditorGridProps> = ({
-  widgets, layout, globalPeriod, onLayoutChange, onDeleteWidget, onEditWidget,
+  widgets, layout, globalPeriod, onLayoutChange, onLayoutSave, onDeleteWidget, onEditWidget,
 }) => {
+  // Update local state on every change (for live visual feedback during drag)
   const handleLayoutChange = useCallback((newLayout: LayoutItem[]) => {
-    const simplified = [...newLayout].map(l => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h }));
+    const simplified = simplify(newLayout);
     const changed = simplified.some(item => {
       const old = layout.find(l => l.i === item.i);
       return !old || old.x !== item.x || old.y !== item.y || old.w !== item.w || old.h !== item.h;
     });
     if (changed) onLayoutChange(simplified);
   }, [layout, onLayoutChange]);
+
+  // Save to server only when drag/resize ends (avoids losing save on page refresh)
+  const handleDragStop = useCallback((_layout: LayoutItem[]) => {
+    onLayoutSave(simplify(_layout));
+  }, [onLayoutSave]);
+
+  const handleResizeStop = useCallback((_layout: LayoutItem[]) => {
+    onLayoutSave(simplify(_layout));
+  }, [onLayoutSave]);
 
   const visibleWidgets = widgets.filter(w => layout.some(l => l.i === w.id));
 
@@ -46,6 +61,8 @@ export const DashboardEditorGrid: React.FC<DashboardEditorGridProps> = ({
       margin={MARGIN}
       containerPadding={[0, 0]}
       onLayoutChange={handleLayoutChange}
+      onDragStop={handleDragStop}
+      onResizeStop={handleResizeStop}
       draggableHandle=".drag-handle"
       compactType="vertical"
     >
