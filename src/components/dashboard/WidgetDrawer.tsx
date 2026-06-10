@@ -46,23 +46,26 @@ export const WidgetDrawer: React.FC<WidgetDrawerProps> = ({
 
   const handleSubmit = async (values: WidgetFormValues) => {
     setLoading(true);
-    const config = buildConfig(values);
+    try {
+      const config = buildConfig(values);
 
-    if (editingWidget) {
-      const res = await ApiService.updateWidget(dashboardId, editingWidget.id, { title: values.title, config });
-      if (res.success && res.data) onWidgetUpdated(res.data);
-    } else {
-      const size = DEFAULT_SIZES[values.type] ?? { w: 4, h: 3 };
-      const maxY = currentLayout.reduce((m, l) => Math.max(m, l.y + l.h), 0);
-      const res = await ApiService.addWidget(dashboardId, {
-        type: values.type,
-        title: values.title,
-        config,
-        position: { x: 0, y: maxY, ...size },
-      });
-      if (res.success && res.data) onWidgetAdded(res.data.widget, res.data.layout);
+      if (editingWidget) {
+        const res = await ApiService.updateWidget(dashboardId, editingWidget.id, { title: values.title, config });
+        if (res.success && res.data) onWidgetUpdated(res.data);
+      } else {
+        const size = DEFAULT_SIZES[values.type] ?? { w: 4, h: 3 };
+        const maxY = currentLayout.reduce((m, l) => Math.max(m, l.y + l.h), 0);
+        const res = await ApiService.addWidget(dashboardId, {
+          type: values.type,
+          title: values.title,
+          config,
+          position: { x: 0, y: maxY, ...size },
+        });
+        if (res.success && res.data) onWidgetAdded(res.data.widget, res.data.layout);
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const initialValues: Partial<WidgetFormValues> | undefined = editingWidget
