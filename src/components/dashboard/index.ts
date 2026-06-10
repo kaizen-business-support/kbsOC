@@ -1,5 +1,9 @@
 export { WidgetContainer } from './WidgetContainer';
 export { DashboardPeriodSelector } from './DashboardPeriodSelector';
+export { DashboardEditorGrid } from './DashboardEditorGrid';
+export { WidgetDrawer } from './WidgetDrawer';
+export { WidgetConfigForm } from './WidgetConfigForm';
+export type { WidgetFormValues } from './WidgetConfigForm';
 export { KpiCardWidget } from './widgets/KpiCardWidget';
 export { BarChartWidget } from './widgets/BarChartWidget';
 export { LineChartWidget } from './widgets/LineChartWidget';
