@@ -61,12 +61,36 @@ export const DashboardsPage: React.FC = () => {
     setLoadingTemplates(true);
     const res = await ApiService.getDashboardTemplates();
     if (res.success && res.data) setTemplates(res.data);
+    else if (!res.success) setError(res.error || 'Erreur lors du chargement des templates');
     setLoadingTemplates(false);
   };
 
   useEffect(() => {
-    loadDashboards();
-    loadTemplates();
+    let active = true;
+
+    const run = async () => {
+      setLoading(true);
+      setLoadingTemplates(true);
+      setError(null);
+
+      const [dashRes, tmplRes] = await Promise.all([
+        ApiService.getDashboards(),
+        ApiService.getDashboardTemplates(),
+      ]);
+
+      if (!active) return;
+
+      if (dashRes.success && dashRes.data) setDashboards(dashRes.data);
+      else setError(dashRes.error || 'Erreur lors du chargement des dashboards');
+      setLoading(false);
+
+      if (tmplRes.success && tmplRes.data) setTemplates(tmplRes.data);
+      else if (!tmplRes.success) setError(prev => prev || 'Erreur lors du chargement des templates');
+      setLoadingTemplates(false);
+    };
+
+    run();
+    return () => { active = false; };
   }, []);
 
   const handleCreate = async () => {
@@ -103,10 +127,15 @@ export const DashboardsPage: React.FC = () => {
   const handleDeleteTemplate = async () => {
     if (!deleteConfirmId) return;
     setDeleting(true);
-    await ApiService.deleteDashboardTemplate(deleteConfirmId);
+    const res = await ApiService.deleteDashboardTemplate(deleteConfirmId);
     setDeleting(false);
-    setDeleteConfirmId(null);
-    loadTemplates();
+    if (res.success) {
+      setDeleteConfirmId(null);
+      loadTemplates();
+    } else {
+      setError(res.error || 'Erreur lors de la suppression du template');
+      setDeleteConfirmId(null);
+    }
   };
 
   const formatDate = (dateStr: string) =>
