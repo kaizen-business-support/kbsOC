@@ -1,6 +1,6 @@
 // src/components/dashboard/DashboardEditorGrid.tsx
-import React from 'react';
-import { ReactGridLayout, WidthProvider, Layout, LayoutItem as RGLLayoutItem } from 'react-grid-layout/dist/legacy';
+import React, { useCallback } from 'react';
+import { ReactGridLayout, WidthProvider, Layout } from 'react-grid-layout/dist/legacy';
 import { Box, IconButton, Tooltip } from '@mui/material';
 import { Close as CloseIcon, Edit as EditIcon } from '@mui/icons-material';
 import { DashboardWidget, Period } from '../../types';
@@ -27,14 +27,16 @@ const MARGIN: [number, number] = [16, 16];
 export const DashboardEditorGrid: React.FC<DashboardEditorGridProps> = ({
   widgets, layout, globalPeriod, onLayoutChange, onDeleteWidget, onEditWidget,
 }) => {
-  const handleLayoutChange = (newLayout: Layout) => {
-    const simplified = (newLayout as RGLLayoutItem[]).map(l => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h }));
+  const handleLayoutChange = useCallback((newLayout: Layout) => {
+    const simplified = [...newLayout].map(l => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h }));
     const changed = simplified.some(item => {
       const old = layout.find(l => l.i === item.i);
       return !old || old.x !== item.x || old.y !== item.y || old.w !== item.w || old.h !== item.h;
     });
     if (changed) onLayoutChange(simplified);
-  };
+  }, [layout, onLayoutChange]);
+
+  const visibleWidgets = widgets.filter(w => layout.some(l => l.i === w.id));
 
   return (
     <GridLayout
@@ -47,7 +49,7 @@ export const DashboardEditorGrid: React.FC<DashboardEditorGridProps> = ({
       draggableHandle=".drag-handle"
       compactType="vertical"
     >
-      {widgets.map(widget => {
+      {visibleWidgets.map(widget => {
         const layoutItem = layout.find(l => l.i === widget.id);
         const h = layoutItem?.h ?? 4;
         const widgetHeight = h * ROW_HEIGHT + (h - 1) * MARGIN[1];
