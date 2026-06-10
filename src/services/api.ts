@@ -1881,6 +1881,40 @@ export class ApiService {
     }
   }
 
+  static async addWidget(
+    dashboardId: string,
+    data: { type: string; title: string; config: Record<string, any>; position?: { x: number; y: number; w: number; h: number } }
+  ): Promise<ApiResponse<{ widget: DashboardWidget; layout: any[] }>> {
+    try {
+      const res = await api.post(`/dashboards/${dashboardId}/widgets`, data);
+      return res.data;
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réseau' };
+    }
+  }
+
+  static async updateWidget(
+    dashboardId: string,
+    widgetId: string,
+    data: { title?: string; config?: Record<string, any> }
+  ): Promise<ApiResponse<DashboardWidget>> {
+    try {
+      const res = await api.put(`/dashboards/${dashboardId}/widgets/${widgetId}`, data);
+      return res.data;
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réseau' };
+    }
+  }
+
+  static async deleteWidget(dashboardId: string, widgetId: string): Promise<ApiResponse<void>> {
+    try {
+      await api.delete(`/dashboards/${dashboardId}/widgets/${widgetId}`);
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réseau' };
+    }
+  }
+
   static security = {
     ipRules: {
       list: async (params: {
