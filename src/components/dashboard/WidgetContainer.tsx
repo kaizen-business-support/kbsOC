@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Card, CardContent, Typography, CircularProgress, Alert } from '@mui/material';
+import { Box, Card, CardContent, Chip, Typography, CircularProgress, Alert } from '@mui/material';
+import { Schedule as ScheduleIcon } from '@mui/icons-material';
 import { ApiService } from '../../services/api';
 import { DashboardWidget, Period, WidgetDataResult } from '../../types';
 import { KpiCardWidget } from './widgets/KpiCardWidget';
@@ -7,6 +8,11 @@ import { BarChartWidget } from './widgets/BarChartWidget';
 import { LineChartWidget } from './widgets/LineChartWidget';
 import { GaugeWidget } from './widgets/GaugeWidget';
 import { TableWidget } from './widgets/TableWidget';
+
+const PERIOD_LABELS: Record<string, string> = {
+  this_month: 'Ce mois', this_quarter: 'Ce trimestre', this_year: 'Cette année',
+  last_6_months: '6 mois', last_12_months: '12 mois',
+};
 
 interface WidgetContainerProps {
   widget: DashboardWidget;
@@ -21,6 +27,10 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
 
   const cfg = widget.config as any;
   const effectivePeriod: Period = cfg?.periodOverride ?? globalPeriod;
+  // bar_chart/line_chart always need series — default groupBy to 'month' for backward compat
+  const groupBy = cfg?.groupBy ?? (
+    (widget.type === 'bar_chart' || widget.type === 'line_chart') ? 'month' : undefined
+  );
   const configKey = JSON.stringify(widget.config);
 
   useEffect(() => {
@@ -30,7 +40,7 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
     ApiService.getWidgetData({
       source: cfg?.source ?? 'applications',
       metric: cfg?.metric ?? 'count',
-      groupBy: cfg?.groupBy,
+      groupBy,
       period: effectivePeriod,
       filter: cfg?.filter,
       limit: cfg?.limit,
@@ -45,7 +55,7 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
   }, [widget.id, widget.type, effectivePeriod, configKey]);
 
   const CARD_HEIGHT = height;
-  const CONTENT_HEIGHT = CARD_HEIGHT - 64; // header (~40px) + padding
+  const CONTENT_HEIGHT = CARD_HEIGHT - 64;
 
   const renderWidget = () => {
     if (!data) return null;
@@ -81,10 +91,18 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
         overflow: 'hidden',
       }}
     >
-      <Box sx={{ px: 2, pt: 1.5, pb: 0.5, borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-        <Typography variant="subtitle2" fontWeight={700} color="#1a1a2e" noWrap>
+      <Box sx={{ px: 2, pt: 1.5, pb: 0.5, borderBottom: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography variant="subtitle2" fontWeight={700} color="#1a1a2e" noWrap sx={{ flexGrow: 1 }}>
           {widget.type !== 'kpi_card' ? widget.title : ''}
         </Typography>
+        {cfg?.periodOverride && (
+          <Chip
+            icon={<ScheduleIcon sx={{ fontSize: '0.7rem !important' }} />}
+            label={PERIOD_LABELS[cfg.periodOverride] ?? cfg.periodOverride}
+            size="small"
+            sx={{ height: 18, fontSize: '0.65rem', bgcolor: '#e3f2fd', color: '#1565c0', '& .MuiChip-label': { px: 0.7 } }}
+          />
+        )}
       </Box>
       <CardContent sx={{ flexGrow: 1, p: '8px 12px !important', overflow: 'hidden' }}>
         {loading && (
