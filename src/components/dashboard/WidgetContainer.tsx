@@ -8,6 +8,7 @@ import { BarChartWidget } from './widgets/BarChartWidget';
 import { LineChartWidget } from './widgets/LineChartWidget';
 import { GaugeWidget } from './widgets/GaugeWidget';
 import { TableWidget } from './widgets/TableWidget';
+import { TrendChartWidget } from './widgets/TrendChartWidget';
 
 const PERIOD_LABELS: Record<string, string> = {
   this_month: 'Ce mois', this_quarter: 'Ce trimestre', this_year: 'Cette année',
@@ -29,7 +30,7 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
   const effectivePeriod: Period = cfg?.periodOverride ?? globalPeriod;
   // bar_chart/line_chart always need series — default groupBy to 'month' for backward compat
   const groupBy = cfg?.groupBy ?? (
-    (widget.type === 'bar_chart' || widget.type === 'line_chart') ? 'month' : undefined
+    (widget.type === 'bar_chart' || widget.type === 'line_chart' || widget.type === 'trend_chart') ? 'month' : undefined
   );
   const configKey = JSON.stringify(widget.config);
 
@@ -70,6 +71,8 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
         return <GaugeWidget data={data} title={widget.title} threshold={cfg?.threshold} maxValue={cfg?.maxValue} height={CONTENT_HEIGHT} />;
       case 'table':
         return <TableWidget data={data} title={widget.title} pageSize={5} />;
+      case 'trend_chart':
+        return <TrendChartWidget data={data} title={widget.title} height={CONTENT_HEIGHT} regressionType={cfg?.regressionType} forecastMonths={cfg?.forecastMonths ?? 3} color={cfg?.color} />;
       default:
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: CONTENT_HEIGHT }}>

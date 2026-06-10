@@ -20,6 +20,7 @@ interface DashboardEditorGridProps {
   onLayoutSave: (layout: LayoutItem[]) => void;
   onDeleteWidget: (widgetId: string) => void;
   onEditWidget: (widget: DashboardWidget) => void;
+  viewOnly?: boolean;
 }
 
 const ROW_HEIGHT = 80;
@@ -31,25 +32,25 @@ function simplify(layout: LayoutItem[]): LayoutItem[] {
 
 export const DashboardEditorGrid: React.FC<DashboardEditorGridProps> = ({
   widgets, layout, globalPeriod, onLayoutChange, onLayoutSave, onDeleteWidget, onEditWidget,
+  viewOnly = false,
 }) => {
-  // Update local state on every change (for live visual feedback during drag)
   const handleLayoutChange = useCallback((newLayout: LayoutItem[]) => {
+    if (viewOnly) return;
     const simplified = simplify(newLayout);
     const changed = simplified.some(item => {
       const old = layout.find(l => l.i === item.i);
       return !old || old.x !== item.x || old.y !== item.y || old.w !== item.w || old.h !== item.h;
     });
     if (changed) onLayoutChange(simplified);
-  }, [layout, onLayoutChange]);
+  }, [layout, onLayoutChange, viewOnly]);
 
-  // Save to server only when drag/resize ends (avoids losing save on page refresh)
   const handleDragStop = useCallback((_layout: LayoutItem[]) => {
-    onLayoutSave(simplify(_layout));
-  }, [onLayoutSave]);
+    if (!viewOnly) onLayoutSave(simplify(_layout));
+  }, [onLayoutSave, viewOnly]);
 
   const handleResizeStop = useCallback((_layout: LayoutItem[]) => {
-    onLayoutSave(simplify(_layout));
-  }, [onLayoutSave]);
+    if (!viewOnly) onLayoutSave(simplify(_layout));
+  }, [onLayoutSave, viewOnly]);
 
   const visibleWidgets = widgets.filter(w => layout.some(l => l.i === w.id));
 
@@ -63,7 +64,9 @@ export const DashboardEditorGrid: React.FC<DashboardEditorGridProps> = ({
       onLayoutChange={handleLayoutChange}
       onDragStop={handleDragStop}
       onResizeStop={handleResizeStop}
-      draggableHandle=".drag-handle"
+      draggableHandle={viewOnly ? undefined : '.drag-handle'}
+      isDraggable={!viewOnly}
+      isResizable={!viewOnly}
       compactType="vertical"
     >
       {visibleWidgets.map(widget => {
@@ -72,36 +75,40 @@ export const DashboardEditorGrid: React.FC<DashboardEditorGridProps> = ({
         const widgetHeight = h * ROW_HEIGHT + (h - 1) * MARGIN[1];
         return (
           <Box key={widget.id} sx={{ position: 'relative', height: '100%' }}>
-            <Box
-              className="drag-handle"
-              sx={{
-                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1,
-                cursor: 'grab', '&:active': { cursor: 'grabbing' },
-                borderRadius: 3,
-                border: '2px dashed rgba(21,101,192,0.3)',
-                bgcolor: 'rgba(21,101,192,0.03)',
-              }}
-            />
-            <Box sx={{ position: 'absolute', top: 6, right: 6, zIndex: 2, display: 'flex', gap: 0.5 }}>
-              <Tooltip title="Modifier la configuration">
-                <IconButton
-                  size="small"
-                  onClick={e => { e.stopPropagation(); onEditWidget(widget); }}
-                  sx={{ bgcolor: 'white', boxShadow: 1, width: 24, height: 24, '&:hover': { bgcolor: '#e3f2fd' } }}
-                >
-                  <EditIcon sx={{ fontSize: 14, color: '#1565c0' }} />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Supprimer">
-                <IconButton
-                  size="small"
-                  onClick={e => { e.stopPropagation(); onDeleteWidget(widget.id); }}
-                  sx={{ bgcolor: 'white', boxShadow: 1, width: 24, height: 24, '&:hover': { bgcolor: '#ffebee' } }}
-                >
-                  <CloseIcon sx={{ fontSize: 14, color: '#c62828' }} />
-                </IconButton>
-              </Tooltip>
-            </Box>
+            {!viewOnly && (
+              <>
+                <Box
+                  className="drag-handle"
+                  sx={{
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1,
+                    cursor: 'grab', '&:active': { cursor: 'grabbing' },
+                    borderRadius: 3,
+                    border: '2px dashed rgba(21,101,192,0.3)',
+                    bgcolor: 'rgba(21,101,192,0.03)',
+                  }}
+                />
+                <Box sx={{ position: 'absolute', top: 6, right: 6, zIndex: 2, display: 'flex', gap: 0.5 }}>
+                  <Tooltip title="Modifier la configuration">
+                    <IconButton
+                      size="small"
+                      onClick={e => { e.stopPropagation(); onEditWidget(widget); }}
+                      sx={{ bgcolor: 'white', boxShadow: 1, width: 24, height: 24, '&:hover': { bgcolor: '#e3f2fd' } }}
+                    >
+                      <EditIcon sx={{ fontSize: 14, color: '#1565c0' }} />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Supprimer">
+                    <IconButton
+                      size="small"
+                      onClick={e => { e.stopPropagation(); onDeleteWidget(widget.id); }}
+                      sx={{ bgcolor: 'white', boxShadow: 1, width: 24, height: 24, '&:hover': { bgcolor: '#ffebee' } }}
+                    >
+                      <CloseIcon sx={{ fontSize: 14, color: '#c62828' }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </>
+            )}
             <WidgetContainer widget={widget} globalPeriod={globalPeriod} height={widgetHeight} />
           </Box>
         );

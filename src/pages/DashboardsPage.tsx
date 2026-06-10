@@ -14,8 +14,75 @@ import {
   Share as ShareIcon,
 } from '@mui/icons-material';
 import { ApiService } from '../services/api';
-import { Dashboard, DashboardTemplate } from '../types';
+import { Dashboard, DashboardTemplate, DashboardWidget } from '../types';
 import { useModuleAccess } from '../hooks/useModuleAccess';
+
+const CARD_GRADIENTS = [
+  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  'linear-gradient(135deg, #f5576c 0%, #f093fb 100%)',
+  'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+  'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+  'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+  'linear-gradient(135deg, #30cfd0 0%, #667eea 100%)',
+  'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
+  'linear-gradient(135deg, #4481eb 0%, #04befe 100%)',
+];
+const WIDGET_LABELS: Record<string, string> = {
+  kpi_card: 'KPI', bar_chart: 'Barres', line_chart: 'Courbe',
+  gauge: 'Jauge', table: 'Tableau',
+};
+
+function pickGradient(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return CARD_GRADIENTS[h % CARD_GRADIENTS.length];
+}
+
+function DashboardMiniPreview({ id, widgets }: { id: string; widgets: DashboardWidget[] }) {
+  const gradient = pickGradient(id);
+  const typeCounts = widgets.reduce((acc, w) => { acc[w.type] = (acc[w.type] || 0) + 1; return acc; }, {} as Record<string, number>);
+  const typeEntries = Object.entries(typeCounts).slice(0, 5);
+
+  return (
+    <Box sx={{ height: 140, background: gradient, position: 'relative', overflow: 'hidden', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+      {/* Cercles décoratifs */}
+      <Box sx={{ position: 'absolute', top: -28, right: -28, width: 110, height: 110, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.1)' }} />
+      <Box sx={{ position: 'absolute', bottom: -40, left: -18, width: 90, height: 90, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.07)' }} />
+      <Box sx={{ position: 'absolute', top: 20, right: 50, width: 40, height: 40, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.06)' }} />
+
+      {/* Grande icône en filigrane */}
+      <DashboardIcon sx={{ position: 'absolute', bottom: -10, right: 6, fontSize: 100, color: 'rgba(255,255,255,0.1)' }} />
+
+      {/* Compteur de widgets */}
+      <Box sx={{ position: 'absolute', top: 14, left: 16 }}>
+        <Typography sx={{ color: 'rgba(255,255,255,0.95)', fontSize: '0.73rem', fontWeight: 800, letterSpacing: 0.3 }}>
+          {widgets.length === 0 ? 'Aucun widget' : `${widgets.length} widget${widgets.length > 1 ? 's' : ''}`}
+        </Typography>
+      </Box>
+
+      {/* Chips types de widgets */}
+      {typeEntries.length > 0 && (
+        <Box sx={{ position: 'absolute', bottom: 14, left: 14, display: 'flex', gap: 0.6, flexWrap: 'wrap', maxWidth: 'calc(100% - 28px)' }}>
+          {typeEntries.map(([type, count]) => (
+            <Chip
+              key={type}
+              label={`${WIDGET_LABELS[type] ?? type}${count > 1 ? ` ×${count}` : ''}`}
+              size="small"
+              sx={{
+                height: 22, fontSize: '0.63rem', fontWeight: 700,
+                bgcolor: 'rgba(255,255,255,0.22)',
+                color: 'white',
+                border: '1px solid rgba(255,255,255,0.32)',
+                backdropFilter: 'blur(6px)',
+                '& .MuiChip-label': { px: 0.9 },
+              }}
+            />
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
 
 export const DashboardsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -202,14 +269,7 @@ export const DashboardsPage: React.FC = () => {
                   onClick={() => navigate(`/dashboard-builder/${d.id}`)}
                   sx={{ p: 0, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
                 >
-                  <Box sx={{ height: 120, bgcolor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <DashboardIcon sx={{ fontSize: 40, color: '#94a3b8', mb: 0.5 }} />
-                      <Typography variant="caption" color="text.disabled">
-                        {d.widgets.length} widget{d.widgets.length !== 1 ? 's' : ''}
-                      </Typography>
-                    </Box>
-                  </Box>
+                  <DashboardMiniPreview id={d.id} widgets={d.widgets} />
                   <CardContent sx={{ flexGrow: 1 }}>
                     <Typography variant="subtitle1" fontWeight={700} color="#1a1a2e" gutterBottom noWrap>
                       {d.name}

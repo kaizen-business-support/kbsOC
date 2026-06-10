@@ -5,7 +5,7 @@ export type Period = 'this_month' | 'this_quarter' | 'this_year' | 'last_6_month
 export interface WidgetDataParams {
   source: 'applications' | 'clients' | 'analytics';
   metric: string;
-  groupBy?: 'status' | 'month' | 'branch' | 'manager';
+  groupBy?: 'status' | 'month' | 'branch' | 'manager' | 'sector';
   period: Period;
   filter?: Record<string, string>;
   limit?: number;
@@ -152,7 +152,25 @@ async function getApplicationsData(params: WidgetDataParams, companyId: string):
     };
   }
 
-  if (params.groupBy === 'month' || params.groupBy === 'status' || params.groupBy === 'branch') {
+  if (params.groupBy === 'month' || params.groupBy === 'status' || params.groupBy === 'branch' || params.groupBy === 'sector') {
+    if (params.groupBy === 'sector') {
+      const apps = await prisma.creditApplication.findMany({
+        where: { ...baseWhere, createdAt: { gte: from, lte: to } },
+        select: { amount: true, client: { select: { sector: true } } },
+      });
+      const map = new Map<string, number>();
+      for (const app of apps as any[]) {
+        const sector = (app.client?.sector?.trim()) || 'Non renseigné';
+        const increment = params.metric === 'sum_amount' ? Number(app.amount ?? 0) : 1;
+        map.set(sector, (map.get(sector) ?? 0) + increment);
+      }
+      return {
+        series: Array.from(map.entries())
+          .map(([name, value]) => ({ name, value }))
+          .sort((a, b) => b.value - a.value),
+      };
+    }
+
     const items = await prisma.creditApplication.findMany({
       where: { ...baseWhere, createdAt: { gte: from, lte: to } },
       select: { createdAt: true, status: true, amount: true },

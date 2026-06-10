@@ -1,20 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert, Box, Button, Chip, CircularProgress, Fab,
-  Grid, IconButton, Snackbar, Tooltip, Typography,
+  IconButton, Snackbar, Tooltip, Typography,
 } from '@mui/material';
 import {
   Add as AddIcon,
   ArrowBack as BackIcon,
   Bookmark as BookmarkIcon,
-  Close as CloseIcon,
   Edit as EditIcon,
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ApiService } from '../services/api';
 import { Dashboard, DashboardWidget, Period } from '../types';
 import { useUser } from '../contexts/UserContext';
-import { WidgetContainer, DashboardPeriodSelector } from '../components/dashboard';
+import { DashboardPeriodSelector } from '../components/dashboard';
 import { DashboardEditorGrid } from '../components/dashboard/DashboardEditorGrid';
 import { WidgetDrawer } from '../components/dashboard/WidgetDrawer';
 import { ExportMenu } from '../components/dashboard/ExportMenu';
@@ -69,7 +68,6 @@ export const DashboardViewPage: React.FC = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
   const [pendingLayout, setPendingLayout] = useState<LayoutItem[]>([]);
-  const [layoutSnapshot, setLayoutSnapshot] = useState<LayoutItem[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -128,13 +126,11 @@ export const DashboardViewPage: React.FC = () => {
     state.currentUser?.role === 'SUPER_ADMIN';
 
   const enterEditMode = () => {
-    setLayoutSnapshot([...pendingLayout]);
     setIsEditMode(true);
     setSaveStatus('saved');
   };
 
   const cancelEditMode = () => {
-    setPendingLayout(layoutSnapshot);
     setIsEditMode(false);
     setSaveStatus('saved');
   };
@@ -248,8 +244,8 @@ export const DashboardViewPage: React.FC = () => {
           </Button>
         )}
         {isEditMode && (
-          <Button variant="text" size="small" startIcon={<CloseIcon />} onClick={cancelEditMode} color="error" sx={{ borderRadius: 2 }}>
-            Annuler
+          <Button variant="contained" size="small" onClick={cancelEditMode} sx={{ borderRadius: 2 }}>
+            Terminer
           </Button>
         )}
       </Box>
@@ -275,23 +271,16 @@ export const DashboardViewPage: React.FC = () => {
             onEditWidget={w => { setEditingWidget(w); setDrawerOpen(true); }}
           />
         ) : (
-          <Grid container spacing={2.5}>
-            {widgets.map(widget => (
-              <Grid
-                item
-                key={widget.id}
-                xs={12}
-                sm={widget.type === 'kpi_card' ? 6 : 12}
-                md={widget.type === 'kpi_card' ? 3 : widget.type === 'table' ? 8 : 6}
-              >
-                <WidgetContainer
-                  widget={widget}
-                  globalPeriod={globalPeriod}
-                  height={widget.type === 'kpi_card' ? 140 : widget.type === 'table' ? 320 : 280}
-                />
-              </Grid>
-            ))}
-          </Grid>
+          <DashboardEditorGrid
+            widgets={widgets}
+            layout={pendingLayout}
+            globalPeriod={globalPeriod}
+            viewOnly
+            onLayoutChange={() => {}}
+            onLayoutSave={() => {}}
+            onDeleteWidget={() => {}}
+            onEditWidget={() => {}}
+          />
         )}
       </Box>
 

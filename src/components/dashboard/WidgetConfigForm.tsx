@@ -9,10 +9,10 @@ import { Period } from '../../types';
 
 export interface WidgetFormValues {
   title: string;
-  type: 'kpi_card' | 'bar_chart' | 'line_chart' | 'gauge' | 'table';
+  type: 'kpi_card' | 'bar_chart' | 'line_chart' | 'gauge' | 'table' | 'trend_chart';
   source: 'applications' | 'clients' | 'analytics';
   metric: string;
-  groupBy?: 'month' | 'status' | 'branch';
+  groupBy?: 'month' | 'status' | 'branch' | 'sector';
   filterStatus?: string;
   periodOverride?: Period;
   colorScheme?: 'blue' | 'green' | 'orange' | 'red';
@@ -20,6 +20,8 @@ export interface WidgetFormValues {
   thresholdWarning?: number;
   thresholdCritical?: number;
   limit?: number;
+  regressionType?: 'linear' | 'logarithmic';
+  forecastMonths?: number;
 }
 
 interface WidgetConfigFormProps {
@@ -29,11 +31,12 @@ interface WidgetConfigFormProps {
 }
 
 const SOURCE_BY_TYPE: Record<string, string[]> = {
-  kpi_card:   ['applications', 'clients', 'analytics'],
-  bar_chart:  ['applications'],
-  line_chart: ['applications'],
-  gauge:      ['analytics'],
-  table:      ['applications', 'clients'],
+  kpi_card:    ['applications', 'clients', 'analytics'],
+  bar_chart:   ['applications'],
+  line_chart:  ['applications'],
+  gauge:       ['analytics'],
+  table:       ['applications', 'clients'],
+  trend_chart: ['applications'],
 };
 
 const METRICS_BY_SOURCE: Record<string, Array<{ value: string; label: string; tableOnly?: boolean }>> = {
@@ -107,9 +110,10 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
   const showGroupBy      = values.type === 'bar_chart' || values.type === 'line_chart';
   const showFilterStatus = values.source === 'applications';
   const showColorScheme  = values.type === 'kpi_card';
-  const showColor        = values.type === 'bar_chart' || values.type === 'line_chart';
+  const showColor        = values.type === 'bar_chart' || values.type === 'line_chart' || values.type === 'trend_chart';
   const showThreshold    = values.type === 'gauge';
   const showLimit        = values.metric === 'list';
+  const showRegression   = values.type === 'trend_chart';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,6 +132,7 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
           <MenuItem value="kpi_card">KPI Card</MenuItem>
           <MenuItem value="bar_chart">Bar Chart</MenuItem>
           <MenuItem value="line_chart">Line Chart</MenuItem>
+          <MenuItem value="trend_chart">Régression / Tendance</MenuItem>
           <MenuItem value="gauge">Gauge</MenuItem>
           <MenuItem value="table">Table</MenuItem>
         </Select>
@@ -163,6 +168,7 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
                 <MenuItem value=""><em>Aucun</em></MenuItem>
                 <MenuItem value="month">Mois</MenuItem>
                 <MenuItem value="status">Statut</MenuItem>
+                <MenuItem value="sector">Secteur d'activité</MenuItem>
                 <MenuItem value="branch">Agence</MenuItem>
               </Select>
             </FormControl>
@@ -235,6 +241,27 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
               onChange={e => set('limit', parseInt(e.target.value))}
               inputProps={{ min: 1, max: 50 }}
             />
+          )}
+          {showRegression && (
+            <>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Type de régression</InputLabel>
+                <Select value={values.regressionType ?? 'linear'} label="Type de régression" onChange={e => set('regressionType', e.target.value)}>
+                  <MenuItem value="linear">Linéaire (y = mx + b)</MenuItem>
+                  <MenuItem value="logarithmic">Logarithmique (y = a·ln(x) + b)</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Mois de prévision</InputLabel>
+                <Select value={values.forecastMonths ?? 3} label="Mois de prévision" onChange={e => set('forecastMonths', Number(e.target.value))}>
+                  <MenuItem value={0}>Aucun (tendance uniquement)</MenuItem>
+                  <MenuItem value={1}>1 mois</MenuItem>
+                  <MenuItem value={2}>2 mois</MenuItem>
+                  <MenuItem value={3}>3 mois</MenuItem>
+                  <MenuItem value={6}>6 mois</MenuItem>
+                </Select>
+              </FormControl>
+            </>
           )}
         </AccordionDetails>
       </Accordion>
