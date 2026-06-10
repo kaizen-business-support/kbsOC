@@ -1915,6 +1915,29 @@ export class ApiService {
     }
   }
 
+  static async createDashboardTemplate(data: {
+    name: string;
+    description?: string;
+    layout: any[];
+    widgets: Array<{ type: string; title: string; config: Record<string, any> }>;
+  }): Promise<ApiResponse<DashboardTemplate>> {
+    try {
+      const res = await api.post('/dashboard-templates', data);
+      return res.data;
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réseau' };
+    }
+  }
+
+  static async deleteDashboardTemplate(id: string): Promise<ApiResponse<void>> {
+    try {
+      await api.delete(`/dashboard-templates/${id}`);
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réseau' };
+    }
+  }
+
   static security = {
     ipRules: {
       list: async (params: {
