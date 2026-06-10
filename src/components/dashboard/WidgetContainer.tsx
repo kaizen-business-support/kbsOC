@@ -21,6 +21,7 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
 
   const cfg = widget.config as any;
   const effectivePeriod: Period = cfg?.periodOverride ?? globalPeriod;
+  const configKey = JSON.stringify(widget.config);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,7 +41,8 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [widget.id, effectivePeriod]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [widget.id, widget.type, effectivePeriod, configKey]);
 
   const CARD_HEIGHT = height;
   const CONTENT_HEIGHT = CARD_HEIGHT - 64; // header (~40px) + padding
