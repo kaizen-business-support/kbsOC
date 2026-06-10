@@ -4,6 +4,8 @@ export { DashboardEditorGrid } from './DashboardEditorGrid';
 export { WidgetDrawer } from './WidgetDrawer';
 export { WidgetConfigForm } from './WidgetConfigForm';
 export type { WidgetFormValues } from './WidgetConfigForm';
+export { ExportMenu } from './ExportMenu';
+export { SaveAsTemplateDialog } from './SaveAsTemplateDialog';
 export { KpiCardWidget } from './widgets/KpiCardWidget';
 export { BarChartWidget } from './widgets/BarChartWidget';
 export { LineChartWidget } from './widgets/LineChartWidget';
