@@ -378,7 +378,7 @@ const AppContent: React.FC = () => {
                 </ProtectedRoute>
               } />
               <Route path="/dashboard-builder/:id" element={
-                <ProtectedRoute permissions={[]} >
+                <ProtectedRoute permissions={['analytics']}>
                   <DashboardViewPage />
                 </ProtectedRoute>
               } />
