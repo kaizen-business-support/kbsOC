@@ -19,13 +19,13 @@ function initials(name: string): string {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
-const PERM_LABELS: Record<string, string> = { view: 'Lecture', edit: 'Modification' };
+const PERM_LABELS: Record<string, string> = { VIEW: 'Lecture', EDIT: 'Modification', view: 'Lecture', edit: 'Modification' };
 
 export const ShareDialog: React.FC<ShareDialogProps> = ({ open, onClose, dashboardId, dashboardName }) => {
   const [allUsers, setAllUsers]     = useState<any[]>([]);
   const [shares, setShares]         = useState<any[]>([]);
   const [selected, setSelected]     = useState<any | null>(null);
-  const [permission, setPermission] = useState<'view' | 'edit'>('view');
+  const [permission, setPermission] = useState<'VIEW' | 'EDIT'>('VIEW');
   const [saving, setSaving]         = useState(false);
   const [error, setError]           = useState('');
 
@@ -41,7 +41,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ open, onClose, dashboa
   const handleAdd = async () => {
     if (!selected) return;
     setSaving(true); setError('');
-    const res = await ApiService.addDashboardShare(dashboardId, selected.id, permission);
+    const res = await ApiService.addDashboardShare(dashboardId, selected.id, permission as string);
     if (res.success) {
       setShares(prev => [...prev, { ...res.data, userName: selected.name, userEmail: selected.email }]);
       setSelected(null);
@@ -79,9 +79,9 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ open, onClose, dashboa
           />
           <FormControl size="small" sx={{ minWidth: 130 }}>
             <InputLabel>Permission</InputLabel>
-            <Select value={permission} label="Permission" onChange={e => setPermission(e.target.value as any)}>
-              <MenuItem value="view">Lecture</MenuItem>
-              <MenuItem value="edit">Modification</MenuItem>
+            <Select value={permission} label="Permission" onChange={e => setPermission(e.target.value as 'VIEW' | 'EDIT')}>
+              <MenuItem value="VIEW">Lecture</MenuItem>
+              <MenuItem value="EDIT">Modification</MenuItem>
             </Select>
           </FormControl>
           <Button variant="contained" size="small" onClick={handleAdd} disabled={!selected || saving} sx={{ borderRadius: 2, px: 2 }}>
