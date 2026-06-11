@@ -91,14 +91,25 @@ export function initSocket(httpServer: HttpServer): SocketServer {
         });
 
         // Send recent history to the joining user
-        const history = await prisma.$queryRaw<any[]>`
+        const rows = await prisma.$queryRaw<any[]>`
           SELECT id, dashboard_id, user_id, user_name, action, widget_id, widget_title, details, created_at
           FROM dashboard_activities
           WHERE dashboard_id = ${dashboardId}
           ORDER BY created_at DESC
           LIMIT 50
         `;
-        socket.emit('history', { dashboardId, activities: history });
+        const activities = rows.map((r: any) => ({
+          id:          r.id,
+          dashboardId: r.dashboard_id,
+          userId:      r.user_id,
+          userName:    r.user_name,
+          action:      r.action,
+          widgetId:    r.widget_id,
+          widgetTitle: r.widget_title,
+          details:     r.details,
+          createdAt:   r.created_at,
+        }));
+        socket.emit('history', { dashboardId, activities });
       } catch {}
     });
 
