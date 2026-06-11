@@ -41,7 +41,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ open, onClose, dashboa
   const handleAdd = async () => {
     if (!selected) return;
     setSaving(true); setError('');
-    const res = await ApiService.addDashboardShare(dashboardId, selected.id, permission as string);
+    const res = await ApiService.addDashboardShare(dashboardId, selected.id, permission);
     if (res.success) {
       setShares(prev => [...prev, { ...res.data, userName: selected.name, userEmail: selected.email }]);
       setSelected(null);

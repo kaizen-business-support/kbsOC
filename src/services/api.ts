@@ -1902,7 +1902,7 @@ export class ApiService {
     catch (e: any) { return { success: false, error: e.response?.data?.error || 'Erreur réseau' }; }
   }
 
-  static async addDashboardShare(dashboardId: string, targetId: string, permission: 'view' | 'edit'): Promise<ApiResponse<any>> {
+  static async addDashboardShare(dashboardId: string, targetId: string, permission: 'VIEW' | 'EDIT'): Promise<ApiResponse<any>> {
     try { return (await api.post(`/dashboards/${dashboardId}/shares`, { shareType: 'USER', targetId, permission })).data; }
     catch (e: any) { return { success: false, error: e.response?.data?.error || 'Erreur réseau' }; }
   }
