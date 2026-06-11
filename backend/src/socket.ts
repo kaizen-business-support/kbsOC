@@ -28,9 +28,15 @@ function leave(socket: Socket, dashboardId: string, io: SocketServer) {
 }
 
 export function initSocket(httpServer: HttpServer): SocketServer {
+  const allowedOrigins = (process.env.FRONTEND_URL ?? '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (allowedOrigins.length === 0) allowedOrigins.push('http://localhost:3000'); // dev fallback
+
   const io = new SocketServer(httpServer, {
     path: '/socket.io',
-    cors: { origin: process.env.FRONTEND_URL ?? '*', methods: ['GET', 'POST'], credentials: true },
+    cors: { origin: allowedOrigins, methods: ['GET', 'POST'], credentials: true },
   });
 
   // Auth middleware
@@ -101,11 +107,16 @@ export function initSocket(httpServer: HttpServer): SocketServer {
       leave(socket, dashboardId, io);
     });
 
+    const VALID_WIDGET_ACTIONS = new Set(['drag_start', 'drag_end', 'edit_start', 'edit_end']);
+    const VALID_LOG_ACTIONS    = new Set(['widget_added', 'widget_deleted', 'widget_moved', 'widget_resized', 'widget_config', 'dashboard_renamed']);
+
     // Widget activity: drag_start | drag_end | edit_start | edit_end
     socket.on('widget_activity', ({ dashboardId, widgetId, widgetTitle, action }: {
       dashboardId: string; widgetId: string; widgetTitle: string;
       action: 'drag_start' | 'drag_end' | 'edit_start' | 'edit_end';
     }) => {
+      if (!socket.rooms.has(`dash:${dashboardId}`)) return;
+      if (!VALID_WIDGET_ACTIONS.has(action)) return;
       socket.to(`dash:${dashboardId}`).emit('widget_activity', {
         widgetId, widgetTitle, action, userId, userName, color,
       });
@@ -116,6 +127,8 @@ export function initSocket(httpServer: HttpServer): SocketServer {
       dashboardId: string; action: string;
       widgetId?: string; widgetTitle?: string; details?: Record<string, any>;
     }) => {
+      if (!socket.rooms.has(`dash:${dashboardId}`)) return;
+      if (!VALID_LOG_ACTIONS.has(action)) return;
       try {
         const id = `act_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
         await prisma.$executeRaw`
