@@ -44,14 +44,18 @@ router.get('/', async (req: Request, res: Response) => {
   try {
     const companyId = req.companyId!;
     const userId = req.user!.id;
+    const userRole = req.user?.role;
+    const roleConditions: any[] = [
+      { shareType: 'USER', targetId: userId },
+      { shareType: 'COMPANY', targetId: companyId },
+    ];
+    if (userRole) roleConditions.push({ shareType: 'ROLE', targetId: userRole });
+
     const dashboards = await prisma.dashboard.findMany({
       where: {
         OR: [
           { companyId, ownerId: userId },
-          { companyId, shares: { some: { OR: [
-            { shareType: 'USER', targetId: userId },
-            { shareType: 'COMPANY', targetId: companyId },
-          ]}}},
+          { companyId, shares: { some: { OR: roleConditions } } },
         ],
       },
       include: { widgets: true, shares: true, owner: { select: { id: true, name: true, email: true } } },
