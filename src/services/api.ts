@@ -1897,6 +1897,21 @@ export class ApiService {
     }
   }
 
+  static async getDashboardShares(dashboardId: string): Promise<ApiResponse<any[]>> {
+    try { return (await api.get(`/dashboards/${dashboardId}/shares`)).data; }
+    catch (e: any) { return { success: false, error: e.response?.data?.error || 'Erreur réseau' }; }
+  }
+
+  static async addDashboardShare(dashboardId: string, targetId: string, permission: 'view' | 'edit'): Promise<ApiResponse<any>> {
+    try { return (await api.post(`/dashboards/${dashboardId}/shares`, { shareType: 'USER', targetId, permission })).data; }
+    catch (e: any) { return { success: false, error: e.response?.data?.error || 'Erreur réseau' }; }
+  }
+
+  static async removeDashboardShare(dashboardId: string, shareId: string): Promise<ApiResponse<any>> {
+    try { return (await api.delete(`/dashboards/${dashboardId}/shares/${shareId}`)).data; }
+    catch (e: any) { return { success: false, error: e.response?.data?.error || 'Erreur réseau' }; }
+  }
+
   static async addWidget(
     dashboardId: string,
     data: { type: string; title: string; config: Record<string, any>; position?: { x: number; y: number; w: number; h: number } }

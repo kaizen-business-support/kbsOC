@@ -8,6 +8,8 @@ import {
   ArrowBack as BackIcon,
   Bookmark as BookmarkIcon,
   Edit as EditIcon,
+  History as HistoryIcon,
+  Share as ShareIcon,
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ApiService } from '../services/api';
@@ -18,6 +20,10 @@ import { DashboardEditorGrid } from '../components/dashboard/DashboardEditorGrid
 import { WidgetDrawer } from '../components/dashboard/WidgetDrawer';
 import { ExportMenu } from '../components/dashboard/ExportMenu';
 import { SaveAsTemplateDialog } from '../components/dashboard/SaveAsTemplateDialog';
+import { PresenceAvatars } from '../components/dashboard/collaboration/PresenceAvatars';
+import { HistoryPanel } from '../components/dashboard/collaboration/HistoryPanel';
+import { ShareDialog } from '../components/dashboard/collaboration/ShareDialog';
+import { useDashboardSocket } from '../hooks/useDashboardSocket';
 
 type LayoutItem = { i: string; x: number; y: number; w: number; h: number };
 type SaveStatus = 'saved' | 'saving' | 'unsaved';
@@ -79,6 +85,12 @@ export const DashboardViewPage: React.FC = () => {
   const gridRef = useRef<HTMLDivElement>(null);
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [templateSavedSnack, setTemplateSavedSnack] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+
+  const token = localStorage.getItem('optimus_access_token');
+  const { connected, users, widgetActivities, history, emitWidgetActivity, logAction } =
+    useDashboardSocket(id ?? null, token);
 
   useEffect(() => {
     return () => {
@@ -157,6 +169,7 @@ export const DashboardViewPage: React.FC = () => {
     if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
     setDeletedWidget(widget);
     setSnackbarOpen(true);
+    logAction('widget_deleted', widgetId, widget.title);
     deleteTimerRef.current = setTimeout(async () => {
       await ApiService.deleteWidget(id!, widgetId);
       setDeletedWidget(null);
@@ -179,12 +192,27 @@ export const DashboardViewPage: React.FC = () => {
     setWidgets(prev => [...prev, widget]);
     setPendingLayout(newLayout as LayoutItem[]);
     setDrawerOpen(false);
+    logAction('widget_added', widget.id, widget.title);
   };
 
   const handleWidgetUpdated = (widget: DashboardWidget) => {
     setWidgets(prev => prev.map(w => w.id === widget.id ? widget : w));
     setDrawerOpen(false);
     setEditingWidget(null);
+    logAction('widget_config', widget.id, widget.title);
+    emitWidgetActivity(widget.id, widget.title, 'edit_end');
+  };
+
+  const handleLayoutSaveWithLog = async (newLayout: LayoutItem[]) => {
+    const moved = newLayout.find(l => {
+      const old = pendingLayout.find(p => p.i === l.i);
+      return old && (old.x !== l.x || old.y !== l.y);
+    });
+    await handleLayoutSave(newLayout);
+    if (moved) {
+      const w = widgets.find(ww => ww.id === moved.i);
+      if (w) logAction('widget_moved', w.id, w.title);
+    }
   };
 
   if (loading) {
@@ -218,6 +246,7 @@ export const DashboardViewPage: React.FC = () => {
           )}
         </Box>
         {isEditMode && <SaveIndicator status={saveStatus} />}
+        <PresenceAvatars users={users} currentUserId={state.currentUser?.id ?? ''} connected={connected} />
         <DashboardPeriodSelector value={globalPeriod} onChange={setGlobalPeriod} />
         <ExportMenu
           dashboard={dashboard}
@@ -225,6 +254,18 @@ export const DashboardViewPage: React.FC = () => {
           globalPeriod={globalPeriod}
           gridRef={gridRef}
         />
+        <Tooltip title="Historique des modifications">
+          <IconButton size="small" onClick={() => setHistoryOpen(true)}>
+            <HistoryIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        {(dashboard.ownerId === state.currentUser?.id) && (
+          <Tooltip title="Partager ce dashboard">
+            <Button variant="outlined" size="small" startIcon={<ShareIcon />} onClick={() => setShareOpen(true)} sx={{ borderRadius: 2 }}>
+              Partager
+            </Button>
+          </Tooltip>
+        )}
         {canSaveTemplate && !isEditMode && (
           <Tooltip title="Sauvegarder comme template">
             <Button
@@ -266,9 +307,16 @@ export const DashboardViewPage: React.FC = () => {
             layout={pendingLayout}
             globalPeriod={globalPeriod}
             onLayoutChange={handleLayoutChange}
-            onLayoutSave={handleLayoutSave}
+            onLayoutSave={handleLayoutSaveWithLog}
             onDeleteWidget={handleDeleteWidget}
-            onEditWidget={w => { setEditingWidget(w); setDrawerOpen(true); }}
+            onEditWidget={w => {
+              setEditingWidget(w);
+              setDrawerOpen(true);
+              emitWidgetActivity(w.id, w.title, 'edit_start');
+            }}
+            widgetActivities={widgetActivities}
+            onWidgetDragStart={(wId, wTitle) => emitWidgetActivity(wId, wTitle, 'drag_start')}
+            onWidgetDragEnd={(wId, wTitle) => emitWidgetActivity(wId, wTitle, 'drag_end')}
           />
         ) : (
           <DashboardEditorGrid
@@ -303,6 +351,17 @@ export const DashboardViewPage: React.FC = () => {
         onWidgetUpdated={handleWidgetUpdated}
         currentLayout={pendingLayout}
       />
+
+      <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} activities={history} />
+
+      {shareOpen && dashboard && (
+        <ShareDialog
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          dashboardId={dashboard.id}
+          dashboardName={dashboard.name}
+        />
+      )}
 
       {dashboard && (
         <SaveAsTemplateDialog

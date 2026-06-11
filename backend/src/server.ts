@@ -1,4 +1,5 @@
 import express from 'express';
+import http from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -8,6 +9,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import os from 'os';
 import { prisma } from './prismaClient';
+import { initSocket } from './socket';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -319,7 +321,9 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-const server = app.listen(PORT, '0.0.0.0', () => {
+const server = http.createServer(app);
+initSocket(server);
+server.listen(PORT, '0.0.0.0', () => {
   // Libérer les connexions HTTP inactives après 65s (légèrement > les 60s des proxies)
   server.keepAliveTimeout = 65_000;
   // Le client doit envoyer ses headers dans les 10s
