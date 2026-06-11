@@ -512,13 +512,29 @@ export interface WidgetDataResult {
   series?: Array<{ name: string; value: number; [key: string]: any }>;
   rows?: Record<string, any>[];
   columns?: Array<{ key: string; label: string }>;
+  // Pivot table fields
+  pivotRows?: string[];
+  pivotCols?: string[];
+  pivotMatrix?: Record<string, Record<string, number>>;
+  pivotRowTotals?: Record<string, number>;
+  pivotColTotals?: Record<string, number>;
+  pivotGrand?: number;
 }
+
+export type PivotDimension = 'branch' | 'manager' | 'month' | 'sector' | 'credit_type' | 'status';
 
 export interface WidgetDataParams {
   source: 'applications' | 'clients' | 'analytics';
   metric: string;
-  groupBy?: 'status' | 'month' | 'branch' | 'manager';
+  groupBy?: 'status' | 'month' | 'branch' | 'manager' | 'sector' | 'credit_type';
   period: Period;
   filter?: Record<string, string>;
   limit?: number;
+}
+
+export interface PivotParams {
+  rowDimension: PivotDimension;
+  colDimension: PivotDimension;
+  metric: 'count' | 'sum_amount';
+  period: Period;
 }

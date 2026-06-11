@@ -1881,6 +1881,22 @@ export class ApiService {
     }
   }
 
+  static async getWidgetPivot(params: import('../types').PivotParams): Promise<ApiResponse<WidgetDataResult>> {
+    try {
+      const res = await api.get('/widget-data/pivot', {
+        params: {
+          rowDimension: params.rowDimension,
+          colDimension: params.colDimension,
+          metric: params.metric,
+          period: params.period,
+        },
+      });
+      return res.data;
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réseau' };
+    }
+  }
+
   static async addWidget(
     dashboardId: string,
     data: { type: string; title: string; config: Record<string, any>; position?: { x: number; y: number; w: number; h: number } }

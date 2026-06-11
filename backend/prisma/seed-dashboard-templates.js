@@ -86,9 +86,61 @@ const TEMPLATES = [
   },
 ];
 
+// ── Templates tableaux croisés dynamiques ──────────────────────────────────────
+const PIVOT_TEMPLATES = [
+  {
+    id: 'tpl-pivot-agence-statut',
+    name: 'TCD — Agence × Statut',
+    description: 'Nombre de dossiers par agence et par statut',
+    isGlobal: true,
+    widgets: [{ id: 'wp-as-1', type: 'pivot_table', title: 'Dossiers par agence et statut', order: 0, config: { metric: 'count', rowDimension: 'branch', colDimension: 'status' } }],
+    layout: [{ i: 'wp-as-1', x: 0, y: 0, w: 12, h: 6 }],
+  },
+  {
+    id: 'tpl-pivot-agence-credit',
+    name: 'TCD — Agence × Type de crédit',
+    description: 'Distribution des produits bancaires par agence',
+    isGlobal: true,
+    widgets: [{ id: 'wp-ac-1', type: 'pivot_table', title: 'Dossiers par agence et type de crédit', order: 0, config: { metric: 'count', rowDimension: 'branch', colDimension: 'credit_type' } }],
+    layout: [{ i: 'wp-ac-1', x: 0, y: 0, w: 12, h: 6 }],
+  },
+  {
+    id: 'tpl-pivot-charge-statut',
+    name: 'TCD — Chargé × Statut',
+    description: 'Performance individuelle de chaque chargé de dossier',
+    isGlobal: true,
+    widgets: [{ id: 'wp-cs-1', type: 'pivot_table', title: 'Dossiers par chargé et statut', order: 0, config: { metric: 'count', rowDimension: 'manager', colDimension: 'status' } }],
+    layout: [{ i: 'wp-cs-1', x: 0, y: 0, w: 12, h: 6 }],
+  },
+  {
+    id: 'tpl-pivot-mois-agence',
+    name: 'TCD — Mois × Agence',
+    description: 'Évolution mensuelle de la production par agence',
+    isGlobal: true,
+    widgets: [{ id: 'wp-ma-1', type: 'pivot_table', title: 'Production mensuelle par agence', order: 0, config: { metric: 'count', rowDimension: 'month', colDimension: 'branch' } }],
+    layout: [{ i: 'wp-ma-1', x: 0, y: 0, w: 12, h: 6 }],
+  },
+  {
+    id: 'tpl-pivot-secteur-statut',
+    name: 'TCD — Secteur × Statut',
+    description: 'Taux d\'approbation par secteur d\'activité',
+    isGlobal: true,
+    widgets: [{ id: 'wp-ss-1', type: 'pivot_table', title: "Dossiers par secteur et statut", order: 0, config: { metric: 'count', rowDimension: 'sector', colDimension: 'status' } }],
+    layout: [{ i: 'wp-ss-1', x: 0, y: 0, w: 12, h: 6 }],
+  },
+  {
+    id: 'tpl-pivot-credit-agence-montant',
+    name: 'TCD — Type crédit × Agence (montants)',
+    description: 'Concentration des encours par produit et agence',
+    isGlobal: true,
+    widgets: [{ id: 'wp-ca-1', type: 'pivot_table', title: 'Montants par type de crédit et agence', order: 0, config: { metric: 'sum_amount', rowDimension: 'credit_type', colDimension: 'branch' } }],
+    layout: [{ i: 'wp-ca-1', x: 0, y: 0, w: 12, h: 6 }],
+  },
+];
+
 async function main() {
   console.log('Seeding dashboard templates globaux…');
-  for (const tpl of TEMPLATES) {
+  for (const tpl of [...TEMPLATES, ...PIVOT_TEMPLATES]) {
     const { widgets, layout, ...tplData } = tpl;
     const existing = await prisma.dashboardTemplate.findUnique({ where: { id: tpl.id } });
     if (existing) {

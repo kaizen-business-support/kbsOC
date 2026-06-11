@@ -356,6 +356,77 @@ async function getAnalyticsData(params: WidgetDataParams, companyId: string): Pr
   return { value: undefined, label: 'N/D — données non disponibles' };
 }
 
+// ── Tableau croisé dynamique ──────────────────────────────────────────────────
+
+export type PivotDimension = 'branch' | 'manager' | 'month' | 'sector' | 'credit_type' | 'status';
+
+export interface PivotDataResult {
+  pivotRows: string[];
+  pivotCols: string[];
+  pivotMatrix: Record<string, Record<string, number>>;
+  pivotRowTotals: Record<string, number>;
+  pivotColTotals: Record<string, number>;
+  pivotGrand: number;
+}
+
+function getDimValue(app: any, dim: PivotDimension): string {
+  switch (dim) {
+    case 'branch':      return app.creator?.branch?.trim() || 'Non renseigné';
+    case 'manager':     return app.creator?.name?.trim()   || 'Non renseigné';
+    case 'month':       return monthLabel(new Date(app.createdAt));
+    case 'sector':      return app.client?.sector?.trim()  || 'Non renseigné';
+    case 'credit_type': return app.creditType?.name?.trim()|| 'Non renseigné';
+    case 'status':      return app.status ?? 'N/A';
+  }
+}
+
+export async function getPivotData(
+  params: { rowDimension: PivotDimension; colDimension: PivotDimension; metric: 'count' | 'sum_amount'; period: Period },
+  companyId: string
+): Promise<PivotDataResult> {
+  const { from, to } = getPeriodRange(params.period);
+
+  const apps = await prisma.creditApplication.findMany({
+    where: { companyId, createdAt: { gte: from, lte: to } },
+    select: {
+      amount: true, status: true, createdAt: true,
+      creator:    { select: { branch: true, name: true } },
+      client:     { select: { sector: true } },
+      creditType: { select: { name: true } },
+    },
+  });
+
+  const matrix: Record<string, Record<string, number>> = {};
+  const rowSet = new Set<string>();
+  const colSet = new Set<string>();
+
+  for (const app of apps as any[]) {
+    const row = getDimValue(app, params.rowDimension);
+    const col = getDimValue(app, params.colDimension);
+    const inc = params.metric === 'sum_amount' ? Number(app.amount ?? 0) : 1;
+    rowSet.add(row);
+    colSet.add(col);
+    if (!matrix[row]) matrix[row] = {};
+    matrix[row][col] = (matrix[row][col] ?? 0) + inc;
+  }
+
+  const pivotRowTotals: Record<string, number> = {};
+  const pivotColTotals: Record<string, number> = {};
+  let pivotGrand = 0;
+  for (const row of rowSet) {
+    pivotRowTotals[row] = Object.values(matrix[row] ?? {}).reduce((s, v) => s + v, 0);
+    pivotGrand += pivotRowTotals[row];
+  }
+  for (const col of colSet) {
+    pivotColTotals[col] = Array.from(rowSet).reduce((s, r) => s + (matrix[r]?.[col] ?? 0), 0);
+  }
+
+  const pivotRows = Array.from(rowSet).sort((a, b) => (pivotRowTotals[b] ?? 0) - (pivotRowTotals[a] ?? 0));
+  const pivotCols = Array.from(colSet).sort((a, b) => (pivotColTotals[b] ?? 0) - (pivotColTotals[a] ?? 0));
+
+  return { pivotRows, pivotCols, pivotMatrix: matrix, pivotRowTotals, pivotColTotals, pivotGrand };
+}
+
 // ── Point d'entrée ─────────────────────────────────────────────────────────────
 
 const VALID_SOURCES = ['applications', 'clients', 'analytics'];

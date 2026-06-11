@@ -9,6 +9,7 @@ import { LineChartWidget } from './widgets/LineChartWidget';
 import { GaugeWidget } from './widgets/GaugeWidget';
 import { TableWidget } from './widgets/TableWidget';
 import { TrendChartWidget } from './widgets/TrendChartWidget';
+import { PivotTableWidget } from './widgets/PivotTableWidget';
 
 const PERIOD_LABELS: Record<string, string> = {
   this_month: 'Ce mois', this_quarter: 'Ce trimestre', this_year: 'Cette année',
@@ -28,7 +29,6 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
 
   const cfg = widget.config as any;
   const effectivePeriod: Period = cfg?.periodOverride ?? globalPeriod;
-  // bar_chart/line_chart always need series — default groupBy to 'month' for backward compat
   const groupBy = cfg?.groupBy ?? (
     (widget.type === 'bar_chart' || widget.type === 'line_chart' || widget.type === 'trend_chart') ? 'month' : undefined
   );
@@ -38,14 +38,24 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
     let cancelled = false;
     setLoading(true);
     setError(null);
-    ApiService.getWidgetData({
-      source: cfg?.source ?? 'applications',
-      metric: cfg?.metric ?? 'count',
-      groupBy,
-      period: effectivePeriod,
-      filter: cfg?.filter,
-      limit: cfg?.limit,
-    }).then(res => {
+
+    const fetch = widget.type === 'pivot_table'
+      ? ApiService.getWidgetPivot({
+          rowDimension: cfg?.rowDimension ?? 'branch',
+          colDimension: cfg?.colDimension ?? 'status',
+          metric: cfg?.metric ?? 'count',
+          period: effectivePeriod,
+        })
+      : ApiService.getWidgetData({
+          source: cfg?.source ?? 'applications',
+          metric: cfg?.metric ?? 'count',
+          groupBy,
+          period: effectivePeriod,
+          filter: cfg?.filter,
+          limit: cfg?.limit,
+        });
+
+    fetch.then(res => {
       if (cancelled) return;
       if (res.success && res.data) setData(res.data);
       else setError(res.error ?? 'Erreur lors du chargement');
@@ -73,6 +83,8 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
         return <TableWidget data={data} title={widget.title} pageSize={5} />;
       case 'trend_chart':
         return <TrendChartWidget data={data} title={widget.title} height={CONTENT_HEIGHT} regressionType={cfg?.regressionType} forecastMonths={cfg?.forecastMonths ?? 3} color={cfg?.color} />;
+      case 'pivot_table':
+        return <PivotTableWidget data={data} height={CONTENT_HEIGHT} metric={cfg?.metric ?? 'count'} />;
       default:
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: CONTENT_HEIGHT }}>

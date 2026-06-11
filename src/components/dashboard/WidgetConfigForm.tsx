@@ -9,10 +9,12 @@ import { Period } from '../../types';
 
 export interface WidgetFormValues {
   title: string;
-  type: 'kpi_card' | 'bar_chart' | 'line_chart' | 'gauge' | 'table' | 'trend_chart';
+  type: 'kpi_card' | 'bar_chart' | 'line_chart' | 'gauge' | 'table' | 'trend_chart' | 'pivot_table';
   source: 'applications' | 'clients' | 'analytics';
   metric: string;
   groupBy?: 'month' | 'status' | 'branch' | 'manager' | 'sector' | 'credit_type';
+  rowDimension?: string;
+  colDimension?: string;
   filterStatus?: string;
   periodOverride?: Period;
   colorScheme?: 'blue' | 'green' | 'orange' | 'red';
@@ -37,6 +39,7 @@ const SOURCE_BY_TYPE: Record<string, string[]> = {
   gauge:       ['analytics'],
   table:       ['applications', 'clients'],
   trend_chart: ['applications'],
+  pivot_table: ['applications'],
 };
 
 const METRICS_BY_SOURCE: Record<string, Array<{ value: string; label: string; tableOnly?: boolean }>> = {
@@ -108,6 +111,7 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
   );
 
   const showGroupBy      = values.type === 'bar_chart' || values.type === 'line_chart';
+  const showPivotDims    = values.type === 'pivot_table';
   const showFilterStatus = values.source === 'applications';
   const showColorScheme  = values.type === 'kpi_card';
   const showColor        = values.type === 'bar_chart' || values.type === 'line_chart' || values.type === 'trend_chart';
@@ -135,6 +139,7 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
           <MenuItem value="trend_chart">Régression / Tendance</MenuItem>
           <MenuItem value="gauge">Gauge</MenuItem>
           <MenuItem value="table">Table</MenuItem>
+          <MenuItem value="pivot_table">Tableau croisé dynamique</MenuItem>
         </Select>
       </FormControl>
       <FormControl size="small" fullWidth required>
@@ -174,6 +179,32 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
                 <MenuItem value="credit_type">Type de crédit</MenuItem>
               </Select>
             </FormControl>
+          )}
+          {showPivotDims && (
+            <>
+              <FormControl size="small" fullWidth required>
+                <InputLabel>Lignes (dimension)</InputLabel>
+                <Select value={values.rowDimension ?? 'branch'} label="Lignes (dimension)" onChange={e => set('rowDimension', e.target.value)}>
+                  <MenuItem value="branch">Agence</MenuItem>
+                  <MenuItem value="manager">Chargé de dossier</MenuItem>
+                  <MenuItem value="month">Mois</MenuItem>
+                  <MenuItem value="sector">Secteur d'activité</MenuItem>
+                  <MenuItem value="credit_type">Type de crédit</MenuItem>
+                  <MenuItem value="status">Statut</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl size="small" fullWidth required>
+                <InputLabel>Colonnes (dimension)</InputLabel>
+                <Select value={values.colDimension ?? 'status'} label="Colonnes (dimension)" onChange={e => set('colDimension', e.target.value)}>
+                  <MenuItem value="status">Statut</MenuItem>
+                  <MenuItem value="branch">Agence</MenuItem>
+                  <MenuItem value="manager">Chargé de dossier</MenuItem>
+                  <MenuItem value="month">Mois</MenuItem>
+                  <MenuItem value="sector">Secteur d'activité</MenuItem>
+                  <MenuItem value="credit_type">Type de crédit</MenuItem>
+                </Select>
+              </FormControl>
+            </>
           )}
           {showFilterStatus && (
             <FormControl size="small" fullWidth>
