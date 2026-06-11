@@ -12,7 +12,7 @@ export interface WidgetFormValues {
   type: 'kpi_card' | 'bar_chart' | 'line_chart' | 'gauge' | 'table' | 'trend_chart';
   source: 'applications' | 'clients' | 'analytics';
   metric: string;
-  groupBy?: 'month' | 'status' | 'branch' | 'sector';
+  groupBy?: 'month' | 'status' | 'branch' | 'manager' | 'sector' | 'credit_type';
   filterStatus?: string;
   periodOverride?: Period;
   colorScheme?: 'blue' | 'green' | 'orange' | 'red';
@@ -168,8 +168,10 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
                 <MenuItem value=""><em>Aucun</em></MenuItem>
                 <MenuItem value="month">Mois</MenuItem>
                 <MenuItem value="status">Statut</MenuItem>
-                <MenuItem value="sector">Secteur d'activité</MenuItem>
                 <MenuItem value="branch">Agence</MenuItem>
+                <MenuItem value="manager">Chargé de dossier</MenuItem>
+                <MenuItem value="sector">Secteur d'activité</MenuItem>
+                <MenuItem value="credit_type">Type de crédit</MenuItem>
               </Select>
             </FormControl>
           )}

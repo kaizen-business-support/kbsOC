@@ -7,7 +7,7 @@ router.use(authenticate);
 router.use(requireCompany);
 
 const VALID_PERIODS: Period[] = ['this_month', 'this_quarter', 'this_year', 'last_6_months', 'last_12_months'];
-const VALID_GROUP_BY = ['status', 'month', 'branch', 'manager', 'sector'];
+const VALID_GROUP_BY = ['status', 'month', 'branch', 'manager', 'sector', 'credit_type'];
 
 router.get('/', async (req: Request, res: Response) => {
   const { source, metric, groupBy, period, limit } = req.query;

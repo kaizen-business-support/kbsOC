@@ -5,7 +5,7 @@ export type Period = 'this_month' | 'this_quarter' | 'this_year' | 'last_6_month
 export interface WidgetDataParams {
   source: 'applications' | 'clients' | 'analytics';
   metric: string;
-  groupBy?: 'status' | 'month' | 'branch' | 'manager' | 'sector';
+  groupBy?: 'status' | 'month' | 'branch' | 'manager' | 'sector' | 'credit_type';
   period: Period;
   filter?: Record<string, string>;
   limit?: number;
@@ -152,7 +152,7 @@ async function getApplicationsData(params: WidgetDataParams, companyId: string):
     };
   }
 
-  if (params.groupBy === 'month' || params.groupBy === 'status' || params.groupBy === 'branch' || params.groupBy === 'sector') {
+  if (['month', 'status', 'branch', 'manager', 'sector', 'credit_type'].includes(params.groupBy as string)) {
     if (params.groupBy === 'sector') {
       const apps = await prisma.creditApplication.findMany({
         where: { ...baseWhere, createdAt: { gte: from, lte: to } },
@@ -169,6 +169,48 @@ async function getApplicationsData(params: WidgetDataParams, companyId: string):
           .map(([name, value]) => ({ name, value }))
           .sort((a, b) => b.value - a.value),
       };
+    }
+
+    if (params.groupBy === 'branch') {
+      const apps = await prisma.creditApplication.findMany({
+        where: { ...baseWhere, createdAt: { gte: from, lte: to } },
+        select: { amount: true, creator: { select: { branch: true } } },
+      });
+      const map = new Map<string, number>();
+      for (const app of apps as any[]) {
+        const branch = app.creator?.branch?.trim() || 'Non renseigné';
+        const increment = params.metric === 'sum_amount' ? Number(app.amount ?? 0) : 1;
+        map.set(branch, (map.get(branch) ?? 0) + increment);
+      }
+      return { series: Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value) };
+    }
+
+    if (params.groupBy === 'manager') {
+      const apps = await prisma.creditApplication.findMany({
+        where: { ...baseWhere, createdAt: { gte: from, lte: to } },
+        select: { amount: true, creator: { select: { name: true } } },
+      });
+      const map = new Map<string, number>();
+      for (const app of apps as any[]) {
+        const manager = app.creator?.name?.trim() || 'Non renseigné';
+        const increment = params.metric === 'sum_amount' ? Number(app.amount ?? 0) : 1;
+        map.set(manager, (map.get(manager) ?? 0) + increment);
+      }
+      return { series: Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value) };
+    }
+
+    if (params.groupBy === 'credit_type') {
+      const apps = await prisma.creditApplication.findMany({
+        where: { ...baseWhere, createdAt: { gte: from, lte: to } },
+        select: { amount: true, creditType: { select: { name: true } } },
+      });
+      const map = new Map<string, number>();
+      for (const app of apps as any[]) {
+        const creditType = (app as any).creditType?.name?.trim() || 'Non renseigné';
+        const increment = params.metric === 'sum_amount' ? Number(app.amount ?? 0) : 1;
+        map.set(creditType, (map.get(creditType) ?? 0) + increment);
+      }
+      return { series: Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value) };
     }
 
     const items = await prisma.creditApplication.findMany({
@@ -189,8 +231,6 @@ async function getApplicationsData(params: WidgetDataParams, companyId: string):
         map.set(item.status, (map.get(item.status) ?? 0) + increment);
       }
       return { series: Array.from(map.entries()).map(([name, value]) => ({ name, value })) };
-    } else if (params.groupBy === 'branch') {
-      throw new Error('groupBy branch non supporté dans cette version');
     }
   }
 

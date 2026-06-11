@@ -62,6 +62,28 @@ const TEMPLATES = [
       { i: 'w-tr-3', x: 0, y: 4, w: 12, h: 4 },
     ],
   },
+  {
+    id: 'tpl-bci-performance',
+    name: 'Performance commerciale',
+    description: 'Dossiers par agence, par chargé et par type de crédit',
+    isGlobal: true,
+    widgets: [
+      { id: 'w-pc-1', type: 'kpi_card',  title: 'Dossiers reçus',         order: 0, config: { source: 'applications', metric: 'count',      colorScheme: 'blue' } },
+      { id: 'w-pc-2', type: 'kpi_card',  title: 'Montant total (XOF)',     order: 1, config: { source: 'applications', metric: 'sum_amount', colorScheme: 'green' } },
+      { id: 'w-pc-3', type: 'bar_chart', title: 'Dossiers par agence',     order: 2, config: { source: 'applications', metric: 'count',      groupBy: 'branch',      color: '#1565c0' } },
+      { id: 'w-pc-4', type: 'bar_chart', title: 'Dossiers par chargé',     order: 3, config: { source: 'applications', metric: 'count',      groupBy: 'manager',     color: '#7b1fa2' } },
+      { id: 'w-pc-5', type: 'bar_chart', title: 'Par type de crédit',      order: 4, config: { source: 'applications', metric: 'count',      groupBy: 'credit_type', color: '#e65100' } },
+      { id: 'w-pc-6', type: 'bar_chart', title: 'Montants par agence',     order: 5, config: { source: 'applications', metric: 'sum_amount', groupBy: 'branch',      color: '#2e7d32' } },
+    ],
+    layout: [
+      { i: 'w-pc-1', x: 0, y: 0, w: 3,  h: 2 },
+      { i: 'w-pc-2', x: 3, y: 0, w: 3,  h: 2 },
+      { i: 'w-pc-3', x: 0, y: 2, w: 6,  h: 4 },
+      { i: 'w-pc-4', x: 6, y: 2, w: 6,  h: 4 },
+      { i: 'w-pc-5', x: 0, y: 6, w: 6,  h: 4 },
+      { i: 'w-pc-6', x: 6, y: 6, w: 6,  h: 4 },
+    ],
+  },
 ];
 
 async function main() {
