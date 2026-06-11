@@ -377,8 +377,11 @@ const AppContent: React.FC = () => {
                   <DashboardsPage />
                 </ProtectedRoute>
               } />
+              {/* Visualisation d'un dashboard partagé : seul l'authentification est requise.
+                  L'autorisation réelle (propriétaire / partage USER, ROLE, COMPANY) est
+                  appliquée par le backend via canAccessDashboard. */}
               <Route path="/dashboard-builder/:id" element={
-                <ProtectedRoute permissions={['analytics']}>
+                <ProtectedRoute permissions={[]}>
                   <DashboardViewPage />
                 </ProtectedRoute>
               } />
