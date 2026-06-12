@@ -380,7 +380,13 @@ export const FloatingWorkflowTracker: React.FC = () => {
   const [loading, setLoading]   = useState(false);
   const [dossiers, setDossiers] = useState<PipelineDossier[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [fabVisible, setFabVisible] = useState<boolean>(
+    () => localStorage.getItem('pipeline_fab_visible') !== 'false'
+  );
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
+
+  const hideFab  = (e: React.MouseEvent) => { e.stopPropagation(); setFabVisible(false); localStorage.setItem('pipeline_fab_visible', 'false'); };
+  const showFab  = () => { setFabVisible(true);  localStorage.setItem('pipeline_fab_visible', 'true'); };
 
   const fetchPipeline = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -408,10 +414,70 @@ export const FloatingWorkflowTracker: React.FC = () => {
 
   return (
     <>
-      {/* FAB */}
-      <Box sx={{ position: 'fixed', bottom: 28, right: 28, zIndex: 1199 }}>
-        <FABButton count={activeCount} onClick={handleOpen} />
-      </Box>
+      {/* FAB — visible */}
+      {fabVisible && (
+        <Box sx={{ position: 'fixed', bottom: 28, right: 28, zIndex: 1199 }}>
+          <Box sx={{ position: 'relative' }}>
+            <FABButton count={activeCount} onClick={handleOpen} />
+            {/* Bouton masquer */}
+            <Tooltip title="Masquer" placement="top">
+              <Box
+                onClick={hideFab}
+                sx={{
+                  position: 'absolute', top: -9, right: -9, zIndex: 10,
+                  width: 20, height: 20, borderRadius: '50%',
+                  bgcolor: '#475569', border: '2px solid #fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                  transition: 'all 0.15s',
+                  '&:hover': { bgcolor: '#c62828', transform: 'scale(1.15)' },
+                }}
+              >
+                <CloseIcon sx={{ fontSize: 11, color: '#fff' }} />
+              </Box>
+            </Tooltip>
+          </Box>
+        </Box>
+      )}
+
+      {/* Tab de restauration — affiché quand FAB masqué */}
+      {!fabVisible && (
+        <Tooltip title="Afficher le pipeline de crédit" placement="left" arrow>
+          <Box
+            onClick={showFab}
+            sx={{
+              position: 'fixed', bottom: 28, right: 0, zIndex: 1199,
+              width: 26, height: 64,
+              borderRadius: '10px 0 0 10px',
+              background: `linear-gradient(145deg, ${DARK} 0%, ${DARK2} 100%)`,
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', gap: 0.6,
+              cursor: 'pointer',
+              boxShadow: '-4px 0 14px rgba(13,27,42,0.3)',
+              transition: 'width 0.2s ease',
+              '&:hover': {
+                width: 36,
+                boxShadow: `-6px 0 18px rgba(13,27,42,0.4), -1px 0 0 ${TEAL}50`,
+              },
+            }}
+          >
+            <FolderIcon sx={{ fontSize: 13, color: TEAL, filter: `drop-shadow(0 0 4px ${TEAL}80)` }} />
+            {activeCount > 0 && (
+              <Box sx={{
+                width: 15, height: 15, borderRadius: '50%',
+                bgcolor: AMBER,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 2px 6px rgba(245,158,11,0.5)',
+              }}>
+                <Typography sx={{ fontSize: 8, fontWeight: 900, color: '#fff', lineHeight: 1 }}>
+                  {activeCount > 9 ? '9+' : activeCount}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </Tooltip>
+      )}
 
       {/* Drawer */}
       <Drawer
