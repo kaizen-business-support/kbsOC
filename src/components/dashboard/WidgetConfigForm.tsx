@@ -68,7 +68,8 @@ const METRICS_BY_SOURCE: Record<string, Array<{ value: string; label: string; ta
     { value: 'top_clients',      label: 'Top clients par encours', tableOnly: true },
   ],
   performance: [
-    { value: 'productivite',        label: 'Productivité (dossiers traités)' },
+    { value: 'productivite',        label: 'Productivité — Nb dossiers traités' },
+    { value: 'productivite_volume', label: 'Productivité — Volume (FCFA)' },
     { value: 'taux_transformation', label: 'Taux de transformation (%)' },
     { value: 'rejets_motif',        label: 'Rejets par dimension' },
   ],

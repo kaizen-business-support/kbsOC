@@ -138,9 +138,95 @@ const PIVOT_TEMPLATES = [
   },
 ];
 
+// ── Templates Productivité ───────────────────────────────────────────────────
+const PRODUCTIVITY_TEMPLATES = [
+  {
+    id: 'tpl-prod-agences-agents',
+    name: 'Productivité — Agences & Agents',
+    description: 'Volume et nombre de dossiers traités par agence et par chargé',
+    isGlobal: true,
+    widgets: [
+      { id: 'pp-kpi-1', type: 'kpi_card',    title: 'Dossiers traités (période)',      order: 0, config: { source: 'applications', metric: 'count', filterStatus: 'APPROVED', colorScheme: 'blue' } },
+      { id: 'pp-kpi-2', type: 'kpi_card',    title: 'Montant total décaissé',          order: 1, config: { source: 'portfolio',     metric: 'encours_actif', colorScheme: 'green' } },
+      { id: 'pp-kpi-3', type: 'kpi_card',    title: 'Taux de transformation (%)',      order: 2, config: { source: 'analytics',     metric: 'approval_rate', colorScheme: 'orange' } },
+      { id: 'pp-bar-1', type: 'bar_chart',   title: 'Nb dossiers traités par agence',  order: 3, config: { source: 'performance',   metric: 'productivite',        groupBy: 'branch' } },
+      { id: 'pp-bar-2', type: 'bar_chart',   title: 'Nb dossiers traités par chargé',  order: 4, config: { source: 'performance',   metric: 'productivite',        groupBy: 'manager' } },
+      { id: 'pp-bar-3', type: 'bar_chart',   title: 'Volume traité par agence (FCFA)', order: 5, config: { source: 'performance',   metric: 'productivite_volume', groupBy: 'branch' } },
+      { id: 'pp-bar-4', type: 'bar_chart',   title: 'Volume traité par chargé (FCFA)', order: 6, config: { source: 'performance',   metric: 'productivite_volume', groupBy: 'manager' } },
+      { id: 'pp-cmp-1', type: 'comparison_chart', title: 'Répartition dossiers par agence', order: 7, config: { source: 'performance', metric: 'productivite', groupBy: 'branch' } },
+    ],
+    layout: [
+      { i: 'pp-kpi-1', x: 0, y: 0, w: 4, h: 2 },
+      { i: 'pp-kpi-2', x: 4, y: 0, w: 4, h: 2 },
+      { i: 'pp-kpi-3', x: 8, y: 0, w: 4, h: 2 },
+      { i: 'pp-bar-1', x: 0, y: 2, w: 6, h: 4 },
+      { i: 'pp-bar-2', x: 6, y: 2, w: 6, h: 4 },
+      { i: 'pp-bar-3', x: 0, y: 6, w: 6, h: 4 },
+      { i: 'pp-bar-4', x: 6, y: 6, w: 6, h: 4 },
+      { i: 'pp-cmp-1', x: 0, y: 10, w: 6, h: 5 },
+    ],
+  },
+];
+
+// ── Templates Délais de traitement ──────────────────────────────────────────
+const DELAY_TEMPLATES = [
+  {
+    id: 'tpl-delai-traitement',
+    name: 'Délais de Traitement',
+    description: 'Délai moyen de traitement par type de crédit, agence et chargé',
+    isGlobal: true,
+    widgets: [
+      { id: 'dt-kpi-1', type: 'kpi_card',  title: 'Délai moyen global (jours)',        order: 0, config: { source: 'applications', metric: 'avg_processing_time', colorScheme: 'orange' } },
+      { id: 'dt-bar-1', type: 'bar_chart', title: 'Délai moyen par type de crédit',    order: 1, config: { source: 'applications', metric: 'avg_processing_time', groupBy: 'credit_type' } },
+      { id: 'dt-bar-2', type: 'bar_chart', title: 'Délai moyen par agence',            order: 2, config: { source: 'applications', metric: 'avg_processing_time', groupBy: 'branch' } },
+      { id: 'dt-bar-3', type: 'bar_chart', title: 'Délai moyen par chargé',            order: 3, config: { source: 'applications', metric: 'avg_processing_time', groupBy: 'manager' } },
+      { id: 'dt-cmp-1', type: 'comparison_chart', title: 'Comparaison délais par catégorie', order: 4, config: { source: 'applications', metric: 'avg_processing_time', groupBy: 'credit_type' } },
+    ],
+    layout: [
+      { i: 'dt-kpi-1', x: 0,  y: 0, w: 4,  h: 2 },
+      { i: 'dt-bar-1', x: 0,  y: 2, w: 6,  h: 4 },
+      { i: 'dt-bar-2', x: 6,  y: 2, w: 6,  h: 4 },
+      { i: 'dt-bar-3', x: 0,  y: 6, w: 6,  h: 4 },
+      { i: 'dt-cmp-1', x: 6,  y: 6, w: 6,  h: 5 },
+    ],
+  },
+];
+
+// ── Templates Analyse des Montants ──────────────────────────────────────────
+const AMOUNT_TEMPLATES = [
+  {
+    id: 'tpl-analyse-montants',
+    name: 'Analyse des Montants',
+    description: 'Répartition et évolution des montants de crédit par dimension',
+    isGlobal: true,
+    widgets: [
+      { id: 'am-kpi-1', type: 'kpi_card',    title: 'Encours actif total (FCFA)',           order: 0, config: { source: 'portfolio',     metric: 'encours_actif',   colorScheme: 'blue' } },
+      { id: 'am-kpi-2', type: 'kpi_card',    title: 'Montant total soumis',                 order: 1, config: { source: 'applications',  metric: 'sum_amount',      colorScheme: 'green' } },
+      { id: 'am-kpi-3', type: 'kpi_card',    title: 'Dossiers en pipeline',                 order: 2, config: { source: 'portfolio',     metric: 'dossiers_pipeline', colorScheme: 'orange' } },
+      { id: 'am-bar-1', type: 'bar_chart',   title: 'Montants par type de crédit (FCFA)',   order: 3, config: { source: 'applications',  metric: 'sum_amount', groupBy: 'credit_type' } },
+      { id: 'am-bar-2', type: 'bar_chart',   title: 'Montants par agence (FCFA)',           order: 4, config: { source: 'applications',  metric: 'sum_amount', groupBy: 'branch' } },
+      { id: 'am-bar-3', type: 'bar_chart',   title: 'Montants par secteur (FCFA)',          order: 5, config: { source: 'applications',  metric: 'sum_amount', groupBy: 'sector' } },
+      { id: 'am-cmp-1', type: 'comparison_chart', title: 'Répartition montants par type',  order: 6, config: { source: 'applications',  metric: 'sum_amount', groupBy: 'credit_type' } },
+      { id: 'am-cmp-2', type: 'comparison_chart', title: 'Répartition montants par agence', order: 7, config: { source: 'applications', metric: 'sum_amount', groupBy: 'branch' } },
+      { id: 'am-tbl-1', type: 'table',        title: 'Top clients — Encours',               order: 8, config: { source: 'portfolio',    metric: 'top_clients' } },
+    ],
+    layout: [
+      { i: 'am-kpi-1', x: 0, y: 0,  w: 4, h: 2 },
+      { i: 'am-kpi-2', x: 4, y: 0,  w: 4, h: 2 },
+      { i: 'am-kpi-3', x: 8, y: 0,  w: 4, h: 2 },
+      { i: 'am-bar-1', x: 0, y: 2,  w: 6, h: 4 },
+      { i: 'am-bar-2', x: 6, y: 2,  w: 6, h: 4 },
+      { i: 'am-bar-3', x: 0, y: 6,  w: 6, h: 4 },
+      { i: 'am-cmp-1', x: 6, y: 6,  w: 6, h: 5 },
+      { i: 'am-cmp-2', x: 0, y: 11, w: 6, h: 5 },
+      { i: 'am-tbl-1', x: 6, y: 11, w: 6, h: 5 },
+    ],
+  },
+];
+
 async function main() {
   console.log('Seeding dashboard templates globaux…');
-  for (const tpl of [...TEMPLATES, ...PIVOT_TEMPLATES]) {
+  for (const tpl of [...TEMPLATES, ...PIVOT_TEMPLATES, ...PRODUCTIVITY_TEMPLATES, ...DELAY_TEMPLATES, ...AMOUNT_TEMPLATES]) {
     const { widgets, layout, ...tplData } = tpl;
     const existing = await prisma.dashboardTemplate.findUnique({ where: { id: tpl.id } });
     if (existing) {

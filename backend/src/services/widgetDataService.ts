@@ -478,7 +478,7 @@ async function getPortfolioData(params: WidgetDataParams, companyId: string): Pr
 
 // ── Source: performance ───────────────────────────────────────────────────────
 
-const PERFORMANCE_METRICS = ['productivite', 'taux_transformation', 'rejets_motif'];
+const PERFORMANCE_METRICS = ['productivite', 'productivite_volume', 'taux_transformation', 'rejets_motif'];
 
 async function getPerformanceData(params: WidgetDataParams, companyId: string): Promise<WidgetDataResult> {
   if (!PERFORMANCE_METRICS.includes(params.metric)) throw new Error(`Metric invalide: ${params.metric} pour performance`);
@@ -499,10 +499,27 @@ async function getPerformanceData(params: WidgetDataParams, companyId: string): 
       curr.amount += Number(app.amount ?? 0);
       map.set(key, curr);
     }
-    const useAmount = params.filter?.metric2 === 'amount';
     return {
       series: Array.from(map.entries())
-        .map(([name, v]) => ({ name, value: useAmount ? v.amount : v.count }))
+        .map(([name, v]) => ({ name, value: v.count }))
+        .sort((a, b) => b.value - a.value),
+    };
+  }
+
+  if (params.metric === 'productivite_volume') {
+    const apps = await prisma.creditApplication.findMany({
+      where: { companyId, status: { in: ['APPROVED', 'REJECTED', 'DISBURSED'] as any }, createdAt: { gte: from, lte: to } },
+      select: { amount: true, creator: { select: { name: true, branch: true } } },
+    });
+    const dim = (params.groupBy === 'branch') ? 'branch' : 'manager';
+    const map = new Map<string, number>();
+    for (const app of apps as any[]) {
+      const key = dim === 'branch' ? (app.creator?.branch?.trim() || 'Non renseigné') : (app.creator?.name?.trim() || 'Non renseigné');
+      map.set(key, (map.get(key) ?? 0) + Number(app.amount ?? 0));
+    }
+    return {
+      series: Array.from(map.entries())
+        .map(([name, value]) => ({ name, value }))
         .sort((a, b) => b.value - a.value),
     };
   }
