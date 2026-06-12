@@ -4,8 +4,22 @@ import { AutoAwesome as AiIcon } from '@mui/icons-material';
 import { WidgetDataResult } from '../../../types';
 import { ApiService } from '../../../services/api';
 
-// Session-level cache: cacheKey → analysis text
-const aiCache = new Map<string, string>();
+const LS_PREFIX = 'wa_';
+const LS_TTL_MS = 60 * 60 * 1000; // 1 heure
+
+function lsGet(key: string): string | null {
+  try {
+    const raw = localStorage.getItem(LS_PREFIX + key);
+    if (!raw) return null;
+    const { text, ts } = JSON.parse(raw);
+    if (Date.now() - ts > LS_TTL_MS) { localStorage.removeItem(LS_PREFIX + key); return null; }
+    return text as string;
+  } catch { return null; }
+}
+
+function lsSet(key: string, text: string): void {
+  try { localStorage.setItem(LS_PREFIX + key, JSON.stringify({ text, ts: Date.now() })); } catch { /* quota */ }
+}
 
 interface WidgetInsightProps {
   widgetId: string;
@@ -17,29 +31,28 @@ interface WidgetInsightProps {
 }
 
 export const WidgetInsight: React.FC<WidgetInsightProps> = ({ widgetId, type, title, data, config, period }) => {
-  // Derive a stable cache key from widget id + data snapshot
-  const cacheKey = `${widgetId}:${JSON.stringify(data).slice(0, 400)}`;
+  const cacheKey = `${widgetId}_${type}_${period}`;
 
-  const [analysis, setAnalysis] = useState<string | null>(() => aiCache.get(cacheKey) ?? null);
-  const [loading, setLoading] = useState(!aiCache.has(cacheKey));
+  const [analysis, setAnalysis] = useState<string | null>(() => lsGet(cacheKey));
+  const [loading, setLoading]   = useState(() => !lsGet(cacheKey));
   const fetchedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Already cached or already fetching this exact key → skip
-    if (aiCache.has(cacheKey) || fetchedRef.current === cacheKey) return;
+    const cached = lsGet(cacheKey);
+    if (cached) { setAnalysis(cached); setLoading(false); return; }
+    if (fetchedRef.current === cacheKey) return;
 
     fetchedRef.current = cacheKey;
     setLoading(true);
-    setAnalysis(null);
 
     ApiService.getWidgetAnalysis({ widgetType: type, title, data, config, period })
       .then(res => {
         if (res.success && res.data?.analysis) {
-          aiCache.set(cacheKey, res.data.analysis);
+          lsSet(cacheKey, res.data.analysis);
           setAnalysis(res.data.analysis);
         }
       })
-      .catch(() => { /* silent fail */ })
+      .catch(() => {})
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheKey]);
