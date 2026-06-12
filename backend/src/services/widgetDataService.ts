@@ -184,6 +184,7 @@ async function getApplicationsData(params: WidgetDataParams, companyId: string):
         branch:     a.creator?.branch  ?? '',
         manager:    a.creator?.name    ?? '',
         creditType: a.creditType?.name ?? '',
+        amount:     Number(a.amount ?? 0),
         start:      new Date(a.createdAt).getTime(),
         end:        TERMINAL.has(a.status) ? new Date(a.updatedAt).getTime() : now,
       })),
