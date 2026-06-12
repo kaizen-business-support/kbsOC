@@ -13,9 +13,7 @@ interface LineChartWidgetProps {
 }
 
 function formatYAxis(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
-  return String(value);
+  return value.toLocaleString('fr-FR');
 }
 
 export const LineChartWidget: React.FC<LineChartWidgetProps> = ({ data, title, height = 220, color = '#1565c0' }) => {
@@ -35,7 +33,7 @@ export const LineChartWidget: React.FC<LineChartWidgetProps> = ({ data, title, h
         <LineChart data={series} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
           <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-          <YAxis tickFormatter={formatYAxis} tick={{ fontSize: 11 }} width={40} />
+          <YAxis tickFormatter={formatYAxis} tick={{ fontSize: 10 }} width={80} />
           <Tooltip
             formatter={(v: any) => [Number(v).toLocaleString('fr-FR'), title]}
             isAnimationActive={false}

@@ -8,13 +8,7 @@ interface PivotTableWidgetProps {
   metric?: 'count' | 'sum_amount';
 }
 
-function fmt(v: number, metric: string): string {
-  if (metric === 'sum_amount') {
-    if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}G`;
-    if (v >= 1_000_000)     return `${(v / 1_000_000).toFixed(1)}M`;
-    if (v >= 1_000)         return `${(v / 1_000).toFixed(0)}K`;
-    return v.toLocaleString('fr-FR');
-  }
+function fmt(v: number): string {
   return v.toLocaleString('fr-FR');
 }
 
@@ -72,12 +66,12 @@ export const PivotTableWidget: React.FC<PivotTableWidgetProps> = ({ data, height
                 const v = pivotMatrix?.[row]?.[col] ?? 0;
                 return (
                   <TableCell key={col} align="center" sx={{ ...td, bgcolor: cellBg(v), color: v ? '#1a1a2e' : '#ccc' }}>
-                    {v ? fmt(v, metric) : '—'}
+                    {v ? fmt(v) : '—'}
                   </TableCell>
                 );
               })}
               <TableCell align="center" sx={{ ...td, fontWeight: 700, bgcolor: '#e8eaf6', color: '#1565c0' }}>
-                {fmt(pivotRowTotals?.[row] ?? 0, metric)}
+                {fmt(pivotRowTotals?.[row] ?? 0)}
               </TableCell>
             </TableRow>
           ))}
@@ -87,11 +81,11 @@ export const PivotTableWidget: React.FC<PivotTableWidgetProps> = ({ data, height
             </TableCell>
             {pivotCols.map(col => (
               <TableCell key={col} align="center" sx={{ ...td, fontWeight: 700, bgcolor: '#e8eaf6', color: '#1565c0' }}>
-                {fmt(pivotColTotals?.[col] ?? 0, metric)}
+                {fmt(pivotColTotals?.[col] ?? 0)}
               </TableCell>
             ))}
             <TableCell align="center" sx={{ ...td, fontWeight: 800, bgcolor: '#c5cae9', color: '#1a237e' }}>
-              {fmt(pivotGrand ?? 0, metric)}
+              {fmt(pivotGrand ?? 0)}
             </TableCell>
           </TableRow>
         </TableBody>
