@@ -22,7 +22,9 @@ const DEFAULT_SIZES: Record<string, { w: number; h: number }> = {
   bar_chart:  { w: 6, h: 4 },
   line_chart: { w: 6, h: 4 },
   gauge:      { w: 3, h: 4 },
-  table:      { w: 8, h: 5 },
+  table:               { w: 8,  h: 5 },
+  performance_matrix:  { w: 12, h: 6 },
+  gantt_chart:         { w: 10, h: 6 },
 };
 
 function buildConfig(values: WidgetFormValues): Record<string, any> {
@@ -40,6 +42,7 @@ function buildConfig(values: WidgetFormValues): Record<string, any> {
   if (values.limit)            config.limit = values.limit;
   if (values.regressionType)   config.regressionType = values.regressionType;
   if (values.forecastMonths !== undefined) config.forecastMonths = values.forecastMonths;
+  if (values.targetDays !== undefined)     config.targetDays = values.targetDays;
   return config;
 }
 
@@ -90,6 +93,7 @@ export const WidgetDrawer: React.FC<WidgetDrawerProps> = ({
         limit:             editingWidget.config.limit,
         regressionType:    editingWidget.config.regressionType,
         forecastMonths:    editingWidget.config.forecastMonths,
+        targetDays:        editingWidget.config.targetDays,
       }
     : undefined;
 

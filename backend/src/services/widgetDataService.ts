@@ -528,7 +528,7 @@ async function getPortfolioData(params: WidgetDataParams, companyId: string): Pr
 
 // ── Source: performance ───────────────────────────────────────────────────────
 
-const PERFORMANCE_METRICS = ['productivite', 'productivite_volume', 'taux_transformation', 'rejets_motif'];
+const PERFORMANCE_METRICS = ['productivite', 'productivite_volume', 'taux_transformation', 'rejets_motif', 'performance_matrix'];
 
 async function getPerformanceData(params: WidgetDataParams, companyId: string): Promise<WidgetDataResult> {
   if (!PERFORMANCE_METRICS.includes(params.metric)) throw new Error(`Metric invalide: ${params.metric} pour performance`);
@@ -613,6 +613,73 @@ async function getPerformanceData(params: WidgetDataParams, companyId: string): 
         .map(([name, value]) => ({ name, value }))
         .sort((a, b) => b.value - a.value),
     };
+  }
+
+  if (params.metric === 'performance_matrix') {
+    const targetDays = Math.max(1, parseInt((params.filter as any)?.targetDays ?? '5') || 5);
+    const targetMinutes = targetDays * 8 * 60;
+    const dim = params.groupBy === 'branch' ? 'branch' : 'manager';
+
+    const apps = await prisma.creditApplication.findMany({
+      where: { companyId, createdAt: { gte: from, lte: to } },
+      select: {
+        status: true, amount: true, createdAt: true, updatedAt: true,
+        totalDurationMinutes: true,
+        creator: { select: { name: true, branch: true } },
+      },
+    });
+
+    interface PerfEntry {
+      processed: number; inProgress: number; volumeApproved: number;
+      durSum: number; durCount: number;
+      onTime: number; overdue: number;
+      approved: number; decidedCount: number;
+    }
+    const map = new Map<string, PerfEntry>();
+    const zero = (): PerfEntry => ({ processed: 0, inProgress: 0, volumeApproved: 0, durSum: 0, durCount: 0, onTime: 0, overdue: 0, approved: 0, decidedCount: 0 });
+
+    const TERMINAL    = new Set(['APPROVED', 'REJECTED', 'DISBURSED', 'CANCELLED']);
+    const IN_PROGRESS = new Set(['SUBMITTED', 'UNDER_REVIEW']);
+    const APPROVED_ST = new Set(['APPROVED', 'DISBURSED']);
+
+    for (const app of apps as any[]) {
+      const key = dim === 'branch'
+        ? (app.creator?.branch?.trim() || 'Non renseigné')
+        : (app.creator?.name?.trim()   || 'Non renseigné');
+      const e = map.get(key) ?? zero();
+
+      if (TERMINAL.has(app.status)) {
+        e.processed++;
+        if (APPROVED_ST.has(app.status)) e.volumeApproved += Number(app.amount ?? 0);
+
+        const mins = Number(app.totalDurationMinutes) ||
+          Math.max(0, (new Date(app.updatedAt).getTime() - new Date(app.createdAt).getTime()) / 60000);
+        if (mins > 0) {
+          e.durSum += mins; e.durCount++;
+          if (mins <= targetMinutes) e.onTime++; else e.overdue++;
+        }
+        if (app.status !== 'CANCELLED') {
+          e.decidedCount++;
+          if (APPROVED_ST.has(app.status)) e.approved++;
+        }
+      } else if (IN_PROGRESS.has(app.status)) {
+        e.inProgress++;
+      }
+      map.set(key, e);
+    }
+
+    const maxProcessed = Math.max(...Array.from(map.values()).map(e => e.processed), 1);
+
+    const rows = Array.from(map.entries()).map(([dimension, e]) => {
+      const avgDays     = e.durCount === 0 ? 0 : Math.round(e.durSum / e.durCount / 60 / 8 * 10) / 10;
+      const onTimeRate  = e.durCount === 0 ? 0 : Math.round(e.onTime / e.durCount * 100);
+      const approvalRate = e.decidedCount === 0 ? 0 : Math.round(e.approved / e.decidedCount * 100);
+      const prodScore   = Math.round((e.processed / maxProcessed) * 100);
+      const score       = Math.round(0.40 * onTimeRate + 0.35 * approvalRate + 0.25 * prodScore);
+      return { dimension, processed: e.processed, inProgress: e.inProgress, volume: e.volumeApproved, avgDays, targetDays, onTime: e.onTime, overdue: e.overdue, onTimeRate, approvalRate, score };
+    }).sort((a, b) => b.score - a.score);
+
+    return { rows, columns: [] };
   }
 
   return {};

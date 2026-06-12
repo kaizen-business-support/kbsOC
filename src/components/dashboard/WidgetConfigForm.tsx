@@ -9,7 +9,7 @@ import { Period } from '../../types';
 
 export interface WidgetFormValues {
   title: string;
-  type: 'kpi_card' | 'bar_chart' | 'line_chart' | 'gauge' | 'table' | 'trend_chart' | 'pivot_table' | 'comparison_chart' | 'gantt_chart';
+  type: 'kpi_card' | 'bar_chart' | 'line_chart' | 'gauge' | 'table' | 'trend_chart' | 'pivot_table' | 'comparison_chart' | 'gantt_chart' | 'performance_matrix';
   source: 'applications' | 'clients' | 'analytics' | 'portfolio' | 'performance';
   metric: string;
   groupBy?: 'month' | 'status' | 'branch' | 'manager' | 'sector' | 'credit_type';
@@ -24,6 +24,7 @@ export interface WidgetFormValues {
   limit?: number;
   regressionType?: 'linear' | 'logarithmic';
   forecastMonths?: number;
+  targetDays?: number;
 }
 
 interface WidgetConfigFormProps {
@@ -41,7 +42,8 @@ const SOURCE_BY_TYPE: Record<string, string[]> = {
   trend_chart: ['applications'],
   pivot_table:       ['applications'],
   comparison_chart:  ['applications', 'portfolio', 'performance'],
-  gantt_chart:       ['applications'],
+  gantt_chart:        ['applications'],
+  performance_matrix: ['performance'],
 };
 
 const METRICS_BY_SOURCE: Record<string, Array<{ value: string; label: string; tableOnly?: boolean }>> = {
@@ -102,6 +104,10 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
       setValues(v => ({ ...v, source: 'applications', metric: 'gantt', limit: v.limit ?? 15 }));
       return;
     }
+    if (values.type === 'performance_matrix') {
+      setValues(v => ({ ...v, source: 'performance', metric: 'performance_matrix', groupBy: v.groupBy ?? 'manager' }));
+      return;
+    }
     const sources = SOURCE_BY_TYPE[values.type] ?? ['applications'];
     const needsSeries = values.type === 'bar_chart' || values.type === 'line_chart';
     setValues(v => ({
@@ -130,15 +136,16 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
     return true;
   });
 
-  const showGroupBy      = values.type === 'bar_chart' || values.type === 'line_chart' || values.type === 'gantt_chart';
+  const showGroupBy      = values.type === 'bar_chart' || values.type === 'line_chart' || values.type === 'gantt_chart' || values.type === 'performance_matrix';
   const showPivotDims    = values.type === 'pivot_table';
-  const showFilterStatus = values.source === 'applications' && values.type !== 'gantt_chart';
+  const showFilterStatus = values.source === 'applications' && values.type !== 'gantt_chart' && values.type !== 'performance_matrix';
   const showColorScheme  = values.type === 'kpi_card';
   const showColor        = values.type === 'bar_chart' || values.type === 'line_chart' || values.type === 'trend_chart';
   const showThreshold    = values.type === 'gauge';
   const showLimit        = values.metric === 'list' || values.type === 'gantt_chart';
   const showRegression   = values.type === 'trend_chart';
-  const showMetric       = values.type !== 'gantt_chart';
+  const showMetric       = values.type !== 'gantt_chart' && values.type !== 'performance_matrix';
+  const showTargetDays   = values.type === 'performance_matrix';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,6 +170,7 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
           <MenuItem value="pivot_table">Tableau croisé dynamique</MenuItem>
           <MenuItem value="comparison_chart">Comparaison (donut / barre / courbe)</MenuItem>
           <MenuItem value="gantt_chart">Diagramme de Gantt (délais / chronologie)</MenuItem>
+          <MenuItem value="performance_matrix">Matrice de performance équipes</MenuItem>
         </Select>
       </FormControl>
       <FormControl size="small" fullWidth required>
@@ -193,15 +201,15 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
         <AccordionDetails sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0 }}>
           {showGroupBy && (
             <FormControl size="small" fullWidth>
-              <InputLabel>Grouper par</InputLabel>
-              <Select value={values.groupBy ?? ''} label="Grouper par" onChange={e => set('groupBy', e.target.value || undefined)}>
-                <MenuItem value=""><em>Aucun</em></MenuItem>
-                <MenuItem value="month">Mois</MenuItem>
-                <MenuItem value="status">Statut</MenuItem>
+              <InputLabel>{values.type === 'performance_matrix' ? 'Vue par défaut' : 'Grouper par'}</InputLabel>
+              <Select value={values.groupBy ?? ''} label={values.type === 'performance_matrix' ? 'Vue par défaut' : 'Grouper par'} onChange={e => set('groupBy', e.target.value || undefined)}>
+                {values.type !== 'performance_matrix' && <MenuItem value=""><em>Aucun</em></MenuItem>}
+                {values.type !== 'performance_matrix' && <MenuItem value="month">Mois</MenuItem>}
+                {values.type !== 'performance_matrix' && <MenuItem value="status">Statut</MenuItem>}
                 <MenuItem value="branch">Agence</MenuItem>
                 <MenuItem value="manager">Chargé de dossier</MenuItem>
-                <MenuItem value="sector">Secteur d'activité</MenuItem>
-                <MenuItem value="credit_type">Type de crédit</MenuItem>
+                {values.type !== 'performance_matrix' && <MenuItem value="sector">Secteur d'activité</MenuItem>}
+                {values.type !== 'performance_matrix' && <MenuItem value="credit_type">Type de crédit</MenuItem>}
               </Select>
             </FormControl>
           )}
@@ -298,6 +306,15 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
               value={values.limit ?? 10}
               onChange={e => set('limit', parseInt(e.target.value))}
               inputProps={{ min: 1, max: 50 }}
+            />
+          )}
+          {showTargetDays && (
+            <TextField
+              label="Délai cible SLA (jours ouvrés)" type="number" size="small" fullWidth
+              helperText="Seuil à partir duquel un dossier est considéré en retard"
+              value={values.targetDays ?? 5}
+              onChange={e => set('targetDays', Math.max(1, parseInt(e.target.value) || 5))}
+              inputProps={{ min: 1, max: 90 }}
             />
           )}
           {showRegression && (

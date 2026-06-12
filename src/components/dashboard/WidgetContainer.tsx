@@ -12,6 +12,7 @@ import { TrendChartWidget } from './widgets/TrendChartWidget';
 import { PivotTableWidget } from './widgets/PivotTableWidget';
 import { ComparisonChartWidget } from './widgets/ComparisonChartWidget';
 import { GanttChartWidget } from './widgets/GanttChartWidget';
+import { PerformanceMatrixWidget } from './widgets/PerformanceMatrixWidget';
 
 const PERIOD_LABELS: Record<string, string> = {
   this_month: 'Ce mois', this_quarter: 'Ce trimestre', this_year: 'Cette année',
@@ -35,7 +36,9 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
     (widget.type === 'bar_chart' || widget.type === 'line_chart' || widget.type === 'trend_chart') ? 'month' :
     widget.type === 'comparison_chart' ? 'status' : undefined
   );
-  const metric = widget.type === 'gantt_chart' ? 'gantt' : (cfg?.metric ?? 'count');
+  const metric = widget.type === 'gantt_chart' ? 'gantt'
+               : widget.type === 'performance_matrix' ? 'performance_matrix'
+               : (cfg?.metric ?? 'count');
   const configKey = JSON.stringify(widget.config);
 
   useEffect(() => {
@@ -51,11 +54,13 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
           period: effectivePeriod,
         })
       : ApiService.getWidgetData({
-          source: cfg?.source ?? 'applications',
+          source: widget.type === 'performance_matrix' ? 'performance' : (cfg?.source ?? 'applications'),
           metric,
           groupBy,
           period: effectivePeriod,
-          filter: cfg?.filter,
+          filter: widget.type === 'performance_matrix'
+            ? { targetDays: String(cfg?.targetDays ?? 5) }
+            : cfg?.filter,
           limit: cfg?.limit,
         });
 
@@ -93,6 +98,14 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
         return <ComparisonChartWidget data={data} title={widget.title} height={CONTENT_HEIGHT} />;
       case 'gantt_chart':
         return <GanttChartWidget data={data} title={widget.title} height={CONTENT_HEIGHT} />;
+      case 'performance_matrix':
+        return <PerformanceMatrixWidget
+          data={data}
+          height={CONTENT_HEIGHT}
+          period={effectivePeriod}
+          targetDays={cfg?.targetDays ?? 5}
+          initialGroupBy={(cfg?.groupBy as 'manager' | 'branch') ?? 'manager'}
+        />;
       default:
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: CONTENT_HEIGHT }}>
