@@ -20,9 +20,11 @@ const COLOR_MAP = {
   red:    { bg: '#ffebee', color: '#c62828' },
 };
 
+const numFmt = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 });
+
 function formatValue(value: number | undefined): string {
   if (value === undefined || value === null) return 'N/D';
-  return value.toLocaleString('fr-FR');
+  return numFmt.format(value);
 }
 
 export const KpiCardWidget: React.FC<KpiCardWidgetProps> = ({ data, title, colorScheme = 'blue' }) => {

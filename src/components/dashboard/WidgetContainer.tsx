@@ -10,6 +10,7 @@ import { GaugeWidget } from './widgets/GaugeWidget';
 import { TableWidget } from './widgets/TableWidget';
 import { TrendChartWidget } from './widgets/TrendChartWidget';
 import { PivotTableWidget } from './widgets/PivotTableWidget';
+import { ComparisonChartWidget } from './widgets/ComparisonChartWidget';
 
 const PERIOD_LABELS: Record<string, string> = {
   this_month: 'Ce mois', this_quarter: 'Ce trimestre', this_year: 'Cette année',
@@ -30,7 +31,8 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
   const cfg = widget.config as any;
   const effectivePeriod: Period = cfg?.periodOverride ?? globalPeriod;
   const groupBy = cfg?.groupBy ?? (
-    (widget.type === 'bar_chart' || widget.type === 'line_chart' || widget.type === 'trend_chart') ? 'month' : undefined
+    (widget.type === 'bar_chart' || widget.type === 'line_chart' || widget.type === 'trend_chart') ? 'month' :
+    widget.type === 'comparison_chart' ? 'status' : undefined
   );
   const configKey = JSON.stringify(widget.config);
 
@@ -85,6 +87,8 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
         return <TrendChartWidget data={data} title={widget.title} height={CONTENT_HEIGHT} regressionType={cfg?.regressionType} forecastMonths={cfg?.forecastMonths ?? 3} color={cfg?.color} />;
       case 'pivot_table':
         return <PivotTableWidget data={data} height={CONTENT_HEIGHT} metric={cfg?.metric ?? 'count'} />;
+      case 'comparison_chart':
+        return <ComparisonChartWidget data={data} title={widget.title} height={CONTENT_HEIGHT} />;
       default:
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: CONTENT_HEIGHT }}>

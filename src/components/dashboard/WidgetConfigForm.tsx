@@ -9,7 +9,7 @@ import { Period } from '../../types';
 
 export interface WidgetFormValues {
   title: string;
-  type: 'kpi_card' | 'bar_chart' | 'line_chart' | 'gauge' | 'table' | 'trend_chart' | 'pivot_table';
+  type: 'kpi_card' | 'bar_chart' | 'line_chart' | 'gauge' | 'table' | 'trend_chart' | 'pivot_table' | 'comparison_chart';
   source: 'applications' | 'clients' | 'analytics' | 'portfolio' | 'performance';
   metric: string;
   groupBy?: 'month' | 'status' | 'branch' | 'manager' | 'sector' | 'credit_type';
@@ -39,7 +39,8 @@ const SOURCE_BY_TYPE: Record<string, string[]> = {
   gauge:       ['analytics'],
   table:       ['applications', 'clients', 'portfolio'],
   trend_chart: ['applications'],
-  pivot_table: ['applications'],
+  pivot_table:       ['applications'],
+  comparison_chart:  ['applications', 'portfolio', 'performance'],
 };
 
 const METRICS_BY_SOURCE: Record<string, Array<{ value: string; label: string; tableOnly?: boolean }>> = {
@@ -151,6 +152,7 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
           <MenuItem value="gauge">Gauge</MenuItem>
           <MenuItem value="table">Table</MenuItem>
           <MenuItem value="pivot_table">Tableau croisé dynamique</MenuItem>
+          <MenuItem value="comparison_chart">Comparaison (donut / barre / courbe)</MenuItem>
         </Select>
       </FormControl>
       <FormControl size="small" fullWidth required>
