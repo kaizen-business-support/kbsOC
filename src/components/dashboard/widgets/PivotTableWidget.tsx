@@ -15,6 +15,7 @@ function fmt(v: number): string {
 const STATUS_FR: Record<string, string> = {
   APPROVED: 'Approuvé', REJECTED: 'Rejeté', UNDER_REVIEW: 'En analyse',
   SUBMITTED: 'Soumis', DISBURSED: 'Décaissé', CANCELLED: 'Annulé', DRAFT: 'Brouillon',
+  PENDING: 'En attente',
 };
 
 function label(v: string) { return STATUS_FR[v] ?? v; }

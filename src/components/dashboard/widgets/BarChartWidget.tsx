@@ -17,6 +17,13 @@ const STATUS_COLORS: Record<string, string> = {
   UNDER_REVIEW: '#e65100', SUBMITTED: '#7b1fa2', DRAFT: '#757575', CANCELLED: '#9e9e9e',
 };
 
+const STATUS_FR: Record<string, string> = {
+  APPROVED: 'Approuvé', REJECTED: 'Rejeté', UNDER_REVIEW: 'En analyse',
+  SUBMITTED: 'Soumis', DISBURSED: 'Décaissé', CANCELLED: 'Annulé', DRAFT: 'Brouillon',
+  PENDING: 'En attente',
+};
+const tr = (v: string) => STATUS_FR[v] ?? v;
+
 function formatYAxis(value: number): string {
   return value.toLocaleString('fr-FR');
 }
@@ -37,9 +44,10 @@ export const BarChartWidget: React.FC<BarChartWidgetProps> = ({ data, title, hei
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={series} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-          <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+          <XAxis dataKey="name" tick={{ fontSize: 11 }} tickFormatter={tr} />
           <YAxis tickFormatter={formatYAxis} tick={{ fontSize: 10 }} width={80} />
           <Tooltip
+            labelFormatter={tr}
             formatter={(v: any) => [Number(v).toLocaleString('fr-FR'), title]}
             isAnimationActive={false}
             wrapperStyle={{ zIndex: 1000, outline: 'none' }}
