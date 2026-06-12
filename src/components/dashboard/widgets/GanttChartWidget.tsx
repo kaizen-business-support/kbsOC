@@ -48,14 +48,16 @@ function fmtDate(ts: number) {
   return new Date(ts).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 }
 
-function makeTooltip(unit: UnitMode) {
+const fullFmt = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
+
+function makeTooltip(_unit: UnitMode) {
   return function CustomTooltip({ active, payload }: any) {
     if (!active || !payload?.length) return null;
     const r = payload[1]?.payload ?? payload[0]?.payload;
     if (!r) return null;
     const days = Math.max(1, Math.round((r.end - r.start) / DAY_MS));
     return (
-      <Box sx={{ bgcolor: '#fff', border: '1px solid #e0e0e0', borderRadius: 2, p: 1.5, boxShadow: 3, maxWidth: 230 }}>
+      <Box sx={{ bgcolor: '#fff', border: '1px solid #e0e0e0', borderRadius: 2, p: 1.5, boxShadow: 3, maxWidth: 240 }}>
         <Typography sx={{ fontSize: 11, fontWeight: 700 }}>{r.label} — {r.client}</Typography>
         {r.creditType && <Typography sx={{ fontSize: 10, color: 'text.secondary', mb: 0.5 }}>{r.creditType}</Typography>}
         <Typography sx={{ fontSize: 11 }}>Statut : <b>{STATUS_FR[r.status] ?? r.status}</b></Typography>
@@ -63,7 +65,7 @@ function makeTooltip(unit: UnitMode) {
         {r.manager && <Typography sx={{ fontSize: 11 }}>Chargé : {r.manager}</Typography>}
         {r.amount > 0 && (
           <Typography sx={{ fontSize: 11, mt: 0.5 }}>
-            Montant : <b>{fmtAmount(r.amount, unit)}</b>
+            Montant : <b>{fullFmt.format(r.amount)} FCFA</b>
           </Typography>
         )}
         <Typography sx={{ fontSize: 11, mt: 0.5 }}>{fmtDate(r.start)} → {fmtDate(r.end)}</Typography>
@@ -87,14 +89,14 @@ export const GanttChartWidget: React.FC<GanttChartWidgetProps> = ({ data, height
     const u = UNITS.find(u => u.value === unit)!;
     return {
       chartData: (rows as any[]).map(r => {
-        const amtStr = r.amount > 0
-          ? ` · ${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: u.decimals, minimumFractionDigits: 0 }).format(r.amount / u.divisor)}${unit}`
-          : '';
+        const amtLabel = r.amount > 0
+          ? new Intl.NumberFormat('fr-FR', { maximumFractionDigits: u.decimals, minimumFractionDigits: u.decimals }).format(r.amount / u.divisor) + ' ' + unit
+          : '—';
         return {
           ...r,
-          _offset:      r.start - minTs,
-          _dur:         Math.max(r.end - r.start, Math.round(range * 0.008)),
-          _displayLabel: `${r.label}${amtStr}`,
+          _offset:       r.start - minTs,
+          _dur:          Math.max(r.end - r.start, Math.round(range * 0.008)),
+          _displayLabel: amtLabel,
         };
       }),
       minTs,
