@@ -64,10 +64,10 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
     host: cfg.host,
     port: Number(cfg.port) || 587,
     secure: cfg.secure === true || cfg.secure === 'true',
-    auth: {
-      user: cfg.user,
-      pass: cfg.pass,
-    },
+    auth: { user: cfg.user, pass: cfg.pass },
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 15_000,
   });
 
   await transporter.sendMail({

@@ -96,12 +96,27 @@ router.post('/test/:type', async (req: Request, res: Response) => {
     const cfg = channel.config as any;
 
     if (type.toUpperCase() === 'EMAIL') {
+      if (!cfg.host || !cfg.user || !cfg.pass) {
+        return res.status(400).json({ success: false, error: 'Configuration incomplète : host, user et pass sont obligatoires' });
+      }
+
       const transporter = nodemailer.createTransport({
         host: cfg.host,
         port: Number(cfg.port) || 587,
         secure: cfg.secure === true || cfg.secure === 'true',
         auth: { user: cfg.user, pass: cfg.pass },
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 15_000,
       });
+
+      // Verify SMTP connectivity first — gives a clear error before trying to send
+      try {
+        await transporter.verify();
+      } catch (verifyErr: any) {
+        const detail = verifyErr.message || verifyErr.code || String(verifyErr);
+        return res.status(500).json({ success: false, error: `Connexion SMTP échouée : ${detail}` });
+      }
 
       await transporter.sendMail({
         from: `"${cfg.fromName || 'OptimusCredit'}" <${cfg.fromEmail || cfg.user}>`,
@@ -161,7 +176,8 @@ router.post('/test/:type', async (req: Request, res: Response) => {
     }
   } catch (error: any) {
     console.error('Test channel error:', error);
-    res.status(500).json({ success: false, error: error.message || 'Erreur lors du test' });
+    const detail = error.message || error.code || error.responseCode?.toString() || String(error);
+    res.status(500).json({ success: false, error: detail || 'Erreur lors du test' });
   }
 });
 
