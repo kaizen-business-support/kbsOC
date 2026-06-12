@@ -10,7 +10,7 @@ import { Period } from '../../types';
 export interface WidgetFormValues {
   title: string;
   type: 'kpi_card' | 'bar_chart' | 'line_chart' | 'gauge' | 'table' | 'trend_chart' | 'pivot_table';
-  source: 'applications' | 'clients' | 'analytics';
+  source: 'applications' | 'clients' | 'analytics' | 'portfolio' | 'performance';
   metric: string;
   groupBy?: 'month' | 'status' | 'branch' | 'manager' | 'sector' | 'credit_type';
   rowDimension?: string;
@@ -33,11 +33,11 @@ interface WidgetConfigFormProps {
 }
 
 const SOURCE_BY_TYPE: Record<string, string[]> = {
-  kpi_card:    ['applications', 'clients', 'analytics'],
-  bar_chart:   ['applications'],
+  kpi_card:    ['applications', 'clients', 'analytics', 'portfolio', 'performance'],
+  bar_chart:   ['applications', 'portfolio', 'performance'],
   line_chart:  ['applications'],
   gauge:       ['analytics'],
-  table:       ['applications', 'clients'],
+  table:       ['applications', 'clients', 'portfolio'],
   trend_chart: ['applications'],
   pivot_table: ['applications'],
 };
@@ -59,6 +59,17 @@ const METRICS_BY_SOURCE: Record<string, Array<{ value: string; label: string; ta
     { value: 'npl_ratio',       label: 'Ratio NPL (%)' },
     { value: 'solvency_ratio',  label: 'Ratio de solvabilité (%)' },
     { value: 'liquidity_ratio', label: 'Ratio de liquidité (%)' },
+  ],
+  portfolio: [
+    { value: 'encours_actif',    label: 'Encours actif (FCFA)' },
+    { value: 'dossiers_pipeline', label: 'Dossiers en pipeline' },
+    { value: 'concentration',    label: 'Concentration par dimension' },
+    { value: 'top_clients',      label: 'Top clients par encours', tableOnly: true },
+  ],
+  performance: [
+    { value: 'productivite',        label: 'Productivité (dossiers traités)' },
+    { value: 'taux_transformation', label: 'Taux de transformation (%)' },
+    { value: 'rejets_motif',        label: 'Rejets par dimension' },
   ],
 };
 
@@ -147,7 +158,7 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
         <Select value={values.source} label="Source" onChange={e => set('source', e.target.value)}>
           {availableSources.map(s => (
             <MenuItem key={s} value={s}>
-              {s === 'applications' ? 'Dossiers de crédit' : s === 'clients' ? 'Clients' : 'Analytique BCEAO'}
+              {{ applications: 'Dossiers de crédit', clients: 'Clients', analytics: 'Analytique BCEAO', portfolio: 'Portefeuille', performance: 'Performance & Activité' }[s] ?? s}
             </MenuItem>
           ))}
         </Select>

@@ -3,7 +3,7 @@ import { prisma } from '../prismaClient';
 export type Period = 'this_month' | 'this_quarter' | 'this_year' | 'last_6_months' | 'last_12_months';
 
 export interface WidgetDataParams {
-  source: 'applications' | 'clients' | 'analytics';
+  source: 'applications' | 'clients' | 'analytics' | 'portfolio' | 'performance';
   metric: string;
   groupBy?: 'status' | 'month' | 'branch' | 'manager' | 'sector' | 'credit_type';
   period: Period;
@@ -153,6 +153,49 @@ async function getApplicationsData(params: WidgetDataParams, companyId: string):
   }
 
   if (['month', 'status', 'branch', 'manager', 'sector', 'credit_type'].includes(params.groupBy as string)) {
+
+    // Taux d'approbation groupé
+    if (params.metric === 'approval_rate') {
+      const apps = await prisma.creditApplication.findMany({
+        where: { ...baseWhere, status: { in: ['APPROVED', 'REJECTED'] as any }, createdAt: { gte: from, lte: to } },
+        select: { status: true, createdAt: true, creator: { select: { branch: true, name: true } }, client: { select: { sector: true } }, creditType: { select: { name: true } } },
+      });
+      const map = new Map<string, { approved: number; total: number }>();
+      for (const app of apps as any[]) {
+        const key = getDimValue(app, params.groupBy as PivotDimension);
+        const curr = map.get(key) ?? { approved: 0, total: 0 };
+        curr.total++;
+        if (app.status === 'APPROVED') curr.approved++;
+        map.set(key, curr);
+      }
+      return {
+        series: Array.from(map.entries())
+          .map(([name, { approved, total }]) => ({ name, value: total === 0 ? 0 : Math.round((approved / total) * 100) }))
+          .sort((a, b) => b.value - a.value),
+      };
+    }
+
+    // Délai moyen groupé
+    if (params.metric === 'avg_processing_time') {
+      const apps = await prisma.creditApplication.findMany({
+        where: { ...baseWhere, status: { in: ['APPROVED', 'REJECTED'] as any }, createdAt: { gte: from, lte: to } },
+        select: { createdAt: true, creator: { select: { branch: true, name: true } }, client: { select: { sector: true } }, creditType: { select: { name: true } }, totalDurationMinutes: true },
+      });
+      const map = new Map<string, { sum: number; count: number }>();
+      for (const app of apps as any[]) {
+        const key = getDimValue(app, params.groupBy as PivotDimension);
+        const curr = map.get(key) ?? { sum: 0, count: 0 };
+        curr.sum += Number((app as any).totalDurationMinutes ?? 0);
+        curr.count++;
+        map.set(key, curr);
+      }
+      return {
+        series: Array.from(map.entries())
+          .map(([name, { sum, count }]) => ({ name, value: count === 0 ? 0 : Math.round(sum / count / 60 / 8) }))
+          .sort((a, b) => a.value - b.value),
+      };
+    }
+
     if (params.groupBy === 'sector') {
       const apps = await prisma.creditApplication.findMany({
         where: { ...baseWhere, createdAt: { gte: from, lte: to } },
@@ -356,6 +399,158 @@ async function getAnalyticsData(params: WidgetDataParams, companyId: string): Pr
   return { value: undefined, label: 'N/D — données non disponibles' };
 }
 
+// ── Source: portfolio ─────────────────────────────────────────────────────────
+
+const PORTFOLIO_METRICS = ['encours_actif', 'dossiers_pipeline', 'concentration', 'top_clients'];
+
+async function getPortfolioData(params: WidgetDataParams, companyId: string): Promise<WidgetDataResult> {
+  if (!PORTFOLIO_METRICS.includes(params.metric)) throw new Error(`Metric invalide: ${params.metric} pour portfolio`);
+  const { from, to, prevFrom, prevTo } = getPeriodRange(params.period);
+
+  if (params.metric === 'encours_actif') {
+    const [curr, prev] = await Promise.all([
+      prisma.creditApplication.aggregate({
+        where: { companyId, status: { in: ['DISBURSED', 'APPROVED'] as any }, createdAt: { gte: from, lte: to } },
+        _sum: { amount: true },
+      }),
+      prisma.creditApplication.aggregate({
+        where: { companyId, status: { in: ['DISBURSED', 'APPROVED'] as any }, createdAt: { gte: prevFrom, lte: prevTo } },
+        _sum: { amount: true },
+      }),
+    ]);
+    return { value: Number((curr as any)._sum.amount ?? 0), trend: calcTrend(Number((curr as any)._sum.amount ?? 0), Number((prev as any)._sum.amount ?? 0)) };
+  }
+
+  if (params.metric === 'dossiers_pipeline') {
+    const [curr, prev] = await Promise.all([
+      prisma.creditApplication.count({ where: { companyId, status: { in: ['SUBMITTED', 'UNDER_REVIEW'] as any }, createdAt: { gte: from, lte: to } } }),
+      prisma.creditApplication.count({ where: { companyId, status: { in: ['SUBMITTED', 'UNDER_REVIEW'] as any }, createdAt: { gte: prevFrom, lte: prevTo } } }),
+    ]);
+    return { value: curr, trend: calcTrend(curr, prev) };
+  }
+
+  if (params.metric === 'concentration') {
+    const dim = (params.groupBy ?? 'sector') as PivotDimension;
+    const apps = await prisma.creditApplication.findMany({
+      where: { companyId, status: { in: ['DISBURSED', 'APPROVED'] as any }, createdAt: { gte: from, lte: to } },
+      select: { amount: true, creator: { select: { branch: true, name: true } }, client: { select: { sector: true } }, creditType: { select: { name: true } } },
+    });
+    const map = new Map<string, number>();
+    let total = 0;
+    for (const app of apps as any[]) {
+      const key = getDimValue(app, dim);
+      const inc = Number(app.amount ?? 0);
+      map.set(key, (map.get(key) ?? 0) + inc);
+      total += inc;
+    }
+    return {
+      series: Array.from(map.entries())
+        .map(([name, value]) => ({ name, value, pct: total === 0 ? 0 : Math.round((value / total) * 1000) / 10 }))
+        .sort((a, b) => b.value - a.value),
+    };
+  }
+
+  if (params.metric === 'top_clients') {
+    const apps = await prisma.creditApplication.findMany({
+      where: { companyId, status: { in: ['DISBURSED', 'APPROVED'] as any }, createdAt: { gte: from, lte: to } },
+      select: { amount: true, client: { select: { companyName: true, sector: true } } },
+    });
+    const map = new Map<string, { sector: string; total: number; count: number }>();
+    for (const app of apps as any[]) {
+      const name = app.client?.companyName ?? 'N/D';
+      const curr = map.get(name) ?? { sector: app.client?.sector ?? '', total: 0, count: 0 };
+      curr.total += Number(app.amount ?? 0);
+      curr.count++;
+      map.set(name, curr);
+    }
+    const rows = Array.from(map.entries()).map(([name, v]) => ({ ...v, name })).sort((a, b) => b.total - a.total).slice(0, params.limit ?? 10);
+    return {
+      rows: rows.map((r, i) => ({ rang: i + 1, client: r.name, secteur: r.sector, encours: r.total, dossiers: r.count })),
+      columns: [
+        { key: 'rang', label: '#' }, { key: 'client', label: 'Client' },
+        { key: 'secteur', label: 'Secteur' }, { key: 'encours', label: 'Encours (XOF)' }, { key: 'dossiers', label: 'Dossiers' },
+      ],
+    };
+  }
+
+  return {};
+}
+
+// ── Source: performance ───────────────────────────────────────────────────────
+
+const PERFORMANCE_METRICS = ['productivite', 'taux_transformation', 'rejets_motif'];
+
+async function getPerformanceData(params: WidgetDataParams, companyId: string): Promise<WidgetDataResult> {
+  if (!PERFORMANCE_METRICS.includes(params.metric)) throw new Error(`Metric invalide: ${params.metric} pour performance`);
+  const { from, to } = getPeriodRange(params.period);
+
+  if (params.metric === 'productivite') {
+    // Nombre de dossiers traités (décidés) par chargé
+    const apps = await prisma.creditApplication.findMany({
+      where: { companyId, status: { in: ['APPROVED', 'REJECTED', 'DISBURSED'] as any }, createdAt: { gte: from, lte: to } },
+      select: { amount: true, creator: { select: { name: true, branch: true } } },
+    });
+    const dim = (params.groupBy === 'branch') ? 'branch' : 'manager';
+    const map = new Map<string, { count: number; amount: number }>();
+    for (const app of apps as any[]) {
+      const key = dim === 'branch' ? (app.creator?.branch?.trim() || 'Non renseigné') : (app.creator?.name?.trim() || 'Non renseigné');
+      const curr = map.get(key) ?? { count: 0, amount: 0 };
+      curr.count++;
+      curr.amount += Number(app.amount ?? 0);
+      map.set(key, curr);
+    }
+    const useAmount = params.filter?.metric2 === 'amount';
+    return {
+      series: Array.from(map.entries())
+        .map(([name, v]) => ({ name, value: useAmount ? v.amount : v.count }))
+        .sort((a, b) => b.value - a.value),
+    };
+  }
+
+  if (params.metric === 'taux_transformation') {
+    // Soumis → Approuvé par agence ou chargé
+    const apps = await prisma.creditApplication.findMany({
+      where: { companyId, status: { in: ['SUBMITTED', 'APPROVED', 'REJECTED', 'UNDER_REVIEW'] as any }, createdAt: { gte: from, lte: to } },
+      select: { status: true, creator: { select: { name: true, branch: true } }, creditType: { select: { name: true } }, client: { select: { sector: true } } },
+    });
+    const dim = (params.groupBy ?? 'branch') as PivotDimension;
+    const map = new Map<string, { approved: number; total: number }>();
+    for (const app of apps as any[]) {
+      const key = getDimValue(app, dim);
+      const curr = map.get(key) ?? { approved: 0, total: 0 };
+      curr.total++;
+      if (app.status === 'APPROVED') curr.approved++;
+      map.set(key, curr);
+    }
+    return {
+      series: Array.from(map.entries())
+        .map(([name, { approved, total }]) => ({ name, value: total === 0 ? 0 : Math.round((approved / total) * 100) }))
+        .sort((a, b) => b.value - a.value),
+    };
+  }
+
+  if (params.metric === 'rejets_motif') {
+    // Répartition des rejets par type de crédit ou secteur
+    const apps = await prisma.creditApplication.findMany({
+      where: { companyId, status: 'REJECTED' as any, createdAt: { gte: from, lte: to } },
+      select: { amount: true, creator: { select: { branch: true, name: true } }, client: { select: { sector: true } }, creditType: { select: { name: true } } },
+    });
+    const dim = (params.groupBy ?? 'credit_type') as PivotDimension;
+    const map = new Map<string, number>();
+    for (const app of apps as any[]) {
+      const key = getDimValue(app, dim);
+      map.set(key, (map.get(key) ?? 0) + 1);
+    }
+    return {
+      series: Array.from(map.entries())
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value),
+    };
+  }
+
+  return {};
+}
+
 // ── Tableau croisé dynamique ──────────────────────────────────────────────────
 
 export type PivotDimension = 'branch' | 'manager' | 'month' | 'sector' | 'credit_type' | 'status';
@@ -429,7 +624,7 @@ export async function getPivotData(
 
 // ── Point d'entrée ─────────────────────────────────────────────────────────────
 
-const VALID_SOURCES = ['applications', 'clients', 'analytics'];
+const VALID_SOURCES = ['applications', 'clients', 'analytics', 'portfolio', 'performance'];
 
 export async function getWidgetData(params: WidgetDataParams, companyId: string): Promise<WidgetDataResult> {
   if (!VALID_SOURCES.includes(params.source)) throw new Error(`Source invalide: ${params.source}`);
@@ -438,6 +633,8 @@ export async function getWidgetData(params: WidgetDataParams, companyId: string)
     case 'applications': return getApplicationsData(params, companyId);
     case 'clients':      return getClientsData(params, companyId);
     case 'analytics':    return getAnalyticsData(params, companyId);
+    case 'portfolio':    return getPortfolioData(params, companyId);
+    case 'performance':  return getPerformanceData(params, companyId);
     default:             throw new Error(`Source invalide: ${params.source}`);
   }
 }

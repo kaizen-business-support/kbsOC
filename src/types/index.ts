@@ -524,7 +524,7 @@ export interface WidgetDataResult {
 export type PivotDimension = 'branch' | 'manager' | 'month' | 'sector' | 'credit_type' | 'status';
 
 export interface WidgetDataParams {
-  source: 'applications' | 'clients' | 'analytics';
+  source: 'applications' | 'clients' | 'analytics' | 'portfolio' | 'performance';
   metric: string;
   groupBy?: 'status' | 'month' | 'branch' | 'manager' | 'sector' | 'credit_type';
   period: Period;
