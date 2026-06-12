@@ -119,9 +119,11 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
   }, []);
 
   const availableSources = SOURCE_BY_TYPE[values.type] ?? ['applications'];
-  const availableMetrics = (METRICS_BY_SOURCE[values.source] ?? []).filter(
-    m => !m.tableOnly || values.type === 'table'
-  );
+  const availableMetrics = (METRICS_BY_SOURCE[values.source] ?? []).filter(m => {
+    if (m.tableOnly && values.type !== 'table') return false;
+    if (values.type === 'pivot_table' && !['count', 'sum_amount'].includes(m.value)) return false;
+    return true;
+  });
 
   const showGroupBy      = values.type === 'bar_chart' || values.type === 'line_chart';
   const showPivotDims    = values.type === 'pivot_table';

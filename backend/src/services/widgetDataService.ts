@@ -179,13 +179,15 @@ async function getApplicationsData(params: WidgetDataParams, companyId: string):
     if (params.metric === 'avg_processing_time') {
       const apps = await prisma.creditApplication.findMany({
         where: { ...baseWhere, status: { in: ['APPROVED', 'REJECTED'] as any }, createdAt: { gte: from, lte: to } },
-        select: { createdAt: true, creator: { select: { branch: true, name: true } }, client: { select: { sector: true } }, creditType: { select: { name: true } }, totalDurationMinutes: true },
+        select: { createdAt: true, updatedAt: true, creator: { select: { branch: true, name: true } }, client: { select: { sector: true } }, creditType: { select: { name: true } }, totalDurationMinutes: true },
       });
       const map = new Map<string, { sum: number; count: number }>();
       for (const app of apps as any[]) {
         const key = getDimValue(app, params.groupBy as PivotDimension);
         const curr = map.get(key) ?? { sum: 0, count: 0 };
-        curr.sum += Number((app as any).totalDurationMinutes ?? 0);
+        const minutes = Number((app as any).totalDurationMinutes) ||
+          Math.max(0, (new Date((app as any).updatedAt).getTime() - new Date(app.createdAt).getTime()) / 60000);
+        curr.sum += minutes;
         curr.count++;
         map.set(key, curr);
       }
@@ -310,18 +312,27 @@ async function getApplicationsData(params: WidgetDataParams, companyId: string):
   }
 
   if (params.metric === 'avg_processing_time') {
-    const [currAgg, prevAgg] = await Promise.all([
-      prisma.creditApplication.aggregate({
+    const [currApps, prevApps] = await Promise.all([
+      prisma.creditApplication.findMany({
         where: { companyId, status: { in: ['APPROVED', 'REJECTED'] as any }, createdAt: { gte: from, lte: to } },
-        _avg: { totalDurationMinutes: true },
+        select: { createdAt: true, updatedAt: true, totalDurationMinutes: true },
       }),
-      prisma.creditApplication.aggregate({
+      prisma.creditApplication.findMany({
         where: { companyId, status: { in: ['APPROVED', 'REJECTED'] as any }, createdAt: { gte: prevFrom, lte: prevTo } },
-        _avg: { totalDurationMinutes: true },
+        select: { createdAt: true, updatedAt: true, totalDurationMinutes: true },
       }),
     ]);
-    const current = Math.round((Number((currAgg as any)._avg.totalDurationMinutes ?? 0)) / 60 / 8);
-    const previous = Math.round((Number((prevAgg as any)._avg.totalDurationMinutes ?? 0)) / 60 / 8);
+    const avgDays = (apps: any[]) => {
+      if (apps.length === 0) return 0;
+      const total = apps.reduce((s: number, a: any) => {
+        const mins = Number(a.totalDurationMinutes) ||
+          Math.max(0, (new Date(a.updatedAt).getTime() - new Date(a.createdAt).getTime()) / 60000);
+        return s + mins;
+      }, 0);
+      return Math.round(total / apps.length / 60 / 8);
+    };
+    const current = avgDays(currApps as any[]);
+    const previous = avgDays(prevApps as any[]);
     return { value: current, trend: calcTrend(current, previous) };
   }
 
