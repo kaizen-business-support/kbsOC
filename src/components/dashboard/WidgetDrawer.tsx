@@ -27,15 +27,19 @@ const DEFAULT_SIZES: Record<string, { w: number; h: number }> = {
 
 function buildConfig(values: WidgetFormValues): Record<string, any> {
   const config: Record<string, any> = { source: values.source, metric: values.metric };
-  if (values.groupBy)        config.groupBy = values.groupBy;
-  if (values.filterStatus)   config.filter = { status: values.filterStatus };
-  if (values.periodOverride) config.periodOverride = values.periodOverride;
-  if (values.colorScheme)    config.colorScheme = values.colorScheme;
-  if (values.color)          config.color = values.color;
+  if (values.groupBy)          config.groupBy = values.groupBy;
+  if (values.rowDimension)     config.rowDimension = values.rowDimension;
+  if (values.colDimension)     config.colDimension = values.colDimension;
+  if (values.filterStatus)     config.filter = { status: values.filterStatus };
+  if (values.periodOverride)   config.periodOverride = values.periodOverride;
+  if (values.colorScheme)      config.colorScheme = values.colorScheme;
+  if (values.color)            config.color = values.color;
   if (values.thresholdWarning !== undefined || values.thresholdCritical !== undefined) {
     config.threshold = { warning: values.thresholdWarning ?? 70, critical: values.thresholdCritical ?? 50 };
   }
-  if (values.limit)          config.limit = values.limit;
+  if (values.limit)            config.limit = values.limit;
+  if (values.regressionType)   config.regressionType = values.regressionType;
+  if (values.forecastMonths !== undefined) config.forecastMonths = values.forecastMonths;
   return config;
 }
 
@@ -75,6 +79,8 @@ export const WidgetDrawer: React.FC<WidgetDrawerProps> = ({
         source:            editingWidget.config.source ?? 'applications',
         metric:            editingWidget.config.metric ?? 'count',
         groupBy:           editingWidget.config.groupBy,
+        rowDimension:      editingWidget.config.rowDimension,
+        colDimension:      editingWidget.config.colDimension,
         filterStatus:      editingWidget.config.filter?.status,
         periodOverride:    editingWidget.config.periodOverride,
         colorScheme:       editingWidget.config.colorScheme,
@@ -82,6 +88,8 @@ export const WidgetDrawer: React.FC<WidgetDrawerProps> = ({
         thresholdWarning:  editingWidget.config.threshold?.warning,
         thresholdCritical: editingWidget.config.threshold?.critical,
         limit:             editingWidget.config.limit,
+        regressionType:    editingWidget.config.regressionType,
+        forecastMonths:    editingWidget.config.forecastMonths,
       }
     : undefined;
 
