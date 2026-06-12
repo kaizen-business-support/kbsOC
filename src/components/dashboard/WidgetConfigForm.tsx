@@ -9,7 +9,7 @@ import { Period } from '../../types';
 
 export interface WidgetFormValues {
   title: string;
-  type: 'kpi_card' | 'bar_chart' | 'line_chart' | 'gauge' | 'table' | 'trend_chart' | 'pivot_table' | 'comparison_chart';
+  type: 'kpi_card' | 'bar_chart' | 'line_chart' | 'gauge' | 'table' | 'trend_chart' | 'pivot_table' | 'comparison_chart' | 'gantt_chart';
   source: 'applications' | 'clients' | 'analytics' | 'portfolio' | 'performance';
   metric: string;
   groupBy?: 'month' | 'status' | 'branch' | 'manager' | 'sector' | 'credit_type';
@@ -41,6 +41,7 @@ const SOURCE_BY_TYPE: Record<string, string[]> = {
   trend_chart: ['applications'],
   pivot_table:       ['applications'],
   comparison_chart:  ['applications', 'portfolio', 'performance'],
+  gantt_chart:       ['applications'],
 };
 
 const METRICS_BY_SOURCE: Record<string, Array<{ value: string; label: string; tableOnly?: boolean }>> = {
@@ -97,6 +98,10 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
   const [values, setValues] = useState<WidgetFormValues>({ ...DEFAULT_VALUES, ...initialValues });
 
   useEffect(() => {
+    if (values.type === 'gantt_chart') {
+      setValues(v => ({ ...v, source: 'applications', metric: 'gantt', limit: v.limit ?? 15 }));
+      return;
+    }
     const sources = SOURCE_BY_TYPE[values.type] ?? ['applications'];
     const needsSeries = values.type === 'bar_chart' || values.type === 'line_chart';
     setValues(v => ({
@@ -125,14 +130,15 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
     return true;
   });
 
-  const showGroupBy      = values.type === 'bar_chart' || values.type === 'line_chart';
+  const showGroupBy      = values.type === 'bar_chart' || values.type === 'line_chart' || values.type === 'gantt_chart';
   const showPivotDims    = values.type === 'pivot_table';
-  const showFilterStatus = values.source === 'applications';
+  const showFilterStatus = values.source === 'applications' && values.type !== 'gantt_chart';
   const showColorScheme  = values.type === 'kpi_card';
   const showColor        = values.type === 'bar_chart' || values.type === 'line_chart' || values.type === 'trend_chart';
   const showThreshold    = values.type === 'gauge';
-  const showLimit        = values.metric === 'list';
+  const showLimit        = values.metric === 'list' || values.type === 'gantt_chart';
   const showRegression   = values.type === 'trend_chart';
+  const showMetric       = values.type !== 'gantt_chart';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,6 +162,7 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
           <MenuItem value="table">Table</MenuItem>
           <MenuItem value="pivot_table">Tableau croisé dynamique</MenuItem>
           <MenuItem value="comparison_chart">Comparaison (donut / barre / courbe)</MenuItem>
+          <MenuItem value="gantt_chart">Diagramme de Gantt (délais / chronologie)</MenuItem>
         </Select>
       </FormControl>
       <FormControl size="small" fullWidth required>
@@ -168,14 +175,16 @@ export const WidgetConfigForm: React.FC<WidgetConfigFormProps> = ({ initialValue
           ))}
         </Select>
       </FormControl>
-      <FormControl size="small" fullWidth required>
-        <InputLabel>Métrique</InputLabel>
-        <Select value={values.metric} label="Métrique" onChange={e => set('metric', e.target.value)}>
-          {availableMetrics.map(m => (
-            <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+      {showMetric && (
+        <FormControl size="small" fullWidth required>
+          <InputLabel>Métrique</InputLabel>
+          <Select value={values.metric} label="Métrique" onChange={e => set('metric', e.target.value)}>
+            {availableMetrics.map(m => (
+              <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      )}
 
       <Accordion disableGutters elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: '8px !important', '&:before': { display: 'none' } }}>
         <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 40, '& .MuiAccordionSummary-content': { my: 0.5 } }}>

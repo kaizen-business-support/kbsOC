@@ -11,6 +11,7 @@ import { TableWidget } from './widgets/TableWidget';
 import { TrendChartWidget } from './widgets/TrendChartWidget';
 import { PivotTableWidget } from './widgets/PivotTableWidget';
 import { ComparisonChartWidget } from './widgets/ComparisonChartWidget';
+import { GanttChartWidget } from './widgets/GanttChartWidget';
 
 const PERIOD_LABELS: Record<string, string> = {
   this_month: 'Ce mois', this_quarter: 'Ce trimestre', this_year: 'Cette année',
@@ -34,6 +35,7 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
     (widget.type === 'bar_chart' || widget.type === 'line_chart' || widget.type === 'trend_chart') ? 'month' :
     widget.type === 'comparison_chart' ? 'status' : undefined
   );
+  const metric = widget.type === 'gantt_chart' ? 'gantt' : (cfg?.metric ?? 'count');
   const configKey = JSON.stringify(widget.config);
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
         })
       : ApiService.getWidgetData({
           source: cfg?.source ?? 'applications',
-          metric: cfg?.metric ?? 'count',
+          metric,
           groupBy,
           period: effectivePeriod,
           filter: cfg?.filter,
@@ -89,6 +91,8 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
         return <PivotTableWidget data={data} height={CONTENT_HEIGHT} metric={cfg?.metric ?? 'count'} />;
       case 'comparison_chart':
         return <ComparisonChartWidget data={data} title={widget.title} height={CONTENT_HEIGHT} />;
+      case 'gantt_chart':
+        return <GanttChartWidget data={data} title={widget.title} height={CONTENT_HEIGHT} />;
       default:
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: CONTENT_HEIGHT }}>

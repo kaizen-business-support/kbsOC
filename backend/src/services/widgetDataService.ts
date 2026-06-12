@@ -110,7 +110,7 @@ function buildMonthSeries(
 
 // ── Source: applications ──────────────────────────────────────────────────────
 
-const APPLICATION_METRICS = ['count', 'sum_amount', 'approval_rate', 'avg_processing_time', 'list'];
+const APPLICATION_METRICS = ['count', 'sum_amount', 'approval_rate', 'avg_processing_time', 'list', 'gantt'];
 const VALID_STATUSES = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'DISBURSED', 'CANCELLED'];
 
 async function getApplicationsData(params: WidgetDataParams, companyId: string): Promise<WidgetDataResult> {
@@ -149,6 +149,45 @@ async function getApplicationsData(params: WidgetDataParams, companyId: string):
         { key: 'date', label: 'Date' },
         { key: 'manager', label: 'Chargé' },
       ],
+    };
+  }
+
+  if (params.metric === 'gantt') {
+    const apps = await prisma.creditApplication.findMany({
+      where: { ...baseWhere, createdAt: { gte: from, lte: to } },
+      include: {
+        client:     { select: { companyName: true } },
+        creator:    { select: { name: true, branch: true } },
+        creditType: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: params.limit ?? 15,
+    });
+
+    const TERMINAL = new Set(['APPROVED', 'REJECTED', 'DISBURSED', 'CANCELLED']);
+    const now = Date.now();
+
+    const sortFn = (a: any, b: any): number => {
+      if (params.groupBy === 'branch')      return (a.creator?.branch ?? '').localeCompare(b.creator?.branch ?? '') || (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      if (params.groupBy === 'manager')     return (a.creator?.name   ?? '').localeCompare(b.creator?.name   ?? '') || (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      if (params.groupBy === 'status')      return (a.status ?? '').localeCompare(b.status ?? '');
+      if (params.groupBy === 'credit_type') return (a.creditType?.name ?? '').localeCompare(b.creditType?.name ?? '');
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    };
+
+    return {
+      rows: (apps as any[]).sort(sortFn).map((a: any) => ({
+        id:         a.id,
+        label:      `#${a.applicationNumber}`,
+        client:     a.client?.companyName ?? '',
+        status:     a.status,
+        branch:     a.creator?.branch  ?? '',
+        manager:    a.creator?.name    ?? '',
+        creditType: a.creditType?.name ?? '',
+        start:      new Date(a.createdAt).getTime(),
+        end:        TERMINAL.has(a.status) ? new Date(a.updatedAt).getTime() : now,
+      })),
+      columns: [],
     };
   }
 
