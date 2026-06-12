@@ -60,10 +60,12 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
   if (!channel || !channel.isActive) return;
 
   const cfg = channel.config as any;
+  const smtpPort = Number(cfg.port) || 587;
+  const smtpSecure = smtpPort === 465 ? true : (cfg.secure === true || cfg.secure === 'true');
   const transporter = nodemailer.createTransport({
     host: cfg.host,
-    port: Number(cfg.port) || 587,
-    secure: cfg.secure === true || cfg.secure === 'true',
+    port: smtpPort,
+    secure: smtpSecure,
     auth: { user: cfg.user, pass: cfg.pass },
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,

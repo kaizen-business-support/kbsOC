@@ -100,10 +100,13 @@ router.post('/test/:type', async (req: Request, res: Response) => {
         return res.status(400).json({ success: false, error: 'Configuration incomplète : host, user et pass sont obligatoires' });
       }
 
+      const smtpPort = Number(cfg.port) || 587;
+      // Port 465 = implicit SSL (secure doit être true), 587/25 = STARTTLS
+      const smtpSecure = smtpPort === 465 ? true : (cfg.secure === true || cfg.secure === 'true');
       const transporter = nodemailer.createTransport({
         host: cfg.host,
-        port: Number(cfg.port) || 587,
-        secure: cfg.secure === true || cfg.secure === 'true',
+        port: smtpPort,
+        secure: smtpSecure,
         auth: { user: cfg.user, pass: cfg.pass },
         connectionTimeout: 10_000,
         greetingTimeout: 10_000,
