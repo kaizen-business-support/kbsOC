@@ -76,8 +76,8 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
   }, [widget.id, widget.type, effectivePeriod, configKey]);
 
   const CARD_HEIGHT = height;
-  // Reserve 34px at the bottom for the insight panel (hidden padding when no insight)
-  const INSIGHT_H = 34;
+  // Reserve 60px for the AI insight panel (fits ~3 lines at 0.67rem)
+  const INSIGHT_H = 60;
   const CONTENT_HEIGHT = CARD_HEIGHT - 64;
   const WIDGET_HEIGHT = CONTENT_HEIGHT - INSIGHT_H;
 

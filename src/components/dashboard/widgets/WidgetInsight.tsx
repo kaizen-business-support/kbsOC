@@ -52,11 +52,12 @@ export const WidgetInsight: React.FC<WidgetInsightProps> = ({ widgetId, type, ti
       alignItems: 'flex-start',
       gap: 0.75,
       px: 1.5,
-      py: 0.6,
+      py: 0.75,
       bgcolor: 'rgba(99,102,241,0.04)',
-      borderTop: '1px solid rgba(99,102,241,0.10)',
+      borderTop: '1px solid rgba(99,102,241,0.12)',
       flexShrink: 0,
-      minHeight: 28,
+      height: 60,
+      overflow: 'hidden',
     }}>
       {loading ? (
         <>
@@ -67,8 +68,16 @@ export const WidgetInsight: React.FC<WidgetInsightProps> = ({ widgetId, type, ti
         </>
       ) : (
         <>
-          <AiIcon sx={{ fontSize: 12, color: '#6366f1', mt: 0.25, flexShrink: 0 }} />
-          <Typography sx={{ fontSize: '0.67rem', lineHeight: 1.5, color: '#374151' }}>
+          <AiIcon sx={{ fontSize: 11, color: '#6366f1', mt: '2px', flexShrink: 0 }} />
+          <Typography sx={{
+            fontSize: '0.67rem',
+            lineHeight: 1.55,
+            color: '#374151',
+            overflow: 'hidden',
+            display: '-webkit-box',
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: 'vertical',
+          }}>
             {analysis}
           </Typography>
         </>

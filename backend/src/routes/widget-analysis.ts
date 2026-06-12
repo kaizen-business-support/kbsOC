@@ -60,30 +60,28 @@ function amtShort(v: number): string {
 function expertKpi(data: any, config: any): string {
   const metric = config?.metric ?? 'count';
   const rows = data.rows ?? [];
-  const v = Number(data.value ?? (rows.length === 1 ? (rows[0]?.value ?? rows[0]?.count ?? 0) : 0));
+  const v = Number(data.value ?? (rows.length === 1 ? (rows[0]?.value ?? rows[0]?.count ?? 0) : null) ?? 0);
 
   if (metric === 'approval_rate') {
-    if (v >= 75) return `Le taux d'approbation de ${fmt.format(v)}% reflète une politique de crédit saine et une sélection rigoureuse des dossiers, conforme aux standards UEMOA (objectif ≥ 75%). Cette performance témoigne d'une bonne qualité de la production commerciale.`;
-    if (v >= 55) return `Le taux d'approbation de ${fmt.format(v)}% reste en deçà de l'objectif institutionnel de 75%. Cette situation peut traduire soit une qualité insuffisante des dossiers soumis, soit des critères d'analyse trop restrictifs. Une analyse des motifs de rejet est recommandée pour identifier les axes d'amélioration.`;
-    return `Le taux d'approbation critique de ${fmt.format(v)}% signale une dégradation sévère de la qualité du portefeuille entrant. Ce niveau expose l'institution à un risque opérationnel élevé. Une revue immédiate du processus d'instruction et un renforcement de l'accompagnement des chargés d'affaires sont urgents.`;
+    if (v >= 75) return `Taux d'approbation de ${fmt.format(v)}% — conforme aux standards UEMOA (≥ 75%). Bonne qualité du portefeuille entrant.`;
+    if (v >= 55) return `Taux d'approbation de ${fmt.format(v)}% en deçà de l'objectif (75%). Analyser les motifs de rejet pour identifier les axes d'amélioration.`;
+    return `Taux d'approbation critique : ${fmt.format(v)}%. Risque opérationnel élevé — revue immédiate du processus d'instruction recommandée.`;
   }
-
   if (metric === 'avg_processing_time') {
     const target = Number(config?.targetDays ?? 5);
-    if (v <= target) return `Le délai moyen de traitement de ${fmt.format(v)} jours respecte l'objectif de qualité de service (≤ ${target}j), signe d'une bonne efficacité opérationnelle. Ce niveau renforce la compétitivité de l'institution et la satisfaction de la clientèle professionnelle.`;
-    if (v <= target * 2) return `Le délai moyen de ${fmt.format(v)} jours dépasse la cible de ${target} jours. Ce glissement peut affecter la satisfaction client et la compétitivité face aux autres établissements. Identifier les étapes consommatrices de temps dans le circuit d'instruction pour cibler les optimisations.`;
-    return `Un délai moyen de ${fmt.format(v)} jours — soit ${fmt.format(v / target)}× la cible de ${target} jours — traduit un dysfonctionnement opérationnel significatif. Risques : perte de clients, saturation des équipes d'analyse, dégradation de la notation institutionnelle. Un audit du circuit d'approbation est nécessaire.`;
+    if (v <= target) return `Délai moyen de ${fmt.format(v)} j — objectif respecté (≤ ${target} j). Efficacité opérationnelle satisfaisante.`;
+    if (v <= target * 2) return `Délai moyen de ${fmt.format(v)} j dépasse la cible (${target} j). Identifier les étapes bloquantes dans le circuit d'instruction.`;
+    return `Délai critique : ${fmt.format(v)} j soit ${fmt.format(v / target)}× la cible. Audit du circuit d'approbation urgent pour éviter la perte de clients.`;
   }
-
   if (metric === 'sum_amount') {
-    return `Le volume total engagé s'établit à ${amtShort(v)} sur la période, reflétant l'intensité de l'activité de crédit. Ce chiffre est à mettre en perspective avec les plafonds d'engagements autorisés et les limites sectorielles pour évaluer le niveau de risque portefeuille.`;
+    return `Volume engagé : ${amtShort(v)} sur la période. À rapprocher des plafonds d'engagement et limites sectorielles pour évaluer l'exposition au risque.`;
   }
-
   if (metric === 'count') {
-    return `${fmtInt.format(v)} dossier${v > 1 ? 's' : ''} traité${v > 1 ? 's' : ''} sur la période. Ce volume est à analyser par rapport à la capacité de traitement des équipes et aux objectifs commerciaux pour évaluer la tension opérationnelle et la performance de la production.`;
+    return `${fmtInt.format(v)} dossier${v > 1 ? 's' : ''} sur la période. Comparer à la capacité des équipes et aux objectifs commerciaux pour mesurer la tension opérationnelle.`;
   }
-
-  return `Indicateur : ${fmt.format(v)}. Évaluer cette valeur au regard des objectifs fixés et de l'historique de l'institution pour déterminer si elle traduit une progression ou une dégradation de la performance.`;
+  return rows.length > 1
+    ? `Répartition sur ${rows.length} catégories. Analyser la concentration et les écarts par rapport aux objectifs pour prioriser les actions.`
+    : `Valeur : ${fmt.format(v)}. Évaluer par rapport aux objectifs et à l'historique pour qualifier la performance.`;
 }
 
 function expertBar(data: any, config: any): string {
@@ -94,35 +92,29 @@ function expertBar(data: any, config: any): string {
   if (!total) return '';
   const maxI = nums.indexOf(Math.max(...nums));
   const minI = nums.indexOf(Math.min(...nums));
-  const metric = config?.metric ?? 'count';
-  const isAmount = metric === 'sum_amount';
-
-  return `${rows[maxI].label} concentre la plus grande part de l'activité avec ${pct(nums[maxI], total)} du total (${isAmount ? amtShort(nums[maxI]) : fmtInt.format(nums[maxI])}). L'écart entre le segment le plus fort (${rows[maxI].label}) et le plus faible (${rows[minI].label} : ${pct(nums[minI], total)}) mérite une analyse pour identifier les facteurs de performance et rééquilibrer si nécessaire.`;
+  const isAmount = (config?.metric ?? '') === 'sum_amount';
+  const maxVal = isAmount ? amtShort(nums[maxI]) : fmtInt.format(nums[maxI]);
+  return `${rows[maxI].label} domine avec ${pct(nums[maxI], total)} du total (${maxVal}). Écart avec le segment le plus faible (${rows[minI].label} : ${pct(nums[minI], total)}) — identifier les leviers de rééquilibrage.`;
 }
 
 function expertLine(data: any): string {
   const rows = data.rows ?? [];
   if (rows.length < 2) return '';
   const nums = rows.map((r: any) => Number(r.value ?? r.count ?? 0));
-  const first = nums[0];
-  const last = nums[nums.length - 1];
+  const first = nums[0], last = nums[nums.length - 1];
   const delta = first ? ((last - first) / first) * 100 : 0;
-  const dir = delta >= 0 ? 'progression' : 'recul';
-  const icon = delta >= 0 ? '+' : '';
+  const dir = delta >= 0 ? `progression de +${fmt.format(delta)}%` : `recul de ${fmt.format(Math.abs(delta))}%`;
   const maxI = nums.indexOf(Math.max(...nums));
-  const recent2 = nums.slice(-2);
-  const recentTrend = recent2[1] > recent2[0] ? 'accélération récente positive' : 'légère inflexion récente';
-
-  return `La tendance affiche une ${dir} de ${icon}${fmt.format(Math.abs(delta))}% sur la période, passant de ${fmtInt.format(first)} à ${fmtInt.format(last)}. Le pic enregistré en « ${rows[maxI].label} » (${fmtInt.format(nums[maxI])}) constitue une référence de performance à capitaliser. ${rows.length >= 3 ? `On note une ${recentTrend} qu'il convient de surveiller attentivement.` : ''}`;
+  return `Tendance en ${dir} sur la période (${fmtInt.format(first)} → ${fmtInt.format(last)}). Pic à « ${rows[maxI].label} » (${fmtInt.format(nums[maxI])}) — référence à capitaliser.`;
 }
 
 function expertGauge(data: any, config: any): string {
   const v = Number(data.value ?? 0);
   const warn = config?.threshold?.warning ?? 70;
   const crit = config?.threshold?.critical ?? 50;
-  if (v < crit) return `L'indicateur à ${fmt.format(v)}% se situe en zone critique (seuil : ${crit}%). Ce niveau signale un risque majeur sur la performance de l'institution. Une intervention corrective immédiate est indispensable pour éviter une dégradation structurelle.`;
-  if (v < warn) return `Avec ${fmt.format(v)}%, l'indicateur se trouve en zone d'alerte (objectif : ${warn}%). Bien que la situation ne soit pas critique, elle appelle une vigilance accrue et des mesures préventives pour retrouver le niveau cible.`;
-  return `L'indicateur à ${fmt.format(v)}% se positionne en zone de performance satisfaisante (objectif ≥ ${warn}%). Ce résultat reflète une gestion maîtrisée. Maintenir cette dynamique en surveillant les tendances mensuelles pour anticiper toute inflexion.`;
+  if (v < crit) return `Zone critique : ${fmt.format(v)}% (seuil ${crit}%). Intervention corrective immédiate requise pour éviter une dégradation structurelle.`;
+  if (v < warn) return `Zone d'alerte : ${fmt.format(v)}% (objectif ${warn}%). Mesures préventives à engager pour retrouver le niveau cible.`;
+  return `Performance satisfaisante : ${fmt.format(v)}% (≥ ${warn}%). Maintenir la dynamique et surveiller les tendances pour anticiper toute inflexion.`;
 }
 
 function expertGantt(data: any): string {
@@ -133,10 +125,9 @@ function expertGantt(data: any): string {
   for (const r of rows) { counts[r.status] = (counts[r.status] ?? 0) + 1; totalAmt += Number(r.amount) || 0; }
   const inProg = (counts['UNDER_REVIEW'] ?? 0) + (counts['SUBMITTED'] ?? 0);
   const approved = counts['APPROVED'] ?? 0;
-  const rejected = counts['REJECTED'] ?? 0;
   const total = rows.length;
-  const approvalR = total ? fmt.format((approved / total) * 100) : '—';
-  return `Le pipeline recense ${fmtInt.format(total)} dossier${total > 1 ? 's' : ''} dont ${inProg} en cours d'instruction. Avec ${approved} approbation${approved > 1 ? 's' : ''} (${approvalR}%) et ${rejected} rejet${rejected > 1 ? 's' : ''}, le taux de transformation est à surveiller par rapport aux objectifs. ${totalAmt ? `Le volume total du portefeuille atteint ${amtShort(totalAmt)}, ce qui donne une mesure de l'exposition au risque de crédit en cours.` : ''}`;
+  const rate = total ? fmt.format((approved / total) * 100) : '—';
+  return `Pipeline : ${total} dossiers dont ${inProg} en instruction. Taux de transformation ${rate}%${totalAmt ? ` — volume ${amtShort(totalAmt)}` : ''}.`;
 }
 
 function expertMatrix(data: any, config: any): string {
@@ -144,11 +135,10 @@ function expertMatrix(data: any, config: any): string {
   if (!rows.length) return '';
   const target = Number(config?.targetDays ?? 5);
   const scores = rows.map((r: any) => Number(r.score ?? 0));
-  const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+  const avg = scores.reduce((a: number, b: number) => a + b, 0) / scores.length;
   const maxI = scores.indexOf(Math.max(...scores));
-  const overdue = rows.filter((r: any) => Number(r.avgDelay ?? 0) > target);
-  const topPeformer = rows[maxI];
-  return `La performance moyenne des agents s'établit à ${fmt.format(avgScore)}/100. ${topPeformer?.name} se distingue avec ${fmt.format(scores[maxI])}/100, représentant un modèle de bonnes pratiques à partager. ${overdue.length > 0 ? `${overdue.length} agent${overdue.length > 1 ? 's dépassent' : ' dépasse'} le délai cible de ${target} jours, ce qui requiert un accompagnement ciblé et un suivi managérial renforcé.` : `Tous les agents respectent le délai cible de ${target} jours, signe d'une organisation opérationnelle efficace.`}`;
+  const overdue = rows.filter((r: any) => Number(r.avgDelay ?? 0) > target).length;
+  return `Score moyen : ${fmt.format(avg)}/100 — meilleur : ${rows[maxI]?.name} (${fmt.format(scores[maxI])}/100). ${overdue > 0 ? `${overdue} agent${overdue > 1 ? 's dépassent' : ' dépasse'} la cible de ${target} j — accompagnement ciblé requis.` : `Tous respectent le délai cible de ${target} j.`}`;
 }
 
 function expertPivot(data: any): string {
@@ -156,10 +146,9 @@ function expertPivot(data: any): string {
   const cols = data.pivotCols ?? [];
   const matrix = data.pivotMatrix ?? {};
   if (!rows.length || !cols.length) return '';
-  let maxVal = -Infinity; let maxRow = ''; let maxCol = '';
-  let total = 0;
+  let maxVal = -Infinity; let maxRow = ''; let maxCol = ''; let total = 0;
   for (const r of rows) for (const c of cols) { const v = Number(matrix[r]?.[c] ?? 0); if (v > maxVal) { maxVal = v; maxRow = r; maxCol = c; } total += v; }
-  return `L'analyse croisée ${rows.length}×${cols.length} révèle que la combinaison ${maxRow}/${maxCol} enregistre le volume le plus élevé (${fmtInt.format(maxVal)}, soit ${total ? fmt.format((maxVal / total) * 100) : '—'}% du total). Cette concentration sectorielle mérite une attention particulière dans la gestion du risque de portefeuille et la politique de diversification.`;
+  return `Tableau ${rows.length}×${cols.length} — concentration max : ${maxRow}/${maxCol} (${fmtInt.format(maxVal)}, ${total ? fmt.format((maxVal / total) * 100) : '—'}% du total). Surveiller cette concentration dans la politique de diversification.`;
 }
 
 function expertFallback(widgetType: string, data: any, config: any): string {
@@ -176,7 +165,7 @@ function expertFallback(widgetType: string, data: any, config: any): string {
       case 'pivot_table':        return expertPivot(data);
       case 'table': {
         const n = (data.rows ?? []).length;
-        return `Le tableau présente ${n} entrée${n > 1 ? 's' : ''} sur la période sélectionnée. Analyser les valeurs par rapport aux benchmarks sectoriels et aux objectifs de l'institution pour identifier les écarts et définir les priorités d'action.`;
+        return `${n} entrée${n > 1 ? 's' : ''} affichée${n > 1 ? 's' : ''}. Comparer aux benchmarks sectoriels pour identifier les écarts et prioriser les actions.`;
       }
       default: return '';
     }
