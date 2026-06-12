@@ -3,7 +3,8 @@ import { randomUUID } from 'crypto';
 import { prisma } from '../prismaClient';
 import { authenticate, requireCompany } from '../middleware/auth';
 import { getMergedProfile } from '../services/moduleProfileService';
-import { createInAppNotification, renderTemplate, sendEmail } from '../services/notificationService';
+import { createInAppNotification, renderTemplate } from '../services/notificationService';
+import { enqueueEmail } from '../services/emailQueueService';
 import { buildDashboardSharedEmail } from '../utils/emailTemplates';
 
 const router = Router();
@@ -53,42 +54,65 @@ async function notifyDashboardShare(params: {
 
   // Resolve recipient users
   let recipients: { id: string; name: string; email: string | null }[] = [];
-
-  if (shareType === 'USER') {
-    const user = await prisma.user.findFirst({
-      where: { id: targetId, isActive: true },
-      select: { id: true, name: true, email: true },
-    });
-    if (user) recipients = [user];
-  } else if (shareType === 'ROLE') {
-    recipients = await prisma.user.findMany({
-      where: { role: targetId as any, isActive: true, memberships: { some: { companyId, isActive: true } } },
-      select: { id: true, name: true, email: true },
-    });
-  } else if (shareType === 'COMPANY') {
-    recipients = await prisma.user.findMany({
-      where: { isActive: true, memberships: { some: { companyId, isActive: true } } },
-      select: { id: true, name: true, email: true },
-    });
+  try {
+    if (shareType === 'USER') {
+      const user = await prisma.user.findFirst({
+        where: { id: targetId, isActive: true },
+        select: { id: true, name: true, email: true },
+      });
+      if (user) recipients = [user];
+    } else if (shareType === 'ROLE') {
+      recipients = await prisma.user.findMany({
+        where: { role: targetId as any, isActive: true, memberships: { some: { companyId, isActive: true } } },
+        select: { id: true, name: true, email: true },
+      });
+    } else if (shareType === 'COMPANY') {
+      recipients = await prisma.user.findMany({
+        where: { isActive: true, memberships: { some: { companyId, isActive: true } } },
+        select: { id: true, name: true, email: true },
+      });
+    }
+  } catch (err) {
+    console.error('[notifyDashboardShare] Failed to resolve recipients:', err);
+    return;
   }
 
   if (!recipients.length) return;
 
-  // Tenant branding for email
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3006';
-  const [company, emailChannel, tplRecord] = await Promise.all([
-    prisma.company.findUnique({ where: { id: companyId }, select: { name: true, logoUrl: true } }),
-    prisma.notificationChannel.findUnique({ where: { type: 'EMAIL' } }),
-    prisma.notificationTemplate.findFirst({ where: { event: 'DASHBOARD_SHARED', isActive: true } }),
-  ]);
+  const dashboardUrl = `${frontendUrl}/dashboard-builder/${dashboard.id}`;
+  const permLabel = permission === 'EDIT' ? 'Consultation et modification' : 'Consultation uniquement';
+
+  // Optional: company branding for email
+  let company: { name: string; logoUrl: string | null } | null = null;
+  try {
+    company = await prisma.company.findUnique({ where: { id: companyId }, select: { name: true, logoUrl: true } });
+  } catch (err) {
+    console.error('[notifyDashboardShare] Failed to fetch company branding:', err);
+  }
+
+  // Optional: email channel
+  let emailActive = false;
+  try {
+    const emailChannel = await prisma.notificationChannel.findUnique({ where: { type: 'EMAIL' } });
+    emailActive = emailChannel?.isActive === true;
+  } catch (err) {
+    console.error('[notifyDashboardShare] Failed to fetch email channel:', err);
+  }
+
+  // Optional: notification template (may not exist if migration not applied yet)
+  let tplRecord: { subject: string | null; body: string } | null = null;
+  try {
+    tplRecord = await prisma.notificationTemplate.findFirst({
+      where: { event: 'DASHBOARD_SHARED' as any, isActive: true },
+    });
+  } catch (err) {
+    console.error('[notifyDashboardShare] Template lookup failed (migration may be pending):', err);
+  }
 
   const tenant = company
     ? { name: company.name, logoUrl: company.logoUrl ? `${frontendUrl}${company.logoUrl}` : null }
     : null;
-
-  const dashboardUrl = `${frontendUrl}/dashboard-builder/${dashboard.id}`;
-  const permLabel = permission === 'EDIT' ? 'Consultation et modification' : 'Consultation uniquement';
-  const emailActive = emailChannel?.isActive === true;
 
   for (const user of recipients) {
     if (user.id === dashboard.ownerId) continue;
@@ -101,23 +125,25 @@ async function notifyDashboardShare(params: {
       actionUrl: dashboardUrl,
     };
 
-    // In-app notification: use template body if configured, else default
     const inAppMessage = tplRecord?.body
       ? renderTemplate(tplRecord.body, tplVars)
       : `${sharerName} vous a partagé le tableau de bord « ${dashboard.name} » (${permLabel.toLowerCase()}).`;
 
-    await createInAppNotification(user.id, {
-      title: 'Dashboard partagé avec vous',
-      message: inAppMessage,
-      type: 'INFO',
-      relatedType: 'dashboard',
-      relatedId: dashboard.id,
-      actionUrl: `/dashboard-builder/${dashboard.id}`,
-      companyId,
-    });
+    try {
+      await createInAppNotification(user.id, {
+        title: 'Dashboard partagé avec vous',
+        message: inAppMessage,
+        type: 'INFO',
+        relatedType: 'dashboard',
+        relatedId: dashboard.id,
+        actionUrl: `/dashboard-builder/${dashboard.id}`,
+        companyId,
+      });
+    } catch (err) {
+      console.error(`[notifyDashboardShare] In-app notification failed for user ${user.id}:`, err);
+    }
 
     if (emailActive && user.email) {
-      // Subject: use template subject if configured, else default
       const subject = tplRecord?.subject
         ? renderTemplate(tplRecord.subject, tplVars)
         : `${sharerName} vous a partagé un dashboard`;
@@ -126,7 +152,14 @@ async function notifyDashboardShare(params: {
         { recipientName: user.name, sharerName, dashboardName: dashboard.name, permission: permission as 'VIEW' | 'EDIT', dashboardUrl },
         tenant
       );
-      await sendEmail(user.email, subject, html).catch(() => {});
+      await enqueueEmail({
+        to: user.email,
+        subject,
+        html,
+        event: 'DASHBOARD_SHARED',
+        recipientName: user.name,
+        companyId,
+      }).catch(err => console.error(`[notifyDashboardShare] Email enqueue failed for ${user.email}:`, err));
     }
   }
 }
