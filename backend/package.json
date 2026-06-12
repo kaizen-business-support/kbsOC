@@ -25,6 +25,7 @@
   "author": "OptimusCredit Team",
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.1",
     "@prisma/client": "^6.15.0",
     "@types/bcrypt": "^6.0.0",
     "@types/pg": "^8.15.5",

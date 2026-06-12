@@ -3,6 +3,8 @@ import { randomUUID } from 'crypto';
 import { prisma } from '../prismaClient';
 import { authenticate, requireCompany } from '../middleware/auth';
 import { getMergedProfile } from '../services/moduleProfileService';
+import { createInAppNotification, renderTemplate, sendEmail } from '../services/notificationService';
+import { buildDashboardSharedEmail } from '../utils/emailTemplates';
 
 const router = Router();
 router.use(authenticate);
@@ -37,6 +39,96 @@ function canAccessDashboard(dashboard: any, userId: string, userRole: string | u
     if (s.shareType === 'COMPANY' && s.targetId === dashboard.companyId) return true;
     return false;
   });
+}
+
+async function notifyDashboardShare(params: {
+  dashboard: any;
+  shareType: string;
+  targetId: string;
+  permission: string;
+  sharerName: string;
+  companyId: string;
+}): Promise<void> {
+  const { dashboard, shareType, targetId, permission, sharerName, companyId } = params;
+
+  // Resolve recipient users
+  let recipients: { id: string; name: string; email: string | null }[] = [];
+
+  if (shareType === 'USER') {
+    const user = await prisma.user.findFirst({
+      where: { id: targetId, isActive: true },
+      select: { id: true, name: true, email: true },
+    });
+    if (user) recipients = [user];
+  } else if (shareType === 'ROLE') {
+    recipients = await prisma.user.findMany({
+      where: { role: targetId as any, isActive: true, memberships: { some: { companyId, isActive: true } } },
+      select: { id: true, name: true, email: true },
+    });
+  } else if (shareType === 'COMPANY') {
+    recipients = await prisma.user.findMany({
+      where: { isActive: true, memberships: { some: { companyId, isActive: true } } },
+      select: { id: true, name: true, email: true },
+    });
+  }
+
+  if (!recipients.length) return;
+
+  // Tenant branding for email
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3006';
+  const [company, emailChannel, tplRecord] = await Promise.all([
+    prisma.company.findUnique({ where: { id: companyId }, select: { name: true, logoUrl: true } }),
+    prisma.notificationChannel.findUnique({ where: { type: 'EMAIL' } }),
+    prisma.notificationTemplate.findFirst({ where: { event: 'DASHBOARD_SHARED', isActive: true } }),
+  ]);
+
+  const tenant = company
+    ? { name: company.name, logoUrl: company.logoUrl ? `${frontendUrl}${company.logoUrl}` : null }
+    : null;
+
+  const dashboardUrl = `${frontendUrl}/dashboard-builder/${dashboard.id}`;
+  const permLabel = permission === 'EDIT' ? 'Consultation et modification' : 'Consultation uniquement';
+  const emailActive = emailChannel?.isActive === true;
+
+  for (const user of recipients) {
+    if (user.id === dashboard.ownerId) continue;
+
+    const tplVars: Record<string, string> = {
+      recipientName: user.name,
+      sharerName,
+      dashboardName: dashboard.name,
+      permissionLabel: permLabel,
+      actionUrl: dashboardUrl,
+    };
+
+    // In-app notification: use template body if configured, else default
+    const inAppMessage = tplRecord?.body
+      ? renderTemplate(tplRecord.body, tplVars)
+      : `${sharerName} vous a partagé le tableau de bord « ${dashboard.name} » (${permLabel.toLowerCase()}).`;
+
+    await createInAppNotification(user.id, {
+      title: 'Dashboard partagé avec vous',
+      message: inAppMessage,
+      type: 'INFO',
+      relatedType: 'dashboard',
+      relatedId: dashboard.id,
+      actionUrl: `/dashboard-builder/${dashboard.id}`,
+      companyId,
+    });
+
+    if (emailActive && user.email) {
+      // Subject: use template subject if configured, else default
+      const subject = tplRecord?.subject
+        ? renderTemplate(tplRecord.subject, tplVars)
+        : `${sharerName} vous a partagé un dashboard`;
+
+      const html = buildDashboardSharedEmail(
+        { recipientName: user.name, sharerName, dashboardName: dashboard.name, permission: permission as 'VIEW' | 'EDIT', dashboardUrl },
+        tenant
+      );
+      await sendEmail(user.email, subject, html).catch(() => {});
+    }
+  }
 }
 
 // GET /api/dashboards
@@ -242,6 +334,18 @@ router.post('/:id/shares', async (req: Request, res: Response) => {
       data: { dashboardId: req.params.id, shareType, targetId, permission },
     });
     res.status(201).json({ success: true, data: share });
+
+    // Fire-and-forget: notify the recipient(s)
+    prisma.user.findUnique({ where: { id: req.user!.id }, select: { name: true } })
+      .then(sharer => notifyDashboardShare({
+        dashboard,
+        shareType,
+        targetId,
+        permission,
+        sharerName: sharer?.name ?? 'Un utilisateur',
+        companyId: req.companyId!,
+      }))
+      .catch(err => console.error('notifyDashboardShare error:', err));
   } catch (e: any) {
     if (e.code === 'P2002') return res.status(409).json({ success: false, error: 'Ce partage existe déjà' }) as any;
     res.status(500).json({ success: false, error: e.message });

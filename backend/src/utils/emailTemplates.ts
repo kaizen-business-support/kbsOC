@@ -564,6 +564,106 @@ export function buildPasswordResetEmail(vars: {
   return authEmailWrapper('Réinitialisation', 'rgba(21,101,192,0.85)', '#1565C0', '#0D47A1', body);
 }
 
+// ─── Dashboard share email ─────────────────────────────────────────────────────
+
+export function buildDashboardSharedEmail(
+  vars: {
+    recipientName: string;
+    sharerName: string;
+    dashboardName: string;
+    permission: 'VIEW' | 'EDIT';
+    dashboardUrl: string;
+  },
+  tenant?: TenantBranding | null
+): string {
+  const year = new Date().getFullYear();
+  const bankName = tenant?.name ?? 'OptimusCredit';
+  const logoUrl  = tenant?.logoUrl ?? null;
+  const permLabel = vars.permission === 'EDIT' ? 'Consultation et modification' : 'Consultation uniquement';
+
+  const logoBlock = logoUrl
+    ? `<img src="${logoUrl}" alt="${bankName}" height="44" style="height:44px;max-width:180px;object-fit:contain;display:block;">`
+    : `<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:2px;padding:10px 0;">INSTITUTION</div>`;
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${bankName} — Dashboard partagé</title></head>
+<body style="margin:0;padding:0;background:#F0F4F8;font-family:'Segoe UI',Arial,'Helvetica Neue',Helvetica,sans-serif;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#F0F4F8;">
+  <tr><td align="center" style="padding:32px 16px 40px;">
+    <table role="presentation" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;border-radius:16px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.12);">
+
+      <!-- HEADER -->
+      <tr><td style="background:#fff;padding:20px 36px;border-bottom:1px solid #E8ECF0;">
+        <table width="100%" cellspacing="0" cellpadding="0"><tr>
+          <td style="vertical-align:middle;">${logoBlock}</td>
+          <td style="vertical-align:middle;padding-left:14px;">
+            <div style="font-size:15px;font-weight:700;color:#1e293b;">${bankName}</div>
+            <div style="font-size:10px;color:#94a3b8;letter-spacing:1.2px;text-transform:uppercase;">Gestion de Crédit</div>
+          </td>
+          <td align="right" style="vertical-align:middle;">
+            <span style="display:inline-block;background:#1565C0;color:#fff;font-size:10px;font-weight:700;padding:5px 14px;border-radius:20px;letter-spacing:0.8px;text-transform:uppercase;">📊 Dashboard partagé</span>
+          </td>
+        </tr></table>
+      </td></tr>
+
+      <!-- BANNER -->
+      <tr><td style="background:linear-gradient(135deg,#1565C0 0%,#0D47A1 100%);padding:28px 36px;">
+        <div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:8px;">Un dashboard vous a été partagé</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.80);line-height:1.6;">${vars.sharerName} vous a donné accès à un tableau de bord.</div>
+      </td></tr>
+
+      <!-- BODY -->
+      <tr><td style="background:#fff;padding:36px;">
+        <p style="margin:0 0 24px;font-size:14px;color:#475569;line-height:1.8;">
+          Bonjour <strong>${vars.recipientName}</strong>,<br><br>
+          <strong>${vars.sharerName}</strong> vous a partagé le tableau de bord suivant sur OptimusCredit.
+        </p>
+
+        <!-- Info card -->
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+               style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;margin-bottom:28px;">
+          <tr><td style="padding:16px 24px;border-bottom:1px solid #E2E8F0;">
+            <table width="100%" cellspacing="0" cellpadding="0"><tr>
+              <td style="font-size:10px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:1px;">Tableau de bord</td>
+              <td align="right" style="font-size:15px;font-weight:700;color:#1e293b;">${vars.dashboardName}</td>
+            </tr></table>
+          </td></tr>
+          <tr><td style="padding:16px 24px;">
+            <table width="100%" cellspacing="0" cellpadding="0"><tr>
+              <td style="font-size:10px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:1px;">Niveau d'accès</td>
+              <td align="right">
+                <span style="display:inline-block;background:${vars.permission === 'EDIT' ? '#dcfce7' : '#e0f2fe'};color:${vars.permission === 'EDIT' ? '#15803d' : '#0369a1'};font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;">
+                  ${permLabel}
+                </span>
+              </td>
+            </tr></table>
+          </td></tr>
+        </table>
+
+        <!-- CTA -->
+        <table role="presentation" cellspacing="0" cellpadding="0">
+          <tr><td style="border-radius:10px;background:linear-gradient(135deg,#1565C0,#0D47A1);">
+            <a href="${vars.dashboardUrl}" style="display:inline-block;padding:15px 40px;font-size:14px;font-weight:700;color:#fff;text-decoration:none;border-radius:10px;">Ouvrir le dashboard &rarr;</a>
+          </td></tr>
+        </table>
+        <p style="margin:16px 0 0;font-size:11px;color:#CBD5E1;">
+          Si le bouton ne fonctionne pas : <a href="${vars.dashboardUrl}" style="color:#94A3B8;word-break:break-all;">${vars.dashboardUrl}</a>
+        </p>
+      </td></tr>
+
+      <!-- FOOTER -->
+      <tr><td style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:20px 36px;">
+        <p style="margin:0;font-size:11px;color:#94A3B8;line-height:1.8;">Ce message a été généré automatiquement — merci de ne pas y répondre.</p>
+        <p style="margin:8px 0 0;font-size:11px;color:#CBD5E1;">© ${year} <strong style="color:#94A3B8;">${bankName}</strong> &nbsp;·&nbsp; Propulsé par <a href="#" style="color:#94A3B8;text-decoration:none;font-weight:600;">OptimusCredit</a></p>
+      </td></tr>
+
+    </table>
+  </td></tr>
+</table>
+</body></html>`;
+}
+
 // ─── Preview sample vars ───────────────────────────────────────────────────────
 
 export const PREVIEW_SAMPLE_VARS = {

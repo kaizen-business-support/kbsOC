@@ -177,6 +177,46 @@ else
     || dep_warn "openssl indisponible — opérations cryptographiques limitées"
 fi
 
+# ── 1j. Ollama (IA locale — analyse experte des widgets) ──
+# Non bloquant : si Ollama est absent ou si le download échoue,
+# le système bascule automatiquement sur les templates experts intégrés.
+_OLLAMA_MODEL=$(grep -E '^\s*OLLAMA_MODEL\s*=' "$BACKEND_ENV" 2>/dev/null \
+  | head -1 | sed -E 's/^\s*OLLAMA_MODEL\s*=\s*//' | tr -d '"'"'"' ' || true)
+_OLLAMA_MODEL="${_OLLAMA_MODEL:-llama3.2:1b}"
+
+if command -v ollama &>/dev/null; then
+  dep_ok "Ollama : $(ollama --version 2>/dev/null | awk '{print $NF}' || echo 'installé')"
+  systemctl is-active --quiet ollama 2>/dev/null \
+    || { systemctl start ollama 2>/dev/null || true; sleep 2; }
+  systemctl enable ollama --quiet 2>/dev/null || true
+  if ollama list 2>/dev/null | grep -q "^${_OLLAMA_MODEL}"; then
+    dep_ok "Ollama modèle '${_OLLAMA_MODEL}' : disponible"
+  else
+    dep_warn "Modèle '${_OLLAMA_MODEL}' absent — téléchargement (quelques minutes selon la connexion)..."
+    ollama pull "${_OLLAMA_MODEL}" 2>&1 | tail -2 \
+      && dep_ok "Modèle '${_OLLAMA_MODEL}' : OK" \
+      || dep_warn "Téléchargement échoué — l'analyse utilisera les templates experts (non bloquant)"
+  fi
+else
+  dep_warn "Ollama absent — installation..."
+  if curl -fsSL https://ollama.com/install.sh | sh 2>&1 | tail -3; then
+    systemctl enable ollama --quiet 2>/dev/null || true
+    systemctl start ollama 2>/dev/null || true
+    sleep 4
+    if command -v ollama &>/dev/null; then
+      dep_ok "Ollama installé"
+      dep_warn "Téléchargement du modèle '${_OLLAMA_MODEL}' (quelques minutes)..."
+      ollama pull "${_OLLAMA_MODEL}" 2>&1 | tail -2 \
+        && dep_ok "Modèle '${_OLLAMA_MODEL}' : OK" \
+        || dep_warn "Téléchargement échoué — fallback templates experts (non bloquant)"
+    else
+      dep_warn "Ollama installation échouée — fallback templates experts (non bloquant)"
+    fi
+  else
+    dep_warn "Ollama installation échouée — fallback templates experts (non bloquant)"
+  fi
+fi
+
 if [[ "$DEP_ERRORS" -gt 0 ]]; then
   error "${DEP_ERRORS} dépendance(s) critique(s) manquante(s). Corrigez les erreurs ci-dessus."
 fi
@@ -369,6 +409,11 @@ if [[ -f "$APP_DIR/backend/prisma/seed-dashboard-templates.js" ]]; then
     && dep_ok "Templates dashboard globaux seedés" \
     || warn "seed-dashboard-templates.js : erreur (non bloquant)"
 fi
+if [[ -f "$APP_DIR/backend/prisma/seed-notifications.js" ]]; then
+  node "$APP_DIR/backend/prisma/seed-notifications.js" \
+    && dep_ok "Modèles de notification seedés (dont DASHBOARD_SHARED)" \
+    || warn "seed-notifications.js : erreur (non bloquant)"
+fi
 
 # Vider les clés Redis liées aux listes (cache périmé après seed)
 redis-cli DEL cache:departments:active cache:branches:active 2>/dev/null \
@@ -467,6 +512,7 @@ echo ""
 echo -e "${YELLOW}  Commandes utiles :${NC}"
 echo "    systemctl status optimuscredit-backend"
 echo "    systemctl status optimuscredit-frontend"
+echo "    systemctl status ollama                      # IA locale (analyse widgets)"
 echo "    journalctl -u optimuscredit-backend  -f --no-pager"
 echo "    journalctl -u optimuscredit-frontend -f --no-pager"
 echo ""

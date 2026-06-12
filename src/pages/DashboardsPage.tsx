@@ -10,12 +10,14 @@ import {
   Bookmark as TemplateIcon,
   Dashboard as DashboardIcon,
   Delete as DeleteIcon,
+  Edit as EditIcon,
   Schedule as ScheduleIcon,
   Share as ShareIcon,
 } from '@mui/icons-material';
 import { ApiService } from '../services/api';
 import { Dashboard, DashboardTemplate, DashboardWidget } from '../types';
 import { useModuleAccess } from '../hooks/useModuleAccess';
+import { useUser } from '../contexts/UserContext';
 
 const CARD_GRADIENTS = [
   'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -87,6 +89,9 @@ function DashboardMiniPreview({ id, widgets }: { id: string; widgets: DashboardW
 export const DashboardsPage: React.FC = () => {
   const navigate = useNavigate();
   const { canAction } = useModuleAccess();
+  const { state: userState } = useUser();
+  const currentUserId = userState.currentUser?.id;
+
   const canCreate         = canAction('dashboard-builder', 'create');
   const canUseTemplate    = canAction('dashboard-builder', 'templates_use');
   const canCreateTemplate = canAction('dashboard-builder', 'templates_create');
@@ -105,6 +110,15 @@ export const DashboardsPage: React.FC = () => {
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [creating, setCreating] = useState(false);
+
+  // Rename dashboard dialog
+  const [renamingDashboard, setRenamingDashboard] = useState<Dashboard | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renaming, setRenaming] = useState(false);
+
+  // Delete dashboard dialog
+  const [deletingDashboard, setDeletingDashboard] = useState<Dashboard | null>(null);
+  const [deletingDash, setDeletingDash] = useState(false);
 
   // Apply template dialog
   const [applyTarget, setApplyTarget] = useState<DashboardTemplate | null>(null);
@@ -175,6 +189,33 @@ export const DashboardsPage: React.FC = () => {
       loadDashboards();
     } else {
       setError(res.error || 'Erreur lors de la création');
+    }
+  };
+
+  const handleRename = async () => {
+    if (!renamingDashboard || !renameValue.trim()) return;
+    setRenaming(true);
+    const res = await ApiService.updateDashboard(renamingDashboard.id, { name: renameValue.trim() });
+    setRenaming(false);
+    if (res.success && res.data) {
+      setDashboards(prev => prev.map(d => d.id === renamingDashboard.id ? { ...d, name: renameValue.trim() } : d));
+      setRenamingDashboard(null);
+    } else {
+      setError(res.error || 'Erreur lors du renommage');
+    }
+  };
+
+  const handleDeleteDashboard = async () => {
+    if (!deletingDashboard) return;
+    setDeletingDash(true);
+    const res = await ApiService.deleteDashboard(deletingDashboard.id);
+    setDeletingDash(false);
+    if (res.success) {
+      setDashboards(prev => prev.filter(d => d.id !== deletingDashboard.id));
+      setDeletingDashboard(null);
+    } else {
+      setError(res.error || 'Erreur lors de la suppression');
+      setDeletingDashboard(null);
     }
   };
 
@@ -262,42 +303,80 @@ export const DashboardsPage: React.FC = () => {
         </Box>
       ) : (
         <Grid container spacing={3}>
-          {dashboards.map(d => (
-            <Grid item xs={12} sm={6} md={4} key={d.id}>
-              <Card sx={{ borderRadius: 4, boxShadow: '0 2px 16px rgba(0,0,0,0.07)', border: '1px solid rgba(0,0,0,0.06)', height: '100%' }}>
-                <CardActionArea
-                  onClick={() => navigate(`/dashboard-builder/${d.id}`)}
-                  sx={{ p: 0, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
-                >
-                  <DashboardMiniPreview id={d.id} widgets={d.widgets} />
-                  <CardContent sx={{ flexGrow: 1 }}>
-                    <Typography variant="subtitle1" fontWeight={700} color="#1a1a2e" gutterBottom noWrap>
-                      {d.name}
-                    </Typography>
-                    {d.description && (
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-                        {d.description}
+          {dashboards.map(d => {
+            const isOwner = d.ownerId === currentUserId;
+            return (
+              <Grid item xs={12} sm={6} md={4} key={d.id}>
+                <Card sx={{ borderRadius: 4, boxShadow: '0 2px 16px rgba(0,0,0,0.07)', border: '1px solid rgba(0,0,0,0.06)', height: '100%', position: 'relative' }}>
+                  <CardActionArea
+                    onClick={() => navigate(`/dashboard-builder/${d.id}`)}
+                    sx={{ p: 0, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
+                  >
+                    <DashboardMiniPreview id={d.id} widgets={d.widgets} />
+                    <CardContent sx={{ flexGrow: 1 }}>
+                      <Typography variant="subtitle1" fontWeight={700} color="#1a1a2e" gutterBottom noWrap>
+                        {d.name}
                       </Typography>
-                    )}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mt: 'auto' }}>
-                      {d.isShared && (
-                        <Chip icon={<ShareIcon sx={{ fontSize: 12 }} />} label="Partagé" size="small" color="primary" variant="outlined" />
+                      {d.description && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+                          {d.description}
+                        </Typography>
                       )}
-                      {d.templateSourceId && (
-                        <Chip label="Template" size="small" variant="outlined" />
-                      )}
-                      <Chip
-                        icon={<ScheduleIcon sx={{ fontSize: 12 }} />}
-                        label={formatDate(d.updatedAt)}
-                        size="small"
-                        sx={{ ml: 'auto', color: 'text.secondary', bgcolor: '#f8fafc' }}
-                      />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mt: 'auto' }}>
+                        {d.isShared && (
+                          <Chip icon={<ShareIcon sx={{ fontSize: 12 }} />} label="Partagé" size="small" color="primary" variant="outlined" />
+                        )}
+                        {d.templateSourceId && (
+                          <Chip label="Template" size="small" variant="outlined" />
+                        )}
+                        <Chip
+                          icon={<ScheduleIcon sx={{ fontSize: 12 }} />}
+                          label={formatDate(d.updatedAt)}
+                          size="small"
+                          sx={{ ml: 'auto', color: 'text.secondary', bgcolor: '#f8fafc' }}
+                        />
+                      </Box>
+                    </CardContent>
+                  </CardActionArea>
+
+                  {/* Actions renommer / supprimer (propriétaire uniquement) */}
+                  {isOwner && (
+                    <Box
+                      sx={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 0.5 }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <Tooltip title="Renommer">
+                        <IconButton
+                          size="small"
+                          onClick={e => { e.stopPropagation(); setRenameValue(d.name); setRenamingDashboard(d); }}
+                          sx={{
+                            bgcolor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(4px)',
+                            color: '#1565c0', width: 26, height: 26,
+                            '&:hover': { bgcolor: '#e3f2fd' },
+                          }}
+                        >
+                          <EditIcon sx={{ fontSize: 14 }} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Supprimer">
+                        <IconButton
+                          size="small"
+                          onClick={e => { e.stopPropagation(); setDeletingDashboard(d); }}
+                          sx={{
+                            bgcolor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(4px)',
+                            color: '#e53e3e', width: 26, height: 26,
+                            '&:hover': { bgcolor: '#fff5f5' },
+                          }}
+                        >
+                          <DeleteIcon sx={{ fontSize: 14 }} />
+                        </IconButton>
+                      </Tooltip>
                     </Box>
-                  </CardContent>
-                </CardActionArea>
-              </Card>
-            </Grid>
-          ))}
+                  )}
+                </Card>
+              </Grid>
+            );
+          })}
         </Grid>
       )}
 
@@ -385,6 +464,41 @@ export const DashboardsPage: React.FC = () => {
           <Button onClick={() => setNewDialogOpen(false)}>Annuler</Button>
           <Button variant="contained" onClick={handleCreate} disabled={!newName.trim() || creating} sx={{ borderRadius: 2 }}>
             {creating ? <CircularProgress size={20} /> : 'Créer'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog : renommer un dashboard */}
+      <Dialog open={Boolean(renamingDashboard)} onClose={() => setRenamingDashboard(null)} maxWidth="sm" fullWidth>
+        <DialogTitle fontWeight={700}>Renommer le dashboard</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus fullWidth label="Nouveau nom *" value={renameValue}
+            onChange={e => setRenameValue(e.target.value)}
+            sx={{ mt: 1 }}
+            onKeyDown={e => e.key === 'Enter' && handleRename()}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setRenamingDashboard(null)}>Annuler</Button>
+          <Button variant="contained" onClick={handleRename} disabled={!renameValue.trim() || renaming} sx={{ borderRadius: 2 }}>
+            {renaming ? <CircularProgress size={20} /> : 'Enregistrer'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog : confirmer suppression dashboard */}
+      <Dialog open={Boolean(deletingDashboard)} onClose={() => setDeletingDashboard(null)} maxWidth="xs" fullWidth>
+        <DialogTitle fontWeight={700}>Supprimer ce dashboard ?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Le dashboard <b>{deletingDashboard?.name}</b> et tous ses widgets seront définitivement supprimés. Cette action est irréversible.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDeletingDashboard(null)}>Annuler</Button>
+          <Button variant="contained" color="error" onClick={handleDeleteDashboard} disabled={deletingDash} sx={{ borderRadius: 2 }}>
+            {deletingDash ? <CircularProgress size={20} color="inherit" /> : 'Supprimer'}
           </Button>
         </DialogActions>
       </Dialog>

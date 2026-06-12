@@ -36,6 +36,8 @@
 #      - seed-policies.js      → SKIPPÉ (préserve politique de crédit éditée)
 #      - seed-bci.js           → SKIPPÉ (users BCI déjà créés)
 #      - migrate-* (data)      → SKIPPÉ (préserve plafonds/allowedActions custom)
+#      - seed-notifications.js → RUN  (upsert modèles notif dont DASHBOARD_SHARED)
+#      - seed-dashboard-templates → RUN (idempotent, skip si déjà présents)
 #      - prisma migrate deploy → RUN (applique nouvelles migrations de schéma)
 #      - npm install + build   → RUN
 #      - restart services      → RUN
@@ -204,6 +206,49 @@ else
   ok "Utilisateur '$APP_USER' : existant"
 fi
 usermod -aG www-data "$APP_USER" 2>/dev/null || true
+
+# ── Ollama (IA locale — analyse experte des widgets) ──────────────────────────
+# Non bloquant : si Ollama est absent ou si le download échoue,
+# le système bascule sur les templates experts intégrés sans interruption.
+_OLLAMA_MODEL=$(grep -E '^\s*OLLAMA_MODEL\s*=' "$BACKEND_ENV" 2>/dev/null \
+  | head -1 | sed -E 's/^\s*OLLAMA_MODEL\s*=\s*//' | tr -d '"'"'"' ' || true)
+_OLLAMA_MODEL="${_OLLAMA_MODEL:-llama3.2:1b}"
+
+if command -v ollama &>/dev/null; then
+  ok "Ollama : $(ollama --version 2>/dev/null | awk '{print $NF}' || echo 'installé')"
+  # Démarrage + activation au boot
+  systemctl enable ollama --quiet 2>/dev/null || true
+  systemctl is-active --quiet ollama 2>/dev/null \
+    || { systemctl start ollama 2>/dev/null || true; sleep 3; }
+  # Vérifier / télécharger le modèle
+  if ollama list 2>/dev/null | grep -q "^${_OLLAMA_MODEL}"; then
+    ok "Ollama modèle '${_OLLAMA_MODEL}' : disponible"
+  else
+    warn "Modèle '${_OLLAMA_MODEL}' absent — téléchargement (quelques minutes)..."
+    ollama pull "${_OLLAMA_MODEL}" 2>&1 | tail -2 \
+      && ok "Modèle '${_OLLAMA_MODEL}' téléchargé" \
+      || warn "Téléchargement échoué — l'analyse utilisera les templates experts (non bloquant)"
+  fi
+else
+  warn "Ollama absent — installation en cours..."
+  if curl -fsSL https://ollama.com/install.sh | sh 2>&1 | tail -3; then
+    # L'installeur Ollama crée automatiquement le service systemd
+    systemctl enable ollama --quiet 2>/dev/null || true
+    systemctl start ollama 2>/dev/null || true
+    sleep 4
+    if command -v ollama &>/dev/null; then
+      ok "Ollama installé + service activé au boot"
+      warn "Téléchargement du modèle '${_OLLAMA_MODEL}' (peut prendre quelques minutes)..."
+      ollama pull "${_OLLAMA_MODEL}" 2>&1 | tail -2 \
+        && ok "Modèle '${_OLLAMA_MODEL}' téléchargé" \
+        || warn "Téléchargement échoué — fallback templates experts (non bloquant)"
+    else
+      warn "Ollama installation échouée — fallback templates experts (non bloquant)"
+    fi
+  else
+    warn "Impossible d'installer Ollama — fallback templates experts (non bloquant)"
+  fi
+fi
 
 # =============================================================================
 # 3. SERVICES PRÉ-REQUIS (PostgreSQL + Redis)
@@ -579,6 +624,16 @@ if [[ -f "$BACKEND_DIR/prisma/seed-dashboard-templates.js" ]]; then
     || warn "seed-dashboard-templates.js : erreur non bloquante"
 fi
 
+# Modèles de notification — toujours exécuté (idempotent, upsert)
+# Crée/met à jour les 6 modèles workflow + DASHBOARD_SHARED
+# Ne touche pas à la config SMTP existante
+if [[ -f "$BACKEND_DIR/prisma/seed-notifications.js" ]]; then
+  cd "$BACKEND_DIR"
+  node prisma/seed-notifications.js \
+    && ok "Modèles de notification : OK (dont DASHBOARD_SHARED)" \
+    || warn "seed-notifications.js : erreur non bloquante"
+fi
+
 # Migrations de données — UPDATE des données existantes (plafonds, allowedActions,
 # stepType juridiques). Désactivées par défaut depuis que la prod est en place :
 # si BCI a personnalisé ses plafonds via l'UI, ces scripts les écraseraient.
@@ -709,7 +764,9 @@ ok "Service ${APP_NAME}-frontend : défini"
 systemctl daemon-reload
 systemctl enable "${APP_NAME}-backend"  --quiet
 systemctl enable "${APP_NAME}-frontend" --quiet
-ok "Démarrage automatique au boot activé pour les deux services"
+# Ollama : re-activer au boot (si installé)
+command -v ollama &>/dev/null && systemctl enable ollama --quiet 2>/dev/null || true
+ok "Démarrage automatique au boot activé (backend + frontend + ollama si présent)"
 
 # =============================================================================
 # 11. NGINX — IP LOCALE
@@ -875,6 +932,7 @@ echo "    systemctl status  ${APP_NAME}-frontend"
 echo "    systemctl status  postgresql"
 echo "    systemctl status  redis-server"
 echo "    systemctl status  nginx"
+echo "    systemctl status  ollama              # IA locale (analyse widgets)"
 echo ""
 echo -e "  ${YELLOW}${BOLD}Logs :${NC}"
 echo "    journalctl -u ${APP_NAME}-backend  -f --no-pager"

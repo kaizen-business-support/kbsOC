@@ -62,6 +62,7 @@ const NOTIF_EVENTS = [
   { value: 'STEP_REJECTED',         label: 'Étape rejetée',        color: '#dc2626' },
   { value: 'APPLICATION_APPROVED',  label: 'Dossier approuvé',     color: '#15803d' },
   { value: 'APPLICATION_REJECTED',  label: 'Dossier rejeté',       color: '#b91c1c' },
+  { value: 'DASHBOARD_SHARED',      label: 'Dashboard partagé',    color: '#6366f1' },
 ];
 
 const ROLE_OPTIONS = [
@@ -79,6 +80,7 @@ const ROLE_OPTIONS = [
 const TEMPLATE_VARIABLES = [
   'clientName', 'applicationNumber', 'amount', 'currency',
   'stepName', 'assigneeName', 'actionUrl', 'createdByName', 'decision', 'comments',
+  'dashboardName', 'sharerName', 'recipientName', 'permissionLabel',
 ];
 
 const SMS_PROVIDERS = [

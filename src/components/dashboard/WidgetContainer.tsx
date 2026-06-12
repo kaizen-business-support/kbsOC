@@ -13,6 +13,7 @@ import { PivotTableWidget } from './widgets/PivotTableWidget';
 import { ComparisonChartWidget } from './widgets/ComparisonChartWidget';
 import { GanttChartWidget } from './widgets/GanttChartWidget';
 import { PerformanceMatrixWidget } from './widgets/PerformanceMatrixWidget';
+import { WidgetInsight } from './widgets/WidgetInsight';
 
 const PERIOD_LABELS: Record<string, string> = {
   this_month: 'Ce mois', this_quarter: 'Ce trimestre', this_year: 'Cette année',
@@ -75,7 +76,10 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
   }, [widget.id, widget.type, effectivePeriod, configKey]);
 
   const CARD_HEIGHT = height;
+  // Reserve 34px at the bottom for the insight panel (hidden padding when no insight)
+  const INSIGHT_H = 34;
   const CONTENT_HEIGHT = CARD_HEIGHT - 64;
+  const WIDGET_HEIGHT = CONTENT_HEIGHT - INSIGHT_H;
 
   const renderWidget = () => {
     if (!data) return null;
@@ -83,32 +87,32 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
       case 'kpi_card':
         return <KpiCardWidget data={data} title={widget.title} colorScheme={cfg?.colorScheme} />;
       case 'bar_chart':
-        return <BarChartWidget data={data} title={widget.title} height={CONTENT_HEIGHT} color={cfg?.color} />;
+        return <BarChartWidget data={data} title={widget.title} height={WIDGET_HEIGHT} color={cfg?.color} />;
       case 'line_chart':
-        return <LineChartWidget data={data} title={widget.title} height={CONTENT_HEIGHT} color={cfg?.color} />;
+        return <LineChartWidget data={data} title={widget.title} height={WIDGET_HEIGHT} color={cfg?.color} />;
       case 'gauge':
-        return <GaugeWidget data={data} title={widget.title} threshold={cfg?.threshold} maxValue={cfg?.maxValue} height={CONTENT_HEIGHT} />;
+        return <GaugeWidget data={data} title={widget.title} threshold={cfg?.threshold} maxValue={cfg?.maxValue} height={WIDGET_HEIGHT} />;
       case 'table':
         return <TableWidget data={data} title={widget.title} pageSize={5} />;
       case 'trend_chart':
-        return <TrendChartWidget data={data} title={widget.title} height={CONTENT_HEIGHT} regressionType={cfg?.regressionType} forecastMonths={cfg?.forecastMonths ?? 3} color={cfg?.color} />;
+        return <TrendChartWidget data={data} title={widget.title} height={WIDGET_HEIGHT} regressionType={cfg?.regressionType} forecastMonths={cfg?.forecastMonths ?? 3} color={cfg?.color} />;
       case 'pivot_table':
-        return <PivotTableWidget data={data} height={CONTENT_HEIGHT} metric={cfg?.metric ?? 'count'} />;
+        return <PivotTableWidget data={data} height={WIDGET_HEIGHT} metric={cfg?.metric ?? 'count'} />;
       case 'comparison_chart':
-        return <ComparisonChartWidget data={data} title={widget.title} height={CONTENT_HEIGHT} />;
+        return <ComparisonChartWidget data={data} title={widget.title} height={WIDGET_HEIGHT} />;
       case 'gantt_chart':
-        return <GanttChartWidget data={data} title={widget.title} height={CONTENT_HEIGHT} />;
+        return <GanttChartWidget data={data} title={widget.title} height={WIDGET_HEIGHT} />;
       case 'performance_matrix':
         return <PerformanceMatrixWidget
           data={data}
-          height={CONTENT_HEIGHT}
+          height={WIDGET_HEIGHT}
           period={effectivePeriod}
           targetDays={cfg?.targetDays ?? 5}
           initialGroupBy={(cfg?.groupBy as 'manager' | 'branch') ?? 'manager'}
         />;
       default:
         return (
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: CONTENT_HEIGHT }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: WIDGET_HEIGHT }}>
             <Typography variant="caption" color="text.disabled">Widget type "{widget.type}" non supporté</Typography>
           </Box>
         );
@@ -140,16 +144,28 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({ widget, global
           />
         )}
       </Box>
-      <CardContent sx={{ flexGrow: 1, p: '8px 12px !important', overflow: 'visible', position: 'relative' }}>
-        {loading && (
-          <Box sx={{ height: CONTENT_HEIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <CircularProgress size={28} />
-          </Box>
+      <CardContent sx={{ flexGrow: 1, p: '8px 12px 0 !important', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ flex: `0 0 ${WIDGET_HEIGHT}px`, overflow: 'hidden' }}>
+          {loading && (
+            <Box sx={{ height: WIDGET_HEIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <CircularProgress size={28} />
+            </Box>
+          )}
+          {!loading && error && (
+            <Alert severity="error" sx={{ fontSize: '0.75rem', py: 0.5 }}>{error}</Alert>
+          )}
+          {!loading && !error && renderWidget()}
+        </Box>
+        {!loading && !error && data && (
+          <WidgetInsight
+            widgetId={widget.id}
+            type={widget.type}
+            title={widget.title}
+            data={data}
+            config={cfg ?? {}}
+            period={effectivePeriod}
+          />
         )}
-        {!loading && error && (
-          <Alert severity="error" sx={{ fontSize: '0.75rem', py: 0.5 }}>{error}</Alert>
-        )}
-        {!loading && !error && renderWidget()}
       </CardContent>
     </Card>
   );

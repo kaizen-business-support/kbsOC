@@ -1897,6 +1897,17 @@ export class ApiService {
     }
   }
 
+  static async getWidgetAnalysis(params: {
+    widgetType: string; title: string; data: any; config: any; period: string;
+  }): Promise<ApiResponse<{ analysis: string }>> {
+    try {
+      const res = await api.post('/widget-analysis/analyze', params);
+      return res.data;
+    } catch (e: any) {
+      return { success: false, error: e.response?.data?.error || 'Erreur réseau' };
+    }
+  }
+
   static async getDashboardShares(dashboardId: string): Promise<ApiResponse<any[]>> {
     try { return (await api.get(`/dashboards/${dashboardId}/shares`)).data; }
     catch (e: any) { return { success: false, error: e.response?.data?.error || 'Erreur réseau' }; }

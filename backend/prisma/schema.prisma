@@ -843,6 +843,7 @@ enum NotifEvent {
   APPLICATION_REJECTED
   STEP_OVERDUE // Délai maximum dépassé sur une étape
   STEP_PENDING_REMINDER // Rappel : action en attente depuis un certain temps
+  DASHBOARD_SHARED // Tableau de bord partagé avec un utilisateur
 
   @@map("notif_event")
 }
