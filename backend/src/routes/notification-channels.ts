@@ -96,12 +96,41 @@ router.post('/test/:type', async (req: Request, res: Response) => {
     const cfg = channel.config as any;
 
     if (type.toUpperCase() === 'EMAIL') {
+      const to = testAddress || cfg.user || cfg.fromEmail;
+
+      // Mode relay HTTP
+      if (cfg.relayUrl) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 15_000);
+        try {
+          const resp = await fetch(cfg.relayUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Relay-Token': cfg.relayToken ?? '' },
+            signal: ctrl.signal,
+            body: JSON.stringify({
+              to,
+              subject: 'Test de notification OptimusCredit',
+              html: '<p>Ceci est un email de test envoyé par OptimusCredit (mode relay).</p>',
+              from: cfg.fromEmail || cfg.user,
+              fromName: cfg.fromName || 'OptimusCredit',
+            }),
+          });
+          clearTimeout(timer);
+          const body = await resp.json().catch(() => ({}));
+          if (!resp.ok) return res.status(500).json({ success: false, error: (body as any).error || `Relay HTTP ${resp.status}` });
+          return res.json({ success: true, message: `Email de test envoyé via relay à ${to}` });
+        } catch (relayErr: any) {
+          clearTimeout(timer);
+          return res.status(500).json({ success: false, error: `Relay inaccessible : ${relayErr.message || relayErr.code || String(relayErr)}` });
+        }
+      }
+
+      // Mode SMTP standard
       if (!cfg.host || !cfg.user || !cfg.pass) {
-        return res.status(400).json({ success: false, error: 'Configuration incomplète : host, user et pass sont obligatoires' });
+        return res.status(400).json({ success: false, error: 'Configuration incomplète : host, user et pass sont obligatoires (ou configurer un relay URL)' });
       }
 
       const smtpPort = Number(cfg.port) || 587;
-      // Port 465 = implicit SSL (secure doit être true), 587/25 = STARTTLS
       const smtpSecure = smtpPort === 465 ? true : (cfg.secure === true || cfg.secure === 'true');
       const transporter = nodemailer.createTransport({
         host: cfg.host,
@@ -113,7 +142,6 @@ router.post('/test/:type', async (req: Request, res: Response) => {
         socketTimeout: 15_000,
       });
 
-      // Verify SMTP connectivity first — gives a clear error before trying to send
       try {
         await transporter.verify();
       } catch (verifyErr: any) {
@@ -123,7 +151,7 @@ router.post('/test/:type', async (req: Request, res: Response) => {
 
       await transporter.sendMail({
         from: `"${cfg.fromName || 'OptimusCredit'}" <${cfg.fromEmail || cfg.user}>`,
-        to: testAddress || cfg.user,
+        to,
         subject: 'Test de notification OptimusCredit',
         html: '<p>Ceci est un email de test envoyé par OptimusCredit.</p>',
       });

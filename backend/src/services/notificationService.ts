@@ -60,6 +60,31 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
   if (!channel || !channel.isActive) return;
 
   const cfg = channel.config as any;
+
+  // Mode relay HTTP : contourne le blocage SMTP des VPS
+  if (cfg.relayUrl) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15_000);
+    try {
+      const resp = await fetch(cfg.relayUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Relay-Token': cfg.relayToken ?? '' },
+        signal: ctrl.signal,
+        body: JSON.stringify({ to, subject, html, from: cfg.fromEmail || cfg.user, fromName: cfg.fromName || 'OptimusCredit' }),
+      });
+      clearTimeout(timer);
+      if (!resp.ok) {
+        const err = await resp.text().catch(() => '');
+        throw new Error(`Relay HTTP ${resp.status}: ${err}`);
+      }
+    } catch (err) {
+      clearTimeout(timer);
+      throw err;
+    }
+    return;
+  }
+
+  // Mode SMTP standard
   const smtpPort = Number(cfg.port) || 587;
   const smtpSecure = smtpPort === 465 ? true : (cfg.secure === true || cfg.secure === 'true');
   const transporter = nodemailer.createTransport({

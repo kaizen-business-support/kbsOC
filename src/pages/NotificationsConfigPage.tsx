@@ -293,6 +293,17 @@ function ChannelsTab() {
                 />
               </Grid>
               <Grid item xs={12}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5, mt: 1, fontWeight: 600 }}>
+                  Relay HTTP (optionnel — si le VPS bloque les ports SMTP)
+                </Typography>
+              </Grid>
+              <Grid item xs={8}>
+                <TextField fullWidth size="small" label="URL relay" placeholder="https://perdusdevue.com/email-relay.php" value={emailForm.relayUrl || ''} onChange={e => setEmailForm((p: any) => ({ ...p, relayUrl: e.target.value }))} />
+              </Grid>
+              <Grid item xs={4}>
+                <TextField fullWidth size="small" label="Token relay" type="password" value={emailForm.relayToken || ''} onChange={e => setEmailForm((p: any) => ({ ...p, relayToken: e.target.value }))} />
+              </Grid>
+              <Grid item xs={12}>
                 <TextField fullWidth size="small" label="Adresse de test" placeholder="test@example.com" value={testAddress} onChange={e => setTestAddress(e.target.value)} />
               </Grid>
             </Grid>
