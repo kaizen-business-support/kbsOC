@@ -100,6 +100,8 @@ router.post('/', async (req: Request, res: Response) => {
       }
     });
 
+    await cacheDel(`${CACHE_KEY}:${req.companyId}`);
+
     res.status(201).json({
       success: true,
       data: department,
@@ -113,9 +115,15 @@ router.post('/', async (req: Request, res: Response) => {
         error: 'Un département avec ce nom ou code existe déjà'
       });
     }
+    if (error.code === 'P2003' || error.code === 'P2025') {
+      return res.status(400).json({
+        success: false,
+        error: 'Contexte société (companyId) invalide ou manquant. Reconnectez-vous puis réessayez.'
+      });
+    }
     res.status(500).json({
       success: false,
-      error: 'Erreur lors de la création du département'
+      error: `Erreur lors de la création du département${error.code ? ` (${error.code})` : ''} : ${error.message || 'inconnue'}`
     });
   }
 });
@@ -135,6 +143,8 @@ router.put('/:id', async (req: Request, res: Response) => {
         isActive
       }
     });
+
+    await cacheDel(`${CACHE_KEY}:${req.companyId}`);
 
     res.json({
       success: true,
@@ -170,6 +180,8 @@ router.delete('/:id', async (req: Request, res: Response) => {
     await prisma.department.delete({
       where: { id }
     });
+
+    await cacheDel(`${CACHE_KEY}:${req.companyId}`);
 
     res.json({
       success: true,

@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { cacheGet, cacheSet } from '../services/redis';
+import { cacheGet, cacheSet, cacheDel } from '../services/redis';
 import { prisma } from '../prismaClient';
 import { authenticate, requireCompany } from '../middleware/auth';
 
@@ -174,6 +174,8 @@ router.post('/', async (req: Request, res: Response) => {
       }
     });
 
+    await cacheDel(`${CACHE_KEY}:${req.companyId}`);
+
     res.status(201).json({
       success: true,
       data: newLimit,
@@ -215,6 +217,8 @@ router.put('/:id', async (req: Request, res: Response) => {
       data: updateData
     });
 
+    await cacheDel(`${CACHE_KEY}:${req.companyId}`);
+
     res.json({
       success: true,
       data: updatedLimit,
@@ -243,6 +247,8 @@ router.delete('/:id', async (req: Request, res: Response) => {
     await prisma.approvalLimit.delete({
       where: { id }
     });
+
+    await cacheDel(`${CACHE_KEY}:${req.companyId}`);
 
     res.json({
       success: true,

@@ -308,6 +308,8 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     description: '',
     isActive: true
   });
+  // Erreur affichée DANS la modale (le Snackbar est masqué derrière le fond flouté)
+  const [departmentError, setDepartmentError] = useState('');
 
   const [branchForm, setBranchForm] = useState({
     name: '',
@@ -318,6 +320,8 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
     manager: '',
     isActive: true
   });
+  // Erreur affichée DANS la modale (le Snackbar est masqué derrière le fond flouté)
+  const [branchError, setBranchError] = useState('');
 
   // Password management state
   const [temporaryPasswordDialog, setTemporaryPasswordDialog] = useState({
@@ -992,6 +996,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
   const closeDepartmentDialog = () => {
     setDepartmentDialogOpen(false);
     setSelectedDepartment(null);
+    setDepartmentError('');
     setDepartmentForm({
       name: '',
       code: '',
@@ -1001,6 +1006,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
   };
 
   const saveDepartment = async () => {
+    setDepartmentError('');
     try {
       if (selectedDepartment) {
         // Update existing department
@@ -1020,6 +1026,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
           await loadDepartments();
           closeDepartmentDialog();
         } else {
+          setDepartmentError(response.error || 'Erreur lors de la mise à jour du département');
           setNotification({
             open: true,
             message: response.error || 'Erreur lors de la mise à jour du département',
@@ -1044,6 +1051,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
           await loadDepartments();
           closeDepartmentDialog();
         } else {
+          setDepartmentError(response.error || 'Erreur lors de la création du département');
           setNotification({
             open: true,
             message: response.error || 'Erreur lors de la création du département',
@@ -1051,11 +1059,13 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
           });
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving department:', error);
+      const detail = error?.response?.data?.error || error?.message || 'Erreur inconnue';
+      setDepartmentError(`Erreur lors de la sauvegarde du département : ${detail}`);
       setNotification({
         open: true,
-        message: 'Erreur lors de la sauvegarde du département',
+        message: `Erreur lors de la sauvegarde du département : ${detail}`,
         severity: 'error'
       });
     }
@@ -1242,6 +1252,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
   const closeBranchDialog = () => {
     setBranchDialogOpen(false);
     setSelectedBranch(null);
+    setBranchError('');
     setBranchForm({
       name: '',
       code: '',
@@ -1254,6 +1265,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
   };
 
   const saveBranch = async () => {
+    setBranchError('');
     try {
       if (selectedBranch) {
         // Update existing branch
@@ -1276,6 +1288,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
           await loadBranches();
           closeBranchDialog();
         } else {
+          setBranchError(response.error || 'Erreur lors de la mise à jour de l\'agence');
           setNotification({
             open: true,
             message: response.error || 'Erreur lors de la mise à jour de l\'agence',
@@ -1305,6 +1318,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
           await loadBranches();
           closeBranchDialog();
         } else {
+          setBranchError(response.error || 'Erreur lors de la création de l\'agence');
           setNotification({
             open: true,
             message: response.error || 'Erreur lors de la création de l\'agence',
@@ -1312,11 +1326,13 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
           });
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving branch:', error);
+      const detail = error?.response?.data?.error || error?.message || 'Erreur inconnue';
+      setBranchError(`Erreur lors de la sauvegarde de l'agence : ${detail}`);
       setNotification({
         open: true,
-        message: 'Erreur lors de la sauvegarde de l\'agence',
+        message: `Erreur lors de la sauvegarde de l'agence : ${detail}`,
         severity: 'error'
       });
     }
@@ -2565,6 +2581,11 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
           onClose={closeDepartmentDialog}
         />
         <DialogContent>
+          {departmentError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setDepartmentError('')}>
+              {departmentError}
+            </Alert>
+          )}
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>
               <TextField
@@ -2643,6 +2664,11 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
           onClose={closeBranchDialog}
         />
         <DialogContent>
+          {branchError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setBranchError('')}>
+              {branchError}
+            </Alert>
+          )}
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>
               <TextField

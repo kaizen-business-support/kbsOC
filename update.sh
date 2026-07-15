@@ -415,10 +415,19 @@ if [[ -f "$APP_DIR/backend/prisma/seed-notifications.js" ]]; then
     || warn "seed-notifications.js : erreur (non bloquant)"
 fi
 
-# Vider les clés Redis liées aux listes (cache périmé après seed)
-redis-cli DEL cache:departments:active cache:branches:active 2>/dev/null \
-  && dep_ok "Cache Redis departments/branches vidé" \
-  || warn "redis-cli indisponible — cache expirera dans 5 min"
+# Vider les clés Redis liées aux listes (cache périmé après seed).
+# Les clés sont suffixées par le companyId (ex: cache:branches:active:<id>) : on
+# doit donc supprimer par motif, pas par nom exact. On couvre les 4 référentiels
+# cachés (branches, departments, credit-types, approval-limits) pour tous les tenants.
+if command -v redis-cli &>/dev/null; then
+  _CACHE_KEYS=$(redis-cli --scan --pattern 'cache:*' 2>/dev/null)
+  if [[ -n "$_CACHE_KEYS" ]]; then
+    echo "$_CACHE_KEYS" | xargs -r redis-cli DEL >/dev/null 2>&1 || true
+  fi
+  dep_ok "Cache Redis des référentiels vidé (branches/departments/credit-types/approval-limits)"
+else
+  warn "redis-cli indisponible — cache expirera automatiquement (TTL 2-5 min)"
+fi
 
 # Re-grant après db push
 sudo -u postgres psql -c \

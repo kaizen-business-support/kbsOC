@@ -186,6 +186,10 @@ DB_NAME=${DB_NAME}
 DB_USER=${DB_USER}
 DB_PASSWORD=${DB_PASSWORD}
 DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}?schema=public
+# Nom du service Docker Compose de postgres (PAS localhost) — utilisé par
+# pg_dump/psql dans backupService.ts pour les sauvegardes/restaurations
+DB_HOST=postgres
+DB_PORT=5432
 
 # ── Backend ────────────────────────────────────────────────────────────────────
 NODE_ENV=production

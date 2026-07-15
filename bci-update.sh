@@ -652,9 +652,19 @@ else
   info "  → Pour les rejouer : sudo bash bci-update.sh --with-data-migrations"
 fi
 
-# Vider le cache Redis
-redis-cli DEL cache:departments:active cache:branches:active 2>/dev/null \
-  && ok "Cache Redis invalidé" || true
+# Vider le cache Redis des référentiels (périmé après seed).
+# Les clés sont suffixées par le companyId (cache:branches:active:<id>, etc.) :
+# suppression par motif obligatoire. Couvre branches/departments/credit-types/approval-limits
+# pour tous les tenants.
+if command -v redis-cli &>/dev/null; then
+  _CACHE_KEYS=$(redis-cli --scan --pattern 'cache:*' 2>/dev/null || true)
+  if [[ -n "$_CACHE_KEYS" ]]; then
+    echo "$_CACHE_KEYS" | xargs -r redis-cli DEL >/dev/null 2>&1 || true
+  fi
+  ok "Cache Redis des référentiels invalidé"
+else
+  warn "redis-cli indisponible — cache expirera automatiquement (TTL 2-5 min)"
+fi
 
 # =============================================================================
 # 8. COMPILATION BACKEND (TypeScript → dist, swap sans interruption)

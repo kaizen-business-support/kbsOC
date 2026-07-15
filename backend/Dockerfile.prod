@@ -23,8 +23,12 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# curl pour le healthcheck
-RUN apk add --no-cache curl
+# curl pour le healthcheck ; client PostgreSQL pour pg_dump/psql (sauvegardes/restaurations).
+# On privilégie postgresql15-client (aligné sur l'image postgres:15-alpine du compose),
+# avec repli sur le méta-paquet postgresql-client si la version d'Alpine de l'image de
+# base ne le fournit plus (pg_dump d'un client >= serveur reste compatible).
+RUN apk add --no-cache curl \
+    && (apk add --no-cache postgresql15-client || apk add --no-cache postgresql-client)
 
 # Utilisateur non-root
 RUN addgroup -S optimus && adduser -S optimus -G optimus

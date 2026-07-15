@@ -21,11 +21,37 @@ const BACKUP_DIR = isLinux
   ? process.env.BACKUP_DIR || '/var/backups/credit_app'
   : process.env.BACKUP_DIR || path.resolve('./backups');
 
-const DB_HOST = process.env.DB_HOST || 'localhost';
-const DB_PORT = process.env.DB_PORT || '5432';
-const DB_NAME = process.env.DB_NAME || 'optimus_credit';
-const DB_USER = process.env.DB_USER || 'optimus';
-const DB_PASSWORD = process.env.DB_PASSWORD || '';
+// Source de vérité : DATABASE_URL (toujours présente dans tous les déploiements —
+// natif comme Docker). Les variables DB_* individuelles restent des overrides
+// facultatifs. Sans ce parsing, DB_PASSWORD tombait sur '' (mot de passe vide) car
+// le .env ne définit que DATABASE_URL → pg_dump/psql échouaient à s'authentifier
+// et la sauvegarde ne fonctionnait pas.
+function parseDatabaseUrl(): {
+  host?: string; port?: string; name?: string; user?: string; password?: string;
+} {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) return {};
+  try {
+    const u = new URL(raw);
+    return {
+      host: u.hostname || undefined,
+      port: u.port || undefined,
+      name: u.pathname ? u.pathname.replace(/^\//, '').split('?')[0] || undefined : undefined,
+      user: u.username ? decodeURIComponent(u.username) : undefined,
+      password: u.password ? decodeURIComponent(u.password) : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+const _dbUrl = parseDatabaseUrl();
+
+const DB_HOST = process.env.DB_HOST || _dbUrl.host || 'localhost';
+const DB_PORT = process.env.DB_PORT || _dbUrl.port || '5432';
+const DB_NAME = process.env.DB_NAME || _dbUrl.name || 'optimus_credit';
+const DB_USER = process.env.DB_USER || _dbUrl.user || 'optimus';
+const DB_PASSWORD = process.env.DB_PASSWORD || _dbUrl.password || '';
 
 /**
  * Spawns pg_dump or psql either directly (when installed) or via `docker exec`
