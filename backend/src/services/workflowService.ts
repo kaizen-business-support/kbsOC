@@ -207,7 +207,13 @@ async function buildPlanFromPolicy(
 export async function buildWorkflowPlan(
   creditTypeId: string,
   amount: number,
-  companyId?: string
+  companyId?: string,
+  // Épinglage de version : pour un dossier DÉJÀ rattaché à une politique, on
+  // reconstruit son plan depuis CETTE politique (même archivée), et non depuis
+  // la politique active courante. Garantit qu'un dossier en cours reste sur sa
+  // politique d'origine jusqu'à sa clôture/annulation, même si l'admin active
+  // une nouvelle version entre-temps. Laissé vide pour un nouveau dossier.
+  policyIdOverride?: string
 ): Promise<WorkflowPlan> {
   const creditType = await prisma.creditType.findUnique({
     where: { id: creditTypeId },
@@ -218,7 +224,18 @@ export async function buildWorkflowPlan(
     throw new Error(`Type de crédit introuvable : ${creditTypeId}`);
   }
 
-  const policy = await getActivePolicyForCreditType(creditTypeId, companyId);
+  let policy: { id: string; name: string; code: string } | null = null;
+  if (policyIdOverride) {
+    // Politique d'origine du dossier — quel que soit son statut (ACTIVE/ARCHIVED).
+    policy = await prisma.creditPolicy.findFirst({
+      where: { id: policyIdOverride, ...(companyId ? { companyId } : {}) },
+      select: { id: true, name: true, code: true },
+    });
+  }
+  // Repli : nouveau dossier, ou politique d'origine introuvable (supprimée) → politique active.
+  if (!policy) {
+    policy = await getActivePolicyForCreditType(creditTypeId, companyId);
+  }
 
   if (!policy) {
     throw new Error(
@@ -283,12 +300,19 @@ export async function createWorkflowStepsForApplication(
   creditTypeId: string,
   amount: number
 ): Promise<void> {
-  // Charger le companyId de l'application pour le filtrage tenant
+  // Charger le companyId + la politique déjà rattachée (le cas échéant) au dossier.
   const app = await prisma.creditApplication.findUnique({
     where: { id: applicationId },
-    select: { companyId: true },
+    select: { companyId: true, policyId: true },
   });
-  const plan = await buildWorkflowPlan(creditTypeId, amount, app?.companyId ?? undefined);
+  // Nouveau dossier (policyId null) → politique active. Dossier déjà rattaché →
+  // rester sur sa politique d'origine (épinglage de version).
+  const plan = await buildWorkflowPlan(
+    creditTypeId,
+    amount,
+    app?.companyId ?? undefined,
+    app?.policyId ?? undefined,
+  );
 
   // Supprimer uniquement les étapes legacy (sans policyStepId) non-commencées.
   // Les étapes de politique déjà créées (policyStepId non-null) sont préservées
@@ -536,7 +560,9 @@ export async function getNextWorkflowStep(
   if (!application?.creditTypeId) return null;
 
   // ── Workflow moderne (policyId renseigné) ─────────────────────────────────
-  // Le plan est construit depuis la politique active — les noms d'étapes correspondent.
+  // Le plan est construit depuis LA POLITIQUE D'ORIGINE du dossier (épinglage de
+  // version), pas la politique active courante — un dossier en cours reste sur sa
+  // politique jusqu'à sa clôture, même si une nouvelle version a été activée.
   if (application.policyId) {
     // Trouver le WorkflowStep DB qui vient d'être complété (policyStepId portant l'order)
     const completedDbStep = await prisma.workflowStep.findFirst({
@@ -552,7 +578,8 @@ export async function getNextWorkflowStep(
     const plan = await buildWorkflowPlan(
       application.creditTypeId,
       Number(application.amount),
-      application.companyId ?? undefined
+      application.companyId ?? undefined,
+      application.policyId,
     );
 
     if (completedDbStep?.policyStepId) {

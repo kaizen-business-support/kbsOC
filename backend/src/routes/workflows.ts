@@ -936,7 +936,8 @@ router.post('/fix-prematurely-approved', async (req: Request, res: Response) => 
         plan = await buildWorkflowPlan(
           application.creditTypeId,
           Number(application.amount),
-          application.companyId ?? undefined
+          application.companyId ?? undefined,
+          application.policyId ?? undefined, // épinglage : évaluer le dossier sur SA politique d'origine
         );
       } catch {
         // Aucune politique active pour ce type de crédit — dossier ignoré
