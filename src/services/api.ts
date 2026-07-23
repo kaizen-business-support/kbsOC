@@ -2306,7 +2306,8 @@ export const creditPolicyApi = {
   async activatePolicy(id: string): Promise<any> {
     try {
       const res = await api.post(`/credit-policies/${id}/activate`);
-      return { success: true, data: res.data };
+      // res.data = { success, activated, archivedPolicyId, data: politique fraîche }
+      return { success: true, data: res.data.data };
     } catch (e: any) {
       const body = e.response?.data;
       return {

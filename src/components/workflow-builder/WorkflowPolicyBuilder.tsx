@@ -212,18 +212,24 @@ export function WorkflowPolicyBuilder() {
     const activatedId = selectedPolicyId;
     const res = await creditPolicyApi.activatePolicy(activatedId);
     if (res.success) {
-      // Bascule optimiste du statut : la politique activée passe ACTIVE, l'ancienne
-      // active passe ARCHIVED — immédiatement, sans dépendre du rechargement réseau.
-      // Garantit que le badge se met à jour même si un fetch de loadData échoue.
+      // L'endpoint d'activation renvoie la politique fraîche (avec ses steps). On met à
+      // jour l'état DIRECTEMENT depuis cette réponse certifiée — surtout PAS via un GET
+      // supplémentaire (loadData) qui pourrait renvoyer un statut périmé et « refaire
+      // passer » la politique en brouillon (vert → jaune). L'activation ne modifie ni les
+      // steps ni la version, donc aucun rechargement n'est nécessaire ici.
+      const fresh = res.data as CreditPolicyFull | undefined;
       setPolicies((prev) => prev.map((p) =>
         p.id === activatedId
-          ? { ...p, status: 'ACTIVE' as const, isActive: true }
+          ? (fresh ?? { ...p, status: 'ACTIVE' as const, isActive: true })
           : p.status === 'ACTIVE'
             ? { ...p, status: 'ARCHIVED' as const, isActive: false }
             : p
       ));
+      if (fresh) {
+        setSteps(fresh.steps ?? []);
+        setCurrentVersion(fresh.version);
+      }
       setSnack({ msg: 'Politique activée', sev: 'success' });
-      await loadData();
     } else {
       const errs = (res.errors || []).map((e: any) => e.message).join(' · ');
       setSnack({ msg: errs || res.error || 'Erreur lors de l\'activation', sev: 'error' });
