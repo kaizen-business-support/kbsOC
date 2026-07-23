@@ -44,16 +44,32 @@ function createStep(type: PolicyStepType, order: number, existingSteps: PolicySt
     stepName, stepLabel,
     order, stepType: type, assignedRole: 'CHARGE_AFFAIRES',
     conditionMinAmount: null, conditionMaxAmount: null,
+    approvalMinAmount: null, approvalMaxAmount: null,
     expectedDurationHours: 24, maxDurationHours: 72,
     isRequired: true, isActive: true, description: null,
     creditTypeIds: [], guards: null, allowedActions: [], dispatchTargetRole: null,
   };
 }
 
+const isDecisionStep = (s: PolicyStep) => s.stepType === 'APPROVAL' || s.stepType === 'COMMITTEE';
+
 function validateStepsClient(steps: PolicyStep[]): PolicyStep[] {
+  // Palier terminal : au plus un palier décisionnel peut avoir un plafond illimité (vide).
+  const uncappedDecision = steps.filter(s => isDecisionStep(s) && s.approvalMaxAmount == null);
+  const tooManyUncapped = uncappedDecision.length > 1;
+
   return steps.map((s) => {
     if (!s.stepLabel.trim()) return { ...s, _error: 'Nom obligatoire' };
     if (!s.assignedRole)    return { ...s, _error: 'Rôle obligatoire' };
+    if (isDecisionStep(s)) {
+      if (s.approvalMinAmount != null && s.approvalMaxAmount != null &&
+          s.approvalMinAmount > s.approvalMaxAmount) {
+        return { ...s, _error: 'Montant min validable doit être ≤ montant max validable' };
+      }
+      if (tooManyUncapped && s.approvalMaxAmount == null) {
+        return { ...s, _error: 'Un seul palier décisionnel peut avoir un plafond illimité (palier terminal)' };
+      }
+    }
     return { ...s, _error: undefined };
   });
 }
