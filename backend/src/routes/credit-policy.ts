@@ -103,6 +103,10 @@ router.get('/', async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
+    // Liste sensible à l'état (statut ACTIVE/DRAFT) : ne jamais mettre en cache,
+    // sinon un rechargement juste après activation peut renvoyer l'ancien statut
+    // (politique qui « redevient brouillon » à l'écran).
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.json({ success: true, data: policies });
   } catch (error) {
     console.error('[credit-policy] GET /', error);

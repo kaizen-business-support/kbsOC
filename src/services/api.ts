@@ -2197,7 +2197,12 @@ export const dispatchingApi = {
 export const creditPolicyApi = {
   async getPolicies(): Promise<any> {
     try {
-      const res = await api.get('/credit-policies');
+      // Cache-buster + no-cache : garantit une lecture fraîche du statut après
+      // activation (évite l'affichage d'un statut périmé « redevenu brouillon »).
+      const res = await api.get('/credit-policies', {
+        params: { _t: Date.now() },
+        headers: { 'Cache-Control': 'no-cache' },
+      });
       return { success: true, data: res.data.data };
     } catch (e: any) {
       return { success: false, error: e.response?.data?.error || 'Erreur récupération politiques' };
