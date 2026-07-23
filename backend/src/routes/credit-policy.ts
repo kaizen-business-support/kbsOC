@@ -736,7 +736,20 @@ router.post('/:id/activate', async (req: Request, res: Response) => {
       }
     });
 
-    res.json({ success: true, activated: true, archivedPolicyId: oldActive?.id ?? null });
+    // Relire la politique APRÈS la transaction (données certifiées fraîches) et la
+    // renvoyer au client : celui-ci met à jour son état directement depuis cette
+    // réponse, sans GET supplémentaire susceptible d'être périmé (statut qui
+    // « redevient brouillon » à l'écran).
+    const updatedPolicy = await prisma.creditPolicy.findUnique({
+      where: { id: req.params.id },
+      include: {
+        _count: { select: { steps: true, applications: true } },
+        steps: { orderBy: { order: 'asc' } },
+      },
+    });
+
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.json({ success: true, activated: true, archivedPolicyId: oldActive?.id ?? null, data: updatedPolicy });
   } catch (error) {
     console.error('[credit-policy] POST /:id/activate', error);
     res.status(500).json({ success: false, error: 'Erreur lors de l\'activation' });
