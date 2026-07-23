@@ -66,7 +66,7 @@ const HDR = {
 export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onPageChange, onChangePassword }) => {
   const { t } = useTranslation();
   const { state: userState, logout, getRoleLabel } = useUser();
-  const { open: policyGuideOpen, policy: policyGuide, openGuide, closeGuide } = usePolicyGuide(userState.isAuthenticated);
+  const { open: policyGuideOpen, policy: policyGuide, loaded: policyGuideLoaded, openGuide, closeGuide } = usePolicyGuide(userState.isAuthenticated);
   const { restart: restartOnboarding } = useOnboarding();
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
   const { canInstall, isInstalled, installViaPWA, downloadWindowsInstaller, downloadMacInstaller } = usePWAInstall();
@@ -321,6 +321,24 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, currentPage, onPage
                 }}
               >
                 <PolicyInfoIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          )}
+
+          {/* Aucune politique active : indicateur explicite (le fetch est terminé et
+              n'a renvoyé aucune politique) — évite que le bouton disparaisse en silence. */}
+          {userState.isAuthenticated && policyGuideLoaded && !policyGuide && (
+            <Tooltip title="Aucune politique de crédit active — activez-en une dans le constructeur de workflows" enterDelay={300}>
+              <IconButton
+                size="small"
+                sx={{
+                  color: '#b45309',
+                  border: '1.5px solid #f59e0b40',
+                  borderRadius: '8px',
+                  p: '5px',
+                }}
+              >
+                <PolicyInfoIcon sx={{ fontSize: 18, opacity: 0.55 }} />
               </IconButton>
             </Tooltip>
           )}
