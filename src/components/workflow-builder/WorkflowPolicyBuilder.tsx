@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Typography, Select, MenuItem, Button, Chip, Alert,
   CircularProgress, Tooltip, FormControl, IconButton, Divider,
@@ -101,6 +101,10 @@ export function WorkflowPolicyBuilder() {
   const [dupForm, setDupForm]                 = useState({ name: '', code: '' });
   const [duplicating, setDuplicating]         = useState(false);
 
+  // Miroir de la sélection courante, lisible dans loadData (useCallback stable).
+  const selectedIdRef = useRef(selectedPolicyId);
+  useEffect(() => { selectedIdRef.current = selectedPolicyId; }, [selectedPolicyId]);
+
   const selectedPolicy = policies.find((p) => p.id === selectedPolicyId) ?? null;
   const isDraft  = selectedPolicy?.status === 'DRAFT';
   const isActive = selectedPolicy?.status === 'ACTIVE';
@@ -120,10 +124,16 @@ export function WorkflowPolicyBuilder() {
       if (polR.status === 'fulfilled' && polR.value.success && polR.value.data) {
         const data = polR.value.data as CreditPolicyFull[];
         setPolicies(data);
-        const best = data.find((p) => p.status === 'ACTIVE')
+        // Préserver la sélection courante si elle existe toujours — un rechargement ne
+        // doit PAS renvoyer l'utilisateur de force sur la politique active. Sinon une
+        // dupliquée sélectionnée serait silencieusement remplacée par l'ancienne active,
+        // et « Activer » réactiverait cette dernière au lieu de la dupliquée.
+        const currentId = selectedIdRef.current;
+        const chosen = (currentId && data.find((p) => p.id === currentId))
+          ?? data.find((p) => p.status === 'ACTIVE')
           ?? data.find((p) => p.status === 'DRAFT')
           ?? data[0];
-        if (best) { setSelectedPolicyId(best.id); setSteps(best.steps ?? []); setCurrentVersion(best.version); }
+        if (chosen) { setSelectedPolicyId(chosen.id); setSteps(chosen.steps ?? []); setCurrentVersion(chosen.version); }
       }
       if (ctR.status === 'fulfilled' && ctR.value.success && ctR.value.data) setCreditTypes(ctR.value.data);
       if (rolesR.status === 'fulfilled' && rolesR.value.success && rolesR.value.data) {
