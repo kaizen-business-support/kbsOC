@@ -41,6 +41,8 @@ interface MinimalPolicyStep {
   stepType: string;
   assignedRole: string;
   guards: Prisma.JsonValue | null;
+  approvalMinAmount?: Prisma.Decimal | number | null;
+  approvalMaxAmount?: Prisma.Decimal | number | null;
 }
 
 /**
@@ -81,6 +83,23 @@ export async function syncApprovalLimitsFromPolicy(
   if (approvalSteps.length === 0) return;
 
   // 2. Dériver (role, minAmount, maxAmount) pour chaque étape.
+  //
+  // Modèle cumulatif (échelle d'escalade) : la source de vérité est le plafond
+  // explicite par étape (approvalMaxAmount). La bande affichée est [min, plafond] où
+  // min = approvalMinAmount ?? 0. Ces bandes ne sont plus autoritatives pour la
+  // permission (cf. workflowService.canApproveStep) mais restent cohérentes pour
+  // l'écran de configuration des limites.
+  //
+  // Rétro-compatibilité : si aucune étape décisionnelle n'a de plafond explicite,
+  // on retombe sur l'ancienne dérivation par guards (tranches contiguës) pour ne pas
+  // effacer les limites des politiques historiques.
+  const num = (v: Prisma.Decimal | number | null | undefined): number | null =>
+    v === null || v === undefined ? null : Number(v);
+
+  const ladderConfigured = approvalSteps.some(
+    s => num(s.approvalMinAmount) !== null || num(s.approvalMaxAmount) !== null,
+  );
+
   type Derived = { role: UserRole; minAmount: number; maxAmount: number };
   const derived: Derived[] = [];
 
@@ -94,11 +113,19 @@ export async function syncApprovalLimitsFromPolicy(
       continue;
     }
 
-    const minAmount = extractGteAmount(step.guards);
-    const nextStep  = approvalSteps[i + 1];
-    const maxAmount = nextStep
-      ? Math.max(extractGteAmount(nextStep.guards) - 1, minAmount)
-      : MAX_LIMIT;
+    let minAmount: number;
+    let maxAmount: number;
+    if (ladderConfigured) {
+      minAmount = num(step.approvalMinAmount) ?? 0;
+      maxAmount = num(step.approvalMaxAmount) ?? MAX_LIMIT;
+    } else {
+      // Legacy : dérivation par guards en tranches contiguës.
+      minAmount = extractGteAmount(step.guards);
+      const nextStep = approvalSteps[i + 1];
+      maxAmount = nextStep
+        ? Math.max(extractGteAmount(nextStep.guards) - 1, minAmount)
+        : MAX_LIMIT;
+    }
 
     derived.push({ role, minAmount, maxAmount });
   }

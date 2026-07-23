@@ -99,6 +99,48 @@ export async function getActivePolicyForCreditType(
 
 // ─── Construction du plan depuis une CreditPolicy ────────────────────────────
 
+const DECISION_STEP_TYPES: PolicyStepType[] = ['APPROVAL', 'COMMITTEE'];
+
+/**
+ * Détermine, pour un montant donné, l'ensemble des IDs d'étapes décisionnelles
+ * (APPROVAL / COMMITTEE) requises selon le modèle d'ÉCHELLE D'ESCALADE :
+ *
+ *  - On trie les paliers décisionnels par `order`.
+ *  - Le "palier couvrant" est le premier dont `approvalMaxAmount` est null (illimité)
+ *    ou ≥ montant.
+ *  - Sont requis tous les paliers de rang ≤ palier couvrant (validation cumulative),
+ *    en excluant ceux dont `approvalMinAmount` est défini et montant < approvalMinAmount.
+ *
+ * Rétro-compatibilité : si AUCUN palier décisionnel n'a de limite explicite configurée
+ * (approvalMinAmount et approvalMaxAmount tous null), on retourne null pour signaler
+ * qu'il faut retomber sur l'ancien filtrage (conditionMin/Max + guards).
+ */
+export function resolveEscalationDecisionStepIds(
+  decisionSteps: Array<{ id: string; approvalMinAmount: any; approvalMaxAmount: any }>,
+  amount: number,
+): Set<string> | null {
+  const ladderConfigured = decisionSteps.some(
+    s => s.approvalMinAmount !== null || s.approvalMaxAmount !== null,
+  );
+  if (!ladderConfigured) return null;
+
+  // Index du palier couvrant : premier plafond null (illimité) ou ≥ montant.
+  let coveringIdx = decisionSteps.findIndex(
+    s => s.approvalMaxAmount === null || amount <= Number(s.approvalMaxAmount),
+  );
+  // Aucun palier ne couvre (tous plafonnés sous le montant) → inclure jusqu'au dernier.
+  if (coveringIdx === -1) coveringIdx = decisionSteps.length - 1;
+
+  const includedIds = new Set<string>();
+  for (let i = 0; i <= coveringIdx; i++) {
+    const s = decisionSteps[i];
+    // Seuil bas : un palier peut être sauté pour les petits montants.
+    if (s.approvalMinAmount !== null && amount < Number(s.approvalMinAmount)) continue;
+    includedIds.add(s.id);
+  }
+  return includedIds;
+}
+
 async function buildPlanFromPolicy(
   policyId: string,
   creditTypeId: string,
@@ -112,11 +154,21 @@ async function buildPlanFromPolicy(
     orderBy: { order: 'asc' },
   });
 
+  // Échelle d'escalade : ensemble des paliers décisionnels requis pour ce montant.
+  const decisionSteps = steps.filter(s => DECISION_STEP_TYPES.includes(s.stepType));
+  const escalationIds = resolveEscalationDecisionStepIds(decisionSteps, amount);
+
   return steps
     .filter(s => {
-      // Filtrer par type de crédit si renseigné
+      // Filtrer par type de crédit si renseigné (s'applique à toutes les étapes)
       if (s.creditTypeIds.length > 0 && !s.creditTypeIds.includes(creditTypeId)) {
         return false;
+      }
+      // Étapes décisionnelles : inclusion pilotée par l'échelle d'escalade
+      // (source de vérité = approvalMin/MaxAmount). Retombe sur l'ancien filtrage
+      // si aucune limite explicite n'est configurée (rétro-compatibilité).
+      if (DECISION_STEP_TYPES.includes(s.stepType) && escalationIds !== null) {
+        return escalationIds.has(s.id);
       }
       // Filtrer par condition de montant
       if (s.conditionMinAmount !== null && amount < Number(s.conditionMinAmount)) return false;
@@ -744,44 +796,19 @@ export async function canApproveStep(
     }
   }
 
-  // ── 5. Vérification du plafond d'approbation ───────────────────────────────
-  // Le plafond ne s'applique qu'aux étapes décisionnelles de la politique moderne
-  // (stepType APPROVAL ou COMMITTEE, avec policyStepId renseigné).
-  // Les étapes legacy (sans policyStepId) ignorent ce check : elles ont été
-  // créées par l'ancien circuit qui routait par rôle, pas par montant.
-  const DECISION_STEP_TYPES: string[] = ['APPROVAL', 'COMMITTEE'];
+  // ── 5. Plafond d'approbation → géré par l'échelle d'escalade ───────────────
+  // Le montant n'est PLUS rejeté ici via une bande ApprovalLimit par rôle.
+  // Dans le modèle cumulatif (échelle d'escalade), un palier décisionnel inférieur
+  // co-valide légitimement un montant supérieur à son propre plafond : c'est le rôle
+  // du palier supérieur (inclus dans le plan) de porter la décision finale.
+  // L'autorisation correcte découle donc de :
+  //   (§0) l'ordre séquentiel des étapes,
+  //   (buildPlanFromPolicy) l'inclusion du palier dans le circuit pour ce montant,
+  //   (§3) le contrôle de rôle.
+  // L'approbation finale (status=APPROVED) ne se produit que lorsqu'il ne reste
+  // aucune étape décisionnelle pendante → le cumul des validations est garanti.
 
-  let stepType: string | null = null;
-  if (step.policyStepId) {
-    const policyStep = await prisma.creditPolicyStep.findUnique({
-      where: { id: step.policyStepId },
-      select: { stepType: true },
-    });
-    stepType = policyStep?.stepType ?? null;
-  }
-
-  // Étapes legacy (pas de policyStepId) → pas de check montant
-  const isDecisionStep = !!step.policyStepId && (!stepType || DECISION_STEP_TYPES.includes(stepType));
-
-  if (isDecisionStep) {
-    const amount = Number(application.amount);
-    const limit = await prisma.approvalLimit.findFirst({
-      where: { role: effectiveRole, companyId: application.companyId },
-    });
-
-    if (limit) {
-      const min = Number(limit.minAmount);
-      const max = Number(limit.maxAmount);
-      if (amount < min || amount > max) {
-        return {
-          allowed: false,
-          reason: `Montant ${amount.toLocaleString()} XOF hors limite autorisée pour ce rôle (${min.toLocaleString()} – ${max.toLocaleString()} XOF)`,
-        };
-      }
-    }
-  }
-
-  // ── 4. Vérification des actions autorisées sur l'étape de politique ──────────
+  // ── 6. Vérification des actions autorisées sur l'étape de politique ──────────
   if (step.policyStepId) {
     const policyStepForActions = await prisma.creditPolicyStep.findUnique({
       where: { id: step.policyStepId },

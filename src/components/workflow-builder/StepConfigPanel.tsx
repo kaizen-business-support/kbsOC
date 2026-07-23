@@ -155,6 +155,38 @@ export function StepConfigPanel({
             </FormControl>
           )}
 
+          {/* Plafonds de validation — étapes décisionnelles uniquement (échelle d'escalade) */}
+          {(step.stepType === 'APPROVAL' || step.stepType === 'COMMITTEE') && (
+            <Box>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#555', mb: 1 }}>
+                Limites de validation (montant)
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1.5 }}>
+                <TextField
+                  label="Montant min validable" size="small" type="number" fullWidth disabled={readOnly}
+                  value={step.approvalMinAmount ?? ''}
+                  onChange={(e) => onChange({
+                    approvalMinAmount: e.target.value === '' ? null : Number(e.target.value),
+                  })}
+                  helperText="Vide = pas de seuil bas"
+                  sx={{ flex: 1 }}
+                />
+                <TextField
+                  label="Montant max validable" size="small" type="number" fullWidth disabled={readOnly}
+                  value={step.approvalMaxAmount ?? ''}
+                  onChange={(e) => onChange({
+                    approvalMaxAmount: e.target.value === '' ? null : Number(e.target.value),
+                  })}
+                  helperText="Vide = illimité (palier terminal)"
+                  sx={{ flex: 1 }}
+                />
+              </Box>
+              <Typography sx={{ fontSize: 11, color: '#888', mt: 0.5 }}>
+                Le dossier remonte jusqu'au premier palier dont le plafond couvre le montant ; tous les paliers traversés valident en séquence.
+              </Typography>
+            </Box>
+          )}
+
           {/* SLA */}
           <Box sx={{ display: 'flex', gap: 1.5 }}>
             <TextField label="SLA attendu (h)" size="small" type="number" disabled={readOnly}

@@ -25,6 +25,8 @@ export interface PolicyStep {
   assignedRole: string;
   conditionMinAmount: number | null;
   conditionMaxAmount: number | null;
+  approvalMinAmount: number | null;
+  approvalMaxAmount: number | null;
   expectedDurationHours: number;
   maxDurationHours: number;
   isRequired: boolean;
