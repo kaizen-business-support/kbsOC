@@ -53,6 +53,17 @@ function createStep(type: PolicyStepType, order: number, existingSteps: PolicySt
 
 const isDecisionStep = (s: PolicyStep) => s.stepType === 'APPROVAL' || s.stepType === 'COMMITTEE';
 
+// Règles structurelles minimales exigées par le backend pour activer une politique
+// (getPolicyValidationErrors, credit-policy.ts). Réutilisées côté client pour prévenir
+// l'utilisateur AVANT l'appel API (bouton désactivé + message) plutôt que de le laisser
+// découvrir un 422 VALIDATION_REQUIRED après coup.
+function structuralPolicyErrors(steps: PolicyStep[]): string[] {
+  const errs: string[] = [];
+  if (!steps.some((s) => s.stepType === 'DISPATCH')) errs.push('au moins une étape Dispatch');
+  if (!steps.some((s) => isDecisionStep(s)))         errs.push('au moins une étape Approbation ou Comité');
+  return errs;
+}
+
 function validateStepsClient(steps: PolicyStep[]): PolicyStep[] {
   // Palier terminal : au plus un palier décisionnel peut avoir un plafond illimité (vide).
   const uncappedDecision = steps.filter(s => isDecisionStep(s) && s.approvalMaxAmount == null);
@@ -109,6 +120,11 @@ export function WorkflowPolicyBuilder() {
   const isDraft  = selectedPolicy?.status === 'DRAFT';
   const isActive = selectedPolicy?.status === 'ACTIVE';
   const sc = selectedPolicy ? (STATUS_CFG[selectedPolicy.status] ?? STATUS_CFG.ARCHIVED) : null;
+
+  // Blocages structurels d'activation (mêmes règles que le backend) : tant qu'il
+  // manque un Dispatch ou une étape décisionnelle, l'activation échouerait en 422.
+  const activationBlockers = structuralPolicyErrors(steps);
+  const canActivate = activationBlockers.length === 0;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -209,6 +225,11 @@ export function WorkflowPolicyBuilder() {
 
   const handleActivate = async () => {
     if (!selectedPolicyId) return;
+    // Prévenir plutôt que subir un 422 : mêmes règles que le backend.
+    if (activationBlockers.length > 0) {
+      setSnack({ msg: `Activation impossible : il manque ${activationBlockers.join(' et ')}.`, sev: 'warning' });
+      return;
+    }
     const activatedId = selectedPolicyId;
     const res = await creditPolicyApi.activatePolicy(activatedId);
     if (res.success) {
@@ -415,13 +436,20 @@ export function WorkflowPolicyBuilder() {
             >
               Enregistrer
             </Button>
-            <Button size="small" variant="contained" color="success"
-              startIcon={<PlayArrowIcon sx={{ fontSize: 15 }} />}
-              onClick={handleActivate}
-              sx={{ fontSize: 12, textTransform: 'none' }}
-            >
-              Activer
-            </Button>
+            <Tooltip title={canActivate
+              ? 'Activer cette politique (elle deviendra la politique de crédit en vigueur)'
+              : `Ajoutez ${activationBlockers.join(' et ')} avant de pouvoir activer`}>
+              <span>
+                <Button size="small" variant="contained" color="success"
+                  startIcon={<PlayArrowIcon sx={{ fontSize: 15 }} />}
+                  onClick={handleActivate}
+                  disabled={!canActivate}
+                  sx={{ fontSize: 12, textTransform: 'none' }}
+                >
+                  Activer
+                </Button>
+              </span>
+            </Tooltip>
           </>
         )}
         {canEdit && isActive && (
