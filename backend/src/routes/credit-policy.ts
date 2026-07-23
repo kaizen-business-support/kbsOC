@@ -710,6 +710,8 @@ router.post('/:id/activate', async (req: Request, res: Response) => {
       where: { companyId: req.companyId, status: PolicyStatus.ACTIVE, id: { not: req.params.id } },
     });
 
+    const now = new Date();
+
     await prisma.$transaction(async (tx) => {
       if (oldActive) {
         await tx.creditPolicy.update({
@@ -719,7 +721,15 @@ router.post('/:id/activate', async (req: Request, res: Response) => {
       }
       await tx.creditPolicy.update({
         where: { id: req.params.id },
-        data: { status: PolicyStatus.ACTIVE, isActive: true },
+        data: {
+          status: PolicyStatus.ACTIVE,
+          isActive: true,
+          // Si validFrom est dans le futur, l'avancer à maintenant : sinon la politique
+          // serait ACTIVE mais invisible pour les filtres temporels (validFrom <= now)
+          // de policy-guide, creation-permission et getActivePolicyForCreditType →
+          // « aucune politique active » à l'écran malgré l'activation.
+          ...(policy.validFrom > now ? { validFrom: now } : {}),
+        },
       });
 
       // Synchroniser approval_limits depuis les guards de la politique.
