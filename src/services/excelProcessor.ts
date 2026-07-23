@@ -942,6 +942,17 @@ export class ExcelProcessor {
         });
       }
       
+      // EBE (Excédent Brut d'Exploitation) — dérivé si absent : XE = VA − charges de
+      // personnel − impôts et taxes sur rémunérations. Corrige l'EBE affiché à 0
+      // quand la ligne n'est pas présente dans le tableur mais que la VA l'est.
+      const ebeMissing = data.excedent_brut_exploitation === undefined || Number(data.excedent_brut_exploitation) === 0;
+      const vaKnown = data.valeur_ajoutee !== undefined && isFinite(Number(data.valeur_ajoutee));
+      if (ebeMissing && vaKnown) {
+        data.excedent_brut_exploitation =
+          Number(data.valeur_ajoutee) - Number(data.charges_personnel || 0) - Number(data.impots_taxes_remunerations || 0);
+        console.log(`ExcelProcessor - Calculated excedent_brut_exploitation for ${yearKey}: ${data.excedent_brut_exploitation}`);
+      }
+
       // TFT fields are now directly mapped with correct names - no additional mapping needed
       console.log(`ExcelProcessor - TFT fields already correctly mapped for ${yearKey}:`, {
         tresorerie_debut_periode: data.tresorerie_debut_periode,
