@@ -108,23 +108,30 @@ export function WorkflowPolicyBuilder() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [polRes, ctRes, rolesRes] = await Promise.all([
-      creditPolicyApi.getPolicies(),
-      creditPolicyApi.getCreditTypes(),
-      ApiService.getRoles(),
-    ]);
-    if (polRes.success && polRes.data) {
-      setPolicies(polRes.data);
-      const best = polRes.data.find((p: CreditPolicyFull) => p.status === 'ACTIVE')
-        ?? polRes.data.find((p: CreditPolicyFull) => p.status === 'DRAFT')
-        ?? polRes.data[0];
-      if (best) { setSelectedPolicyId(best.id); setSteps(best.steps ?? []); setCurrentVersion(best.version); }
+    try {
+      // Appels indépendants : l'échec d'un fetch (rôles/types) ne doit pas empêcher
+      // la mise à jour de la liste des politiques — sinon le statut affiché reste figé
+      // (ex. une politique fraîchement activée continuerait d'apparaître en "Brouillon").
+      const [polR, ctR, rolesR] = await Promise.allSettled([
+        creditPolicyApi.getPolicies(),
+        creditPolicyApi.getCreditTypes(),
+        ApiService.getRoles(),
+      ]);
+      if (polR.status === 'fulfilled' && polR.value.success && polR.value.data) {
+        const data = polR.value.data as CreditPolicyFull[];
+        setPolicies(data);
+        const best = data.find((p) => p.status === 'ACTIVE')
+          ?? data.find((p) => p.status === 'DRAFT')
+          ?? data[0];
+        if (best) { setSelectedPolicyId(best.id); setSteps(best.steps ?? []); setCurrentVersion(best.version); }
+      }
+      if (ctR.status === 'fulfilled' && ctR.value.success && ctR.value.data) setCreditTypes(ctR.value.data);
+      if (rolesR.status === 'fulfilled' && rolesR.value.success && rolesR.value.data) {
+        setRoles(rolesR.value.data.map((r: any) => ({ value: r.name, label: r.label || r.name })));
+      }
+    } finally {
+      setLoading(false);
     }
-    if (ctRes.success && ctRes.data) setCreditTypes(ctRes.data);
-    if (rolesRes.success && rolesRes.data) {
-      setRoles(rolesRes.data.map((r: any) => ({ value: r.name, label: r.label || r.name })));
-    }
-    setLoading(false);
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -192,9 +199,22 @@ export function WorkflowPolicyBuilder() {
 
   const handleActivate = async () => {
     if (!selectedPolicyId) return;
-    const res = await creditPolicyApi.activatePolicy(selectedPolicyId);
-    if (res.success) { setSnack({ msg: 'Politique activée', sev: 'success' }); await loadData(); }
-    else {
+    const activatedId = selectedPolicyId;
+    const res = await creditPolicyApi.activatePolicy(activatedId);
+    if (res.success) {
+      // Bascule optimiste du statut : la politique activée passe ACTIVE, l'ancienne
+      // active passe ARCHIVED — immédiatement, sans dépendre du rechargement réseau.
+      // Garantit que le badge se met à jour même si un fetch de loadData échoue.
+      setPolicies((prev) => prev.map((p) =>
+        p.id === activatedId
+          ? { ...p, status: 'ACTIVE' as const, isActive: true }
+          : p.status === 'ACTIVE'
+            ? { ...p, status: 'ARCHIVED' as const, isActive: false }
+            : p
+      ));
+      setSnack({ msg: 'Politique activée', sev: 'success' });
+      await loadData();
+    } else {
       const errs = (res.errors || []).map((e: any) => e.message).join(' · ');
       setSnack({ msg: errs || res.error || 'Erreur lors de l\'activation', sev: 'error' });
     }
