@@ -73,6 +73,7 @@ function normalizeStepsWithCreation(clientSteps: any[]): any[] {
       order: idx + 2,
       stepType: s.stepType,
       assignedRole: s.assignedRole,
+      dispatchTargetRole: s.dispatchTargetRole ?? null,
       conditionMinAmount: s.conditionMinAmount ?? null,
       conditionMaxAmount: s.conditionMaxAmount ?? null,
       approvalMinAmount: s.approvalMinAmount ?? null,
