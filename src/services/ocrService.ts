@@ -1446,7 +1446,7 @@ export class OcrService {
    */
   private parseCompteResultatForYear(text: string, yearOffset: 0 | 1 = 0): ExtractedFinancialData {
     const v = (...l: string[]) => this.crWithHint(text, yearOffset, ...l);
-    return {
+    const cr: ExtractedFinancialData = {
       ventes_marchandises:            v('Ventes de marchandises'),
       achats_marchandises:            v('Achats de marchandises'),
       variation_stocks_marchandises:  v('Variation de stocks de marchandises'),
@@ -1495,6 +1495,29 @@ export class OcrService {
       impots_resultat:                v('Impots sur le resultat', 'Impôts sur le résultat'),
       resultat_net:                   v('RESULTAT NET', 'RÉSULTAT NET'),
     };
+    this.deriveCompteResultatSubtotals(cr);
+    return cr;
+  }
+
+  /**
+   * Complète les sous-totaux du compte de résultat que l'OCR n'a pas su lire,
+   * en les dérivant de leurs composantes (formules SYSCOHADA). Ne remplace jamais
+   * une valeur déjà extraite non nulle.
+   *
+   * EBE (XE) = Valeur Ajoutée (XD) − Charges de personnel (RU) − Impôts et taxes
+   * sur rémunérations (RV). Corrige le cas où la ligne EBE n'est pas imprimée /
+   * pas reconnue alors que la VA et les charges de personnel le sont.
+   */
+  private deriveCompteResultatSubtotals(cr: ExtractedFinancialData): void {
+    const d = cr as Record<string, number | undefined>;
+    const num = (x: number | undefined): number | undefined =>
+      typeof x === 'number' && isFinite(x) ? x : undefined;
+    const missing = (x: number | undefined) => num(x) === undefined || num(x) === 0;
+
+    if (missing(d.excedent_brut_exploitation) && num(d.valeur_ajoutee) !== undefined) {
+      d.excedent_brut_exploitation =
+        Number(d.valeur_ajoutee) - (num(d.charges_personnel) ?? 0) - (num(d.impots_taxes_remunerations) ?? 0);
+    }
   }
 
   private parseCompteResultatData(text: string): ExtractedFinancialData {
