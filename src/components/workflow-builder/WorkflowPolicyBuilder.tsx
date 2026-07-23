@@ -98,6 +98,9 @@ export function WorkflowPolicyBuilder() {
   const [policies, setPolicies]               = useState<CreditPolicyFull[]>([]);
   const [selectedPolicyId, setSelectedPolicyId] = useState('');
   const [steps, setSteps]                     = useState<PolicyStep[]>([]);
+  // Modifications d'étapes non encore persistées en base. L'activation valide côté
+  // backend les steps PERSISTÉES : on doit donc sauvegarder avant d'activer si dirty.
+  const [isDirty, setIsDirty]                 = useState(false);
   const [currentVersion, setCurrentVersion]   = useState(1);
   const [creditTypes, setCreditTypes]         = useState<CreditType[]>([]);
   const [roles, setRoles]                     = useState<{ value: string; label: string }[]>([]);
@@ -149,7 +152,7 @@ export function WorkflowPolicyBuilder() {
           ?? data.find((p) => p.status === 'ACTIVE')
           ?? data.find((p) => p.status === 'DRAFT')
           ?? data[0];
-        if (chosen) { setSelectedPolicyId(chosen.id); setSteps(chosen.steps ?? []); setCurrentVersion(chosen.version); }
+        if (chosen) { setSelectedPolicyId(chosen.id); setSteps(chosen.steps ?? []); setCurrentVersion(chosen.version); setIsDirty(false); }
       }
       if (ctR.status === 'fulfilled' && ctR.value.success && ctR.value.data) setCreditTypes(ctR.value.data);
       if (rolesR.status === 'fulfilled' && rolesR.value.success && rolesR.value.data) {
@@ -169,23 +172,35 @@ export function WorkflowPolicyBuilder() {
     setSteps(pol.steps ?? []);
     setCurrentVersion(pol.version);
     setSelectedStepId(null);
+    setIsDirty(false);
+  };
+
+  // Toute modification d'étape par l'utilisateur passe par ici → marque l'état « dirty ».
+  const handleStepsChange = (next: PolicyStep[]) => {
+    setSteps(next);
+    setIsDirty(true);
   };
 
   const handleAddStep = (type: PolicyStepType) => {
     if (!canEdit || !isDraft) return;
     const s = createStep(type, steps.length + 1, steps);
     setSteps((prev) => [...prev, s]);
+    setIsDirty(true);
     setSelectedStepId(s.id);
     if (!configOpen) setConfigOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!selectedPolicyId || !canEdit) return;
+  // Persiste les étapes courantes : validation cliente + sauvegarde + gestion du conflit
+  // de version. Retourne true si la base reflète désormais l'état affiché (isDirty remis
+  // à false), false sinon (erreur/conflit déjà signalés à l'utilisateur). Réutilisée par
+  // handleSave ET par la sauvegarde automatique avant activation.
+  const persistSteps = async (opts?: { silentSuccess?: boolean }): Promise<boolean> => {
+    if (!selectedPolicyId || !canEdit) return false;
     const validated = validateStepsClient(steps);
     setSteps(validated);
     if (validated.some((s) => s._error)) {
       setSnack({ msg: 'Corrigez les erreurs avant de sauvegarder', sev: 'error' });
-      return;
+      return false;
     }
     setSaving(true);
     const res = await creditPolicyApi.savePolicyWithSteps(selectedPolicyId, {
@@ -197,20 +212,26 @@ export function WorkflowPolicyBuilder() {
       const v = res.data?.version ?? currentVersion + 1;
       setCurrentVersion(v);
       if (res.data?.steps) setSteps(res.data.steps);
-      setSnack({ msg: `Sauvegardé — v${v}`, sev: 'success' });
-    } else if (res.conflict) {
-      // Version mismatch: reload the current policy's version from server, then ask user to retry
+      setIsDirty(false);
+      if (!opts?.silentSuccess) setSnack({ msg: `Sauvegardé — v${v}`, sev: 'success' });
+      return true;
+    }
+    if (res.conflict) {
+      // Version mismatch : recharger la version courante puis demander de réessayer.
       const fresh = await creditPolicyApi.getPolicies();
       if (fresh.success) {
         setPolicies(fresh.data);
         const updated = fresh.data.find((p: CreditPolicyFull) => p.id === selectedPolicyId);
         if (updated) setCurrentVersion(updated.version);
       }
-      setSnack({ msg: 'Conflit de version corrigé — cliquez à nouveau sur Enregistrer', sev: 'warning' });
-    } else {
-      setSnack({ msg: res.error, sev: 'error' });
+      setSnack({ msg: 'Conflit de version — vos modifications n\'ont pas été enregistrées. Réessayez.', sev: 'warning' });
+      return false;
     }
+    setSnack({ msg: res.error, sev: 'error' });
+    return false;
   };
+
+  const handleSave = () => { void persistSteps(); };
 
   const handleValidate = async () => {
     if (!selectedPolicyId) return;
@@ -229,6 +250,13 @@ export function WorkflowPolicyBuilder() {
     if (activationBlockers.length > 0) {
       setSnack({ msg: `Activation impossible : il manque ${activationBlockers.join(' et ')}.`, sev: 'warning' });
       return;
+    }
+    // Le backend valide les steps PERSISTÉES. Si des modifications ne sont pas encore
+    // enregistrées, on sauvegarde d'abord automatiquement : sinon l'activation
+    // échouerait en 422 alors que l'écran montre pourtant les étapes requises.
+    if (isDirty) {
+      const saved = await persistSteps({ silentSuccess: true });
+      if (!saved) return; // erreur/conflit déjà affiché : ne pas activer
     }
     const activatedId = selectedPolicyId;
     const res = await creditPolicyApi.activatePolicy(activatedId);
@@ -249,6 +277,7 @@ export function WorkflowPolicyBuilder() {
       if (fresh) {
         setSteps(fresh.steps ?? []);
         setCurrentVersion(fresh.version);
+        setIsDirty(false);
       }
       setSnack({ msg: 'Politique activée', sev: 'success' });
     } else {
@@ -278,6 +307,7 @@ export function WorkflowPolicyBuilder() {
       setCurrentVersion(v);
       setSteps(res.data?.steps || reordered);
       setSelectedStepId(null);
+      setIsDirty(false);
       setSnack({ msg: `${reordered.length} étapes importées et sauvegardées (v${v})`, sev: 'success' });
     } else {
       setSnack({ msg: res.error || 'Erreur lors de la sauvegarde des étapes RACI', sev: 'error' });
@@ -292,6 +322,7 @@ export function WorkflowPolicyBuilder() {
       setSelectedPolicyId(res.data.id);
       setSteps(res.data.steps ?? []);
       setCurrentVersion(res.data.version ?? 1);
+      setIsDirty(false);
     }
   };
 
@@ -321,6 +352,7 @@ export function WorkflowPolicyBuilder() {
       setSteps(res.data.steps ?? []);
       setCurrentVersion(res.data.version ?? 1);
       setSelectedStepId(null);
+      setIsDirty(false);
     } else {
       setSnack({ msg: res.error || 'Erreur lors de la duplication', sev: 'error' });
     }
@@ -437,7 +469,9 @@ export function WorkflowPolicyBuilder() {
               Enregistrer
             </Button>
             <Tooltip title={canActivate
-              ? 'Activer cette politique (elle deviendra la politique de crédit en vigueur)'
+              ? (isDirty
+                  ? 'Enregistre vos modifications puis active cette politique'
+                  : 'Activer cette politique (elle deviendra la politique de crédit en vigueur)')
               : `Ajoutez ${activationBlockers.join(' et ')} avant de pouvoir activer`}>
               <span>
                 <Button size="small" variant="contained" color="success"
@@ -589,7 +623,7 @@ export function WorkflowPolicyBuilder() {
           <Box sx={{ flex: 1, p: 1.5, overflowY: 'auto' }}>
             <StepList
               steps={steps}
-              onStepsChange={setSteps}
+              onStepsChange={handleStepsChange}
               creditTypes={creditTypes}
               roles={roles}
               readOnly={!canEdit || !isDraft}
