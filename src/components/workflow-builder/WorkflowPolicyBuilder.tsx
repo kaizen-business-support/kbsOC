@@ -61,6 +61,8 @@ function structuralPolicyErrors(steps: PolicyStep[]): string[] {
   const errs: string[] = [];
   if (!steps.some((s) => s.stepType === 'DISPATCH')) errs.push('au moins une étape Dispatch');
   if (!steps.some((s) => isDecisionStep(s)))         errs.push('au moins une étape Approbation ou Comité');
+  // Reflète getPolicyValidationErrors : chaque étape doit avoir un rôle assigné.
+  if (steps.some((s) => !s.assignedRole))            errs.push('un rôle sur chaque étape');
   return errs;
 }
 
@@ -655,7 +657,9 @@ export function WorkflowPolicyBuilder() {
       {/* ══ SNACKBAR ══ */}
       <Snackbar
         open={!!snack}
-        autoHideDuration={4000}
+        // Les erreurs restent affichées jusqu'à fermeture manuelle (croix de l'Alert) :
+        // un message d'erreur d'activation ne doit jamais disparaître en 4 s inaperçu.
+        autoHideDuration={snack?.sev === 'error' ? null : 4000}
         onClose={() => setSnack(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
