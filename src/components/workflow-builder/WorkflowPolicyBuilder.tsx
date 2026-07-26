@@ -315,6 +315,10 @@ export function WorkflowPolicyBuilder() {
   };
 
   const handleNewPolicy = async () => {
+    if (!canEdit) {
+      setSnack({ msg: "Vous n'avez pas les droits pour créer une politique de crédit", sev: 'error' });
+      return;
+    }
     const name = `Politique ${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
     const res = await creditPolicyApi.createPolicy({ name, code: `POL-${Date.now()}`, description: '' });
     if (res.success && res.data) {
@@ -322,7 +326,12 @@ export function WorkflowPolicyBuilder() {
       setSelectedPolicyId(res.data.id);
       setSteps(res.data.steps ?? []);
       setCurrentVersion(res.data.version ?? 1);
+      setSelectedStepId(null);
       setIsDirty(false);
+      setSnack({ msg: `Nouvelle politique créée : « ${res.data.name} » — ajoutez vos étapes puis activez`, sev: 'success' });
+    } else {
+      // Ne jamais échouer en silence : afficher la cause réelle (droits, company, code en double…).
+      setSnack({ msg: res.error || 'Erreur lors de la création de la politique', sev: 'error' });
     }
   };
 
