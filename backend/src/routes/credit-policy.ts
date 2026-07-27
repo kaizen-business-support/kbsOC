@@ -713,6 +713,13 @@ router.post('/:id/activate', async (req: Request, res: Response) => {
 
     const now = new Date();
 
+    // ── Transaction 1 : l'activation elle-même (archive + passage ACTIVE) ────────
+    // IMPORTANT : le sync des approval_limits est fait DANS SA PROPRE transaction
+    // ci-dessous, PAS ici. En effet, une erreur survenant à l'intérieur d'une
+    // transaction Postgres la marque « aborted » : le COMMIT final devient un
+    // ROLLBACK silencieux — même si l'erreur a été attrapée par un try/catch. Mettre
+    // le sync ici annulerait donc l'activation en cas d'échec du sync, tout en
+    // renvoyant success:true avec un statut resté DRAFT (bug observé).
     await prisma.$transaction(async (tx) => {
       if (oldActive) {
         await tx.creditPolicy.update({
@@ -732,20 +739,23 @@ router.post('/:id/activate', async (req: Request, res: Response) => {
           ...(policy.validFrom > now ? { validFrom: now } : {}),
         },
       });
+    });
 
-      // Synchroniser approval_limits depuis les guards de la politique.
-      // Toute erreur ici ne doit pas annuler l'activation.
-      try {
+    // ── Transaction 2 : synchronisation best-effort des approval_limits ──────────
+    // Isolée : si elle échoue, seule CETTE transaction est annulée — l'activation
+    // ci-dessus est déjà committée et reste effective.
+    try {
+      await prisma.$transaction(async (tx) => {
         await syncApprovalLimitsFromPolicy(
           tx,
           policy.steps,
           policy.companyId!,
           req.user!.id,
         );
-      } catch (syncErr) {
-        console.error('[credit-policy] sync approval_limits a échoué', syncErr);
-      }
-    });
+      });
+    } catch (syncErr) {
+      console.error('[credit-policy] sync approval_limits a échoué (activation conservée)', syncErr);
+    }
 
     // Relire la politique APRÈS la transaction (données certifiées fraîches) et la
     // renvoyer au client : celui-ci met à jour son état directement depuis cette
