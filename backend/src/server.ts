@@ -6,6 +6,7 @@ import compression from 'compression';
 import path from 'path';
 import fs from 'fs';
 import rateLimit from 'express-rate-limit';
+import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import os from 'os';
 import { prisma } from './prismaClient';
@@ -151,38 +152,83 @@ app.use(cors(corsOptions));
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 const isProd = process.env.NODE_ENV === 'production';
 
-// Global limiter — only in production (dev has too many double-renders with React StrictMode)
-// 500 req/15min par IP : pour 200 users, chaque utilisateur peut faire ~2,5 req/min en moyenne.
+// Lecture tolérante des variables d'env (les noms documentés sont *_MS / *_REQUESTS ;
+// on accepte aussi les anciens noms pour rétro-compatibilité).
+const envInt = (val: string | undefined, fallback: number): number => {
+  const n = parseInt(val ?? '', 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+const RATE_WINDOW_MS = envInt(process.env.RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
+const RATE_MAX       = envInt(process.env.RATE_LIMIT_MAX_REQUESTS ?? process.env.RATE_LIMIT_MAX, 1000);
+
+// Normalise une IP en clé stable. Pour IPv6, on regroupe sur le préfixe /64
+// (les 4 premiers groupes) : un client IPv6 ne peut pas contourner la limite en
+// permutant l'hôte dans son /64.
+const ipKey = (ip: string): string => {
+  const v = (ip || '').replace(/^::ffff:/i, '').toLowerCase();
+  if (v.includes(':')) return v.split(':').slice(0, 4).join(':') + '::/64';
+  return v || 'unknown';
+};
+
+// Clé de rate-limit : par UTILISATEUR authentifié (extrait du JWT, sans vérif — sert
+// uniquement au bucketing) sinon par IP réelle. CRITIQUE : sans cela, tous les users
+// derrière un même NAT/proxy d'entreprise partagent une seule IP → une seule limite →
+// blocage collectif (429) résolu seulement en changeant d'IP.
+const userOrIpKey = (req: express.Request): string => {
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith('Bearer ')) {
+    try {
+      const decoded = jwt.decode(auth.slice(7)) as { userId?: string } | null;
+      if (decoded?.userId) return `user:${decoded.userId}`;
+    } catch { /* token illisible → repli IP */ }
+  }
+  return `ip:${ipKey(req.realIp || req.ip || '')}`;
+};
+
+// Global limiter — only in production (dev has too many double-renders with React StrictMode).
+// Désormais par utilisateur authentifié (ou IP pour l'anonyme) : un bureau entier
+// partageant une IP publique n'épuise plus un compteur commun.
 if (isProd) {
   const globalLimiter = rateLimit({
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW || '15') * 60 * 1000,
-    max: parseInt(process.env.RATE_LIMIT_MAX || '500'),
+    windowMs: RATE_WINDOW_MS,
+    max: RATE_MAX,
+    keyGenerator: userOrIpKey,
     standardHeaders: true,
     legacyHeaders: false,
+    validate: { trustProxy: false }, // config proxy assumée (voir app.set('trust proxy'))
     message: {
-      error: 'Trop de requêtes depuis cette adresse IP, veuillez réessayer plus tard.',
+      error: 'Trop de requêtes, veuillez réessayer plus tard.',
       statusCode: 429,
     },
   });
   app.use(globalLimiter);
-  console.log('🛡️  Global rate limiting enabled (production)');
+  console.log(`🛡️  Global rate limiting enabled (production): ${RATE_MAX} req/${Math.round(RATE_WINDOW_MS / 60000)}min par utilisateur/IP`);
 } else {
   console.log('⚠️  Global rate limiting disabled in development');
 }
 
-// Auth-specific limiter — 30 en prod (200 users peuvent se connecter dans la même fenêtre)
+// Auth-specific limiter — protège la connexion contre le brute-force par IP.
+// skipSuccessfulRequests : SEULES les tentatives ÉCHOUÉES comptent → un bureau
+// partageant une IP qui se connecte normalement n'est jamais bloqué ; seule une IP
+// générant beaucoup d'échecs (attaque) est limitée. Le verrouillage par compte est
+// géré séparément (bruteForceTracker, par email).
+const AUTH_WINDOW_MS = envInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
+const AUTH_MAX       = envInt(process.env.AUTH_RATE_LIMIT_MAX, isProd ? 50 : 200);
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: isProd ? 30 : 200,
+  windowMs: AUTH_WINDOW_MS,
+  max: AUTH_MAX,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req: express.Request) => `authip:${ipKey(req.realIp || req.ip || '')}`,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
   message: {
-    error: 'Trop de tentatives de connexion. Veuillez réessayer dans 15 minutes.',
+    error: 'Trop de tentatives de connexion échouées. Veuillez réessayer dans 15 minutes.',
     statusCode: 429,
   },
 });
 
-console.log(`🔒  Auth rate limiting: ${isProd ? '30' : '200'} req/15min`);
+console.log(`🔒  Auth rate limiting: ${AUTH_MAX} échecs/${Math.round(AUTH_WINDOW_MS / 60000)}min par IP (connexions réussies non comptées)`);
 
 // ─── Webhooks (besoin du rawBody → AVANT express.json) ───────────────────────
 app.post(
