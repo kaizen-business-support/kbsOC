@@ -1049,6 +1049,11 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
             severity: 'success'
           });
           await loadDepartments();
+          // Filet : garantir l'affichage du nouveau département même si le refetch
+          // renvoie une liste en cache (Redis) qui ne le contient pas encore.
+          if (response.data?.id) {
+            setDepartments(prev => prev.some(d => d.id === response.data.id) ? prev : [...prev, response.data]);
+          }
           closeDepartmentDialog();
         } else {
           setDepartmentError(response.error || 'Erreur lors de la création du département');
@@ -1316,6 +1321,11 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ onNaviga
             severity: 'success'
           });
           await loadBranches();
+          // Filet : garantir l'affichage de la nouvelle agence même si le refetch
+          // renvoie une liste en cache (Redis) qui ne la contient pas encore.
+          if (response.data?.id) {
+            setBranches(prev => prev.some(b => b.id === response.data.id) ? prev : [...prev, response.data]);
+          }
           closeBranchDialog();
         } else {
           setBranchError(response.error || 'Erreur lors de la création de l\'agence');

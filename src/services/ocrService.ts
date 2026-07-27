@@ -940,33 +940,23 @@ export class OcrService {
         console.log(`📝 Formatted ${allRows.length} rows from pages ${startPage}–${endPage}`);
 
       } else {
-        // ── Image-based PDF: Tesseract OCR (single page only) ──────────────
+        // ── Image-based PDF: Tesseract OCR (multi-pages) ────────────────────
+        // Un état scanné (surtout le Bilan, 2-3 pages en SYSCOHADA) s'étale sur
+        // plusieurs pages : on OCR la MÊME fenêtre de pages que le chemin texte
+        // (N-1..N+1 pour le Bilan, N..N+1 sinon), sinon le PASSIF ou la fin du
+        // compte de résultat sont silencieusement perdus.
         console.log(`🖼️ Using OCR extraction for ${statement.type} (minimal text: ${firstPageText.length} chars)`);
 
-        const viewport = firstPage.getViewport({ scale: 3.5 }); // Even higher resolution for data extraction
+        const isBilanScan = statement.type === 'bilan';
+        const ocrStartPage = isBilanScan
+          ? Math.max(1, statement.pageNumber - 1)
+          : statement.pageNumber;
+        const ocrEndPage = Math.min(statement.pageNumber + 1, pdf.numPages);
 
-        // Create canvas and render page
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d')!;
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-
-        await firstPage.render({ canvasContext: context, viewport }).promise;
-
-        // Apply intensive preprocessing for data extraction
-        const preprocessedCanvas = await this.preprocessImage(canvas, {
-          dpi: 400, // Higher DPI for data extraction
-          contrast: 1.3,
-          brightness: 1.15,
-          gamma: 0.85,
-          useAdaptiveThresholding: true,
-          useDeskewing: true,
-          useNoiseReduction: true,
-          useSharpening: true
-        });
-
-        // OCR with enhanced table-optimized settings
-        await this.worker.setParameters({
+        // OCR with enhanced table-optimized settings — appliqués au worker qui
+        // effectue réellement la reconnaissance (financialWorker), pas au worker
+        // de détection.
+        await this.financialWorker.setParameters({
           tessedit_pageseg_mode: '6', // Uniform block of text (better for tables)
           preserve_interword_spaces: '1',
           textord_tablefind_good_width: '3',
@@ -978,9 +968,37 @@ export class OcrService {
           textord_tabfind_show_vlines: '0'
         });
 
-        const { data: { text, confidence } } = await this.financialWorker.recognize(preprocessedCanvas);
-        console.log(`📊 OCR confidence for ${statement.type}: ${confidence}%`);
-        extractionText = text;
+        const pageTexts: string[] = [];
+        for (let pgNum = ocrStartPage; pgNum <= ocrEndPage; pgNum++) {
+          const pg = pgNum === statement.pageNumber ? firstPage : await pdf.getPage(pgNum);
+          const viewport = pg.getViewport({ scale: 3.5 }); // Even higher resolution for data extraction
+
+          // Create canvas and render page
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d')!;
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+
+          await pg.render({ canvasContext: context, viewport }).promise;
+
+          // Apply intensive preprocessing for data extraction
+          const preprocessedCanvas = await this.preprocessImage(canvas, {
+            dpi: 400, // Higher DPI for data extraction
+            contrast: 1.3,
+            brightness: 1.15,
+            gamma: 0.85,
+            useAdaptiveThresholding: true,
+            useDeskewing: true,
+            useNoiseReduction: true,
+            useSharpening: true
+          });
+
+          const { data: { text, confidence } } = await this.financialWorker.recognize(preprocessedCanvas);
+          console.log(`📊 OCR confidence page ${pgNum} for ${statement.type}: ${confidence}%`);
+          if (text && text.trim()) pageTexts.push(text);
+        }
+
+        extractionText = pageTexts.join('\n');
       }
 
       const processedText = this.processTableData(extractionText);
@@ -1143,7 +1161,17 @@ export class OcrService {
     let str = trimmed.replace(/[()]/g, '').trim();
     str = str.replace(/(FCFA|XOF|F\s?CFA|€|\$|£|¥|₦)/gi, '').trim();
     str = str.replace(/[\s  ]/g, '');
-    str = str.replace(/,(\d+)$/, '.$1');
+    // Séparateurs de MILLIERS en points/virgules (groupes de 3 exactement) :
+    //   1.234.567 / 12.500 (UEMOA, OCR)  ·  1,234,567 (anglo)  ·  1.234.567,89 (mixte)
+    // Une vraie décimale ("12.5", "1,23") a un groupe final ≠ 3 chiffres et
+    // reste traitée par la branche décimale.
+    if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(str)) {
+      str = str.replace(/\./g, '').replace(',', '.');
+    } else if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(str)) {
+      str = str.replace(/,/g, '');
+    } else {
+      str = str.replace(/,(\d+)$/, '.$1');
+    }
     if (!/^-?\d+(\.\d+)?$/.test(str)) return null;
     const n = parseFloat(str);
     if (isNaN(n)) return null;
@@ -1168,13 +1196,42 @@ export class OcrService {
   private numsFromLine(line: string): number[] {
     const structured = this.extractNumbersWithGaps(line).filter((n): n is number => n !== null);
     if (structured.length > 0) return structured;
-    // Fallback for tight OCR output where columns aren't 2+-space separated.
-    // Only match compact integer tokens (no thousand-space) to avoid greedily
-    // merging adjacent French-format numbers into one huge value.
-    const tokens = line.match(/-?\d+(?:[.,]\d+)?/g) ?? [];
-    return tokens
-      .map(t => this.parseAmount(t))
-      .filter((n): n is number => n !== null);
+    // Fallback scan serré : les colonnes ne sont séparées que par UN espace.
+    // On matche les nombres à groupes de milliers (espaces ou points), puis on
+    // scinde les séquences trop longues (deux montants adjacents fusionnés).
+    const grouped = line.match(/-?\d{1,3}(?:[  .]\d{3})+(?:,\d+)?|-?\d+(?:[.,]\d+)?/g) ?? [];
+    const out: number[] = [];
+    for (const token of grouped) {
+      out.push(...this.splitMergedGroupedNumber(token));
+    }
+    return out;
+  }
+
+  /**
+   * Un match "à groupes de milliers" peut couvrir DEUX montants adjacents
+   * séparés d'un seul espace (« 120 000 000 100 000 000 » = colonnes N et N-1).
+   * Un montant FCFA plausible tient sur ≤ 4 groupes (≤ 999 999 999 999).
+   * Au-delà : scission équitable des groupes — dans les états financiers, les
+   * colonnes N et N-1 ont presque toujours le même nombre de groupes.
+   */
+  private splitMergedGroupedNumber(token: string): number[] {
+    const chunks = token.split(/[  ]+/).filter(Boolean);
+    if (chunks.length <= 4) {
+      const direct = this.parseAmount(token);
+      if (direct !== null) return [direct];
+      // Chunks porteurs de leurs propres séparateurs (points/virgules) :
+      // chaque chunk est un montant complet (ex. "120.000.000 100.000.000").
+      const per = chunks.map(c => this.parseAmount(c));
+      if (chunks.length >= 2 && per.every((v): v is number => v !== null)) return per as number[];
+      return [];
+    }
+    if (chunks.some(c => /[.,]/.test(c))) {
+      return chunks.map(c => this.parseAmount(c)).filter((n): n is number => n !== null);
+    }
+    const half = Math.ceil(chunks.length / 2);
+    const a = this.parseAmount(chunks.slice(0, half).join(' '));
+    const b = this.parseAmount(chunks.slice(half).join(' '));
+    return [...(a !== null ? [a] : []), ...(b !== null ? [b] : [])];
   }
 
   /**
@@ -1206,28 +1263,52 @@ export class OcrService {
    * like a Note ref, the heuristic fallback (second-to-last non-null) is used
    * instead — it correctly gives NET-N regardless of whether a Note ref is present.
    */
-  private actifWithHint(text: string, columnHint: number | null, ...labels: string[]): number | undefined {
+  private actifWithHint(text: string, columnHint: number | null, yearOffset: 0 | 1, ...labels: string[]): number | undefined {
+    // Heuristique de position quand le hint est inutilisable :
+    // NET-N = avant-dernière valeur, NET-N-1 = dernière valeur.
+    const pickHeuristic = (nums: number[]): number =>
+      nums.length >= 3 ? nums[nums.length - (yearOffset === 0 ? 2 : 1)] : nums[nums.length >= 2 ? yearOffset : 0];
+
     for (const line of this.findAllLinesByLabel(text, ...labels)) {
       const cells = this.extractNumbersWithGaps(line);
-      const nums = cells.filter((n): n is number => n !== null);
-      if (nums.length === 0) continue;
+      let nums = cells.filter((n): n is number => n !== null);
+      if (nums.length === 0) {
+        // Scan serré : aucune cellule structurée — reconstruire via numsFromLine
+        // (le hint de colonne n'est plus applicable, heuristique seule).
+        nums = this.numsFromLine(line);
+        if (nums.length === 0) continue;
+        return pickHeuristic(nums);
+      }
 
       if (columnHint !== null && columnHint >= 0 && columnHint < cells.length) {
         const v = cells[columnHint];
         // If the cell at columnHint is a SYSCOHADA Note reference (small integer),
         // fall through to the heuristic instead of returning the Note number.
         const isNoteRef = v !== null && Number.isInteger(v) && v >= 1 && v <= 50 && nums.length >= 3;
-        if (v !== null && !isNoteRef) return v;
+        // Lignes TOTAL (extraction NET-N uniquement) : pas de colonne Note → les
+        // cellules sont décalées d'un cran vers la gauche et le hint (calé sur
+        // l'en-tête AVEC Note) tombe sur la DERNIÈRE valeur de la ligne (NET N-1).
+        // Dans ce cas, préférer l'heuristique avant-dernière valeur (= NET-N).
+        // Ne s'applique qu'aux lignes SANS note en tête (le décalage vient de là) —
+        // une ligne détail avec note et colonne N-1 vide garde son hint. Pour
+        // l'extraction N-1 (yearOffset=1), le hint pointe légitimement la dernière
+        // colonne : pas de garde.
+        const lineHasNoteRef = nums.length >= 3 && Number.isInteger(nums[0]) && nums[0] >= 1 && nums[0] <= 50;
+        let lastNonNullIdx = -1;
+        for (let i = cells.length - 1; i >= 0; i--) {
+          if (cells[i] !== null) { lastNonNullIdx = i; break; }
+        }
+        const hintIsLastValue = yearOffset === 0 && !lineHasNoteRef && columnHint >= lastNonNullIdx && nums.length >= 3;
+        if (v !== null && !isNoteRef && !hintIsLastValue) return v;
       }
-      if (nums.length >= 3) return nums[nums.length - 2];
-      return nums[0];
+      return pickHeuristic(nums);
     }
     return undefined;
   }
 
   /** Backwards-compatible: pick ACTIF NET-N without explicit column hint. */
   private actif(text: string, ...labels: string[]): number | undefined {
-    return this.actifWithHint(text, null, ...labels);
+    return this.actifWithHint(text, null, 0, ...labels);
   }
 
   /** For PASSIF/CR/TFT lines: current year is typically the first number after the label. */
@@ -1356,7 +1437,7 @@ export class OcrService {
     // PASSIF column hint: 2 cols (N | N-1) — first = N, second = N-1.
     const passifHint = yearOffset;
 
-    const a = (...l: string[]) => this.actifWithHint(actif, actifHint, ...l);
+    const a = (...l: string[]) => this.actifWithHint(actif, actifHint, yearOffset, ...l);
     const p = (...l: string[]) => this.crWithHint(passif, passifHint, ...l);
     // Some PASSIF labels (résultat exercice, dettes location) are not always
     // in the PASSIF subtext if section splitter misfires — fall back to full

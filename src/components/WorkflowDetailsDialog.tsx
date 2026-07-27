@@ -286,7 +286,9 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
     return {
       chiffre_affaires:       is.XB  ?? 0,
       valeur_ajoutee:         is.XD  ?? 0,
-      ebe:                    is.XE  ?? 0,
+      // EBE : si XE absent (enregistrement partiel), dériver via la formule
+      // SYSCOHADA XE = XD − RU (charges de personnel) − RV (impôts s/ rémunérations).
+      ebe:                    is.XE  ?? (is.XD != null ? (is.XD - (is.RU ?? 0) - (is.RV ?? 0)) : 0),
       resultat_exploitation:  is.XF  ?? 0,
       produits_financiers:    (is.SA ?? 0) + (is.SB ?? 0) + (is.SC ?? 0),
       charges_financieres:    (is.SD ?? 0) + (is.SE ?? 0),
@@ -322,6 +324,14 @@ export const WorkflowDetailsDialog: React.FC<WorkflowDetailsDialogProps> = ({
     if (!r.actif_circulant)  r.actif_circulant   = r.total_actif_circulant   ?? 0;
     if (!r.tresorerie)       r.tresorerie        = r.tresorerie_actif        ?? r.banques_caisses ?? 0;
     if (!r.passif_circulant) r.passif_circulant  = r.total_dettes            ?? 0;
+    // EBE : les données OCR/plates stockent « excedent_brut_exploitation » alors
+    // que le tableau lit « ebe » — sans cet alias, seule la ligne EBE affichait 0.
+    if (!r.ebe) r.ebe = r.excedent_brut_exploitation ?? 0;
+    // Anciens dossiers sans EBE stocké : dériver via la formule SYSCOHADA XE
+    // (VA − charges de personnel − impôts et taxes sur rémunérations).
+    if (!r.ebe && r.valeur_ajoutee) {
+      r.ebe = Number(r.valeur_ajoutee) - Number(r.charges_personnel ?? 0) - Number(r.impots_taxes_remunerations ?? 0);
+    }
     return r;
   };
 
