@@ -338,9 +338,12 @@ cd "$APP_DIR/backend"
 export DATABASE_URL="$DB_URL"
 npx prisma generate >/dev/null 2>&1 && dep_ok "Client Prisma régénéré"
 
-# Tentative normale
-migrate_output=$(npx prisma migrate deploy 2>&1)
-migrate_rc=$?
+# Tentative normale.
+# `set -e` est actif : sans le `|| migrate_rc=$?`, l'échec de la substitution de
+# commande tuerait le script ici même, rendant tout le rattrapage P3005 ci-dessous
+# inatteignable — et sans le moindre message d'erreur.
+migrate_rc=0
+migrate_output=$(npx prisma migrate deploy 2>&1) || migrate_rc=$?
 echo "$migrate_output" | tail -8
 
 if [[ $migrate_rc -ne 0 ]] && echo "$migrate_output" | grep -qE "P3005|database schema is not empty"; then

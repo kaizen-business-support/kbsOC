@@ -60,6 +60,18 @@ Veuillez examiner les observations du décideur et prendre les mesures nécessai
   },
 
   {
+    name: 'Complément demandé — Informations manquantes',
+    event: 'STEP_INFO_REQUESTED' as const,
+    subject: '[OptimusCredit] ❓ Complément requis — Dossier {{applicationNumber}}',
+    body: `L'instruction du dossier de {{clientName}} ({{applicationNumber}}) est suspendue à l'étape « {{stepName}} » : {{assigneeName}} demande des informations complémentaires.
+
+Précisions attendues : {{comments}}
+
+Le circuit d'approbation reste bloqué tant que ces éléments n'ont pas été fournis. Veuillez compléter le dossier dans les meilleurs délais, puis soumettre à nouveau l'étape pour validation.`,
+    recipientRoles: ['CHARGE_AFFAIRES'],
+  },
+
+  {
     name: 'Dossier approuvé — Décision finale',
     event: 'APPLICATION_APPROVED' as const,
     subject: '[OptimusCredit] 🎉 Dossier approuvé — {{applicationNumber}}',

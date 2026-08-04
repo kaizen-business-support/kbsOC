@@ -60,6 +60,7 @@ const NOTIF_EVENTS = [
   { value: 'STEP_ASSIGNED',         label: 'Dossier affecté',      color: '#d97706' },
   { value: 'STEP_APPROVED',         label: 'Étape approuvée',      color: '#16a34a' },
   { value: 'STEP_REJECTED',         label: 'Étape rejetée',        color: '#dc2626' },
+  { value: 'STEP_INFO_REQUESTED',   label: 'Complément demandé',   color: '#0891b2' },
   { value: 'APPLICATION_APPROVED',  label: 'Dossier approuvé',     color: '#15803d' },
   { value: 'APPLICATION_REJECTED',  label: 'Dossier rejeté',       color: '#b91c1c' },
   { value: 'DASHBOARD_SHARED',      label: 'Dashboard partagé',    color: '#6366f1' },

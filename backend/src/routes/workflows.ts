@@ -674,7 +674,13 @@ router.post('/:applicationId/approve', async (req: Request, res: Response) => {
           comments: comments || `Informations complémentaires demandées par ${user.name}`,
         },
       });
-      triggerNotification('STEP_INFO_REQUESTED', applicationId);
+      // Contexte explicite : le template rend {{comments}}, et latestStep pointe
+      // sur la dernière étape CRÉÉE — pas sur celle qui vient d'être suspendue.
+      triggerNotification('STEP_INFO_REQUESTED', applicationId, {
+        stepName: currentStep.stepName,
+        assigneeName: user.name,
+        comments: comments || 'Non précisé',
+      });
       return res.json({
         success: true,
         message: 'Informations complémentaires demandées',

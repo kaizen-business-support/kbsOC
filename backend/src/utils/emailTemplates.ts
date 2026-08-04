@@ -69,6 +69,16 @@ export const EVENT_EMAIL_CONFIGS: Record<string, EventEmailConfig> = {
     icon: '✗',
     ctaText: 'Voir les détails',
   },
+  STEP_INFO_REQUESTED: {
+    title: 'Informations complémentaires demandées',
+    subtitle: 'Le dossier est en attente de pièces ou de précisions pour poursuivre son instruction.',
+    accentColor: '#0891b2',
+    accentDark:  '#0e7490',
+    badge: 'Complément requis',
+    badgeBg: '#0e7490',
+    icon: '❓',
+    ctaText: 'Compléter le dossier',
+  },
   APPLICATION_APPROVED: {
     title: 'Dossier entièrement approuvé',
     subtitle: 'Le dossier a obtenu toutes les approbations requises et est maintenant validé.',
