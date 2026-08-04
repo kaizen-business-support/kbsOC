@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer';
 import { prisma } from '../server';
 import { buildEventEmail } from '../utils/emailTemplates';
 import { enqueueEmail } from './emailQueueService';
+import { resolveNotificationRecipients, RecipientStep } from './notificationRecipients';
 
 // ─── Page routing par rôle ────────────────────────────────────────────────────
 
@@ -198,13 +199,18 @@ export async function triggerNotification(
 
     if (rules.length === 0) return;
 
-    // Load application with related data
+    // Load application with related data.
+    // Toutes les étapes sont chargées : elles constituent la ligne d'approbation
+    // effective du dossier, seule base légitime pour choisir les destinataires.
     const application = await prisma.creditApplication.findUnique({
       where: { id: applicationId },
       include: {
         client: true,
         creator: true,
-        workflowSteps: { orderBy: { createdAt: 'desc' }, take: 1 },
+        workflowSteps: {
+          orderBy: { createdAt: 'desc' },
+          include: { policyStep: { select: { order: true, stepType: true } } },
+        },
       },
     });
 
@@ -241,42 +247,47 @@ export async function triggerNotification(
       ...context,
     };
 
-    for (const rule of rules) {
-      const recipientRoles = rule.recipientRoles as string[];
+    // Ligne d'approbation effective du dossier — produite par la politique de
+    // crédit après résolution de l'échelle d'escalade : sur un petit montant, les
+    // paliers supérieurs n'ont tout simplement pas d'étape ici.
+    const steps: RecipientStep[] = application.workflowSteps.map(s => ({
+      role: s.role,
+      status: s.status as string,
+      stepType: s.policyStep?.stepType ?? null,
+      assigneeId: s.assigneeId,
+      order: s.policyStep?.order ?? null,
+      createdAt: s.createdAt,
+    }));
 
-      // Find users matching the roles — scoped to this tenant only
-      const roleUsers = await prisma.user.findMany({
-        where: {
-          role: { in: recipientRoles as any[] },
-          isActive: true,
-          memberships: {
-            some: { companyId, isActive: true },
-          },
-        },
-        select: { id: true, email: true, phone: true, name: true, role: true },
+    // Vivier de destinataires possibles : les utilisateurs actifs de CE tenant.
+    // Le filtrage fin est délégué à resolveNotificationRecipients.
+    const tenantUsers = await prisma.user.findMany({
+      where: {
+        isActive: true,
+        memberships: { some: { companyId, isActive: true } },
+      },
+      select: { id: true, email: true, phone: true, name: true, role: true },
+    });
+    const usersById = new Map(tenantUsers.map(u => [u.id, u]));
+    const candidates = tenantUsers.map(u => ({ id: u.id, role: u.role as string }));
+
+    const targetUserId = context?.targetUserId;
+    const targetUser = targetUserId ? usersById.get(targetUserId) ?? null : null;
+
+    for (const rule of rules) {
+      const recipientIds = resolveNotificationRecipients({
+        event,
+        steps,
+        creatorId: application.createdBy,
+        candidates,
+        recipientRoles: rule.recipientRoles as string[],
+        targetUserId,
+        nextRole: context?.nextRole,
       });
 
-      // If a specific targetUserId is provided (e.g. the dispatched analyst),
-      // notify that user directly in addition to role-based recipients.
-      const targetUserId = context?.targetUserId;
-      let targetUser: typeof roleUsers[0] | null = null;
-      if (targetUserId) {
-        targetUser = await prisma.user.findFirst({
-          where: { id: targetUserId, isActive: true },
-          select: { id: true, email: true, phone: true, name: true, role: true },
-        });
-      }
-
-      // Merge: targetUser first (if not already in roleUsers), then roleUsers
-      const seen = new Set<string>();
-      const users: typeof roleUsers = [];
-      if (targetUser) {
-        seen.add(targetUser.id);
-        users.push(targetUser);
-      }
-      for (const u of roleUsers) {
-        if (!seen.has(u.id)) { seen.add(u.id); users.push(u); }
-      }
+      const users = recipientIds
+        .map(id => usersById.get(id))
+        .filter((u): u is typeof tenantUsers[0] => Boolean(u));
 
       for (const user of users) {
         const vars: Record<string, string> = {
@@ -301,7 +312,8 @@ export async function triggerNotification(
           message: inAppMessage,
           type: event.includes('REJECTED') ? 'WARNING'
                : event.includes('APPROVED') ? 'SUCCESS'
-               : event === 'STEP_ASSIGNED' ? 'ACTION_REQUIRED'
+               // Un complément demandé bloque le circuit : le destinataire doit agir.
+               : (event === 'STEP_ASSIGNED' || event === 'STEP_INFO_REQUESTED') ? 'ACTION_REQUIRED'
                : 'INFO',
           relatedType: 'application',
           relatedId: applicationId,

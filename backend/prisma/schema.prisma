@@ -839,6 +839,7 @@ enum NotifEvent {
   STEP_ASSIGNED
   STEP_APPROVED
   STEP_REJECTED
+  STEP_INFO_REQUESTED // Informations complémentaires demandées sur une étape
   APPLICATION_APPROVED
   APPLICATION_REJECTED
   STEP_OVERDUE // Délai maximum dépassé sur une étape
