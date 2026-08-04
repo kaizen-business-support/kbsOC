@@ -451,8 +451,11 @@ else
 # Robuste face à P3005 (DB pré-existante sans table _prisma_migrations) :
 # on baseline automatiquement plutôt que de tomber sur `db push --accept-data-loss`
 # qui peut silencieusement effacer des colonnes.
-migrate_output=$(npx prisma migrate deploy 2>&1)
-migrate_rc=$?
+# `set -euo pipefail` est actif : sans le `|| migrate_rc=$?`, l'échec de la
+# substitution de commande tuerait le script ici même, rendant le rattrapage
+# P3005 ci-dessous inatteignable — et sans le moindre message d'erreur.
+migrate_rc=0
+migrate_output=$(npx prisma migrate deploy 2>&1) || migrate_rc=$?
 echo "$migrate_output" | tail -8
 
 if [[ $migrate_rc -eq 0 ]]; then
