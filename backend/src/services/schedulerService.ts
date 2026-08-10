@@ -6,11 +6,14 @@
  *  - Full backup daily at 02:00
  *  - Cleanup of backups older than 30 days every Sunday at 03:00
  *  - Cleanup of audit logs older than 60 days daily at 04:00
+ *  - Email queue processing every 2 minutes
+ *  - SLA monitor (retard / relance / escalade) hourly at HH:15
  */
 
 import cron from 'node-cron';
 import { createBackup, deleteOldBackups } from './backupService';
 import { processEmailQueue } from './emailQueueService';
+import { runSlaMonitor } from './slaMonitorService';
 import { logger } from '../utils/logger';
 import { prisma } from '../server';
 
@@ -72,5 +75,22 @@ export function startScheduler(): void {
     }
   });
 
-  logger.info('Scheduler started (backup + audit log cleanup + email queue)');
+  // Surveillance des délais du circuit d'approbation, toutes les heures.
+  // Idempotent : marque les retards, relance au plus une fois par jour et
+  // escalade une seule fois — repasser plus souvent ne duplique rien.
+  cron.schedule('15 * * * *', async () => {
+    try {
+      const report = await runSlaMonitor();
+      if (report.markedOverdue > 0 || report.notified > 0 || report.escalated > 0) {
+        logger.info(
+          `Moniteur SLA : ${report.scanned} étape(s) examinée(s) — ${report.markedOverdue} en retard, ` +
+          `${report.notified} relance(s), ${report.escalated} escalade(s)`
+        );
+      }
+    } catch (err) {
+      logger.error('Moniteur SLA FAILED:', err);
+    }
+  });
+
+  logger.info('Scheduler started (backup + audit log cleanup + email queue + SLA monitor)');
 }

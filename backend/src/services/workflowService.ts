@@ -18,6 +18,7 @@ import { STEP_NAME_FR } from '../constants/stepNames';
 import { resolveDelegation } from './delegationService';
 import { evaluateGuards, type GuardsJson } from './guardEngine';
 import { rolesMatching } from '../utils/roleAliases';
+import { toGuardStep, findSequentialBlocker, sequentialBlockReason } from './workflowGuards';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -691,50 +692,26 @@ export async function canApproveStep(
 
   // ── 0. Vérification de l'ordre séquentiel ────────────────────────────────────
   // Toutes les étapes ayant un ordre inférieur doivent être complétées avant
-  // qu'on puisse traiter l'étape courante. Deux cas : politique moderne (policyStepId)
-  // et dossiers legacy (sans policyStepId, ordre déterminé par createdAt).
-  if (step.policyStepId) {
-    const currentPolicyStep = await prisma.creditPolicyStep.findUnique({
-      where: { id: step.policyStepId },
-      select: { order: true, stepLabel: true },
+  // qu'on puisse traiter l'étape courante. La règle elle-même vit désormais dans
+  // workflowGuards, partagée avec /workflows/pending-approvals et le dispatching
+  // (qui, faute de l'appliquer, fabriquait les incohérences bloquées ici).
+  {
+    const appSteps = await prisma.workflowStep.findMany({
+      where: { applicationId },
+      include: { policyStep: { select: { order: true, stepLabel: true, stepType: true } } },
     });
-    if (currentPolicyStep) {
-      const blocker = await prisma.workflowStep.findFirst({
-        where: {
-          applicationId,
-          completedAt: null,
-          id: { not: step.id },
-          policyStep: { order: { lt: currentPolicyStep.order } },
-        },
-        include: { policyStep: { select: { stepLabel: true, order: true } } },
-        orderBy: { policyStep: { order: 'asc' } },
-      });
+    const guardSteps = appSteps.map(toGuardStep);
+    const currentGuardStep = guardSteps.find(s => s.id === step.id);
+
+    // Étape rattachée à une étape de politique disparue : aucun ordre exploitable,
+    // on ne bloque pas — comportement historique conservé.
+    const orphanPolicyStep = Boolean(step.policyStepId) && !currentGuardStep?.policyStep;
+
+    if (currentGuardStep && !orphanPolicyStep) {
+      const blocker = findSequentialBlocker(guardSteps, currentGuardStep);
       if (blocker) {
-        const blockerLabel = (blocker as any).policyStep?.stepLabel ?? blocker.stepName;
-        const blockerOrder = (blocker as any).policyStep?.order ?? '?';
-        return {
-          allowed: false,
-          reason: `Étape bloquée : "${blockerLabel}" (étape ${blockerOrder}) doit être complétée en premier. Le circuit doit être respecté dans l'ordre défini par la politique de crédit.`,
-        };
+        return { allowed: false, reason: sequentialBlockReason(blocker) };
       }
-    }
-  } else {
-    // Dossiers legacy (sans policyStepId) : ordre séquentiel par createdAt
-    const legacyBlocker = await prisma.workflowStep.findFirst({
-      where: {
-        applicationId,
-        completedAt: null,
-        id: { not: step.id },
-        policyStepId: null,
-        createdAt: { lt: step.createdAt },
-      },
-      orderBy: { createdAt: 'asc' },
-    });
-    if (legacyBlocker) {
-      return {
-        allowed: false,
-        reason: `Étape bloquée : "${legacyBlocker.stepName}" doit être complétée en premier. Le circuit doit être respecté dans l'ordre d'instruction.`,
-      };
     }
   }
 

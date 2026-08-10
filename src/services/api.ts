@@ -2174,9 +2174,19 @@ export const dispatchingApi = {
     }
   },
 
-  async assignAnalyst(applicationId: string, userId: string, comment?: string, isReassign = false): Promise<ApiResponse<any>> {
+  // dispatchStepId : étape DISPATCH sur laquelle l'utilisateur a agi (currentStepId
+  // de /dispatching/pending). Sans elle, le backend retombe sur le DISPATCH ouvert
+  // d'ordre le plus petit — sûr, mais moins précis sur les circuits à plusieurs
+  // points de dispatching.
+  async assignAnalyst(
+    applicationId: string,
+    userId: string,
+    comment?: string,
+    isReassign = false,
+    dispatchStepId?: string | null,
+  ): Promise<ApiResponse<any>> {
     try {
-      const res = await api.post('/dispatching/assign', { applicationId, userId, comment, isReassign });
+      const res = await api.post('/dispatching/assign', { applicationId, userId, comment, isReassign, dispatchStepId });
       return { success: true, data: res.data };
     } catch (e: any) {
       return { success: false, error: e.response?.data?.error || 'Erreur affectation' };

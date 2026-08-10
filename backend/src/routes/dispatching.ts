@@ -5,6 +5,15 @@ import { createInAppNotification } from '../services/notificationService';
 import { resolveDelegation } from '../services/delegationService';
 import { createWorkflowStepsForApplication, finalizeStepDuration } from '../services/workflowService';
 import { triggerNotification } from '../services/notificationService';
+import { rolesMatching, canonicalRole } from '../utils/roleAliases';
+import {
+  toGuardStep,
+  resolveDispatchStep,
+  pickAssignmentTarget,
+  findSequentialBlocker,
+  sequentialBlockReason,
+  checkBranchScope,
+} from '../services/workflowGuards';
 
 const router = Router();
 
@@ -249,9 +258,12 @@ router.get('/suggest/:applicationId', async (req: Request, res: Response) => {
     }
 
     const companyId = (req as any).companyId as string | undefined;
+    // users.role passe par l'enum Prisma : le rôle issu de workflow_steps.role
+    // (String libre, parfois en @map snake_case) doit être normalisé, sinon la
+    // requête lève une erreur de validation au lieu de filtrer.
     const agents = await prisma.user.findMany({
       where: {
-        role: neededRole as any,
+        role: canonicalRole(neededRole) as any,
         isActive: true,
         ...(companyId ? { memberships: { some: { companyId, isActive: true } } } : {}),
       },
@@ -266,32 +278,58 @@ router.get('/suggest/:applicationId', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: `Aucun responsable disponible avec le rôle ${neededRole}` });
     }
 
+    // Portée d'agence : même règle que l'approbation (canApproveStep §4). Le tri se
+    // faisait auparavant sur la seule charge de travail, si bien qu'un compte d'une
+    // autre agence — souvent à zéro dossier, donc score minimal — arrivait en tête.
+    const creatorBranch = (application as any).creator?.branch || (application as any).creator?.department || null;
+
     const ranked = agents
       .map(a => {
         const overdueCount = a.assignedSteps.filter(
           s => s.deadline && new Date(s.deadline) < new Date()
         ).length;
-        const sameDeptBonus = a.department === application.creator?.department ? -0.5 : 0;
+        const scope = checkBranchScope(
+          { role: a.role as string, branch: (a as any).branch, department: a.department },
+          creatorBranch,
+          { requireAttachment: true },
+        );
         return {
           id: a.id,
           name: a.name,
           email: a.email,
           role: a.role,
+          branch: (a as any).branch ?? null,
           department: a.department,
           jobTitle: a.jobTitle,
           activeCount: a.assignedSteps.length,
           pendingCount: a.assignedSteps.filter(s => s.status === 'PENDING').length,
           inReviewCount: a.assignedSteps.filter(s => s.status === 'IN_REVIEW').length,
           overdueCount,
-          workloadScore: a.assignedSteps.length + overdueCount * 2 + sameDeptBonus
+          eligible: scope.allowed,
+          ineligibleReason: scope.allowed ? null : (scope.reason ?? 'Hors périmètre'),
+          workloadScore: a.assignedSteps.length + overdueCount * 2,
         };
       })
-      .sort((a, b) => a.workloadScore - b.workloadScore);
+      // Les profils hors périmètre restent visibles — pour que l'UI puisse expliquer
+      // leur absence — mais jamais en tête : ils sont relégués après les éligibles.
+      .sort((a, b) => {
+        if (a.eligible !== b.eligible) return a.eligible ? -1 : 1;
+        return a.workloadScore - b.workloadScore;
+      });
+
+    const eligible = ranked.filter(a => a.eligible);
+
+    if (eligible.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: `Aucun profil "${neededRole}" ne relève de l'agence "${creatorBranch ?? 'non définie'}". Rattachez un profil à cette agence ou confiez le dossier à un service transversal.`,
+      });
+    }
 
     res.json({
       success: true,
       data: {
-        suggested: ranked[0],
+        suggested: eligible[0],
         ranked,
         neededRole,
         applicationId,
@@ -356,8 +394,11 @@ router.get('/history', async (req: Request, res: Response) => {
 // ─── POST /api/dispatching/assign ─────────────────────────────────────────────
 router.post('/assign', async (req: Request, res: Response) => {
   try {
-    // Accept userId (new) or analystId (backward compat)
-    const { applicationId, userId, analystId, comment, isReassign } = req.body;
+    // Accept userId (new) or analystId (backward compat).
+    // dispatchStepId désigne l'étape DISPATCH sur laquelle le dispatcheur a agi :
+    // sans elle, une affectation pouvait clôturer un DISPATCH situé plus loin dans
+    // le circuit et sauter les étapes intermédiaires.
+    const { applicationId, userId, analystId, comment, isReassign, dispatchStepId } = req.body;
     const targetUserId = userId || analystId;
     const supervisorId = (req as any).user?.userId || (req as any).user?.id;
 
@@ -371,7 +412,7 @@ router.post('/assign', async (req: Request, res: Response) => {
         include: {
           workflowSteps: {
             orderBy: { createdAt: 'asc' },
-            include: { policyStep: { select: { stepType: true } } },
+            include: { policyStep: { select: { stepType: true, order: true, stepLabel: true } } },
           },
           client: { select: { companyName: true } },
           creator: { select: { branch: true, department: true } }
@@ -397,49 +438,26 @@ router.post('/assign', async (req: Request, res: Response) => {
       }
     }
 
-    // Guard anti-double-dispatch : si toutes les étapes DISPATCH du workflow sont
-    // déjà complétées, bloquer. On accepte les workflows à plusieurs DISPATCH
-    // (initial + DISPATCH ultérieurs) tant qu'il en reste au moins un en attente.
-    if (!isReassign) {
-      const pendingDispatch = application.workflowSteps.find(
-        (s: any) => s.policyStep?.stepType === 'DISPATCH' && s.completedAt === null
-      );
-      if (!pendingDispatch) {
-        return res.status(409).json({
-          success: false,
-          error: 'Ce dossier a déjà été entièrement dispatché. Utilisez la réaffectation depuis l\'historique pour le modifier.',
-        });
-      }
-    }
+    let guardSteps = application.workflowSteps.map(toGuardStep);
 
-    // Find the step to assign: for reassign, first PENDING/IN_REVIEW; for initial, first PENDING unassigned.
-    // Les étapes DISPATCH ne sont jamais des cibles d'affectation (elles sont auto-complétées
-    // par l'action de dispatching elle-même) — on les exclut explicitement.
-    let targetStep = isReassign
-      ? application.workflowSteps.find((s: any) =>
-          ['PENDING', 'IN_REVIEW'].includes(s.status) && s.policyStep?.stepType !== 'DISPATCH'
-        )
-      : application.workflowSteps.find((s: any) =>
-          s.status === 'PENDING' && !s.assigneeId && s.policyStep?.stepType !== 'DISPATCH'
-        );
-
-    // Si aucune étape PENDING et que l'application est SUBMITTED, tenter de générer le circuit
-    if (!targetStep && !isReassign && application.creditTypeId) {
+    // Si le circuit n'existe pas encore et que le dossier vient d'être soumis,
+    // le générer avant toute résolution d'étape.
+    const hasAssignableStep = guardSteps.some(
+      (s: any) => s.completedAt === null && s.policyStep?.stepType !== 'DISPATCH'
+    );
+    if (!hasAssignableStep && !isReassign && application.creditTypeId) {
       try {
         await createWorkflowStepsForApplication(application.id, application.creditTypeId, Number(application.amount));
-        // Recharger les étapes
         const updated = await prisma.creditApplication.findUnique({
           where: { id: applicationId },
           include: {
             workflowSteps: {
               orderBy: { createdAt: 'asc' },
-              include: { policyStep: { select: { stepType: true } } },
+              include: { policyStep: { select: { stepType: true, order: true, stepLabel: true } } },
             },
           },
         });
-        targetStep = updated?.workflowSteps.find((s: any) =>
-          s.status === 'PENDING' && !s.assigneeId && s.policyStep?.stepType !== 'DISPATCH'
-        ) ?? undefined;
+        guardSteps = (updated?.workflowSteps ?? []).map(toGuardStep);
       } catch (circuitErr: any) {
         console.warn('[dispatching] Circuit non généré :', circuitErr.message);
         return res.status(400).json({
@@ -449,17 +467,47 @@ router.post('/assign', async (req: Request, res: Response) => {
       }
     }
 
+    // ── Résolution de l'étape DISPATCH réellement traitée ─────────────────────
+    // En affectation initiale seulement : une ré-affectation ne clôture aucun DISPATCH.
+    let dispatchStep = null as ReturnType<typeof toGuardStep> | null;
+    if (!isReassign) {
+      dispatchStep = resolveDispatchStep(guardSteps, dispatchStepId);
+      if (!dispatchStep) {
+        return res.status(409).json({
+          success: false,
+          error: dispatchStepId
+            ? "L'étape de dispatching indiquée est introuvable ou déjà traitée. Rafraîchissez la liste des dossiers à affecter."
+            : 'Ce dossier a déjà été entièrement dispatché. Utilisez la réaffectation depuis l\'historique pour le modifier.',
+        });
+      }
+
+      // Garde séquentiel — identique à celui de l'approbation (canApproveStep §0).
+      // Sans lui, le dispatching clôturait un DISPATCH alors qu'une étape d'ordre
+      // inférieur restait à traiter, fabriquant l'incohérence que l'approbation
+      // bloquait ensuite définitivement.
+      const blocker = findSequentialBlocker(guardSteps, dispatchStep);
+      if (blocker) {
+        return res.status(409).json({ success: false, error: sequentialBlockReason(blocker) });
+      }
+    }
+
+    // ── Étape cible ───────────────────────────────────────────────────────────
+    // Première étape non-DISPATCH d'ordre supérieur au DISPATCH traité. En
+    // ré-affectation, la première étape ouverte du circuit.
+    const targetStep = pickAssignmentTarget(guardSteps, dispatchStep, { isReassign: Boolean(isReassign) });
+
     if (!targetStep) {
-      return res.status(400).json({ success: false, error: 'Aucune étape en attente pour ce dossier. Vérifiez qu\'une politique de crédit active est configurée.' });
+      return res.status(400).json({
+        success: false,
+        error: dispatchStep
+          ? "Aucune étape à affecter après cette étape de dispatching. Vérifiez le circuit défini par la politique de crédit."
+          : "Aucune étape en attente pour ce dossier. Vérifiez qu'une politique de crédit active est configurée.",
+      });
     }
 
     // Non-cumul : empêcher l'affectation du même analyste sur deux étapes ANALYSIS
-    if (targetStep.policyStepId) {
-      const stepTypeInfo = await prisma.creditPolicyStep.findUnique({
-        where: { id: targetStep.policyStepId },
-        select: { stepType: true },
-      });
-      if (stepTypeInfo?.stepType === 'ANALYSIS') {
+    {
+      if (targetStep.policyStep?.stepType === 'ANALYSIS') {
         const priorAnalysis = await prisma.workflowStep.findFirst({
           where: {
             applicationId,
@@ -478,8 +526,11 @@ router.post('/assign', async (req: Request, res: Response) => {
       }
     }
 
-    // Validate the agent's role matches the step's role
-    if (agent.role !== targetStep.role) {
+    // Validate the agent's role matches the step's role.
+    // rolesMatching tolère les deux encodages (legacy UPPER_CASE / @map snake_case) :
+    // workflow_steps.role est un String libre alimenté par la politique, alors que
+    // users.role passe par l'enum — la comparaison stricte échouait selon l'historique.
+    if (!rolesMatching(targetStep.role).includes(agent.role as string)) {
       return res.status(400).json({
         success: false,
         error: `Cette étape requiert un responsable avec le rôle "${targetStep.role}". L'utilisateur sélectionné a le rôle "${agent.role}".`
@@ -492,8 +543,9 @@ router.post('/assign', async (req: Request, res: Response) => {
     });
     const supervisorName = supervisorUser?.name || 'Responsable';
 
-    // ── Guard agence ──────────────────────────────────────────────────────────
-    const GLOBAL_ROLES = ['RESPONSABLE_RISQUES', 'DIRECTION_GENERALE', 'ADMIN'];
+    // ── Contrôle du rôle du dispatcheur ───────────────────────────────────────
+    // Le DISPATCH porte un rôle : seul un profil de ce rôle peut le clôturer.
+    // Sans ce contrôle, n'importe qui pouvait clôturer le dispatch d'un autre service.
     const delegCtx = (req as any).delegationContext as {
       delegatorBranch: string | null;
       delegatorDepartment: string | null;
@@ -505,17 +557,41 @@ router.post('/assign', async (req: Request, res: Response) => {
       ? (delegCtx.delegatorBranch || delegCtx.delegatorDepartment)
       : ((supervisorUser as any)?.branch || (supervisorUser as any)?.department);
 
-    if (!GLOBAL_ROLES.includes(effectiveRole)) {
-      // Vérifier que le dossier appartient bien à l'agence du dispatcher
-      const creatorBranch = (application as any).creator?.branch || (application as any).creator?.department;
-      if (effectiveBranch && creatorBranch && effectiveBranch !== creatorBranch) {
-        return res.status(403).json({
-          success: false,
-          error: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez affecter que les dossiers de votre agence ("${effectiveBranch}").`,
-        });
-      }
-      // Pas de restriction sur la branche de l'analyste : les analystes risques sont
-      // centralisés et peuvent recevoir des dossiers de toutes les agences.
+    if (dispatchStep && !rolesMatching(dispatchStep.role).includes(effectiveRole)) {
+      return res.status(403).json({
+        success: false,
+        error: `L'étape "${dispatchStep.policyStep?.stepLabel ?? dispatchStep.stepName}" est réservée au rôle "${dispatchStep.role}". Votre rôle ("${effectiveRole}") ne permet pas de la traiter.`,
+      });
+    }
+
+    // ── Portée d'agence ───────────────────────────────────────────────────────
+    // Règle unique partagée avec canApproveStep §4 (workflowGuards). Elle s'applique
+    // désormais aussi à la personne AFFECTÉE : un compte hors périmètre recevait
+    // jusqu'ici des étapes d'analyse que lui seul pouvait traiter, rendant le
+    // dossier intraitable par tout le monde.
+    const creatorBranch = (application as any).creator?.branch || (application as any).creator?.department;
+
+    const dispatcherScope = checkBranchScope(
+      { role: effectiveRole, branch: effectiveBranch },
+      creatorBranch,
+    );
+    if (!dispatcherScope.allowed) {
+      return res.status(403).json({
+        success: false,
+        error: `Ce dossier appartient à l'agence "${creatorBranch}". Vous ne pouvez affecter que les dossiers de votre agence ("${effectiveBranch}").`,
+      });
+    }
+
+    const agentScope = checkBranchScope(
+      { role: agent.role as string, branch: (agent as any).branch, department: (agent as any).department },
+      creatorBranch,
+      { requireAttachment: true },
+    );
+    if (!agentScope.allowed) {
+      return res.status(403).json({
+        success: false,
+        error: `${agent.name} ne peut pas recevoir ce dossier. ${agentScope.reason}`,
+      });
     }
 
     const dateStr = new Date().toLocaleDateString('fr-FR');
@@ -541,32 +617,23 @@ router.post('/assign', async (req: Request, res: Response) => {
 
     // Compléter l'étape DISPATCH du dispatcher (uniquement sur l'affectation initiale)
     // Cela retire le dossier de la liste pending du dispatcher et empêche un re-dispatch.
-    if (!isReassign) {
-      const dispatchStep = await prisma.workflowStep.findFirst({
-        where: {
-          applicationId,
-          completedAt: null,
-          policyStep: { stepType: 'DISPATCH' },
+    if (dispatchStep) {
+      const dur = await finalizeStepDuration(dispatchStep.id);
+      await prisma.workflowStep.update({
+        where: { id: dispatchStep.id },
+        data: {
+          status: 'APPROVED' as any,
+          completedAt: new Date(),
+          assigneeId: supervisorId,
+          durationMinutes: dur ?? undefined,
+          comments: `Dispatch complété par ${supervisorName} le ${dateStr} — affecté à ${agent.name}`,
         },
       });
-      if (dispatchStep) {
-        const dur = await finalizeStepDuration(dispatchStep.id);
-        await prisma.workflowStep.update({
-          where: { id: dispatchStep.id },
-          data: {
-            status: 'APPROVED' as any,
-            completedAt: new Date(),
-            assigneeId: supervisorId,
-            durationMinutes: dur ?? undefined,
-            comments: `Dispatch complété par ${supervisorName} le ${dateStr} — affecté à ${agent.name}`,
-          },
-        });
-        triggerNotification('STEP_ASSIGNED', applicationId, {
-          targetUserId,
-          assigneeName: agent.name,
-          stepName: isReassign ? 'Ré-affectation' : 'Affectation initiale',
-        });
-      }
+      triggerNotification('STEP_ASSIGNED', applicationId, {
+        targetUserId,
+        assigneeName: agent.name,
+        stepName: 'Affectation initiale',
+      });
     }
 
     const clientName = (application as any).client?.companyName ?? 'Client';

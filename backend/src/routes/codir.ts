@@ -6,6 +6,7 @@ import { timeRulesGate } from '../middleware/timeAccess';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
 import { createInAppNotification } from '../services/notificationService';
 import { STEP_NAME_FR } from '../constants/stepNames';
+import { escalateWorkflowStep } from '../services/escalationService';
 
 const router = Router();
 router.use(authenticate);
@@ -30,16 +31,8 @@ function extractOpinionSummary(analysisResults: unknown): { favorable: number; d
   }
 }
 
-const SUPERVISOR_ROLE: Record<string, string> = {
-  CHARGE_AFFAIRES:          'ANALYSTE_RISQUES',
-  ANALYSTE_RISQUES:         'RESPONSABLE_RISQUES',
-  RESPONSABLE_RISQUES:      'RESPONSABLE_ENGAGEMENTS',
-  RESPONSABLE_ENGAGEMENTS:  'COMITE_CREDIT',
-  COMITE_CREDIT:            'DIRECTION_GENERALE',
-  DIRECTION_GENERALE:       'DIRECTION_GENERALE',
-  DIRECTION_JURIDIQUE:      'DIRECTION_GENERALE',
-  BACK_OFFICE:              'RESPONSABLE_ENGAGEMENTS',
-};
+// La hiérarchie de supervision vit désormais dans escalationService, partagée
+// avec le moniteur SLA.
 
 // GET /api/codir/dashboard
 router.get('/dashboard', authorize(['codir_dashboard']), asyncHandler(async (req: Request, res: Response) => {
@@ -168,44 +161,15 @@ router.post('/escalade/:stepId', authorize(['codir_escalade']), asyncHandler(asy
   const companyId = req.companyId!;
   const escalatedById = req.user!.id;
 
-  const step = await prisma.workflowStep.findFirst({
-    where: { id: stepId, application: { companyId } },
-    include: {
-      application: { select: { applicationNumber: true } },
-      assignee: { select: { name: true } },
-    },
-  }) as any;
-  if (!step) throw new AppError('Étape introuvable', 404, 'NOT_FOUND');
-  if (step.isEscalated) throw new AppError('Ce dossier est déjà escaladé', 400, 'ALREADY_ESCALATED');
-
-  const supervisorRole = SUPERVISOR_ROLE[step.role] ?? 'DIRECTION_GENERALE';
-  const appNumber = step.application.applicationNumber;
-  const assigneeName = step.assignee?.name ?? 'Agent non assigné';
-
-  // Fetch supervisors via membership (no direct enum comparison on CompanyMembership)
-  const memberships = await prisma.companyMembership.findMany({
-    where: { companyId, isActive: true },
-    include: { user: { select: { id: true, role: true } } },
-  });
-  const supervisorIds = memberships
-    .filter(m => m.user.role === supervisorRole)
-    .map(m => m.user.id);
-
-  await prisma.workflowStep.update({
-    where: { id: stepId },
-    data: { isEscalated: true, escalatedAt: new Date(), escalatedById },
+  // Logique partagée avec le moniteur SLA (escalationService) : même hiérarchie
+  // de supervision, mêmes notifications, une seule implémentation.
+  const result = await escalateWorkflowStep(stepId, companyId, {
+    escalatedById,
+    trigger: 'MANUAL',
   });
 
-  await Promise.all(supervisorIds.map(supId =>
-    createInAppNotification(supId, {
-      title: `Escalade — Dossier ${appNumber}`,
-      message: `Le dossier ${appNumber} a été escaladé par la direction. Étape bloquante : ${step.stepName} — Agent : ${assigneeName}.`,
-      type: 'WARNING',
-      relatedType: 'workflow_step',
-      relatedId: step.id,
-      companyId,
-    })
-  ));
+  if (result.reason === 'NOT_FOUND') throw new AppError('Étape introuvable', 404, 'NOT_FOUND');
+  if (result.reason === 'ALREADY_ESCALATED') throw new AppError('Ce dossier est déjà escaladé', 400, 'ALREADY_ESCALATED');
 
   res.json({ success: true });
 }));
