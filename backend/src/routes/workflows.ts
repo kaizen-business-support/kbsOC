@@ -12,6 +12,7 @@ import {
 import { resolveDelegation } from '../services/delegationService';
 import { authenticate, requireCompany } from '../middleware/auth';
 import { rolesMatching } from '../utils/roleAliases';
+import { toGuardStep, findSequentialBlocker, sequentialBlockReason } from '../services/workflowGuards';
 
 const router = Router();
 router.use(authenticate);
@@ -322,52 +323,29 @@ router.get('/pending-approvals', async (req: Request, res: Response) => {
     type StepWithBlock = (typeof steps)[0] & { isBlocked: boolean; blockingReason?: string };
     const stepsWithBlockInfo: StepWithBlock[] = [];
 
+    // Les étapes de tous les dossiers concernés sont chargées en une seule requête :
+    // la règle séquentielle s'évalue ensuite en mémoire via workflowGuards, partagé
+    // avec canApproveStep §0. L'ancienne boucle faisait une requête par étape.
+    const siblingSteps = await prisma.workflowStep.findMany({
+      where: { applicationId: { in: [...new Set(steps.map(s => s.applicationId))] } },
+      include: { policyStep: { select: { order: true, stepLabel: true, stepType: true } } },
+    });
+    const stepsByApplication = new Map<string, ReturnType<typeof toGuardStep>[]>();
+    for (const s of siblingSteps) {
+      const list = stepsByApplication.get(s.applicationId) ?? [];
+      list.push(toGuardStep(s));
+      stepsByApplication.set(s.applicationId, list);
+    }
+
     for (const step of steps) {
-      const policyStepOrder: number | null = (step as any).policyStep?.order ?? null;
-      if (policyStepOrder === null) {
-        // Étape legacy (sans policyStepId) : ordre séquentiel par createdAt
-        const legacyBlocker = await prisma.workflowStep.findFirst({
-          where: {
-            applicationId: step.applicationId,
-            completedAt: null,
-            id: { not: step.id },
-            policyStepId: null,
-            createdAt: { lt: step.createdAt },
-          },
-          orderBy: { createdAt: 'asc' },
-        });
-        stepsWithBlockInfo.push(
-          legacyBlocker
-            ? {
-                ...step,
-                isBlocked: true,
-                blockingReason: `Étape bloquée : "${legacyBlocker.stepName}" doit être complétée en premier. Le circuit doit être respecté dans l'ordre d'instruction.`,
-              }
-            : { ...step, isBlocked: false }
-        );
-        continue;
-      }
-      const blocker = await prisma.workflowStep.findFirst({
-        where: {
-          applicationId: step.applicationId,
-          completedAt: null,
-          id: { not: step.id },
-          policyStep: { order: { lt: policyStepOrder } },
-        },
-        include: { policyStep: { select: { stepLabel: true, order: true } } },
-        orderBy: { policyStep: { order: 'asc' } },
-      });
-      if (blocker) {
-        const blockerLabel = (blocker as any).policyStep?.stepLabel ?? blocker.stepName;
-        const blockerOrder = (blocker as any).policyStep?.order ?? '?';
-        stepsWithBlockInfo.push({
-          ...step,
-          isBlocked: true,
-          blockingReason: `Étape bloquée : "${blockerLabel}" (étape ${blockerOrder}) doit être complétée en premier. Le circuit doit être respecté dans l'ordre défini par la politique de crédit.`,
-        });
-      } else {
-        stepsWithBlockInfo.push({ ...step, isBlocked: false });
-      }
+      const guardSteps = stepsByApplication.get(step.applicationId) ?? [];
+      const current = guardSteps.find(s => s.id === step.id);
+      const blocker = current ? findSequentialBlocker(guardSteps, current) : null;
+      stepsWithBlockInfo.push(
+        blocker
+          ? { ...step, isBlocked: true, blockingReason: sequentialBlockReason(blocker) }
+          : { ...step, isBlocked: false }
+      );
     }
 
     const data = stepsWithBlockInfo.map((step) => {
