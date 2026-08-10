@@ -220,8 +220,12 @@ export const DispatchingPage: React.FC = () => {
     const appId = (dialog.app as any).id || (dialog.app as any).applicationId;
     const chosenAgent = agents.find(a => a.id === dialog.selectedAgentId) ?? dialog.suggestedAgent;
 
+    // Transmettre l'étape DISPATCH affichée sur la ligne : c'est elle que
+    // l'affectation doit clôturer, et non le premier DISPATCH venu du circuit.
+    const dispatchStepId = (dialog.app as any).currentStepId ?? null;
+
     const res = await dispatchingApi.assignAnalyst(
-      appId, dialog.selectedAgentId, dialog.comment, dialog.isReassign
+      appId, dialog.selectedAgentId, dialog.comment, dialog.isReassign, dispatchStepId
     );
     if (res.success) {
       setSuccess(res.data?.message || (dialog.isReassign ? 'Ré-affectation validée' : 'Affectation validée'));
